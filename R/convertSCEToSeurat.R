@@ -1,0 +1,135 @@
+#' Convert a SingleCellExperiment into a Seurat object
+#'
+#' Gives a SingleCellExperiment (read from an `.rds`/`.qs2` file, or an AnnData
+#' file opened with [readH5adAsSCE()]) the shape the Seurat-based tools expect,
+#' so it can go through the Builder like any other dataset. Cells, genes, cell
+#' metadata and every reduced dimension are carried over; so are the results kept
+#' in `metadata(object)` (marker genes, immune repertoire, trajectories and
+#' category colours), which the export reads from `@misc`.
+#'
+#' The expression matrix is placed by what it holds: a `counts` assay becomes
+#' the `counts` layer and `logcounts` the `data` layer. Without those, the first
+#' assay (an AnnData `X`) is used as `counts` when it holds whole numbers and as
+#' `data` otherwise.
+#'
+#' Tissue images and the split of several tissue sections are not carried
+#' across; use [convertSCEToCerebro()] or [convertH5adToCerebro()] directly when
+#' you need them.
+#'
+#' @param object A SingleCellExperiment.
+#' @param main_assay Name of the Seurat assay to create.
+#' @param verbose Print what was converted.
+#' @return A Seurat object.
+#' @export
+convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
+  if (!requireNamespace("SeuratObject", quietly = TRUE)) {
+    stop("The 'SeuratObject' package is needed for this conversion.", call. = FALSE)
+  }
+  if (!methods::is(object, "SingleCellExperiment")) {
+    stop("`object` must be a SingleCellExperiment.", call. = FALSE)
+  }
+  assay_names <- SummarizedExperiment::assayNames(object)
+  if (!length(assay_names)) {
+    stop("The SingleCellExperiment has no assays.", call. = FALSE)
+  }
+
+  as_sparse <- function(x) {
+    if (!methods::is(x, "dgCMatrix")) {
+      x <- methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+    }
+    x
+  }
+  fetch <- function(name) {
+    m <- as_sparse(SummarizedExperiment::assay(object, name))
+    dimnames(m) <- list(rownames(object), colnames(object))
+    m
+  }
+
+  counts <- NULL
+  data <- NULL
+  if ("counts" %in% assay_names) {
+    counts <- fetch("counts")
+  }
+  if ("logcounts" %in% assay_names) {
+    data <- fetch("logcounts")
+  }
+  if (is.null(counts) && is.null(data)) {
+    m <- fetch(assay_names[[1L]])
+    sample <- if (length(m@x) > 100000L) m@x[seq_len(100000L)] else m@x
+    if (length(sample) && all(sample == round(sample))) {
+      counts <- m
+    } else {
+      data <- m
+    }
+  }
+  if (anyNA(rownames(object)) || anyDuplicated(rownames(object))) {
+    stop("Gene names must be present and unique to convert to Seurat.", call. = FALSE)
+  }
+
+  assay_object <- if (is.null(counts)) {
+    SeuratObject::CreateAssay5Object(data = data)
+  } else if (is.null(data)) {
+    SeuratObject::CreateAssay5Object(counts = counts)
+  } else {
+    SeuratObject::CreateAssay5Object(counts = counts, data = data)
+  }
+
+  cell_data <- as.data.frame(SummarizedExperiment::colData(object))
+  keep <- vapply(
+    cell_data,
+    function(column) is.atomic(column) || is.factor(column),
+    logical(1)
+  )
+  cell_data <- cell_data[, keep, drop = FALSE]
+  rownames(cell_data) <- colnames(object)
+
+  result <- suppressWarnings(SeuratObject::CreateSeuratObject(
+    counts = assay_object,
+    assay = main_assay,
+    meta.data = cell_data
+  ))
+
+  used_keys <- character()
+  for (name in SingleCellExperiment::reducedDimNames(object)) {
+    embedding <- SingleCellExperiment::reducedDim(object, name)
+    if (!is.matrix(embedding) || !is.numeric(embedding) || ncol(embedding) < 1L) {
+      next
+    }
+    key <- tolower(gsub("[^A-Za-z0-9]", "", name))
+    if (!grepl("^[a-z]", key)) {
+      key <- paste0("dim", key)
+    }
+    base <- key
+    suffix <- 1L
+    while (key %in% used_keys) {
+      suffix <- suffix + 1L
+      key <- paste0(base, suffix)
+    }
+    used_keys <- c(used_keys, key)
+    storage.mode(embedding) <- "double"
+    dimnames(embedding) <- list(
+      colnames(object),
+      paste0(key, "_", seq_len(ncol(embedding)))
+    )
+    result[[name]] <- SeuratObject::CreateDimReducObject(
+      embeddings = embedding,
+      key = paste0(key, "_"),
+      assay = main_assay
+    )
+  }
+
+  carried <- as.list(object@metadata)
+  carried$spatial_images <- NULL
+  carried <- carried[nzchar(names(carried) %||% character(length(carried)))]
+  result@misc <- utils::modifyList(result@misc, carried)
+
+  if (verbose) {
+    message(
+      "[INFO] Converted ", ncol(object), " cells x ", nrow(object),
+      " genes; layers: ",
+      paste(c(if (!is.null(counts)) "counts", if (!is.null(data)) "data"), collapse = ", "),
+      "; reductions: ", paste(names(result@reductions), collapse = ", ")
+    )
+  }
+  result
+}

@@ -1142,6 +1142,22 @@ builder_formats <- list(
         nthreads = min(16L, as.integer(cores))
       )
     }
+  ),
+  ## AnnData / MuData files are opened natively and arrive as a
+  ## SingleCellExperiment, converted to a Seurat object by builder_read_object().
+  list(
+    id = "h5ad",
+    label = "h5ad",
+    extensions = "h5ad",
+    package = "rhdf5",
+    read = function(path) readH5adAsSCE(path)
+  ),
+  list(
+    id = "h5mu",
+    label = "h5mu",
+    extensions = "h5mu",
+    package = "rhdf5",
+    read = function(path) readH5adAsSCE(path)
   )
 )
 
@@ -1396,6 +1412,19 @@ builder_read_object <- function(path) {
         conditionMessage(attr(obj, "condition"))
       )
     ))
+  }
+  if (methods::is(obj, "SingleCellExperiment")) {
+    ## Everything downstream is Seurat-shaped; a SingleCellExperiment enters
+    ## through this one conversion and keeps its results in @misc.
+    obj <- try(convertSCEToSeurat(obj), silent = TRUE)
+    if (inherits(obj, "try-error")) {
+      return(list(
+        error = paste0(
+          "Could not convert the SingleCellExperiment: ",
+          conditionMessage(attr(obj, "condition"))
+        )
+      ))
+    }
   }
   if (!inherits(obj, "Seurat")) {
     return(list(
