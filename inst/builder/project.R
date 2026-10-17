@@ -8277,6 +8277,29 @@ builder_project_artifact_entry <- function(
   entry
 }
 
+## The opened manifest with the user's dataset choices as the defaults, so
+## the choices dialog can be shown again without losing them.
+builder_project_manifest_with_restore_actions <- function(manifest, actions) {
+  if (!is.list(actions) || !length(actions)) {
+    return(manifest)
+  }
+  manifest$datasets <- lapply(manifest$datasets %||% list(), function(record) {
+    status <- record$runtime_restore_status %||% NULL
+    action <- actions[[as.character(record$id %||% "")]] %||% NULL
+    if (
+      is.list(status) &&
+        is.character(action) &&
+        length(action) == 1L &&
+        action %in% c(status$actions %||% character(), "skip")
+    ) {
+      status$default_action <- action
+      record$runtime_restore_status <- status
+    }
+    record
+  })
+  manifest
+}
+
 builder_project_prepare_open_selection <- function(manifest, root, actions) {
   records <- manifest$datasets %||% list()
   names(records) <- vapply(

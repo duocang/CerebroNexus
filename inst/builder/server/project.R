@@ -32,6 +32,8 @@ builder_project_open_generation <- reactiveVal(0)
 builder_project_open_previous_phase <- reactiveVal("idle")
 builder_project_open_actions <- reactiveVal(NULL)
 builder_project_open_request <- reactiveVal(NULL)
+builder_project_open_discard_confirmed <- reactiveVal(FALSE)
+builder_project_open_wait <- reactiveVal(NULL)
 builder_project_table_asset_process <- reactiveVal(NULL)
 builder_project_table_asset_generation <- reactiveVal(0)
 builder_client_import_state <- reactiveVal(list(nonce = 0, pending = 0L))
@@ -1272,7 +1274,7 @@ queue_builder_project_crbs <- function(ids = checked_dataset_ids()) {
 
 ## Progress of the CRB queue for the status bar: the dataset being built and
 ## its position in the batch queued since the queue was last empty.
-builder_project_crb_progress <- reactive({
+builder_project_crb_queue_status <- reactive({
   jobs <- builder_project_crb_jobs()
   if (!length(jobs)) {
     return(NULL)
@@ -1356,7 +1358,7 @@ builder_project_open_discard_dialog <- function() {
     title = "Discard unsaved workspace changes?",
     shiny::tags$p(
       paste(
-        "Opening this project will replace the datasets and settings in the",
+        "Opening a project will replace the datasets and settings in the",
         "current workspace. Unsaved changes cannot be recovered."
       )
     ),
@@ -1414,6 +1416,7 @@ builder_project_fail_open <- function(generation, error) {
   if (!builder_project_open_is_current(generation)) {
     return(invisible(FALSE))
   }
+  builder_project_open_discard_confirmed(FALSE)
   builder_project_restore(NULL)
   task <- isolate(builder_project_open_task())
   if (!is.null(task)) {
@@ -2921,7 +2924,7 @@ output$project_status <- renderUI({
     if (is.null(project)) NULL else list(name = project$name),
     phase = builder_project_phase(),
     source_sync = builder_project_source_sync(),
-    crb = builder_project_crb_progress()
+    crb = builder_project_crb_queue_status()
   )
 })
 
@@ -3308,10 +3311,19 @@ observeEvent(input$save_builder_project, {
   }
 })
 
-request_builder_project_open <- function() {
+request_builder_project_open <- function(confirmed = FALSE) {
   if (!builder_operation_allowed("open_project")) {
     return(invisible(FALSE))
   }
+  if (!isTRUE(confirmed) && builder_project_open_needs_confirmation()) {
+    # Ask before the picker, so choosing a project and its datasets is not
+    # followed by a question that throws those choices away.
+    builder_project_open_actions(NULL)
+    builder_project_open_discard_confirmed(FALSE)
+    shiny::showModal(builder_project_open_discard_dialog(), session = session)
+    return(invisible(FALSE))
+  }
+  builder_project_open_discard_confirmed(isTRUE(confirmed))
   previous_phase <- isolate(builder_project_operation_phase())
   builder_project_operation_phase("choosing")
   builder_schedule_native_picker(
@@ -3324,6 +3336,7 @@ request_builder_project_open <- function() {
           return()
         }
         if (identical(choice$status, "cancelled")) {
+          builder_project_open_discard_confirmed(FALSE)
           return()
         }
         if (!identical(choice$status, "selected")) {
@@ -3381,6 +3394,7 @@ observeEvent(
     }
     shiny::removeModal()
     builder_project_restore(NULL)
+    builder_project_open_discard_confirmed(FALSE)
     invalidate_builder_project_open(kill = TRUE)
   },
   ignoreInit = TRUE
@@ -3476,6 +3490,8 @@ observeEvent(
   {
     builder_project_restore(NULL)
     builder_project_open_actions(NULL)
+    builder_project_open_wait(NULL)
+    builder_project_open_discard_confirmed(FALSE)
     shiny::removeModal()
   },
   ignoreInit = TRUE
@@ -3588,6 +3604,86 @@ finish_builder_project_restore <- function() {
   invisible(TRUE)
 }
 
+builder_project_open_worker_ready <- function(need_worker = TRUE) {
+  current_protocol <- isolate(protocol())
+  protocol_ready <- is.null(current_protocol) ||
+    isTRUE(tryCatch(
+      builder_protocol_is_quiescent(current_protocol),
+      error = function(error) FALSE
+    ))
+  worker_ready <- !isTRUE(need_worker) ||
+    (isTRUE(isolate(worker_available())) &&
+      !is.null(isolate(worker())) &&
+      !is.null(current_protocol))
+  list(protocol = protocol_ready, worker = worker_ready)
+}
+
+## The dataset choices dialog again, with the choices the user made.
+show_builder_project_restore_choices <- function(actions = NULL) {
+  pending <- isolate(builder_project_restore())
+  if (is.null(pending)) {
+    shiny::removeModal()
+    return(invisible(FALSE))
+  }
+  shiny::showModal(
+    builder_project_restore_dialog(
+      builder_project_manifest_with_restore_actions(pending$manifest, actions)
+    ),
+    session = session
+  )
+  invisible(TRUE)
+}
+
+## Waits for the background worker with a spinner instead of a toast asking
+## the user to retry, then completes the open with the same choices.
+wait_for_builder_project_open_worker <- function(actions, ready) {
+  token <- as.double(isolate(builder_project_open_generation())) +
+    stats::runif(1L)
+  builder_project_open_wait(list(token = token, actions = actions))
+  shiny::showModal(
+    builder_project_open_wait_dialog(
+      if (!isTRUE(ready$protocol)) {
+        "The worker is finishing its current task. The project opens next."
+      } else {
+        "The worker is starting. The project opens as soon as it is ready."
+      }
+    ),
+    session = session
+  )
+  check <- function() {
+    if (builder_session_closed()) {
+      return(invisible(FALSE))
+    }
+    shiny::withReactiveDomain(session, shiny::isolate({
+      wait <- builder_project_open_wait()
+      if (!is.list(wait) || !identical(wait$token, token)) {
+        return(invisible(FALSE))
+      }
+      if (is.null(builder_project_restore())) {
+        builder_project_open_wait(NULL)
+        return(invisible(FALSE))
+      }
+      state <- builder_project_open_worker_ready()
+      if (!isTRUE(state$protocol) || !isTRUE(state$worker)) {
+        later::later(check, delay = 0.25)
+        return(invisible(TRUE))
+      }
+      builder_project_open_wait(NULL)
+      completed <- complete_builder_project_open(wait$actions)
+      if (
+        identical(completed, FALSE) &&
+          !is.null(builder_project_restore()) &&
+          is.null(builder_project_open_wait())
+      ) {
+        show_builder_project_restore_choices(wait$actions)
+      }
+      invisible(TRUE)
+    }))
+  }
+  later::later(check, delay = 0.25)
+  invisible("waiting")
+}
+
 complete_builder_project_open <- function(actions = NULL) {
   pending <- isolate(builder_project_restore())
   operation <- isolate(builder_project_operation_phase())
@@ -3595,7 +3691,7 @@ complete_builder_project_open <- function(actions = NULL) {
     is.null(pending) ||
       !operation %in% c("idle", "save_failed", "conflict")
   ) {
-    return()
+    return(invisible(FALSE))
   }
   manifest <- pending$manifest
   root <- pending$root
@@ -3624,7 +3720,7 @@ complete_builder_project_open <- function(actions = NULL) {
       type = "error",
       duration = 10
     )
-    return()
+    return(invisible(FALSE))
   }
   records <- builder_project_record_map(manifest)
   if (is.null(actions)) {
@@ -3646,7 +3742,7 @@ complete_builder_project_open <- function(actions = NULL) {
       type = "error",
       duration = 10
     )
-    return()
+    return(invisible(FALSE))
   }
   reusable_entries <- prepared$reusable_entries
   pending_entries <- prepared$pending_entries
@@ -3674,30 +3770,13 @@ complete_builder_project_open <- function(actions = NULL) {
       type = "error",
       duration = 10
     )
-    return()
+    return(invisible(FALSE))
   }
   current_protocol <- isolate(protocol())
-  protocol_ready <- is.null(current_protocol) ||
-    isTRUE(tryCatch(
-      builder_protocol_is_quiescent(current_protocol),
-      error = function(error) FALSE
-    ))
-  worker_ready <- !length(pending_entries) ||
-    (isTRUE(isolate(worker_available())) &&
-      !is.null(isolate(worker())) &&
-      !is.null(current_protocol))
-  if (!protocol_ready || !worker_ready) {
+  ready <- builder_project_open_worker_ready(length(pending_entries) > 0L)
+  if (!isTRUE(ready$protocol) || !isTRUE(ready$worker)) {
     builder_project_operation_phase(operation)
-    showNotification(
-      if (!protocol_ready) {
-        "The background worker is still busy. Wait for it, then open the Project again."
-      } else {
-        "The background worker is not ready. Wait for it, then confirm the dataset choices again."
-      },
-      type = "warning",
-      duration = 8
-    )
-    return()
+    return(wait_for_builder_project_open_worker(actions, ready))
   }
   next_protocol <- if (is.null(current_protocol)) {
     NULL
@@ -3735,6 +3814,8 @@ complete_builder_project_open <- function(actions = NULL) {
   restore_builder_project_preferences(manifest)
   builder_project_restore(NULL)
   builder_project_open_actions(NULL)
+  builder_project_open_wait(NULL)
+  builder_project_open_discard_confirmed(FALSE)
   shiny::removeModal()
   restore_total <- length(pending_entries)
   if (!restore_total) {
@@ -3745,7 +3826,7 @@ complete_builder_project_open <- function(actions = NULL) {
     ))
     builder_project_operation_phase("idle")
     restore_builder_project_last_ui_after_flush(manifest$last_ui)
-    return()
+    return(invisible(TRUE))
   }
   builder_project_restore_progress(list(
     mode = "restoring",
@@ -3817,7 +3898,10 @@ observeEvent(input$confirm_builder_project_open, {
   actions <- lapply(records, function(record) {
     input[[paste0("project_restore_", record$id)]] %||% "skip"
   })
-  if (builder_project_open_needs_confirmation()) {
+  if (
+    builder_project_open_needs_confirmation() &&
+      !isTRUE(isolate(builder_project_open_discard_confirmed()))
+  ) {
     builder_project_open_actions(actions)
     shiny::showModal(builder_project_open_discard_dialog(), session = session)
     return()
@@ -3829,15 +3913,30 @@ observeEvent(input$confirm_discard_builder_project_open, {
   pending <- isolate(builder_project_restore())
   actions <- isolate(builder_project_open_actions())
   if (is.null(pending) || is.null(actions)) {
+    # Confirmed before the picker.
+    shiny::removeModal()
+    request_builder_project_open(confirmed = TRUE)
     return()
   }
+  builder_project_open_discard_confirmed(TRUE)
   complete_builder_project_open(actions)
 })
 
 observeEvent(input$cancel_discard_builder_project_open, {
+  actions <- isolate(builder_project_open_actions())
   builder_project_open_actions(NULL)
-  builder_project_restore(NULL)
-  shiny::removeModal()
+  if (is.null(isolate(builder_project_restore())) || is.null(actions)) {
+    shiny::removeModal()
+    return()
+  }
+  # Keep the project and the dataset choices: back to the choices dialog.
+  show_builder_project_restore_choices(actions)
+})
+
+observeEvent(input$cancel_builder_project_open_wait, {
+  wait <- isolate(builder_project_open_wait())
+  builder_project_open_wait(NULL)
+  show_builder_project_restore_choices(if (is.list(wait)) wait$actions)
 })
 
 observe({

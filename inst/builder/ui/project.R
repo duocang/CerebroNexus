@@ -306,6 +306,46 @@ builder_project_opening_dialog <- function() {
   )
 }
 
+builder_project_open_wait_dialog <- function(message) {
+  modalDialog(
+    title = tagList(
+      tags$span(class = "builder-project-modal-kicker", "Builder project"),
+      tags$span("Opening project")
+    ),
+    tags$div(
+      class = "builder-project-dialog builder-project-opening-dialog",
+      role = "status",
+      `aria-live` = "polite",
+      tags$div(
+        class = "builder-project-dialog-summary",
+        tags$span(
+          class = "builder-project-dialog-icon",
+          `aria-hidden` = "true",
+          shiny::icon("hourglass-half")
+        ),
+        tags$div(
+          tags$strong("Waiting for the background worker"),
+          tags$p(message)
+        )
+      ),
+      tags$div(
+        class = "builder-project-opening-progress",
+        `aria-hidden` = "true",
+        tags$span(),
+        tags$span(),
+        tags$span()
+      )
+    ),
+    footer = actionButton(
+      "cancel_builder_project_open_wait",
+      "Cancel",
+      class = "btn builder-button-secondary"
+    ),
+    easyClose = FALSE,
+    size = "s"
+  )
+}
+
 builder_project_backup_recovery_dialog <- function(offer) {
   modalDialog(
     title = "Recover Builder project?",

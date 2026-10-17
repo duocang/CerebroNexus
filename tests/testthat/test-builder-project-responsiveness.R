@@ -425,19 +425,19 @@ test_that("CRB queue progress and Cancel keep only the record being written", {
       ds2 = list(status = "generating", output = output_dir, token = "t2"),
       ds3 = list(status = "queued", token = "t3")
     ))
-    progress <- isolate(builder_project_crb_progress())
+    progress <- isolate(builder_project_crb_queue_status())
     expect_identical(progress$total, 3L)
     expect_identical(progress$position, 1L)
     expect_identical(progress$name, "ds1")
 
     cancel_builder_project_crb_queue()
     expect_identical(names(isolate(builder_project_crb_jobs())), "ds1")
-    progress <- isolate(builder_project_crb_progress())
+    progress <- isolate(builder_project_crb_queue_status())
     expect_identical(progress$position, 3L)
 
     builder_project_crb_jobs(list())
     session$flushReact()
-    expect_null(isolate(builder_project_crb_progress()))
+    expect_null(isolate(builder_project_crb_queue_status()))
     expect_identical(isolate(builder_project_crb_batch()), 0L)
   })
 
@@ -767,4 +767,160 @@ test_that("the source copy reports bytes instead of file counts", {
     collapse = "\n"
   )
   expect_match(browser, "message.bytes_total", fixed = TRUE)
+})
+
+test_that("reopening the dataset choices keeps the user's selections", {
+  runtime <- builder_responsiveness_runtime()
+  record <- function(id, default, actions) {
+    list(
+      id = id,
+      runtime_restore_status = list(default_action = default, actions = actions)
+    )
+  }
+  manifest <- list(datasets = list(
+    record("ds1", "reuse", c("reuse", "reload", "skip")),
+    record("ds2", "resume", c("resume", "skip")),
+    record("ds3", "skip", "skip")
+  ))
+  updated <- runtime$builder_project_manifest_with_restore_actions(
+    manifest,
+    list(ds1 = "skip", ds2 = "reload", ds3 = "skip")
+  )
+  defaults <- vapply(
+    updated$datasets,
+    function(record) record$runtime_restore_status$default_action,
+    character(1)
+  )
+  ## ds2 cannot be reloaded, so its saved default stays.
+  expect_identical(defaults, c("skip", "resume", "skip"))
+  expect_identical(
+    runtime$builder_project_manifest_with_restore_actions(manifest, NULL),
+    manifest
+  )
+})
+
+test_that("Open asks to discard unsaved work before the picker", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    server_env <- environment(request_builder_project_open)
+    calls <- new.env(parent = emptyenv())
+    calls$pickers <- 0L
+    server_env$builder_operation_allowed <- function(...) TRUE
+    server_env$builder_project_open_needs_confirmation <- function() TRUE
+    server_env$builder_schedule_native_picker <- function(...) {
+      calls$pickers <- calls$pickers + 1L
+      invisible(TRUE)
+    }
+
+    session$setInputs(open_builder_project = 1)
+    expect_identical(calls$pickers, 0L)
+    expect_false(isolate(builder_project_open_discard_confirmed()))
+
+    ## Keeping the workspace opens nothing.
+    session$setInputs(cancel_discard_builder_project_open = 1)
+    expect_identical(calls$pickers, 0L)
+
+    session$setInputs(open_builder_project = 2)
+    session$setInputs(confirm_discard_builder_project_open = 1)
+    expect_identical(calls$pickers, 1L)
+    ## The choices dialog will not ask the same question again.
+    expect_true(isolate(builder_project_open_discard_confirmed()))
+  })
+})
+
+test_that("declining the discard keeps the opened project and its choices", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    server_env <- environment(request_builder_project_open)
+    shown <- new.env(parent = emptyenv())
+    server_env$builder_project_restore_dialog <- function(manifest) {
+      shown$manifest <- manifest
+      shiny::modalDialog("choices")
+    }
+    manifest <- list(
+      project = list(name = "P"),
+      datasets = list(list(
+        id = "ds1",
+        runtime_restore_status = list(
+          default_action = "reuse",
+          actions = c("reuse", "reload", "skip")
+        )
+      ))
+    )
+    builder_project_restore(list(manifest = manifest, root = "r", path = "p"))
+    builder_project_open_actions(list(ds1 = "reload"))
+
+    session$setInputs(cancel_discard_builder_project_open = 1)
+    expect_false(is.null(isolate(builder_project_restore())))
+    expect_identical(
+      shown$manifest$datasets[[1L]]$runtime_restore_status$default_action,
+      "reload"
+    )
+  })
+})
+
+test_that("Open waits for a busy worker instead of asking to confirm again", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    server_env <- environment(wait_for_builder_project_open_worker)
+    state <- new.env(parent = emptyenv())
+    state$ready <- list(protocol = FALSE, worker = TRUE)
+    state$completed <- NULL
+    server_env$builder_project_open_worker_ready <- function(...) state$ready
+    server_env$complete_builder_project_open <- function(actions = NULL) {
+      state$completed <- actions
+      invisible(TRUE)
+    }
+    server_env$builder_project_restore_dialog <- function(manifest) {
+      state$choices <- manifest
+      shiny::modalDialog("choices")
+    }
+    builder_project_restore(list(
+      manifest = list(datasets = list()),
+      root = "r",
+      path = "p"
+    ))
+    actions <- list(ds1 = "reuse")
+    expect_identical(
+      wait_for_builder_project_open_worker(actions, state$ready),
+      "waiting"
+    )
+    builder_responsiveness_run_later(function() FALSE, timeout = 0.6)
+    expect_null(state$completed)
+    expect_false(is.null(isolate(builder_project_open_wait())))
+
+    state$ready <- list(protocol = TRUE, worker = TRUE)
+    expect_true(builder_responsiveness_run_later(
+      function() !is.null(state$completed)
+    ))
+    expect_identical(state$completed, actions)
+    expect_null(isolate(builder_project_open_wait()))
+
+    ## Cancelling the wait returns to the choices, selections kept.
+    state$ready <- list(protocol = FALSE, worker = TRUE)
+    state$completed <- NULL
+    wait_for_builder_project_open_worker(actions, state$ready)
+    session$setInputs(cancel_builder_project_open_wait = 1)
+    expect_null(isolate(builder_project_open_wait()))
+    builder_responsiveness_run_later(function() FALSE, timeout = 0.6)
+    expect_null(state$completed)
+    expect_false(is.null(state$choices))
+  })
+
+  source <- paste(
+    readLines(builder_test_inst_path("builder", "server", "project.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_false(grepl("confirm the dataset choices again", source, fixed = TRUE))
+  expect_match(
+    source,
+    "return(wait_for_builder_project_open_worker(actions, ready))",
+    fixed = TRUE
+  )
 })
