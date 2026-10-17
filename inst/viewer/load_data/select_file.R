@@ -46,37 +46,3 @@ output[["load_data_select_file_UI"]] <- renderUI({
     )
   }
 })
-
-##----------------------------------------------------------------------------##
-## Text message if CerebroNexus was launched in "open" mode.
-##----------------------------------------------------------------------------##
-
-output[["load_data_mode_open"]] <- renderText({
-  if (
-    exists('Cerebro.options') &&
-      !is.null(Cerebro.options[["welcome_message"]])
-  ) {
-    HTML(Cerebro.options[["welcome_message"]])
-  } else {
-    HTML(
-      "<p>Please load your data set or explore the pre-loaded data.</p>"
-    )
-  }
-})
-
-##----------------------------------------------------------------------------##
-## Text message if CerebroNexus was launched in "closed" mode.
-##----------------------------------------------------------------------------##
-
-output[["load_data_mode_closed"]] <- renderText({
-  if (
-    exists('Cerebro.options') &&
-      !is.null(Cerebro.options[["welcome_message"]])
-  ) {
-    HTML(Cerebro.options[["welcome_message"]])
-  } else {
-    HTML(
-      "<p>Explore the loaded dataset using the pages in the sidebar.</p>"
-    )
-  }
-})
