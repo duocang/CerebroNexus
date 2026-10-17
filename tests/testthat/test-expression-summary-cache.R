@@ -3,6 +3,7 @@ test_that("gene means reuse canonical rows and retain full-dataset semantics", {
   scope$reactiveVal <- shiny::reactiveVal
   scope$reactive <- shiny::reactive
   scope$observeEvent <- function(...) NULL
+  scope$viewerMemoOne <- function() function(key, compute) compute()
   sys.source(viewer_test_path("gene_expression", "obj_projection_expression_levels.R"), scope)
   scope$expressionProjectionDatasetKey <- function() "summary-test"
   reads <- 0L

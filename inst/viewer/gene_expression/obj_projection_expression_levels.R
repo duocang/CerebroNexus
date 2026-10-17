@@ -290,46 +290,15 @@ observeEvent(
   ignoreInit = TRUE
 )
 
-## Plot parameters (projection, order, hover) rebuild the coordinates and
-## re-run the reactive below, but the values depend only on these inputs. Keep
-## the last result so such changes do not re-read million-cell expression.
-expression_projection_levels_memo <- new.env(parent = emptyenv())
-
-expression_projection_expression_levels <- reactive({
-  req(
-    expression_projection_cells_to_show(),
-    expression_selected_genes()
-  )
-
-  cells_to_show <- expression_projection_cells_to_show()
-  ## Keep the canonical numeric indices returned by the shared projection
-  ## sampler. Converting them to barcodes here only makes the backend match
-  ## the same million names back to the original column indices.
+## Read the expression values for one levels key. The caller runs this inside
+## its reactive, so every dependency below still belongs to that reactive.
+expression_projection_read_levels <- function(
+  cells_to_show,
+  genes_data,
+  genes_present,
+  display_mode
+) {
   n_cells <- length(cells_to_show)
-  genes_data <- expression_selected_genes()
-
-  ## The debounced selection can briefly retain genes from the previous data
-  ## set during a switch. Re-filter before touching the expression backend.
-  genes_present <- intersect(
-    genes_data$genes_to_display_present,
-    getGeneNames()
-  )
-  display_mode <- expressionSummaryMode(
-    input[["expression_projection_genes_in_separate_panels"]],
-    length(genes_present),
-    ncol(expression_projection_coordinates())
-  )
-  levels_key <- list(
-    data_set(),
-    cells_to_show,
-    genes_present,
-    display_mode,
-    if (identical(display_mode, "rgb")) genes_data[["rgb_genes"]]
-  )
-  memo <- expression_projection_levels_memo
-  if (isTRUE(memo$set) && identical(memo$key, levels_key)) {
-    return(memo$value)
-  }
   ## Layout only changes the projection; it must not re-read expression rows.
   render_key <- isolate(expression_projection_render_key())
   painted_key <- isolate(input[["expression_projection_rendered_key"]])
@@ -428,10 +397,52 @@ expression_projection_expression_levels <- reactive({
     )
   }
   success <- TRUE
-  memo$key <- levels_key
-  memo$value <- expression_levels
-  memo$set <- TRUE
   expression_levels
+}
+
+## Plot parameters (projection, order, hover) rebuild the coordinates and
+## re-run the reactive below, but the values depend only on these inputs. Keep
+## the last result so such changes do not re-read million-cell expression.
+expression_projection_levels_memo <- viewerMemoOne()
+
+expression_projection_expression_levels <- reactive({
+  req(
+    expression_projection_cells_to_show(),
+    expression_selected_genes()
+  )
+
+  cells_to_show <- expression_projection_cells_to_show()
+  ## Keep the canonical numeric indices returned by the shared projection
+  ## sampler. Converting them to barcodes here only makes the backend match
+  ## the same million names back to the original column indices.
+  genes_data <- expression_selected_genes()
+
+  ## The debounced selection can briefly retain genes from the previous data
+  ## set during a switch. Re-filter before touching the expression backend.
+  genes_present <- intersect(
+    genes_data$genes_to_display_present,
+    getGeneNames()
+  )
+  display_mode <- expressionSummaryMode(
+    input[["expression_projection_genes_in_separate_panels"]],
+    length(genes_present),
+    ncol(expression_projection_coordinates())
+  )
+  levels_key <- list(
+    data_set(),
+    cells_to_show,
+    genes_present,
+    display_mode,
+    if (identical(display_mode, "rgb")) genes_data[["rgb_genes"]]
+  )
+  expression_projection_levels_memo(levels_key, function() {
+    expression_projection_read_levels(
+      cells_to_show,
+      genes_data,
+      genes_present,
+      display_mode
+    )
+  })
 })
 
 expression_summary_data <- reactive({
