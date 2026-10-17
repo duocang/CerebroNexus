@@ -179,6 +179,8 @@ output[["spatial_projection_scene_UI"]] <- renderUI({
 ## surrounding controls keep their state.
 observe({
   req(identical(input[["sidebar"]], "spatial"))
+  ## Nothing to update until the main controls have mounted the selector.
+  req(!is.null(input[["spatial_projection_split_by"]]))
   scene <- spatial_projection_scene()
   updateSelectizeInput(
     session,

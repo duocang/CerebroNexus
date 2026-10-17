@@ -197,8 +197,15 @@ observe({
     background$external$preset
   } else {
     list(
-      # Match Spatial and Linked views: saved alignment supplies geometry only.
-      opacity = 0.6,
+      # Match Spatial and Linked views: a saved opacity applies, else 0.5.
+      opacity = {
+        saved <- suppressWarnings(as.numeric(alignment$image_opacity))
+        if (length(saved) == 1L && is.finite(saved) && saved >= 0 && saved <= 1) {
+          saved
+        } else {
+          0.5
+        }
+      },
       offsetX = alignment$offset_x %||% 0,
       offsetY = alignment$offset_y %||% 0,
       scaleX = alignment$scale_x %||% 1,

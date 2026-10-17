@@ -498,6 +498,10 @@ render_bundle_spatial_background <- function(
     envir = renderer
   )
   sys.source(
+    file.path(app, "viewer", "spatial", "func_spatial_helpers.R"),
+    envir = renderer
+  )
+  sys.source(
     file.path(
       app,
       "viewer",

@@ -1803,7 +1803,7 @@ output[["coordviews_image_ui"]] <- renderUI({
     div(
       class = "cv-img-ctl",
       tags$label(`for` = "cv-img-opacity-number", "Opacity"),
-      rng("cv-img-opacity", "Opacity", 0, 1, pr$opacity %||% 0.6, "any")
+      rng("cv-img-opacity", "Opacity", 0, 1, pr$opacity %||% 0.5, "any")
     ),
     div(
       class = "cv-img-ctl",

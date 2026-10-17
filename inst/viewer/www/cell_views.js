@@ -8219,7 +8219,7 @@
           uri: panelImage,
           bounds: panelBounds,
           preset: panel.image_preset || {
-            opacity: isFinite(opacity) ? opacity : 0.6,
+            opacity: isFinite(opacity) ? opacity : 0.5,
             offsetX: Number(meta.background_offset_x) || 0,
             offsetY: Number(meta.background_offset_y) || 0,
             scaleX: Number(meta.background_scale_x) || 1,
@@ -8304,7 +8304,7 @@
             id: imageId, label: meta.image_label || 'Tissue background',
             uri: meta.background_image, bounds: bounds,
             preset: {
-              opacity: isFinite(opacity) ? opacity : 0.6,
+              opacity: isFinite(opacity) ? opacity : 0.5,
               offsetX: Number(meta.background_offset_x) || 0,
               offsetY: Number(meta.background_offset_y) || 0,
               scaleX: Number(meta.background_scale_x) || 1,

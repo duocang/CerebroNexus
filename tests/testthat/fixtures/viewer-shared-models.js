@@ -32,7 +32,7 @@ assert.equal(state.rotate,30); assert.equal(state.opacity,.4); assert(!state.loc
 state.rotate=99;state.opacity=.9;
 assert.equal(JSON.stringify([image,first,other]),before);
 assert.equal(model.presetState(image).rotate,30);
-assert.equal(model.presetState(null).opacity,.6);
+assert.equal(model.presetState(null).opacity,.5);
 const baked={...image,preset:{...image.preset,geometryBaked:true}};
 const rendered=model.renderState(baked,model.presetState(baked));
 assert.equal(rendered.rotate,0); assert.equal(rendered.offsetX,0);
