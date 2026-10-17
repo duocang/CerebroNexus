@@ -33,6 +33,15 @@
 #'   \code{\link{readH5adAsSCE}}.
 #' @param modality For a MuData file, the modality to convert (e.g.
 #'   \code{"gex"}); see \code{\link{readH5adAsSCE}}.
+#' @param airr Immune receptor (TCR/BCR) data to import: \code{"auto"}
+#'   (default) uses the MuData modality named \code{airr}, or
+#'   \code{obsm["airr"]} of a plain h5ad, if the file has one, and imports
+#'   nothing otherwise. Give a name to use another modality (or \code{obsm}
+#'   entry), or \code{FALSE} to skip receptor data. See
+#'   \code{\link{readH5adAsSCE}}.
+#' @param airr_sample \code{obs} column naming the sample of each cell, which
+#'   keys the immune repertoire. By default \code{orig.ident}, \code{sample},
+#'   \code{Sample} or \code{sample_id} is used if present, else one sample.
 #' @param nUMI,nGene \code{obs} columns holding transcripts and expressed genes
 #'   per cell. By default the usual scanpy/Seurat names are looked for
 #'   (\code{total_counts}, \code{n_counts}, \code{nCount_RNA}, \code{nUMI} and
@@ -57,7 +66,8 @@
 #' scanpy's \code{rank_genes_groups} results, if present, are exported as
 #' marker genes. Embeddings in \code{obsm} (\code{X_umap}, \code{X_tsne},
 #' \code{X_pca}, ...) become the projections; PCA is dropped when a non-PCA
-#' embedding exists, as on the other routes.
+#' embedding exists, as on the other routes. Receptor chains written by scirpy
+#' (\code{obsm["airr"]}) fill the Immune repertoire page.
 #'
 #' @examples
 #' \dontrun{
@@ -79,6 +89,8 @@ convertH5adToCerebro <- function(
   use_raw = FALSE,
   modality = NULL,
   gene_names = NULL,
+  airr = "auto",
+  airr_sample = NULL,
   experiment_name = NULL,
   organism = "Human",
   groups = NULL,
@@ -121,6 +133,8 @@ convertH5adToCerebro <- function(
     use_raw = use_raw,
     modality = modality,
     gene_names = gene_names,
+    airr = airr,
+    airr_sample = airr_sample,
     verbose = verbose
   )
 

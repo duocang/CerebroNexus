@@ -74,6 +74,14 @@
   reads the marker tables back. Content AnnData has no place for (immune
   repertoire, HLA typing, spatial data, trees, trajectories, pathways) is named
   in a message instead of being dropped silently.
+- Imports immune receptor data from AnnData and MuData. scirpy keeps the TCR/BCR
+  chains of every cell as an awkward array in `obsm["airr"]` (the `airr` modality
+  of an `.h5mu`); `readH5adAsSCE()` and `convertH5adToCerebro()` now decode it
+  natively from HDF5 (`airr = "auto"`, or a name, or `FALSE`) and hand the
+  chains to scRepertoire, so the Immune repertoire page works for scirpy data
+  as it does on the Seurat route. The repertoire is keyed by `airr_sample`
+  (default `orig.ident`, `sample`, `Sample` or `sample_id`) and cells are matched
+  to the expression data by name. Only productive chains with a CDR3 count.
 - Streams delayed-matrix exports without whole-matrix dense realization, and
   bounds external enrichment request time and error handling.
 

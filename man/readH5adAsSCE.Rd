@@ -9,6 +9,8 @@ readH5adAsSCE(
   use_raw = FALSE,
   modality = NULL,
   gene_names = NULL,
+  airr = "auto",
+  airr_sample = NULL,
   verbose = FALSE
 )
 }
@@ -30,6 +32,18 @@ expression-like name (\code{rna}, \code{gex}).}
 \code{var} index is used, except when it is made of Ensembl IDs and such a
 column exists. The original index stays in \code{rowData} as
 \code{var_index}.}
+
+\item{airr}{Immune receptor data to import: \code{"auto"} (default) uses the
+MuData modality named \code{airr}, or \code{obsm["airr"]} of a plain h5ad,
+if the file has one and imports nothing otherwise. Give a name to use
+another modality (or \code{obsm} entry); \code{FALSE} or \code{NULL} skips
+receptor data. The AIRR modality is never taken for the expression
+modality.}
+
+\item{airr_sample}{Column of \code{obs} that names the sample of each cell,
+which keys the immune repertoire. By default \code{orig.ident},
+\code{sample}, \code{Sample} or \code{sample_id} is used if present, else
+all cells are one sample (\code{"Sample_1"}).}
 
 \item{verbose}{Print what was skipped.}
 }
@@ -61,6 +75,15 @@ The mapping is:
     \code{metadata(sce)$marker_genes}, one table per \code{groupby}
     variable; marker tables written by \code{\link{exportToH5ad}} under
     \code{uns["cerebro"]["marker_genes"]} are read back as they were.
+  \item immune receptor chains written by scirpy (an awkward array in
+    \code{obsm["airr"]}, or the \code{airr} modality of a MuData file) become
+    \code{metadata(sce)$immune_repertoire}: a list named by sample, one row
+    per cell with \code{barcode}, \code{CTgene}, \code{CTnt}, \code{CTaa} and
+    \code{CTstrict}, assembled into clones by \pkg{scRepertoire} as on the
+    Seurat route. Only productive chains of TCR/BCR loci with a CDR3
+    (\code{junction_aa}) count; a cell that shows both TCR and BCR chains
+    keeps the type with more chains (then more UMIs). Cells are matched to
+    the expression data by name.
 }
 Sparse \code{X} (CSR or CSC) and dense \code{X} are supported. A CSR matrix
 is used as it is, because the CSR of cells x genes is the CSC of genes x
