@@ -84,6 +84,20 @@ The mapping is:
     (\code{junction_aa}) count; a cell that shows both TCR and BCR chains
     keeps the type with more chains (then more UMIs). Cells are matched to
     the expression data by name.
+  \item trajectories become \code{metadata(sce)$trajectories}, the
+    structure of \code{object@misc$trajectories}. For every pseudotime
+    column in \code{obs} (\code{dpt_pseudotime},
+    \code{velocity_pseudotime}, \code{latent_time}, any
+    \code{*_pseudotime}) one trajectory is made per source: scanpy's PAGA
+    (\code{uns["paga"]}) as method \code{"paga"}, with the groups as nodes
+    at the centroid of their cells in the UMAP (t-SNE) and the
+    connectivities of at least 0.01 as edges; scVelo's
+    \code{obsm["velocity_<basis>"]} as method \code{"scvelo"}, the velocity
+    averaged on a grid (25 x 25 at most) and drawn as arrows; and, when the file has
+    neither, just the pseudotime as method \code{"pseudotime"}. The
+    \code{velocity_*} entries of \code{obsm} are not embeddings and are
+    not added to \code{reducedDims}. Gene-level velocity (\code{layers}
+    \code{velocity}) and the directed PAGA transitions are not used.
 }
 Sparse \code{X} (CSR or CSC) and dense \code{X} are supported. A CSR matrix
 is used as it is, because the CSR of cells x genes is the CSC of genes x

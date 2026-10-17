@@ -463,6 +463,12 @@
   }
 }
 
+#' Trajectory methods `.exportAddMiscResults()` passes on: Monocle 2, and what
+#' `readH5adAsSCE()` makes from scanpy/scVelo results.
+#' @keywords internal
+#' @noRd
+.exportTrajectoryMethods <- c('monocle2', 'paga', 'scvelo', 'pseudotime')
+
 #' @keywords internal
 #' @noRd
 .exportAddMetaData <- function(
@@ -1052,14 +1058,22 @@
           '] ',
           # 'Extracting trajectories...'
           'Will export the following trajectories: ',
-          paste(names(misc$trajectories$monocle2), collapse = ', ')
+          paste(
+            unlist(
+              lapply(
+                intersect(names(misc$trajectories), .exportTrajectoryMethods),
+                function(method) names(misc$trajectories[[method]])
+              )
+            ),
+            collapse = ', '
+          )
         )
       )
     }
     ## for each method
     for (i in seq_along(misc$trajectories)) {
       method <- names(misc$trajectories)[i]
-      if (method == 'monocle2') {
+      if (method %in% .exportTrajectoryMethods) {
         ## for each trajectory
         for (j in seq_along(misc$trajectories[[i]])) {
           export$addTrajectory(
@@ -1074,8 +1088,9 @@
             'Warning: Skipping trajectories of method `',
             method,
             '`. At the ',
-            'moment, only trajectories generated with Monocle 2 (`monocle2`) ',
-            'are supported.'
+            'moment, only trajectories of the methods ',
+            paste0('`', .exportTrajectoryMethods, '`', collapse = ', '),
+            ' are supported.'
           )
         )
       }

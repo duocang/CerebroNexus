@@ -84,6 +84,17 @@
   to the expression data by name. Only productive chains with a CDR3 count.
 - Streams delayed-matrix exports without whole-matrix dense realization, and
   bounds external enrichment request time and error handling.
+- Imports trajectory results from AnnData files, so the Trajectory page also serves
+  scanpy and scVelo output. For every pseudotime column in `obs` (`dpt_pseudotime`,
+  `velocity_pseudotime`, `latent_time`, any `*_pseudotime`), `readH5adAsSCE()` builds
+  one trajectory per source in `metadata(sce)$trajectories`: scanpy PAGA
+  (`uns["paga"]`, method `paga`, groups as nodes at their centroid in the UMAP and
+  connectivities of at least 0.01 as edges), scVelo's `obsm["velocity_<basis>"]`
+  (method `scvelo`, the velocity averaged on a grid and drawn as arrows), or just
+  the pseudotime (method `pseudotime`) when the file has neither. `velocity_*` entries
+  are no longer added as projections. The exporters and the Viewer accept the three
+  new methods; gene-level velocity layers and directed PAGA transitions are not
+  imported, as the Trajectory page has no place for them.
 
 ## Packaging
 

@@ -17,6 +17,9 @@ output[["trajectory_primary_controls_UI"]] <- renderUI({
 
   method_labels <- c(
     monocle2 = "Monocle 2",
+    paga = "PAGA (scanpy)",
+    scvelo = "RNA velocity (scVelo)",
+    pseudotime = "Pseudotime",
     marker_guided = "Marker-guided",
     illustrative = "Illustrative"
   )

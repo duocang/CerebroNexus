@@ -5733,6 +5733,9 @@ viewerSupportedTrajectoryMethods <- function(available_methods) {
       available_methods %in%
         c(
           "monocle2",
+          "paga",
+          "scvelo",
+          "pseudotime",
           "marker_guided",
           "illustrative"
         )

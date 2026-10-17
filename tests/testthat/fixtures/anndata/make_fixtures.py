@@ -190,4 +190,25 @@ if which == "airr":
     tiny.write_h5ad(here / "small_awkward.h5ad")
     print("chains in small_airr:", sum(len(v) for v in chains.values()))
 
+if which == "trajectory":
+    # real scanpy results on the circle: neighbours, diffusion pseudotime and PAGA over cell_type
+    t = build()
+    sc.pp.neighbors(t, use_rep="X_umap", n_neighbors=10)
+    sc.tl.diffmap(t)
+    t.uns["iroot"] = 0
+    sc.tl.dpt(t)                       # obs["dpt_pseudotime"]
+    sc.tl.paga(t, groups="cell_type")  # uns["paga"]
+    ang = np.linspace(0, 2 * np.pi, n_obs)
+    t.obs["latent_time"] = (ang / (2 * np.pi)).astype("float32")     # what scVelo's latent_time looks like
+    t.obs["velocity_pseudotime"] = np.where(np.arange(n_obs) % 10 == 3, np.nan, ang / (2 * np.pi))
+    # scVelo's obsm["velocity_umap"]: here the unit tangent of the circle, so every arrow runs
+    # along increasing latent_time
+    t.obsm["velocity_umap"] = np.c_[-np.sin(ang), np.cos(ang)].astype("float32")
+    t.write_h5ad(here / "small_trajectory.h5ad")
+
+    # a pseudotime column and nothing else: the "pseudotime" method
+    q = build()
+    q.obs["dpt_pseudotime"] = np.linspace(0, 1, n_obs)
+    q.write_h5ad(here / "small_pseudotime.h5ad")
+
 for f in sorted(here.glob("*.h5*")): print(f.name, f.stat().st_size, "bytes")
