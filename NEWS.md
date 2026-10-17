@@ -41,6 +41,13 @@
   compatible.
 - Supports lazy large-repertoire sidecars and compact repeated metadata, including
   the Ren atlas's paired TCR/BCR repertoire and published t-SNE projection.
+- Adds `convertSCEToCerebro()` for `SingleCellExperiment` objects (or `.rds` /
+  `.qs2` files holding one), and brings `exportFromSCE()` to parity with the
+  Seurat route: `expression_matrix_mode = "h5"` / `"bpcells"`, the transactional
+  CRB + sidecar publish, immune repertoire, HLA typing and mean expression.
+  Both exporters now share one format-independent core, so further input formats
+  only need a thin adapter. `exportFromSCE()` now registers `metadata()` tables
+  only for the requested `groups`, as the Seurat route does.
 - Streams delayed-matrix exports without whole-matrix dense realization, and
   bounds external enrichment request time and error handling.
 
