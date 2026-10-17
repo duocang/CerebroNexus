@@ -6925,7 +6925,7 @@ test_that("project open clears all cross-project runtime caches", {
   expect_match(source, "reset_builder_project_crb_pipeline()", fixed = TRUE)
 })
 
-test_that("source sync context is bound to project identity and revision", {
+test_that("source sync context is bound to project identity, not revision", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
   project_a <- list(
@@ -6951,11 +6951,18 @@ test_that("source sync context is bound to project identity and revision", {
     project_b,
     generation = 4L
   ))
+  ## Saves during a copy commit new revisions; the copy stays current and is
+  ## merged into the latest manifest.
   project_a$manifest$project$revision <- 4L
-  expect_false(runtime$builder_project_source_context_matches(
+  expect_true(runtime$builder_project_source_context_matches(
     context,
     project_a,
     generation = 4L
+  ))
+  expect_false(runtime$builder_project_source_context_matches(
+    context,
+    project_a,
+    generation = 5L
   ))
   expect_false(runtime$builder_project_source_context_matches(
     context,
@@ -6970,7 +6977,7 @@ test_that("source sync context is bound to project identity and revision", {
     ),
     collapse = "\n"
   )
-  expect_match(server, "queued[[job$id]] <- job", fixed = TRUE)
+  expect_match(server, "builder_project_source_queue_add(", fixed = TRUE)
   expect_false(grepl("if (!job$id %in% active)", server, fixed = TRUE))
 })
 

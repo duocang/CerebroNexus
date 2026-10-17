@@ -1408,12 +1408,113 @@ builder_project_publish_verified_file <- function(part, target, md5, message) {
   fingerprint
 }
 
+## Fingerprints of sources this process published or verified, keyed by path
+## and stat identity. A warm copier keeps it between calls, so a job queued
+## again for an already-published blob is skipped without re-reading it.
+.builder_project_source_verification_cache <- new.env(parent = emptyenv())
+
+## The content-addressed target of a job whose source MD5 is known, when it
+## already exists with that content.
+builder_project_verified_source_target <- function(
+  job,
+  verification_cache = .builder_project_source_verification_cache
+) {
+  md5 <- builder_project_recorded_fingerprint_md5(list(
+    md5 = job$source_md5 %||% NULL
+  ))
+  if (
+    !.builder_project_text(md5) ||
+      !builder_project_content_addressed_source(job$relative, job$id) ||
+      !.builder_project_text(job$target) ||
+      !file.exists(job$target) ||
+      dir.exists(job$target)
+  ) {
+    return(NULL)
+  }
+  fingerprint <- builder_project_cached_verified_fingerprint(
+    job$target,
+    verification_cache
+  )
+  if (is.null(fingerprint)) {
+    fingerprint <- builder_project_file_fingerprint(job$target, content = TRUE)
+    cache_key <- builder_project_verification_cache_key(
+      job$target,
+      fingerprint,
+      verification_cache
+    )
+    if (.builder_project_text(cache_key) && is.list(fingerprint)) {
+      assign(cache_key, fingerprint, envir = verification_cache)
+    }
+  }
+  if (
+    !is.list(fingerprint) ||
+      !identical(tolower(as.character(fingerprint$md5 %||% "")), md5)
+  ) {
+    return(NULL)
+  }
+  fingerprint
+}
+
+## Identifies the content a source job would publish, so a job already
+## running (or queued) for the same dataset and bytes is not copied twice.
+builder_project_source_job_key <- function(job) {
+  paste(
+    as.character(job$id %||% ""),
+    tolower(as.character(job$source_md5 %||% "")),
+    as.character(job$source %||% ""),
+    as.character(job$relative %||% ""),
+    sep = "\r"
+  )
+}
+
+## Adds jobs to the queue, keyed by dataset. A job identical to one already
+## running is dropped: the running copy's result is merged into the latest
+## manifest when it finishes.
+builder_project_source_queue_add <- function(queued, jobs, running = list()) {
+  running_keys <- vapply(
+    running %||% list(),
+    builder_project_source_job_key,
+    character(1)
+  )
+  for (job in jobs %||% list()) {
+    if (builder_project_source_job_key(job) %in% running_keys) {
+      queued[[job$id]] <- NULL
+      next
+    }
+    queued[[job$id]] <- job
+  }
+  queued
+}
+
 builder_project_copy_source_job <- function(job) {
   fail <- function(message) {
     if (is.character(job$part) && length(job$part) == 1L) {
       unlink(job$part, force = TRUE)
     }
-    list(id = job$id, status = "failed", error = message)
+    list(
+      id = job$id,
+      status = "failed",
+      error = message,
+      planned = planned
+    )
+  }
+  planned <- if (is.list(job)) job$relative %||% NULL else NULL
+  verified <- if (is.list(job)) {
+    tryCatch(
+      builder_project_verified_source_target(job),
+      error = function(error) NULL
+    )
+  } else {
+    NULL
+  }
+  if (is.list(verified)) {
+    return(list(
+      id = job$id,
+      status = "ready",
+      path = job$target,
+      fingerprint = verified,
+      planned = planned
+    ))
   }
   if (
     !is.list(job) ||
@@ -1483,11 +1584,20 @@ builder_project_copy_source_job <- function(job) {
   if (inherits(fingerprint, "condition")) {
     return(fail(conditionMessage(fingerprint)))
   }
+  cache_key <- builder_project_verification_cache_key(
+    job$target,
+    fingerprint,
+    .builder_project_source_verification_cache
+  )
+  if (.builder_project_text(cache_key)) {
+    assign(cache_key, fingerprint, envir = .builder_project_source_verification_cache)
+  }
   list(
     id = job$id,
     status = "ready",
     path = job$target,
-    fingerprint = fingerprint
+    fingerprint = fingerprint,
+    planned = planned
   )
 }
 
@@ -1521,7 +1631,15 @@ builder_project_copy_source_jobs <- function(jobs, progress_path = NULL) {
   results
 }
 
-builder_project_apply_source_results <- function(manifest, results, root) {
+## `only_pending = TRUE` merges a finished copy into a manifest written after
+## the copy started: a result is applied only to a record still waiting for
+## that same planned source, never over a newer source choice.
+builder_project_apply_source_results <- function(
+  manifest,
+  results,
+  root,
+  only_pending = FALSE
+) {
   if (!is.list(manifest) || !is.list(manifest$datasets)) {
     stop("A Builder project manifest is required.", call. = FALSE)
   }
@@ -1533,6 +1651,17 @@ builder_project_apply_source_results <- function(manifest, results, root) {
   manifest$datasets <- lapply(manifest$datasets, function(record) {
     result <- result_map[[record$id]] %||% NULL
     if (is.null(result)) {
+      return(record)
+    }
+    if (
+      isTRUE(only_pending) &&
+        (!identical(record$source$status %||% NULL, "pending") ||
+          (!is.null(result$planned) &&
+            !identical(
+              as.character(record$source$path %||% ""),
+              as.character(result$planned)
+            )))
+    ) {
       return(record)
     }
     source <- record$source %||% list(kind = "managed")
@@ -1629,9 +1758,12 @@ builder_project_source_context_matches <- function(
     builder_project_source_context(project, generation),
     error = function(error) NULL
   )
+  # The revision is deliberately not compared: autosave, Save and CRB
+  # registration commit new revisions while a copy runs, and its results are
+  # merged into whichever manifest is current when it finishes.
   is.list(current) &&
     all(vapply(
-      c("generation", "project_id", "root", "path", "revision"),
+      c("generation", "project_id", "root", "path"),
       function(field) identical(context[[field]], current[[field]]),
       logical(1)
     ))

@@ -1713,6 +1713,7 @@ builder_project_start_source_sync <- function() {
     }
   }
   builder_project_source_queue(queued)
+  source_run$jobs <- unname(jobs)
   builder_project_source_process(process)
   builder_project_source_run(source_run)
   builder_project_source_sync(list(
@@ -1865,6 +1866,7 @@ builder_project_poll_source_sync <- function() {
         duration = 8
       )
     } else {
+      project <- isolate(builder_project())
       project$manifest <- written$manifest
       project$path <- written$path
       builder_project(project)
@@ -1915,18 +1917,21 @@ builder_project_poll_source_sync <- function() {
   if (!isTRUE(run_is_current)) {
     return(finish(NULL))
   }
-  updated <- tryCatch(
-    builder_project_apply_source_results(
-      project$manifest,
-      results,
-      project$root
-    ),
-    error = identity
+  # Merge into the manifest current when the write runs: Saves, autosaves and
+  # CRB registrations committed while the copy ran keep their changes, and
+  # the copy is not discarded.
+  start_builder_project_manifest_write(
+    function(current) {
+      builder_project_apply_source_results(
+        current$manifest,
+        results,
+        current$root,
+        only_pending = TRUE
+      )
+    },
+    project,
+    finish
   )
-  if (inherits(updated, "condition")) {
-    return(finish(updated))
-  }
-  start_builder_project_manifest_write(updated, project, finish)
   invisible(TRUE)
 }
 
@@ -1935,11 +1940,22 @@ request_builder_project_source_sync <- function(jobs) {
   if (!length(jobs)) {
     return(invisible(FALSE))
   }
-  queued <- isolate(builder_project_source_queue())
-  for (job in jobs) {
-    queued[[job$id]] <- job
+  source_run <- isolate(builder_project_source_run())
+  running <- if (is.list(source_run) && !isTRUE(source_run$cancelling)) {
+    source_run$jobs %||% list()
+  } else {
+    list()
   }
+  # A job identical to the running copy waits for that copy instead.
+  queued <- builder_project_source_queue_add(
+    isolate(builder_project_source_queue()),
+    jobs,
+    running
+  )
   builder_project_source_queue(queued)
+  if (!length(queued)) {
+    return(invisible(TRUE))
+  }
   if (!is.null(isolate(builder_project_source_process()))) {
     return(invisible(TRUE))
   }
@@ -2032,6 +2048,21 @@ restore_builder_project_last_ui_after_flush <- function(last_ui) {
   )
 }
 
+## Manifest writes run one at a time. Each starts from the Project as it is
+## when its turn comes, so a write queued behind another (autosave, Save, CRB
+## registration, source results) commits on top of it instead of failing the
+## revision check. `manifest` is the Project manifest the caller started from
+## (replaced by the current one), or a function deriving the manifest to write
+## from the current Project.
+builder_project_manifest_writes <- new.env(parent = emptyenv())
+builder_project_manifest_writes$active <- FALSE
+builder_project_manifest_writes$queue <- list()
+
+builder_project_manifest_write_pending <- function() {
+  isTRUE(builder_project_manifest_writes$active) ||
+    length(builder_project_manifest_writes$queue) > 0L
+}
+
 start_builder_project_manifest_write <- function(
   manifest,
   project,
@@ -2041,45 +2072,37 @@ start_builder_project_manifest_write <- function(
   context = NULL,
   artifact_record = NULL
 ) {
-  process <- tryCatch(
-    builder_project_write_process(
-      manifest,
-      project$root,
-      project$manifest$project$revision,
-      builder_project_worker_runtime_files(),
-      builder_source_utf8,
-      full_runtime_files = builder_project_worker_runtime_files(full = TRUE),
-      worker = builder_project_writer,
-      entries = entries,
-      context = context,
-      artifact_record = artifact_record,
-      configuration_cache = if (is.null(entries)) {
-        list()
-      } else {
-        as.list(builder_configuration_identity_cache)
-      }
-    ),
-    error = identity
+  queue <- builder_project_manifest_writes$queue
+  queue[[length(queue) + 1L]] <- list(
+    manifest = manifest,
+    project = project,
+    complete = complete,
+    on_closed = on_closed,
+    entries = entries,
+    context = context,
+    artifact_record = artifact_record
   )
-  if (inherits(process, "condition")) {
-    later::later(
-      function() {
-        if (!builder_session_closed()) {
-          shiny::withReactiveDomain(session, shiny::isolate(complete(process)))
-        } else if (is.function(on_closed)) {
-          on_closed()
-        }
-      },
-      delay = 0
-    )
-    return(invisible(TRUE))
+  builder_project_manifest_writes$queue <- queue
+  dispatch_builder_project_manifest_write()
+  invisible(TRUE)
+}
+
+dispatch_builder_project_manifest_write <- function() {
+  state <- builder_project_manifest_writes
+  if (isTRUE(state$active) || !length(state$queue)) {
+    return(invisible(FALSE))
   }
-  poll <- function() {
-    if (isTRUE(tryCatch(process$is_alive(), error = function(e) FALSE))) {
-      later::later(poll, delay = 0.05)
-      return(invisible(TRUE))
-    }
-    written <- tryCatch(process$get_result(), error = identity)
+  request <- state$queue[[1L]]
+  state$queue <- state$queue[-1L]
+  state$active <- TRUE
+  deliver <- function(written) {
+    on.exit(
+      {
+        state$active <- FALSE
+        dispatch_builder_project_manifest_write()
+      },
+      add = TRUE
+    )
     if (!builder_session_closed()) {
       if (
         !inherits(written, "condition") &&
@@ -2090,11 +2113,71 @@ start_builder_project_manifest_write <- function(
           envir = .builder_project_artifact_closure_cache
         )
       }
-      shiny::withReactiveDomain(session, shiny::isolate(complete(written)))
-    } else if (is.function(on_closed)) {
-      on_closed()
+      shiny::withReactiveDomain(
+        session,
+        shiny::isolate(request$complete(written))
+      )
+    } else if (is.function(request$on_closed)) {
+      request$on_closed()
     }
     invisible(TRUE)
+  }
+  deliver_later <- function(value) {
+    later::later(function() deliver(value), delay = 0)
+    invisible(TRUE)
+  }
+  current <- isolate(builder_project())
+  if (
+    !is.list(current) ||
+      !identical(current$root, request$project$root) ||
+      !identical(
+        current$manifest$project$id %||% NULL,
+        request$project$manifest$project$id %||% NULL
+      )
+  ) {
+    return(deliver_later(simpleError(
+      "The Project changed before this save could run. Save again."
+    )))
+  }
+  manifest <- if (is.function(request$manifest)) {
+    tryCatch(request$manifest(current), error = identity)
+  } else if (identical(request$manifest, request$project$manifest)) {
+    current$manifest
+  } else {
+    request$manifest
+  }
+  if (inherits(manifest, "condition")) {
+    return(deliver_later(manifest))
+  }
+  process <- tryCatch(
+    builder_project_write_process(
+      manifest,
+      current$root,
+      current$manifest$project$revision,
+      builder_project_worker_runtime_files(),
+      builder_source_utf8,
+      full_runtime_files = builder_project_worker_runtime_files(full = TRUE),
+      worker = builder_project_writer,
+      entries = request$entries,
+      context = request$context,
+      artifact_record = request$artifact_record,
+      configuration_cache = if (is.null(request$entries)) {
+        list()
+      } else {
+        as.list(builder_configuration_identity_cache)
+      }
+    ),
+    error = identity
+  )
+  if (inherits(process, "condition")) {
+    return(deliver_later(process))
+  }
+  poll <- function() {
+    if (isTRUE(tryCatch(process$is_alive(), error = function(e) FALSE))) {
+      later::later(poll, delay = 0.05)
+      return(invisible(TRUE))
+    }
+    deliver(tryCatch(process$get_result(), error = identity))
   }
   later::later(poll, delay = 0.05)
   invisible(TRUE)
