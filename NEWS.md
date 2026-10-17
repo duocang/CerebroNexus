@@ -38,9 +38,37 @@
 - Adds Composite RGB and Separate channels layouts to Gene expression. RGB
   starts with the first three available selected genes, retains manual channel
   assignments across display-mode switches, and preserves the full gene list.
+  Genes chosen in the channels are added to the gene list when leaving RGB.
   Separate channels retains the composite's per-channel intensity scaling.
 - Fixes switching from mean expression to packed multi-gene panels getting stuck
   before the first paint completes.
+- Speeds up loading and switching data sets. Data info shows a catalog data set
+  without reading the whole `.crb`, each data set is loaded once per request,
+  cell fingerprints and Viewer Pack checksums are computed once per process,
+  and HDF5 expression is attached on first use.
+- Pages stop computing in the background once left: Overview, Gene expression
+  and Trajectory no longer rebuild their frames or read expression for a page
+  that is not shown.
+- Reduces work on common interactions with large data: Overview reuses
+  downloaded cell IDs for recolours and applies "% of cells" in the browser when
+  a Viewer Pack is present; selections are identified by cell IDs instead of
+  coordinate strings; Gene expression keeps expression values across plot
+  option changes and refreshes summaries only when their inputs change;
+  Trajectory and Spatial apply point size and opacity without a new frame.
+- Spatial computes its first frame once, normalizes sections and ROI scopes
+  once per input, and serves embedded background images by private URL instead
+  of resending them with every frame.
+- Trajectory colours its default (main group) view from the Viewer Pack, and
+  Linked views loads further projections from the Viewer Pack over HTTP instead
+  of the websocket.
+- Speeds up Immune repertoire Clone Sharing parsing and stops tab visits from
+  recomputing settled results; toolbar choices are kept when switching tabs.
+- Fixes HLA/TCR motifs reusing the previous chain's segments after a chain
+  switch, and an uncaught client error when Gene expression loads before Shiny
+  connects.
+- The browser benchmarks in `tests/bench` run installed candidates by default
+  (`VIEWER_BENCH_LOAD=load_all` keeps the source-tree mode) and no longer stall
+  on Data info.
 
 # CerebroNexus 5.0.2
 

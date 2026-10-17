@@ -24,7 +24,7 @@ expression_projection_info <- list(
     The plot is interactive (drag and zoom) but depending on the computer of the user and the number of cells displayed it can become very slow.<br>
     <b>Display mode</b><br>
     Mean expression averages the selected genes per cell. Separate panels shows each gene for 2–9 selected genes in a two-dimensional projection; other cases use mean expression. Both modes retain the complete gene list.<br>
-    RGB co-expression initially assigns the first three available genes in selection order to R, G and B. Additional genes remain in the original list. Returning to RGB preserves edited channels, including empty channels, until the original list changes.<br>
+    RGB co-expression initially assigns the first three available genes in selection order to R, G and B. Additional genes remain in the original list. Returning to RGB preserves edited channels, including empty channels, until the original list changes. Genes chosen in a channel are added to the gene list when leaving RGB.<br>
     <b>RGB layout</b><br>
     Composite RGB overlays the three channels. Separate channels shows one panel per populated channel, using the same intensities and colours. Each channel is scaled from zero to its own maximum in the displayed cells; brightness cannot be used to compare absolute expression across genes. Zero/low expression is grey; simultaneous expression in all three channels is black in the composite. Empty channels are omitted from the separate layout, and repeated genes retain their channel identities.
     "
