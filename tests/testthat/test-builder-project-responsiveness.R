@@ -227,3 +227,118 @@ test_that("queued manifest writes start from the latest Project revision", {
     expect_length(calls$revisions, 2L)
   })
 })
+
+test_that("an unchanged Save is recognised without a manifest transaction", {
+  runtime <- builder_responsiveness_runtime()
+  configuration <- runtime$builder_project_configuration()
+  last_ui <- list(stage = "configure", selected_dataset = "ds1")
+  record <- list(
+    id = "ds1",
+    configuration = list(path = "datasets/ds1/config.json", checked = TRUE),
+    source = list(kind = "managed", status = "ready", path = "sources/ds1/source.rds")
+  )
+  manifest <- list(
+    schema_version = 3L,
+    project = list(id = "p1", revision = 4L),
+    datasets = list(record),
+    configuration = configuration,
+    last_ui = last_ui
+  )
+  entries <- list(list(id = "ds1", revision = 2L))
+  context <- list(configuration = configuration, last_ui = last_ui)
+  base_manifest <- manifest
+  base_entries <- entries
+  base_context <- context
+  unchanged <- function(
+    manifest = base_manifest,
+    entries = base_entries,
+    context = base_context,
+    jobs = list()
+  ) {
+    runtime$builder_project_save_unchanged(manifest, entries, context, jobs)
+  }
+
+  expect_true(unchanged())
+  ## A JSON round trip of the saved manifest still compares equal.
+  reread <- jsonlite::fromJSON(
+    jsonlite::toJSON(manifest, auto_unbox = TRUE, null = "null", digits = NA),
+    simplifyVector = FALSE
+  )
+  expect_true(unchanged(manifest = reread))
+
+  pending <- manifest
+  pending$datasets[[1L]]$source$status <- "pending"
+  expect_false(unchanged(manifest = pending))
+  ## An artifact-backed dataset needs no source copy.
+  expect_true(unchanged(
+    manifest = pending,
+    entries = list(list(id = "ds1", load_state = "artifact_ready"))
+  ))
+  expect_false(unchanged(entries = list(list(id = "ds2"))))
+  expect_false(unchanged(jobs = list(list(kind = "spatial"))))
+  moved <- context
+  moved$last_ui$stage <- "review"
+  expect_false(unchanged(context = moved))
+  options <- context
+  options$configuration$build_mode <- !isTRUE(configuration$build_mode)
+  expect_false(unchanged(context = options))
+  legacy <- manifest
+  legacy$datasets[[1L]]$configuration$payload <- "{}"
+  expect_false(unchanged(manifest = legacy))
+  migrated <- manifest
+  migrated$migrated_from_schema <- 2L
+  expect_false(unchanged(manifest = migrated))
+  interrupted <- manifest
+  interrupted$pending_build <- list(status = "interrupted")
+  expect_false(unchanged(manifest = interrupted))
+})
+
+test_that("Save with nothing to write reports Saved immediately", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    server_env <- environment(builder_project_save_is_noop)
+    calls <- new.env(parent = emptyenv())
+    calls$saves <- 0L
+    calls$reports <- 0L
+    server_env$request_builder_project_save <- function(...) {
+      calls$saves <- calls$saves + 1L
+      invisible(TRUE)
+    }
+    server_env$report_builder_project_unchanged_save <- function() {
+      calls$reports <- calls$reports + 1L
+      invisible(TRUE)
+    }
+    server_env$builder_operation_allowed <- function(...) TRUE
+    context <- builder_project_manifest_context()
+    builder_project(list(
+      root = withr::local_tempdir(),
+      path = "builder-project.json",
+      name = "P",
+      manifest = list(
+        schema_version = 3L,
+        project = list(id = "p1", name = "P", revision = 2L),
+        datasets = list(),
+        configuration = context$configuration,
+        last_ui = context$last_ui
+      )
+    ))
+    session$flushReact()
+    expect_true(builder_project_save_is_noop())
+
+    session$setInputs(save_builder_project = 1)
+    expect_identical(calls$reports, 1L)
+    expect_identical(calls$saves, 0L)
+
+    ## Pending source work keeps the ordinary Save.
+    builder_project_source_queue(list(ds1 = list(id = "ds1")))
+    expect_false(builder_project_save_is_noop())
+    session$setInputs(save_builder_project = 2)
+    expect_identical(calls$saves, 1L)
+    builder_project_source_queue(list())
+
+    builder_project_operation_phase("save_failed")
+    expect_false(builder_project_save_is_noop())
+  })
+})

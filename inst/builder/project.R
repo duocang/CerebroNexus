@@ -351,6 +351,68 @@ builder_project_live_dirty <- function(
   FALSE
 }
 
+## Whether an explicit Save has nothing to write: the manifest is current
+## schema without pending migration, every live dataset's source is saved,
+## the Project settings and last view match, and no attachment needs staging.
+## The server adds the session checks (clean phase, nothing queued).
+builder_project_save_unchanged <- function(
+  manifest,
+  entries,
+  context,
+  attachment_jobs = list()
+) {
+  if (
+    !is.list(manifest) ||
+      !is.list(manifest$datasets) ||
+      length(attachment_jobs) ||
+      !identical(
+        suppressWarnings(as.integer(manifest$schema_version %||% NA_integer_)),
+        .builder_project_schema_version
+      ) ||
+      !is.null(manifest$migrated_from_schema) ||
+      (is.list(manifest$pending_build) &&
+        !identical(manifest$pending_build$status %||% NULL, "running"))
+  ) {
+    return(FALSE)
+  }
+  records <- stats::setNames(
+    manifest$datasets,
+    vapply(
+      manifest$datasets,
+      function(record) as.character(record$id %||% ""),
+      character(1)
+    )
+  )
+  saved <- vapply(
+    entries %||% list(),
+    function(entry) {
+      record <- records[[as.character(entry$id %||% "")]] %||% NULL
+      configuration <- record$configuration %||% list()
+      is.list(record) &&
+        !.builder_project_text(configuration$payload %||% NULL) &&
+        !.builder_project_text(configuration$legacy_payload %||% NULL) &&
+        (identical(entry$load_state %||% "loaded", "artifact_ready") ||
+          identical(record$source$status %||% NULL, "ready"))
+    },
+    logical(1)
+  )
+  same <- function(left, right) {
+    canonical <- function(value) {
+      jsonlite::toJSON(
+        value %||% list(),
+        auto_unbox = TRUE,
+        null = "null",
+        na = "null",
+        digits = NA
+      )
+    }
+    identical(as.character(canonical(left)), as.character(canonical(right)))
+  }
+  all(saved) &&
+    same(context$configuration, manifest$configuration) &&
+    same(context$last_ui, manifest$last_ui)
+}
+
 builder_project_retain_check_marks <- function(
   marks,
   live_ids,

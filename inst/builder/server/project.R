@@ -3064,6 +3064,74 @@ session$onSessionEnded(function() {
   builder_project_worker_close(builder_project_writer)
 })
 
+## An explicit Save with nothing to write or start: no unsaved change, no
+## queued copy, write, attachment or CRB, and every checked dataset already
+## has its CRB. Such a Save reports "Saved" without a manifest transaction.
+builder_project_save_is_noop <- function() {
+  project <- isolate(builder_project())
+  if (
+    is.null(project) ||
+      !identical(isolate(builder_current_project_phase()), "clean") ||
+      isTRUE(isolate(builder_spatial_drafts_dirty())) ||
+      builder_project_manifest_write_pending() ||
+      length(isolate(builder_project_source_queue())) > 0L ||
+      !is.null(isolate(builder_project_source_process())) ||
+      !is.null(isolate(builder_project_table_asset_process())) ||
+      !is.null(isolate(builder_project_crb_task())) ||
+      length(isolate(builder_project_crb_jobs())) > 0L ||
+      isolate(builder_project_source_sync())$status %in%
+        c("syncing", "cancelling", "failed")
+  ) {
+    return(FALSE)
+  }
+  checked <- isolate(checked_dataset_ids())
+  states <- isolate(dataset_checkpoint_states())
+  if (
+    any(vapply(
+      states[intersect(names(states), checked)],
+      function(state) !isTRUE(state$crb_ready),
+      logical(1)
+    ))
+  ) {
+    return(FALSE)
+  }
+  entries <- isolate(sets())
+  attachment_jobs <- tryCatch(
+    builder_project_attachment_jobs(entries, project$root),
+    error = function(error) NULL
+  )
+  if (is.null(attachment_jobs)) {
+    return(FALSE)
+  }
+  isTRUE(tryCatch(
+    builder_project_save_unchanged(
+      project$manifest,
+      entries,
+      builder_project_manifest_context(),
+      attachment_jobs
+    ),
+    error = function(error) FALSE
+  ))
+}
+
+report_builder_project_unchanged_save <- function() {
+  checked <- intersect(
+    isolate(checked_dataset_ids()),
+    vapply(isolate(sets()), `[[`, character(1), "id")
+  )
+  session$sendCustomMessage(
+    "builder_project_save_result",
+    list(
+      checked = length(checked),
+      reusable = length(checked),
+      source_syncing = FALSE,
+      completed = 0L,
+      total = 0L
+    )
+  )
+  invisible(TRUE)
+}
+
 observeEvent(input$save_builder_project, {
   if (is.null(isolate(builder_project()))) {
     if (!builder_operation_allowed("create_project")) {
@@ -3073,6 +3141,10 @@ observeEvent(input$save_builder_project, {
   } else {
     if (!builder_operation_allowed("save_project")) {
       return()
+    }
+    if (builder_project_save_is_noop()) {
+      removeNotification("builder-project-save-error")
+      return(report_builder_project_unchanged_save())
     }
     request_builder_project_save(show_actions = TRUE, materialize = TRUE)
   }
