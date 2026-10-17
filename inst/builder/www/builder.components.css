@@ -1394,6 +1394,10 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-stage-build .builder-stage-footer-actions .btn {
   min-inline-size: 8.75rem;
 }
+.builder-build-blocked-reason {
+  color: var(--c-text-muted);
+  font-size: var(--builder-type-caption);
+}
 
 /* Data setup A1: hierarchy comes from type and spacing, not extra surfaces. */
 .builder-stage-configure .builder-stage-header { margin-bottom: var(--space-6); }

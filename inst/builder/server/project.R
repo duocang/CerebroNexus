@@ -486,7 +486,10 @@ builder_activity_message <- function(
       build_active,
     # build_locked already disables edits, Save and Open; the Build progress
     # panel no longer needs the whole page inert to stay usable.
-    page_inert = isTRUE(capabilities$page_inert)
+    page_inert = isTRUE(capabilities$page_inert),
+    # Shown beside the Build actions while a Project write holds Build back,
+    # so "Build again" is visibly waiting instead of ignoring the click.
+    build_reason = builder_activity_reason(activity, "build")
   )
 }
 

@@ -3419,9 +3419,45 @@ test_that("background manifest writes keep the workspace editable", {
     expect_false(capabilities$build, info = phase)
     expect_identical(
       runtime$builder_activity_reason(activity, "save_project"),
-      "Wait for the project operation to finish."
+      if (identical(phase, "registering")) {
+        "Wait for the dataset cache to finish saving."
+      } else {
+        "Wait for the project operation to finish."
+      },
+      info = phase
     )
   }
+})
+
+test_that("Build says it waits for the dataset cache after a Build", {
+  runtime <- builder_project_test_runtime()
+  registering <- runtime$builder_activity_state(
+    project_phase = "registering",
+    has_project = TRUE,
+    has_datasets = TRUE
+  )
+  expect_identical(
+    runtime$builder_activity_reason(registering, "build"),
+    "Wait for the dataset cache to finish saving."
+  )
+  clean <- runtime$builder_activity_state(
+    project_phase = "clean",
+    has_project = TRUE,
+    has_datasets = TRUE
+  )
+  expect_null(runtime$builder_activity_reason(clean, "build"))
+
+  ## The browser shows the reason beside "Build again to same folder", which
+  ## is gated on the same capability as Build.
+  server <- paste(
+    readLines(builder_test_inst_path("builder", "server", "project.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(
+    server,
+    'build_reason = builder_activity_reason(activity, "build")',
+    fixed = TRUE
+  )
 })
 
 test_that("background saves merge edits made while the manifest was written", {

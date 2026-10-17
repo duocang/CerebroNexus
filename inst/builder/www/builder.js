@@ -1058,6 +1058,29 @@
     });
   }
 
+  // Build waits for Save, autosave and dataset-cache registration. Say why
+  // beside the Build actions instead of leaving a dead button.
+  function applyBuildBlockedReason() {
+    var action = document.getElementById("build");
+    var actions = action && action.closest(".builder-stage-footer-actions");
+    var reason = builderActivityState.build_reason;
+    var blocked = Boolean(actions) && builderConnectionReady &&
+      !activityCapability("build") &&
+      typeof reason === "string" && reason.length > 0;
+    document.querySelectorAll(".builder-build-blocked-reason").forEach(function (node) {
+      if (!blocked || node.parentElement !== actions) node.remove();
+    });
+    if (!blocked) return;
+    var note = actions.querySelector(":scope > .builder-build-blocked-reason");
+    if (!note) {
+      note = document.createElement("span");
+      note.className = "builder-build-blocked-reason";
+      note.setAttribute("role", "status");
+      actions.prepend(note);
+    }
+    if (note.textContent !== reason) note.textContent = reason;
+  }
+
   function applyBuilderActivityState(roots) {
     var capabilities = builderActivityState.capabilities || {};
     var projectControls = {
@@ -1076,6 +1099,7 @@
       confirm_review: activityCapability("navigate_workflow"),
       back_to_review: activityCapability("navigate_workflow"),
       build: activityCapability("build"),
+      build_same_folder: activityCapability("build"),
     };
     Object.keys(projectControls).forEach(function (id) {
       setActivityDisabled(
@@ -1083,6 +1107,7 @@
         !projectControls[id]
       );
     });
+    applyBuildBlockedReason();
     matchingDynamicElements(roots, ".builder-pick").forEach(function (control) {
       setActivityDisabled(control, !activityCapability("select_dataset"));
     });
@@ -5301,6 +5326,9 @@
           open_cancelable: message.open_cancelable === true,
           warn_before_unload: message.warn_before_unload === true,
           page_inert: message.page_inert === true,
+          build_reason: typeof message.build_reason === "string"
+            ? message.build_reason
+            : null,
         };
         applyBuilderActivityState();
       }

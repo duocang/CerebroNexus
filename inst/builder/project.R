@@ -212,7 +212,10 @@ builder_activity_reason <- function(activity, operation) {
   if (identical(activity$project_phase, "choosing")) {
     return("Choose a project folder before continuing.")
   }
-  if (activity$project_phase %in% c("saving", "autosaving", "registering")) {
+  if (identical(activity$project_phase, "registering")) {
+    return("Wait for the dataset cache to finish saving.")
+  }
+  if (activity$project_phase %in% c("saving", "autosaving")) {
     return("Wait for the project operation to finish.")
   }
   if (activity$project_phase %in% c("opening", "restoring")) {

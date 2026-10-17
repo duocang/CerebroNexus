@@ -647,3 +647,90 @@ test_that("local sources do not opt into browser transport retention", {
     fixed = TRUE
   )
 })
+
+## A minimal DOM for the rail and Build helpers below: elements keep children,
+## classes and text, and `document` answers exactly the selectors they use.
+builder_browser_pipeline_fake_dom <- c(
+  "class El {",
+  "  constructor(tag, className = '', text = '') {",
+  "    this.tagName = tag; this.className = className; this.textContent = text;",
+  "    this.children = []; this.parentElement = null; this.attributes = {};",
+  "    this.hidden = false; this.disabled = false; this.id = '';",
+  "  }",
+  "  appendChild(child) { child.remove(); child.parentElement = this; this.children.push(child); return child; }",
+  "  prepend(child) { child.remove(); child.parentElement = this; this.children.unshift(child); }",
+  "  remove() { const p = this.parentElement; if (p) { p.children = p.children.filter(c => c !== this); this.parentElement = null; } }",
+  "  setAttribute(name, value) { this.attributes[name] = String(value); }",
+  "  hasClass(name) { return this.className.split(/\\s+/).includes(name); }",
+  "  closest(selector) { let node = this; while (node) { if (node.hasClass(selector.slice(1))) return node; node = node.parentElement; } return null; }",
+  "  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }",
+  "  querySelectorAll(selector) {",
+  "    const scoped = selector.match(/^:scope > \\.([\\w-]+)$/);",
+  "    if (scoped) return this.children.filter(c => c.hasClass(scoped[1]));",
+  "    if (selector === ':scope > .ds > .ds-idx') return this.children.filter(c => c.hasClass('ds')).flatMap(c => c.children.filter(i => i.hasClass('ds-idx')));",
+  "    const plain = selector.match(/^\\.([\\w-]+)$/);",
+  "    if (plain) return descendants(this).filter(c => c.hasClass(plain[1]));",
+  "    throw new Error('Unsupported selector: ' + selector);",
+  "  }",
+  "}",
+  "function descendants(node) { return node.children.flatMap(c => [c, ...descendants(c)]); }",
+  "const body = new El('body');",
+  "function byId(id) { return descendants(body).find(n => n.id === id) || null; }",
+  "function withId(node, id) { node.id = id; return node; }",
+  "const document = {",
+  "  getElementById: byId,",
+  "  createElement: tag => new El(tag),",
+  "  querySelectorAll(selector) {",
+  "    if (selector === '#ds_ready_list > .ds, #ds_import_list .ds') {",
+  "      const ready = byId('ds_ready_list'); const queue = byId('ds_import_list');",
+  "      return [...(ready ? ready.children.filter(c => c.hasClass('ds')) : []),",
+  "              ...(queue ? descendants(queue).filter(c => c.hasClass('ds')) : [])];",
+  "    }",
+  "    if (selector === '[data-build-progress-detail]') return descendants(body).filter(n => n.attributes['data-build-progress-detail'] !== undefined);",
+  "    return body.querySelectorAll(selector);",
+  "  },",
+  "};",
+  "function row(label) { const r = new El('div', 'ds'); r.appendChild(new El('span', 'ds-idx', label)); return r; }"
+)
+
+test_that("Build actions say why they wait for a Project write", {
+  js <- builder_browser_pipeline_text("www", "builder.js")
+  reason <- builder_browser_pipeline_js_function(js, "applyBuildBlockedReason")
+  out <- builder_browser_pipeline_run_node(
+    c(builder_browser_pipeline_fake_dom, reason),
+    c(
+      "const assert = require('assert');",
+      "let builderConnectionReady = true;",
+      "let capabilities = { build: false };",
+      "function activityCapability(name) { return capabilities[name] === true; }",
+      "let builderActivityState = { build_reason: 'Wait for the dataset cache to finish saving.' };",
+      "const footer = body.appendChild(new El('footer', 'builder-stage-footer'));",
+      "const actions = footer.appendChild(new El('div', 'builder-stage-footer-actions'));",
+      "actions.appendChild(withId(new El('button'), 'build_same_folder'));",
+      "actions.appendChild(withId(new El('button'), 'build'));",
+      "const notes = () => body.querySelectorAll('.builder-build-blocked-reason');",
+      "applyBuildBlockedReason();",
+      "assert.strictEqual(notes().length, 1);",
+      "assert.strictEqual(actions.children[0], notes()[0]);",
+      "assert.strictEqual(notes()[0].textContent, 'Wait for the dataset cache to finish saving.');",
+      "assert.strictEqual(notes()[0].attributes.role, 'status');",
+      "applyBuildBlockedReason();",
+      "assert.strictEqual(notes().length, 1);",
+      "capabilities.build = true;",
+      "applyBuildBlockedReason();",
+      "assert.strictEqual(notes().length, 0);",
+      "// No Build actions on the page: nothing to annotate.",
+      "capabilities.build = false; footer.remove();",
+      "applyBuildBlockedReason();",
+      "assert.strictEqual(notes().length, 0);",
+      "console.log('ok');"
+    )
+  )
+
+  expect_equal(attr(out, "status"), NULL)
+  expect_identical(out, "ok")
+  apply <- builder_browser_pipeline_js_function(js, "applyBuilderActivityState")
+  expect_match(apply, 'build_same_folder: activityCapability("build")', fixed = TRUE)
+  expect_match(apply, "applyBuildBlockedReason();", fixed = TRUE)
+  expect_match(js, "build_reason: typeof message.build_reason", fixed = TRUE)
+})
