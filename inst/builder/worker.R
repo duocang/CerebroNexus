@@ -1138,6 +1138,29 @@ builder_protocol_recover <- function(
   NULL
 }
 
+## Bytes of decoded datasets the worker keeps open between requests. The
+## `CerebroNexus.builder.worker_object_budget` option overrides the default of a
+## quarter of physical memory; 0 keeps only the dataset in use.
+builder_worker_object_budget <- function(
+  budget = getOption("CerebroNexus.builder.worker_object_budget", NULL),
+  .total_memory = function() ps::ps_system_memory()$total
+) {
+  if (!is.null(budget)) {
+    budget <- suppressWarnings(as.double(budget)[1L])
+    if (length(budget) == 1L && !is.na(budget) && budget >= 0) {
+      return(budget)
+    }
+  }
+  total <- tryCatch(
+    suppressWarnings(as.double(.total_memory())[1L]),
+    error = function(error) NA_real_
+  )
+  if (length(total) != 1L || is.na(total) || !is.finite(total) || total <= 0) {
+    return(2 * 1024^3)
+  }
+  total / 4
+}
+
 builder_worker_start <- function(
   builder_dir,
   snapshot_root = NULL,
@@ -1146,7 +1169,8 @@ builder_worker_start <- function(
   .new_session = callr::r_session$new,
   .startup_timeout_ms = 30000L,
   .async = FALSE,
-  .bootstrap = NULL
+  .bootstrap = NULL,
+  .object_budget = builder_worker_object_budget()
 ) {
   if (!requireNamespace("callr", quietly = TRUE)) {
     return(list(error = "The callr package is required for background work."))
@@ -1210,7 +1234,8 @@ builder_worker_start <- function(
     registry,
     package_source,
     bootstrap,
-    source_utf8
+    source_utf8,
+    object_budget
   ) {
     if (is.function(bootstrap)) {
       return(bootstrap(dir, root, registry, package_source))
@@ -1379,6 +1404,7 @@ builder_worker_start <- function(
     assign(".builder_snapshots", snapshots, envir = globalenv())
     assign(".builder_snapshot_cache", snapshot_cache, envir = globalenv())
     assign(".builder_snapshot_root", root, envir = globalenv())
+    assign(".builder_object_budget", object_budget, envir = globalenv())
     names(registry)
   }
   setup_args <- list(
@@ -1387,7 +1413,8 @@ builder_worker_start <- function(
     registry = snapshot_registry,
     package_source = .builder_worker_package_source(builder_dir),
     bootstrap = .bootstrap,
-    source_utf8 = .builder_worker_source_utf8
+    source_utf8 = .builder_worker_source_utf8,
+    object_budget = builder_worker_object_budget(.object_budget)
   )
   setup <- try(
     if (isTRUE(.async)) {
@@ -1611,7 +1638,11 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
       if (
         !is.list(snapshot) ||
           !identical(snapshot$path, canonical) ||
-          !isTRUE(.builder_snapshot_owned_at(canonical, snapshot)) ||
+          !isTRUE(.builder_snapshot_owned_at(
+            canonical,
+            snapshot,
+            verify_content = FALSE
+          )) ||
           !isTRUE(.builder_snapshot_release(snapshot))
       ) {
         report$preserved <- c(report$preserved, key)

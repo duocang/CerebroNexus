@@ -1808,7 +1808,13 @@ builder_snapshot_seurat <- function(
 
 #' Reopen one verified Builder snapshot.
 builder_open_snapshot <- function(snapshot) {
-  if (!.builder_snapshot_owned(snapshot)) {
+  .builder_open_snapshot(snapshot, verify_content = TRUE)
+}
+
+## `verify_content = FALSE` skips the full-content MD5 for a snapshot this
+## worker wrote itself; the stat and owner-marker checks still apply.
+.builder_open_snapshot <- function(snapshot, verify_content = TRUE) {
+  if (!.builder_snapshot_owned(snapshot, verify_content = verify_content)) {
     .builder_adapter_abort(
       "The Builder snapshot owner record is missing or changed."
     )
@@ -1872,23 +1878,123 @@ builder_open_snapshot <- function(snapshot) {
   if (!is.list(snapshot)) {
     return(FALSE)
   }
+  # Ownership (path, owner token, creation time and stat state in the marker)
+  # authorizes deletion; rehashing the content first would only delay it.
   .builder_isolate_owned_path(
     snapshot$path %||% "",
-    function(candidate) .builder_snapshot_owned_at(candidate, snapshot)
+    function(candidate) {
+      .builder_snapshot_owned_at(candidate, snapshot, verify_content = FALSE)
+    }
   )
 }
 
 ## -- Worker registration ----------------------------------------------------
 
-.builder_worker_evict_objects <- function(keep = character()) {
+## Decoded working objects are kept in least-recently-used order within a
+## memory budget (bytes; `.builder_object_budget`, set from the
+## `CerebroNexus.builder.worker_object_budget` option when the worker starts).
+## A budget of 0 keeps only the dataset in use. The object in use is always
+## kept, even when it alone exceeds the budget.
+.builder_worker_object_budget <- function() {
+  budget <- get0(".builder_object_budget", envir = globalenv(), inherits = FALSE)
+  if (
+    !is.numeric(budget) ||
+      length(budget) != 1L ||
+      is.na(budget) ||
+      budget < 0
+  ) {
+    return(0)
+  }
+  as.double(budget)
+}
+
+.builder_worker_object_ledger <- function() {
+  ledger <- get0(".builder_object_ledger", envir = globalenv(), inherits = FALSE)
+  if (!is.environment(ledger)) {
+    ledger <- new.env(parent = emptyenv())
+    ledger$bytes <- numeric()
+    ledger$used <- numeric()
+    ledger$clock <- 0
+    assign(".builder_object_ledger", ledger, envir = globalenv())
+  }
+  ledger
+}
+
+.builder_worker_object_bytes <- function(object) {
+  bytes <- tryCatch(
+    as.double(utils::object.size(object)),
+    error = function(error) NA_real_
+  )
+  if (length(bytes) != 1L || is.na(bytes) || !is.finite(bytes)) 0 else bytes
+}
+
+## Record a use of `id`; pass `object` when it was (re)opened to size it.
+.builder_worker_touch_object <- function(id, object = NULL) {
+  ledger <- .builder_worker_object_ledger()
+  ledger$clock <- ledger$clock + 1
+  ledger$used[[id]] <- ledger$clock
+  if (!is.null(object) || is.na(ledger$bytes[id])) {
+    ledger$bytes[[id]] <- if (is.null(object)) {
+      0
+    } else {
+      .builder_worker_object_bytes(object)
+    }
+  }
+  invisible(id)
+}
+
+## Evict least-recently-used objects until the kept ones plus `reserve_bytes`
+## (an estimate of an object about to be decoded) fit the budget.
+.builder_worker_evict_objects <- function(
+  keep = character(),
+  reserve_bytes = Inf
+) {
   objects <- get(".builder_objects", envir = globalenv())
-  keep <- intersect(as.character(keep), ls(objects, all.names = TRUE))
-  evict <- setdiff(ls(objects, all.names = TRUE), keep)
+  present <- ls(objects, all.names = TRUE)
+  ledger <- .builder_worker_object_ledger()
+  ledger$bytes <- ledger$bytes[intersect(names(ledger$bytes), present)]
+  ledger$used <- ledger$used[intersect(names(ledger$used), present)]
+  keep <- intersect(as.character(keep), present)
+  bytes <- ledger$bytes[present]
+  bytes[is.na(bytes)] <- 0
+  names(bytes) <- present
+  used <- ledger$used[present]
+  used[is.na(used)] <- -Inf
+  names(used) <- present
+  candidates <- setdiff(present, keep)
+  candidates <- candidates[order(used[candidates])]
+  budget <- .builder_worker_object_budget()
+  reserve_bytes <- suppressWarnings(as.double(reserve_bytes)[1L])
+  if (is.na(reserve_bytes) || reserve_bytes < 0) {
+    reserve_bytes <- 0
+  }
+  total <- sum(bytes)
+  evict <- character()
+  for (candidate in candidates) {
+    if (total + reserve_bytes <= budget) {
+      break
+    }
+    evict <- c(evict, candidate)
+    total <- total - bytes[[candidate]]
+  }
   if (length(evict)) {
     rm(list = evict, envir = objects)
+    ledger$bytes <- ledger$bytes[setdiff(names(ledger$bytes), evict)]
+    ledger$used <- ledger$used[setdiff(names(ledger$used), evict)]
     gc(FALSE)
   }
   invisible(evict)
+}
+
+## Decoded size estimate for a file about to be read. Compressed formats
+## usually expand several-fold; the estimate only decides how much of the
+## cache to release before decoding.
+.builder_worker_decode_estimate <- function(bytes, serialization = "rds") {
+  bytes <- suppressWarnings(as.double(bytes)[1L])
+  if (is.na(bytes) || !is.finite(bytes) || bytes < 0) {
+    return(0)
+  }
+  bytes * if (identical(serialization, "rds")) 1 else 4
 }
 
 .builder_worker_object <- function(id, evict = TRUE) {
@@ -1897,19 +2003,31 @@ builder_open_snapshot <- function(snapshot) {
   }
   objects <- get(".builder_objects", envir = globalenv())
   snapshots <- get(".builder_snapshots", envir = globalenv())
-  if (isTRUE(evict)) {
-    .builder_worker_evict_objects(keep = id)
-  }
   if (exists(id, envir = objects, inherits = FALSE)) {
+    .builder_worker_touch_object(id)
     return(get(id, envir = objects, inherits = FALSE))
   }
   if (!exists(id, envir = snapshots, inherits = FALSE)) {
     .builder_adapter_abort("The requested dataset was not found.")
   }
-  object <- builder_open_snapshot(
-    get(id, envir = snapshots, inherits = FALSE)
-  )
+  snapshot <- get(id, envir = snapshots, inherits = FALSE)
+  if (isTRUE(evict)) {
+    .builder_worker_evict_objects(
+      keep = id,
+      reserve_bytes = .builder_worker_decode_estimate(
+        snapshot$closure_bytes %||% 0,
+        snapshot$serialization %||% "rds"
+      )
+    )
+  }
+  # The worker wrote this private snapshot and hashed it while writing; stat
+  # and owner-marker checks reject a replaced file without rereading it.
+  object <- .builder_open_snapshot(snapshot, verify_content = FALSE)
   assign(id, object, envir = objects)
+  .builder_worker_touch_object(id, object)
+  if (isTRUE(evict)) {
+    .builder_worker_evict_objects(keep = id, reserve_bytes = 0)
+  }
   object
 }
 
@@ -1920,10 +2038,20 @@ builder_open_snapshot <- function(snapshot) {
   objects <- get(".builder_objects", envir = globalenv())
   snapshots <- get(".builder_snapshots", envir = globalenv())
   ## Imported Seurat objects can be much larger than their QS/QS2 files.
-  ## Release the prior working set before decoding the next source; immutable
-  ## snapshots reopen datasets on demand without accumulating every object in
-  ## the worker heap.
-  .builder_worker_evict_objects()
+  ## Release least-recently-used objects until the decoded source should fit
+  ## the worker's object budget; immutable snapshots reopen evicted datasets
+  ## on demand.
+  .builder_worker_evict_objects(
+    keep = character(),
+    reserve_bytes = if (identical(adapter$type, "file")) {
+      .builder_worker_decode_estimate(
+        adapter$source_state$bytes,
+        adapter$reader$id %||% "rds"
+      )
+    } else {
+      .builder_worker_object_bytes(adapter$object)
+    }
+  )
   snapshot_cache <- get0(
     ".builder_snapshot_cache",
     envir = globalenv(),
@@ -1940,12 +2068,16 @@ builder_open_snapshot <- function(snapshot) {
   }
   if (
     is.list(cached) &&
-      isTRUE(.builder_snapshot_owned(cached$snapshot)) &&
-      identical(cached$snapshot$source_state, adapter$source_state)
+      identical(cached$snapshot$source_state, adapter$source_state) &&
+      isTRUE(.builder_snapshot_owned(cached$snapshot, verify_content = FALSE))
   ) {
-    reopened <- builder_open_snapshot(cached$snapshot)
+    # A cached snapshot is this worker's own private copy; one stat and
+    # owner-marker check replaces the two full-content MD5 passes.
+    reopened <- .builder_open_snapshot(cached$snapshot, verify_content = FALSE)
     assign(id, reopened, envir = objects)
     assign(id, cached$snapshot, envir = snapshots)
+    .builder_worker_touch_object(id, reopened)
+    .builder_worker_evict_objects(keep = id, reserve_bytes = 0)
     return(c(
       cached$result,
       list(
@@ -2026,6 +2158,8 @@ builder_open_snapshot <- function(snapshot) {
     }
   )
   registered <- TRUE
+  .builder_worker_touch_object(id, reopened)
+  .builder_worker_evict_objects(keep = id, reserve_bytes = 0)
   result <- list(
     profile = inspected$legacy_profile,
     dataset_profile = inspected$profile,

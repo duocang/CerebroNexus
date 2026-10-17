@@ -1422,13 +1422,14 @@ if (builder_lifecycle_api_available) {
     expect_true(.builder_snapshot_owned(fixture$snapshot))
   })
 
-  test_that("worker snapshots keep only one decoded dataset resident", {
+  test_that("a zero object budget keeps one decoded dataset resident", {
     skip_if_not_installed("callr")
     root <- withr::local_tempdir()
     worker <- builder_worker_start(
       builder_profile_inst_path("builder"),
       snapshot_root = root,
-      snapshot_registry = list()
+      snapshot_registry = list(),
+      .object_budget = 0
     )
     withr::defer(try(builder_worker_stop(worker), silent = TRUE))
 
@@ -1458,6 +1459,84 @@ if (builder_lifecycle_api_available) {
     expect_identical(residency$registered, paste0("dataset-", letters[1:3]))
     expect_identical(residency$reopened, 80L)
     expect_identical(residency$resident_after_reopen, "dataset-a")
+  })
+
+  test_that("an object budget keeps recently used datasets resident", {
+    skip_if_not_installed("callr")
+    root <- withr::local_tempdir()
+    worker <- builder_worker_start(
+      builder_profile_inst_path("builder"),
+      snapshot_root = root,
+      snapshot_registry = list(),
+      .object_budget = 2^40
+    )
+    withr::defer(try(builder_worker_stop(worker), silent = TRUE))
+
+    residency <- worker$process$run(
+      function(object) {
+        ids <- paste0("dataset-", letters[1:3])
+        for (index in seq_along(ids)) {
+          object@project.name <- ids[[index]]
+          .builder_register_adapter(
+            builder_example_adapter(ids[[index]], object),
+            ids[[index]]
+          )
+        }
+        counter <- new.env(parent = emptyenv())
+        counter$opened <- 0L
+        original <- get(".builder_open_snapshot", envir = globalenv())
+        assign(
+          ".builder_open_snapshot",
+          function(...) {
+            counter$opened <- counter$opened + 1L
+            original(...)
+          },
+          envir = globalenv()
+        )
+        on.exit(assign(".builder_open_snapshot", original, envir = globalenv()))
+        objects <- get(".builder_objects", envir = globalenv())
+        first <- as.integer(ncol(.builder_worker_object(ids[[1L]])))
+        second <- as.integer(ncol(.builder_worker_object(ids[[2L]])))
+        resident <- ls(objects, all.names = TRUE)
+        rm(list = ids[[1L]], envir = objects)
+        reopened <- as.integer(ncol(.builder_worker_object(ids[[1L]])))
+        list(
+          budget = get(".builder_object_budget", envir = globalenv()),
+          resident = resident,
+          cells = c(first, second, reopened),
+          opened = counter$opened
+        )
+      },
+      args = list(object = SeuratObject::pbmc_small)
+    )
+
+    expect_identical(residency$budget, 2^40)
+    expect_identical(residency$resident, paste0("dataset-", letters[1:3]))
+    expect_identical(residency$cells, c(80L, 80L, 80L))
+    # Only the evicted dataset was reopened from its snapshot.
+    expect_identical(residency$opened, 1L)
+  })
+
+  test_that("the worker object budget defaults to a quarter of memory", {
+    expect_identical(builder_worker_object_budget(0), 0)
+    expect_identical(builder_worker_object_budget(5e9), 5e9)
+    expect_identical(
+      builder_worker_object_budget(NULL, .total_memory = function() 16e9),
+      4e9
+    )
+    expect_identical(
+      builder_worker_object_budget(-1, .total_memory = function() 16e9),
+      4e9
+    )
+    expect_identical(
+      builder_worker_object_budget(
+        NULL,
+        .total_memory = function() stop("unavailable")
+      ),
+      2 * 1024^3
+    )
+    withr::local_options(CerebroNexus.builder.worker_object_budget = 123)
+    expect_identical(builder_worker_object_budget(), 123)
   })
 
   test_that("restart removes only verified unregistered snapshot artifacts", {
