@@ -484,7 +484,9 @@ builder_activity_message <- function(
       identical(restore_progress$mode %||% NULL, "opening"),
     warn_before_unload = isTRUE(capabilities$warn_before_unload) ||
       build_active,
-    page_inert = isTRUE(capabilities$page_inert) || build_active
+    # build_locked already disables edits, Save and Open; the Build progress
+    # panel no longer needs the whole page inert to stay usable.
+    page_inert = isTRUE(capabilities$page_inert)
   )
 }
 
