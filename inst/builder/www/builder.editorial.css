@@ -645,6 +645,10 @@ label,
   border-top: 1px solid var(--c-border-2);
 }
 
+/* Optional analyses and Extra material are rows of the same list. */
+.builder-stage-configure .builder-stage-enhance,
+.builder-stage-configure .enhance-group + .enhance-group { margin-top: 0; }
+
 /* Advanced settings continues the Viewer content list; no second rule. */
 .builder-stage-configure .builder-stage-advanced.builder-viewer-content {
   margin-top: 0;

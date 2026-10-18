@@ -1544,7 +1544,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   block-size: auto;
   opacity: 1;
 }
-.builder-stage-configure .builder-viewer-advanced-settings { margin-top: var(--space-2); }
+.builder-stage-configure .builder-viewer-advanced-settings { margin-top: 0; }
 
 @keyframes builder-data-setup-summary-update {
   from { opacity: .35; }

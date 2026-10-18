@@ -616,12 +616,16 @@
   background: var(--builder-hover-bg);
   color: var(--builder-accent-strong);
 }
+/* The list sits flush inside the directory frame: a second rounded border
+   around it only drew a box inside a box inside the card. */
 .viewer-group-list {
-  margin: var(--space-2);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-sm);
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--c-border);
+  border-radius: 0;
   overflow: hidden;
 }
+.viewer-group-list .viewer-group-row:last-child { border-bottom: 0; }
 .viewer-group-row {
   display: grid;
   grid-template-columns: 2rem minmax(0, 1fr) auto;
