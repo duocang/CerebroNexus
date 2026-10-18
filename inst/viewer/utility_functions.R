@@ -371,7 +371,7 @@ spatialImagePreset <- function(options, dataset, spatial_name, image_label) {
     flipX = FALSE,
     flipY = FALSE,
     rotation = 0,
-    opacity = 0.5
+    opacity = 1
   )
   keys <- list(dataset, spatial_name, image_label)
   if (

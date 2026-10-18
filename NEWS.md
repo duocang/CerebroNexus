@@ -8,7 +8,7 @@
   allowed to see instead of a data URI or a filesystem path. The Background
   image picker holds one removable chip and is hidden for data sets that
   configure no image.
-- Background images open at 50% opacity unless `image_opacity` is set in
+- Background images open at full opacity unless `image_opacity` is set in
   `spatial_image_settings` or saved with an embedded image's alignment; the
   setting applies in Spatial, Linked views and Trekker.
 - Linked views selects the section whose background is adjusted from a picker

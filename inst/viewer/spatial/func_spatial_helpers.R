@@ -400,7 +400,7 @@ format_spatial_preset_code <- function(
   flip_x,
   flip_y,
   rotation,
-  image_opacity = 0.5
+  image_opacity = 1
 ) {
   targets <- list(dataset, spatial_name, image_label)
   if (

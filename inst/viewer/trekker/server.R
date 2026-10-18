@@ -197,7 +197,7 @@ observe({
     background$external$preset
   } else {
     list(
-      # Match Spatial and Linked views: a saved opacity applies, else 0.5.
+      # Match Spatial and Linked views: a saved opacity applies, else 1.
       opacity = {
         saved <- suppressWarnings(as.numeric(alignment$image_opacity))
         if (length(saved) == 1L && is.finite(saved) && saved >= 0 && saved <= 1) {

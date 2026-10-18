@@ -351,7 +351,7 @@ observeEvent(input[["spatial_projection_background_copy_preset"]], {
     rotation = null_to(input[["spatial_projection_background_rotate"]], 0),
     image_opacity = null_to(
       input[["spatial_projection_background_opacity"]],
-      0.5
+      1
     )
   )
   spatial_preset_code(code)
