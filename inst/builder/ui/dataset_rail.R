@@ -1045,23 +1045,21 @@ builder_dataset_rail_row_ui <- function(model) {
       class = "ds-actions",
       shiny::tags$button(
         class = "ds-move builder-reorder",
-        title = "Move dataset up",
+        title = "Move up",
         `aria-label` = paste0("Move ", model$label, " up"),
         `data-ds` = model$id,
         `data-direction` = "up",
         `data-icon` = "up",
-        disabled = if (!model$can_up) "disabled" else NULL,
-        shiny::span(class = "ds-action-label", "Move up")
+        disabled = if (!model$can_up) "disabled" else NULL
       ),
       shiny::tags$button(
         class = "ds-move builder-reorder",
-        title = "Move dataset down",
+        title = "Move down",
         `aria-label` = paste0("Move ", model$label, " down"),
         `data-ds` = model$id,
         `data-direction` = "down",
         `data-icon` = "down",
-        disabled = if (!model$can_down) "disabled" else NULL,
-        shiny::span(class = "ds-action-label", "Move down")
+        disabled = if (!model$can_down) "disabled" else NULL
       ),
       shiny::tags$button(
         class = "ds-del btn-remove-soft builder-drop",

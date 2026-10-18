@@ -347,3 +347,44 @@ test_that("the import timer leaves room for the dataset name", {
     fixed = TRUE
   )
 })
+
+test_that("rail move buttons are named icons and Remove keeps its label", {
+  withr::local_package("shiny")
+  runtime <- builder_rail_runtime()
+  html <- htmltools::renderTags(runtime$builder_dataset_rail_row_ui(list(
+    index = 2L,
+    id = "dataset-b",
+    label = "Dataset B",
+    cells = 180L,
+    format = "qs2",
+    import_elapsed_ms = 1200,
+    readiness_label = "Ready",
+    checked = FALSE,
+    selected = TRUE,
+    confirm = FALSE,
+    can_up = TRUE,
+    can_down = TRUE
+  )))$html
+  buttons <- regmatches(
+    html,
+    gregexpr(
+      "<button class=\"ds-(move|del)[^>]*>[\\s\\S]*?</button>",
+      html,
+      perl = TRUE
+    )
+  )[[1L]]
+
+  expect_length(buttons, 3L)
+  expect_match(buttons[[1L]], 'title="Move up"', fixed = TRUE)
+  expect_match(buttons[[1L]], 'aria-label="Move Dataset B up"', fixed = TRUE)
+  expect_match(buttons[[1L]], 'data-icon="up"', fixed = TRUE)
+  expect_match(buttons[[2L]], 'title="Move down"', fixed = TRUE)
+  expect_match(buttons[[2L]], 'aria-label="Move Dataset B down"', fixed = TRUE)
+  expect_false(any(grepl("ds-action-label", buttons[1:2], fixed = TRUE)))
+  expect_false(grepl(">Move", html, fixed = TRUE))
+  expect_match(
+    buttons[[3L]],
+    '<span class="ds-action-label">Remove</span>',
+    fixed = TRUE
+  )
+})

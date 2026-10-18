@@ -409,7 +409,7 @@ test_that("Precision Scientific is the final Builder presentation layer", {
     paste0(
       ".ds[data-load-state=\"ready\"] .ds-actions {\n",
       "  display: grid;\n",
-      "  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;"
+      "  grid-template-columns: auto auto minmax(0, 1fr);"
     ),
     fixed = TRUE
   )
