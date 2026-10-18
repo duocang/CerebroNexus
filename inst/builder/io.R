@@ -1123,11 +1123,14 @@ builder_formats <- list(
     package = "qs2",
     read = function(path) qs2::qs_read(path)
   ),
+  ## Still read, but no longer advertised: the qs package is archived, so the
+  ## Add files hints list RDS and QS2 and warn that QS support will end.
   list(
     id = "qs",
     label = "qs",
     extensions = "qs",
     package = "qs",
+    deprecated = TRUE,
     read = function(path) {
       cores <- suppressWarnings(parallel::detectCores(logical = FALSE))
       if (length(cores) != 1L || !is.finite(cores)) {
@@ -1232,6 +1235,81 @@ builder_available_formats <- function(
   capabilities = builder_cached_format_capabilities()
 ) {
   Filter(function(format) isTRUE(format$available), capabilities)
+}
+
+## Deprecated formats are flagged in builder_formats; records built from bare
+## ids (tests, older callers) inherit the flag through their id.
+.builder_format_deprecated <- function(format) {
+  if (isTRUE(format$deprecated)) {
+    return(TRUE)
+  }
+  id <- tolower(as.character(format$id %||% "")[1L])
+  known <- get0("builder_formats", inherits = TRUE)
+  any(vapply(
+    known %||% list(),
+    function(entry) {
+      isTRUE(entry$deprecated) && identical(tolower(entry$id), id)
+    },
+    logical(1)
+  ))
+}
+
+## Labels shown under "Add files": readable, not deprecated, RDS first.
+builder_advertised_format_labels <- function(
+  formats = builder_available_formats()
+) {
+  formats <- Filter(
+    function(format) {
+      is.list(format) &&
+        !identical(format$available, FALSE) &&
+        !.builder_format_deprecated(format)
+    },
+    formats %||% list()
+  )
+  labels <- unique(toupper(vapply(
+    formats,
+    function(format) {
+      as.character(format$label %||% format$id %||% "")[1L]
+    },
+    character(1)
+  )))
+  labels <- labels[!is.na(labels) & nzchar(labels)]
+  c(labels[labels == "RDS"], sort(labels[labels != "RDS"]))
+}
+
+## A short notice for readable formats that are on their way out.
+builder_deprecated_format_note_ui <- function(
+  formats = builder_available_formats()
+) {
+  deprecated <- Filter(
+    function(format) {
+      is.list(format) &&
+        !identical(format$available, FALSE) &&
+        .builder_format_deprecated(format)
+    },
+    formats %||% list()
+  )
+  if (!length(deprecated)) {
+    return(NULL)
+  }
+  labels <- unique(toupper(vapply(
+    deprecated,
+    function(format) as.character(format$label %||% format$id)[1L],
+    character(1)
+  )))
+  replacements <- builder_advertised_format_labels(formats)
+  shiny::tags$small(
+    class = "builder-format-deprecated",
+    paste0(
+      paste(labels, collapse = " and "),
+      " files are deprecated and support will end soon.",
+      if (length(replacements)) {
+        paste0(" Save as ", paste(replacements, collapse = " or "), ".")
+      } else {
+        ""
+      }
+    )
+  )
 }
 
 builder_path_format_capability <- function(

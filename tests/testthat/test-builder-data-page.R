@@ -1,5 +1,7 @@
 builder_data_page_runtime <- function() {
   runtime <- new.env(parent = globalenv())
+  # Format labels and the deprecation note come from the format table.
+  sys.source(builder_profile_inst_path("builder", "io.R"), envir = runtime)
   runtime$builder_example_directory <- function() list()
   runtime$builder_example_buttons_ui <- function(...) {
     shiny::tags$button(
@@ -437,4 +439,40 @@ test_that("Precision Scientific is the final Builder presentation layer", {
   expect_match(stage, 'h4("Viewer content")', fixed = TRUE)
   expect_match(stage, 'h4("Views")', fixed = TRUE)
   expect_false(grepl('h4("CRB content")', stage, fixed = TRUE))
+})
+
+test_that("Add files hints list RDS and QS2 and warn that QS is deprecated", {
+  withr::local_package("shiny")
+  runtime <- builder_data_page_runtime()
+  html <- builder_data_page_html()
+
+  expect_match(html, ">RDS, QS2<", fixed = TRUE)
+  expect_false(grepl("QS2, QS", html, fixed = TRUE))
+  expect_match(
+    html,
+    "QS files are deprecated and support will end soon. Save as RDS or QS2.",
+    fixed = TRUE
+  )
+
+  formats <- list(
+    list(id = "rds", label = "RDS", available = TRUE),
+    list(id = "qs2", label = "qs2", available = TRUE),
+    list(id = "qs", label = "qs", available = TRUE, deprecated = TRUE)
+  )
+  expect_identical(
+    runtime$builder_advertised_format_labels(formats),
+    c("RDS", "QS2")
+  )
+  note <- htmltools::renderTags(
+    runtime$builder_deprecated_format_note_ui(formats)
+  )$html
+  expect_match(note, "builder-format-deprecated", fixed = TRUE)
+
+  # No note when the deprecated reader is unavailable or absent.
+  formats[[3L]]$available <- FALSE
+  expect_null(runtime$builder_deprecated_format_note_ui(formats))
+  expect_null(runtime$builder_deprecated_format_note_ui(formats[1:2]))
+  expect_true(isTRUE(
+    runtime$builder_formats[[3L]]$deprecated
+  ))
 })

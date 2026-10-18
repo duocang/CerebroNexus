@@ -448,24 +448,7 @@ builder_empty_workbench_ui <- function(
     function(format) identical(format$available, FALSE),
     format_records
   )
-  format_labels <- if (length(available_formats)) {
-    unique(vapply(
-      available_formats,
-      function(format) {
-        as.character(format$label %||% toupper(format$id %||% ""))[1L]
-      },
-      character(1)
-    ))
-  } else {
-    character()
-  }
-  format_labels <- toupper(
-    format_labels[!is.na(format_labels) & nzchar(format_labels)]
-  )
-  format_labels <- c(
-    format_labels[format_labels == "RDS"],
-    sort(format_labels[format_labels != "RDS"])
-  )
+  format_labels <- builder_advertised_format_labels(available_formats)
   shiny::tags$section(
     class = "builder-stage builder-empty-state",
     `aria-labelledby` = "builder-dropzone-title",
@@ -490,7 +473,8 @@ builder_empty_workbench_ui <- function(
           id = "builder-empty-formats",
           class = "builder-dataset-dropzone-formats",
           paste(format_labels, collapse = ", ")
-        )
+        ),
+        builder_deprecated_format_note_ui(available_formats)
       )
     ),
     if (isTRUE(loading_count > 0L)) {

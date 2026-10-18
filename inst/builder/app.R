@@ -626,17 +626,10 @@ ui <- shiny::bootstrapPage(
           ),
           tags$small(
             class = "rail-add-detail",
-            paste(
-              toupper(vapply(
-                builder_available_formats(),
-                `[[`,
-                character(1),
-                "label"
-              )),
-              collapse = ", "
-            )
+            paste(builder_advertised_format_labels(), collapse = ", ")
           )
         ),
+        builder_deprecated_format_note_ui(),
         builder_format_unavailable_ui(builder_format_capabilities()),
         tags$input(
           id = "dataset_files",

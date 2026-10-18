@@ -354,6 +354,22 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.builder-format-deprecated {
+  display: block;
+  color: var(--c-text-subtle, var(--c-text-muted));
+  font-size: .68rem;
+  line-height: 1.35;
+  text-align: center;
+}
+.rail-add-actions > .builder-format-deprecated {
+  margin-top: .3rem;
+  padding: 0 .25rem;
+}
+.builder-dataset-dropzone .builder-format-deprecated {
+  margin-top: .2rem;
+  font-size: .74rem;
+  text-align: inherit;
+}
 .builder-format-unavailable {
   display: grid;
   gap: .2rem;
