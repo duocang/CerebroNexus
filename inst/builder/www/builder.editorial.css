@@ -645,6 +645,12 @@ label,
   border-top: 1px solid var(--c-border-2);
 }
 
+/* Advanced settings continues the Viewer content list; no second rule. */
+.builder-stage-configure .builder-stage-advanced.builder-viewer-content {
+  margin-top: 0;
+  border-top: 0;
+}
+
 .builder-stage-configure .builder-viewer-content-head {
   padding: var(--space-5) 0 var(--space-3);
   border-bottom: 1px solid var(--c-border);
@@ -674,9 +680,30 @@ label,
   background: var(--c-surface-2);
 }
 
+/* A drawn chevron: larger and crisper than the "›" glyph, turning smoothly
+   from right to down and taking the accent on hover and when open. */
 .builder-viewer-card > summary::before {
+  flex: 0 0 auto;
+  width: .45rem;
+  height: .45rem;
+  margin: 0 var(--space-1) 0 .15rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
   color: var(--c-text-3);
-  font-size: .9rem;
+  content: "";
+  transform: rotate(-45deg);
+  transition:
+    transform .2s var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.builder-viewer-card > summary:hover::before,
+.builder-viewer-card[open] > summary::before {
+  color: var(--builder-action);
+}
+
+.builder-viewer-card[open] > summary::before {
+  transform: rotate(45deg) translate(-.1rem, -.1rem);
 }
 
 .builder-stage-configure .builder-viewer-card-title,
@@ -692,12 +719,21 @@ label,
   font-weight: 500;
 }
 
+/* Open state: a thin accent edge and a bolder title, not a peach bar. */
 .builder-viewer-card[open] {
   box-shadow: inset 2px 0 0 var(--c-amber-300);
 }
 
 .builder-viewer-card[open] > summary {
-  background: var(--c-amber-50);
+  background: transparent;
+}
+
+.builder-viewer-card[open] > summary:hover {
+  background: var(--c-surface-2);
+}
+
+.builder-viewer-card[open] > summary .builder-viewer-card-title {
+  font-weight: 700;
 }
 
 .builder-stage-configure .builder-viewer-card-body,

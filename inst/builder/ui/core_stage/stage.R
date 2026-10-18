@@ -240,7 +240,19 @@ builder_core_stage_ui <- function(id, model) {
     },
     if (builder_stage_has_text(model$layer_attention %||% "")) {
       div(class = "notice bad", model$layer_attention)
-    },
+    }
+  )
+}
+
+## Settings come after every content group (Optional analyses, Extra
+## material), so Configure renders this below the enhancement stack.
+builder_core_advanced_ui <- function(id, model) {
+  ns <- NS(id)
+  tags$section(
+    class = paste(
+      "builder-stage-section builder-stage-advanced",
+      "builder-viewer-content"
+    ),
     tags$details(
       class = "builder-viewer-card builder-viewer-advanced-settings",
       `data-disclosure-key` = "viewer-advanced-settings",

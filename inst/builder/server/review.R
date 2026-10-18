@@ -1189,6 +1189,7 @@ render_configure_workbench <- function() {
       dynamic_modules = TRUE,
       include_spatial = FALSE
     ),
+    builder_core_advanced_ui("core", core_model),
     builder_views_stage_ui(
       "core",
       core_model,
