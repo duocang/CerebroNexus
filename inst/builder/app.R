@@ -257,6 +257,7 @@ source("report.R", local = TRUE)
 source("coordinator.R", local = TRUE)
 
 ## runApp() sets the working directory to the app directory.
+source("notify.R", local = TRUE)
 source("io.R", local = TRUE)
 source("project.R", local = TRUE)
 source(
@@ -578,6 +579,13 @@ ui <- shiny::bootstrapPage(
     )
   ),
   uiOutput("workflow_progress"),
+  ## Global notices (builder_notify with no target) slide in here.
+  div(
+    id = "builder-notice-bar",
+    class = "builder-notice-bar",
+    role = "region",
+    `aria-label` = "Notices"
+  ),
   div(
     class = "shell builder-shell",
     div(

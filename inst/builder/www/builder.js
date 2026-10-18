@@ -765,23 +765,8 @@
       document.querySelectorAll(".builder-display-status").forEach(function (status) {
         status.textContent = "Viewer appearance saved.";
       });
-      var prior = document.getElementById("builder-save-confirmation");
-      if (prior) prior.remove();
-      var confirmation = document.createElement("div");
-      confirmation.id = "builder-save-confirmation";
-      confirmation.className = "shiny-notification builder-save-confirmation";
-      confirmation.setAttribute("role", "status");
-      confirmation.textContent = message;
-      // Share Shiny's toast stack (it reuses a panel with this id) so the
-      // confirmation and other notices never overlap each other.
-      var toastPanel = document.getElementById("shiny-notification-panel");
-      if (!toastPanel) {
-        toastPanel = document.createElement("div");
-        toastPanel.id = "shiny-notification-panel";
-        document.body.appendChild(toastPanel);
-      }
-      toastPanel.appendChild(confirmation);
-      window.setTimeout(function () { confirmation.remove(); }, 6000);
+      // A brief flash beside the project status, not a pop-up.
+      showStatusFlash({ type: "success", text: message, hide_after: 5 });
       return;
     }
     elements.card.classList.add("is-result");
@@ -876,6 +861,350 @@
       unit += 1;
     }
     return (unit === 0 ? Math.round(value) : value.toFixed(1)) + " " + units[unit];
+  }
+
+  // ---- In-place feedback (builder_notify in notify.R) ----------------------
+  // Messages go where they belong: a field, a section, a dataset row, the
+  // Build card, the project status, or one notice bar under the stepper.
+  // Contextual notices are re-placed when Shiny re-renders their section and
+  // dropped once their section is gone; a target that never appears falls
+  // back to the notice bar.
+  var builderNotices = [];
+  var builderNoticeObserver = null;
+  var builderNoticePlaceTimer = null;
+  var builderNoticeGlyphs = { success: "✓", info: "i", warning: "!", error: "!" };
+
+  function noticePlainText(message) {
+    if (typeof message.text === "string") return message.text;
+    var scratch = document.createElement("div");
+    scratch.innerHTML = message.html || "";
+    return (scratch.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  function noticeBind(node) {
+    if (window.Shiny && typeof window.Shiny.bindAll === "function") {
+      window.Shiny.bindAll(node);
+    }
+  }
+
+  function noticeRemoveNode(node) {
+    if (!node || !node.isConnected) return;
+    if (window.Shiny && typeof window.Shiny.unbindAll === "function") {
+      window.Shiny.unbindAll(node);
+    }
+    node.classList.add("is-leaving");
+    window.setTimeout(function () { node.remove(); }, reducedMotion.matches ? 0 : 180);
+  }
+
+  function buildNotice(message, variant) {
+    var node = document.createElement("div");
+    node.className = "builder-notice builder-notice--" + variant + " is-" + message.type;
+    node.setAttribute("role", message.type === "error" ? "alert" : "status");
+    node.setAttribute("aria-live", message.type === "error" ? "assertive" : "polite");
+    if (message.id) node.dataset.noticeId = message.id;
+    var icon = document.createElement("span");
+    icon.className = "builder-notice-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = builderNoticeGlyphs[message.type] || "i";
+    var text = document.createElement("div");
+    text.className = "builder-notice-text";
+    if (typeof message.html === "string") text.innerHTML = message.html;
+    else text.textContent = noticePlainText(message);
+    node.appendChild(icon);
+    node.appendChild(text);
+    if (message.action && message.action.label && message.action.click) {
+      var action = document.createElement("button");
+      action.type = "button";
+      action.className = "builder-notice-action";
+      action.textContent = message.action.label;
+      action.addEventListener("click", function () {
+        var trigger = document.getElementById(message.action.click);
+        if (trigger) trigger.click();
+        dismissNotice(message);
+      });
+      node.appendChild(action);
+    }
+    var dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "builder-notice-dismiss";
+    dismiss.setAttribute("aria-label", "Dismiss");
+    dismiss.textContent = "×";
+    dismiss.addEventListener("click", function () { dismissNotice(message); });
+    node.appendChild(dismiss);
+    return node;
+  }
+
+  function dismissNotice(message) {
+    builderNotices = builderNotices.filter(function (item) { return item !== message; });
+    window.clearTimeout(message._hideTimer);
+    window.clearTimeout(message._fallbackTimer);
+    (message._nodes || []).forEach(noticeRemoveNode);
+    message._nodes = [];
+    if (message._field) clearFieldNote(message._field);
+  }
+
+  function clearNoticesById(id) {
+    if (!id) return;
+    builderNotices.filter(function (item) { return item.id === id; }).forEach(dismissNotice);
+    document.querySelectorAll('[data-notice-id="' + CSS.escape(id) + '"]').forEach(noticeRemoveNode);
+  }
+
+  function scheduleNoticeHide(message) {
+    window.clearTimeout(message._hideTimer);
+    var seconds = Number(message.hide_after);
+    if (!(seconds > 0)) return;
+    message._hideTimer = window.setTimeout(function () { dismissNotice(message); }, seconds * 1000);
+  }
+
+  function showGlobalNotice(message) {
+    var bar = document.getElementById("builder-notice-bar");
+    if (!bar) return;
+    // The same message twice reads as one notice, refreshed.
+    builderNotices
+      .filter(function (item) {
+        return item._kind === "global" && item.html === message.html && item.type === message.type;
+      })
+      .forEach(dismissNotice);
+    message._kind = "global";
+    var node = buildNotice(message, "bar");
+    bar.appendChild(node);
+    noticeBind(node);
+    message._nodes = [node];
+    builderNotices.push(message);
+    scheduleNoticeHide(message);
+  }
+
+  function showStatusFlash(message) {
+    var toolbar = document.querySelector(".builder-project-toolbar");
+    if (!toolbar) return showGlobalNotice(message);
+    var prior = toolbar.querySelector(".builder-status-flash");
+    if (prior) prior.remove();
+    var text = noticePlainText(message);
+    var flash = document.createElement("span");
+    flash.className = "builder-status-flash is-" + message.type;
+    flash.setAttribute("role", "status");
+    flash.title = text;
+    flash.textContent = (message.type === "success" ? "✓ " : "") + text;
+    var status = document.getElementById("project_status");
+    if (status && status.parentNode === toolbar) status.insertAdjacentElement("afterend", flash);
+    else toolbar.insertBefore(flash, toolbar.firstChild);
+    var seconds = Number(message.hide_after) > 0 ? Number(message.hide_after) : 4;
+    window.setTimeout(function () { noticeRemoveNode(flash); }, seconds * 1000);
+  }
+
+  function clearFieldNote(field) {
+    if (!field) return;
+    field.classList.remove("is-invalid");
+    field.removeAttribute("aria-invalid");
+    var note = document.getElementById(field.id + "-builder-note");
+    if (note) note.remove();
+    var described = (field.getAttribute("aria-describedby") || "")
+      .split(/\s+/)
+      .filter(function (token) { return token && token !== field.id + "-builder-note"; });
+    if (described.length) field.setAttribute("aria-describedby", described.join(" "));
+    else field.removeAttribute("aria-describedby");
+  }
+
+  function showFieldNote(message, field) {
+    clearFieldNote(field);
+    var isInput = field.matches("input, select, textarea");
+    var problem = message.type === "error" || message.type === "warning";
+    var note = document.createElement("p");
+    note.id = field.id + "-builder-note";
+    note.className = "builder-field-note is-" + message.type;
+    note.setAttribute("role", message.type === "error" ? "alert" : "status");
+    if (typeof message.html === "string") note.innerHTML = message.html;
+    else note.textContent = noticePlainText(message);
+    var anchor = field.closest(".shiny-input-container") || field;
+    anchor.insertAdjacentElement("afterend", note);
+    noticeBind(note);
+    if (isInput) {
+      field.setAttribute(
+        "aria-describedby",
+        ((field.getAttribute("aria-describedby") || "") + " " + note.id).trim()
+      );
+      if (problem) {
+        field.classList.add("is-invalid");
+        field.setAttribute("aria-invalid", "true");
+      }
+      // Editing the value is the answer to the message.
+      field.addEventListener("input", function () { dismissNotice(message); }, { once: true });
+    }
+    message._kind = "field";
+    message._field = field;
+    message._nodes = [note];
+    builderNotices.push(message);
+    scheduleNoticeHide(message);
+  }
+
+  function noticeSectionPlace(message) {
+    var target = message.target;
+    if (target === "build") {
+      var status = document.getElementById("build-stage-status");
+      return status ? { anchor: status, where: "beforebegin" } : null;
+    }
+    var selectors = [];
+    if (target === "review") selectors = ['[data-workflow-stage="review"]'];
+    else if (target && target.selector) selectors = [].concat(target.selector);
+    for (var index = 0; index < selectors.length; index += 1) {
+      var section = document.querySelector(selectors[index]);
+      if (!section) continue;
+      var header = section.querySelector(":scope > .builder-stage-header");
+      return header
+        ? { anchor: header, where: "afterend" }
+        : { anchor: section, where: "afterbegin" };
+    }
+    return null;
+  }
+
+  function noticeDatasetPlaces(message) {
+    var id = message.target.dataset;
+    var places = [];
+    var row = document.querySelector(
+      '.rail .ds[data-ds="' + CSS.escape(id) + '"], .rail .ds[data-import-id="' + CSS.escape(id) + '"]'
+    );
+    var body = row && row.querySelector(".ds-body");
+    if (body) places.push({ anchor: body, where: "beforeend", variant: "row" });
+    var active = document.querySelector(".rail .ds.is-active");
+    var activeId = active && (active.dataset.ds || active.dataset.importId);
+    if (activeId === id) {
+      var stage = document.querySelector(".builder-stage-configure, .builder-project-artifact-stage");
+      var header = stage && stage.querySelector(":scope > .builder-stage-header");
+      if (header) places.push({ anchor: header, where: "afterend", variant: "inline" });
+    }
+    return places;
+  }
+
+  function placeContextualNotices() {
+    builderNoticePlaceTimer = null;
+    builderNotices.slice().forEach(function (message) {
+      if (message._kind === "section") {
+        var live = (message._nodes || []).filter(function (node) { return node.isConnected; });
+        if (live.length) return;
+        var place = noticeSectionPlace(message);
+        if (!place) {
+          // Navigated away from the section it was about.
+          if (message._placed) dismissNotice(message);
+          return;
+        }
+        var node = buildNotice(message, "inline");
+        place.anchor.insertAdjacentElement(place.where, node);
+        noticeBind(node);
+        message._nodes = [node];
+        if (!message._placed) {
+          message._placed = true;
+          window.clearTimeout(message._fallbackTimer);
+          scheduleNoticeHide(message);
+        }
+      } else if (message._kind === "dataset") {
+        message._nodes = (message._nodes || []).filter(function (node) { return node.isConnected; });
+        noticeDatasetPlaces(message).forEach(function (place) {
+          var present = message._nodes.some(function (node) {
+            return place.anchor.contains(node) || place.anchor.nextElementSibling === node;
+          });
+          if (present) return;
+          var node = buildNotice(message, place.variant);
+          place.anchor.insertAdjacentElement(place.where, node);
+          noticeBind(node);
+          message._nodes.push(node);
+        });
+        if (!message._placed && message._nodes.length) {
+          message._placed = true;
+          window.clearTimeout(message._fallbackTimer);
+          scheduleNoticeHide(message);
+        }
+      }
+    });
+  }
+
+  function scheduleNoticePlacement() {
+    if (builderNoticePlaceTimer) return;
+    builderNoticePlaceTimer = window.setTimeout(placeContextualNotices, 60);
+  }
+
+  function watchNoticeTargets() {
+    if (builderNoticeObserver || typeof MutationObserver !== "function") return;
+    builderNoticeObserver = new MutationObserver(function (records) {
+      var relevant = records.some(function (record) {
+        return !(record.target.closest && record.target.closest(".builder-notice, #builder-notice-bar"));
+      });
+      if (relevant && builderNotices.some(function (item) {
+        return item._kind === "section" || item._kind === "dataset";
+      })) {
+        scheduleNoticePlacement();
+      }
+    });
+    builderNoticeObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function showContextualNotice(message, kind) {
+    message._kind = kind;
+    message._nodes = [];
+    builderNotices.push(message);
+    watchNoticeTargets();
+    placeContextualNotices();
+    if (!message._placed) {
+      // The section may still be rendering; give it a moment, then fall back.
+      message._fallbackTimer = window.setTimeout(function () {
+        if (message._placed) return;
+        dismissNotice(message);
+        showGlobalNotice(Object.assign({}, message, { _nodes: [], _kind: null }));
+      }, 1500);
+    }
+  }
+
+  function showDatasetFlash(message) {
+    var id = message.target.dataset;
+    var row = document.querySelector('.rail .ds[data-ds="' + CSS.escape(id) + '"]');
+    var body = row && row.querySelector(".ds-body");
+    if (!body) return showStatusFlash(message);
+    var prior = body.querySelector(".ds-flash");
+    if (prior) prior.remove();
+    var flash = document.createElement("span");
+    flash.className = "ds-flash is-" + message.type;
+    flash.setAttribute("role", "status");
+    flash.textContent = "✓ " + noticePlainText(message);
+    body.appendChild(flash);
+    var seconds = Number(message.hide_after) > 0 ? Number(message.hide_after) : 4;
+    window.setTimeout(function () { noticeRemoveNode(flash); }, seconds * 1000);
+  }
+
+  function builderNotify(message) {
+    if (!message || typeof message !== "object") return;
+    if (message.clear) {
+      clearNoticesById(message.clear);
+      return;
+    }
+    if (!builderNoticeGlyphs[message.type]) message.type = "info";
+    clearNoticesById(message.id);
+    var target = message.target;
+    if (target === "status") {
+      if (message.type === "success" || message.type === "info") showStatusFlash(message);
+      else showGlobalNotice(message);
+      return;
+    }
+    if (target && target.field) {
+      var ids = [].concat(target.field);
+      for (var index = 0; index < ids.length; index += 1) {
+        var field = document.getElementById(ids[index]);
+        if (field && field.getClientRects().length) {
+          showFieldNote(message, field);
+          return;
+        }
+      }
+      showGlobalNotice(message);
+      return;
+    }
+    if (target && target.dataset) {
+      if (message.type === "success") showDatasetFlash(message);
+      else showContextualNotice(message, "dataset");
+      return;
+    }
+    if (target === "build" || target === "review" || (target && target.selector)) {
+      showContextualNotice(message, "section");
+      return;
+    }
+    showGlobalNotice(message);
   }
 
   var builderProjectSaveBackground = false;
@@ -5558,6 +5887,7 @@
       "builder_worker_status",
       updateBuilderWorkerStatus
     );
+    window.Shiny.addCustomMessageHandler("builder_notify", builderNotify);
     window.Shiny.addCustomMessageHandler(
       "builder_project_save_result",
       showBuilderProjectSaveResult

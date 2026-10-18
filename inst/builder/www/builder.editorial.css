@@ -329,8 +329,7 @@ body {
   letter-spacing: .12em;
 }
 
-.rail-head #undo_remove,
-.shiny-notification #undo_remove_notice {
+.rail-head #undo_remove {
   display: inline-flex;
   min-height: 2.75rem;
   align-items: center;
@@ -924,13 +923,6 @@ label,
 }
 
 
-/* Successful saves acknowledge completion without requiring a second action.
-   It joins the toast stack (#shiny-notification-panel) with a success edge. */
-#shiny-notification-panel .shiny-notification.builder-save-confirmation {
-  padding-right: var(--space-4);
-  border-left-color: var(--c-success);
-  color: var(--c-text);
-}
 .builder-project-pending-feedback {
   font-size: var(--builder-type-body);
   color: var(--text-2, #515b54);

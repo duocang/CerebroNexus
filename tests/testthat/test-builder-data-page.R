@@ -306,7 +306,7 @@ test_that("Data page updates do not replay full-page motion", {
   )
   expect_match(
     components,
-    "#shiny-notification-panel .shiny-notification-message",
+    ".builder-notice--bar {",
     fixed = TRUE
   )
   expect_match(
