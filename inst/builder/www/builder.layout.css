@@ -5,10 +5,10 @@
   border: 1px solid var(--c-border);
   border-bottom: 0;
   border-radius: var(--r-lg) var(--r-lg) 0 0;
-  padding: .7rem 1rem;
+  padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-4);
   flex-wrap: wrap;
   position: relative;
   top: auto;
@@ -21,7 +21,7 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: .8rem;
+  gap: var(--space-3);
   position: relative;
 }
 .builder-runtime-version {
@@ -37,7 +37,7 @@
   white-space: nowrap;
   pointer-events: none;
 }
-.topbar .wordmark { display: flex; align-items: center; gap: .7rem; }
+.topbar .wordmark { display: flex; align-items: center; gap: var(--space-3); }
 .topbar .wordmark svg { height: 17px; width: auto; display: block; }
 .topbar h1 {
   font-size: var(--builder-type-subtitle); font-weight: 600; margin: 0; letter-spacing: -.01em;
@@ -50,7 +50,7 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: .45rem;
+  gap: var(--space-2);
   margin-left: auto;
 }
 .builder-project-toolbar .builder-project-status { margin-right: .2rem; }
@@ -78,11 +78,11 @@
 #workflow_progress.is-workflow-compact .builder-workflow-progress li > button,
 #workflow_progress.is-workflow-compact .builder-workflow-progress li > span {
   min-height: 2.85rem;
-  gap: .5rem;
-  padding-block: .25rem;
+  gap: var(--space-2);
+  padding-block: var(--space-1);
 }
 #workflow_progress.is-workflow-compact .builder-workflow-stage-link > .action-label {
-  gap: .5rem;
+  gap: var(--space-2);
 }
 #workflow_progress.is-workflow-compact .builder-workflow-step-number {
   width: 1.5rem;
@@ -213,7 +213,7 @@
   transition: border-color var(--duration-base) var(--ease),
               box-shadow var(--duration-base) var(--ease);
 }
-.builder-stage ul { max-width: 100%; padding-left: 1.35rem; }
+.builder-stage ul { max-width: 100%; padding-left: var(--space-5); }
 .builder-stage li { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .builder-stage[data-current-stage="true"] {
   border-color: transparent;
@@ -237,8 +237,8 @@
   min-width: 0;
   align-items: center;
   justify-content: space-between;
-  gap: .8rem;
-  padding: .7rem .85rem;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
   background: var(--c-surface);
@@ -280,7 +280,7 @@
 }
 .ds--ready:has(.ds-ready-stamp.needs-review) .ds-pick { padding-right: 2.5rem; }
 .rail-head {
-  padding: .75rem .95rem;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--c-border);
   font-size: var(--builder-type-caption);
   font-family: var(--font-mono);
@@ -291,13 +291,13 @@
   justify-content: space-between;
   align-items: center;
 }
-.rail-empty { padding: 1.1rem .95rem; color: var(--c-text-subtle); font-size: var(--builder-type-body); }
+.rail-empty { padding: var(--space-4) var(--space-4); color: var(--c-text-subtle); font-size: var(--builder-type-body); }
 .rail-add-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: .5rem;
-  margin: .65rem;
-  padding-top: .65rem;
+  gap: var(--space-2);
+  margin: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--c-border);
 }
 .rail-add-actions .btn {
@@ -309,8 +309,8 @@
   justify-items: center;
   align-items: center;
   align-content: center;
-  gap: .35rem;
-  padding: .65rem .75rem;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3);
   border-color: var(--c-border);
   border-radius: var(--r-sm);
   background: var(--c-surface);
@@ -336,7 +336,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: .45rem;
+  gap: var(--space-2);
 }
 .rail-add-title strong {
   color: var(--c-text);
@@ -362,8 +362,8 @@
   text-align: center;
 }
 .rail-add-actions > .builder-format-deprecated {
-  margin-top: .3rem;
-  padding: 0 .25rem;
+  margin-top: var(--space-1);
+  padding: 0 var(--space-1);
 }
 .builder-dataset-dropzone .builder-format-deprecated {
   margin-top: .2rem;
@@ -378,7 +378,7 @@
   line-height: 1.4;
 }
 .builder-format-unavailable--rail {
-  padding: 0 .25rem;
+  padding: 0 var(--space-1);
   font-size: var(--builder-type-micro);
   text-align: left;
 }
@@ -388,7 +388,7 @@
    whole row selects, and a remove button sits on top of its right end. */
 .ds {
   position: relative;
-  margin: .45rem .65rem;
+  margin: var(--space-2) var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--r-md);
   transition: background var(--duration-base) var(--ease),
@@ -423,9 +423,9 @@
 .ds-pick {
   display: flex;
   align-items: flex-start;
-  gap: .7rem;
+  gap: var(--space-3);
   width: 100%;
-  padding: .6rem 1rem .6rem .8rem;
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3);
   border: none;
   background: transparent;
   text-align: left;
@@ -485,7 +485,7 @@
   position: static;
   width: auto;
   min-height: 1.8rem;
-  padding: .35rem .55rem;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--r-xs);
   background: transparent;
@@ -501,8 +501,8 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: .35rem;
-  padding: 0 .8rem .55rem;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) var(--space-2);
   opacity: .62;
   transition: opacity var(--duration-fast) var(--ease-standard);
 }
@@ -515,7 +515,7 @@
   min-width: 1.8rem;
   min-height: 1.8rem;
   margin: 0;
-  padding: .15rem .35rem;
+  padding: .15rem var(--space-1);
   border: 1px solid var(--c-border-2);
   border-radius: var(--r-xs);
   background: var(--c-surface);
@@ -525,7 +525,7 @@
 .ds-move,
 .ds-del {
   align-items: center;
-  gap: .3rem;
+  gap: var(--space-1);
   font: inherit;
   font-size: var(--builder-type-caption);
   line-height: 1;
@@ -600,7 +600,7 @@
     display: inline-flex;
     min-height: 2rem;
     align-items: center;
-    padding: .25rem .55rem;
+    padding: var(--space-1) var(--space-2);
     border: 1px solid var(--c-border-2);
     border-radius: var(--r-xs);
     background: var(--c-surface);
