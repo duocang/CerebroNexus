@@ -116,7 +116,7 @@ test_that("Projection renders an empty filter result instead of retaining cells"
 test_that("Gene expression panels share one global numeric range", {
   env <- new.env(parent = globalenv())
   sys.source(
-    viewer_path("gene_expression", "func_color_scale.R"),
+    viewer_path("core", "func_color_scale.R"),
     envir = env
   )
 
@@ -132,7 +132,7 @@ test_that("Different gene colours are stable and visually distinct", {
   }
   env <- new.env(parent = globalenv())
   sys.source(
-    file.path(root, "gene_expression", "func_color_scale.R"),
+    file.path(root, "core", "func_color_scale.R"),
     envir = env
   )
 

@@ -564,7 +564,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   sys.source(
     file.path(
       system.file("viewer", package = "CerebroNexus"),
-      "gene_expression",
+      "core",
       "func_color_scale.R"
     ),
     envir = renderer
