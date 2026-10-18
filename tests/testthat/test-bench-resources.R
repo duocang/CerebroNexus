@@ -353,3 +353,32 @@ test_that("exact plan nnz overrides a memory-only embedded preflight", {
     "SKIPPED(resource): preflight:", fixed = TRUE
   )
 })
+
+test_that("validation accepts embedded builds the exact plan admitted", {
+  skip_unless_bench_resources()
+  source(bench_resources, local = TRUE)
+  memory <- "estimated memory exceeds safe budget"
+  disk <- "source download exceeds safe disk budget"
+  check <- function(status, safe, reason) {
+    bench_check_embedded_outcomes(status, safe, reason)
+  }
+
+  # The 128 GB Human 500k supplement: preflight failed on memory only, all five built.
+  expect_true(check(rep("OK", 5), rep(FALSE, 5), rep(memory, 5)))
+  # The same tier may also skip at preflight, on the exact estimate, or at the cap.
+  expect_true(check(paste0("SKIPPED(resource): preflight: ", memory), FALSE, memory))
+  expect_true(check("SKIPPED(resource): source-tier estimate 1 MiB exceeds budget 0 MiB or sparse-index limit", FALSE, memory))
+  expect_true(check("SKIPPED(resource): killed at the Scale memory cap (cgroup oom_kill, exit 137)", FALSE, memory))
+  # A preflight skip must still name this tier's reason.
+  expect_error(check(paste0("SKIPPED(resource): preflight: ", disk), FALSE, memory), "do not match")
+
+  # A binding (non-memory) preflight failure must have skipped with its reason.
+  both <- paste(memory, disk, sep = "; ")
+  expect_true(check(paste0("SKIPPED(resource): preflight: ", both), FALSE, both))
+  expect_error(check("OK", FALSE, both), "do not match")
+  expect_error(check("OK", FALSE, disk), "do not match")
+
+  # A passing tier never skips at preflight.
+  expect_true(check("OK", TRUE, "safe"))
+  expect_error(check(paste0("SKIPPED(resource): preflight: ", memory), TRUE, "safe"), "do not match")
+})

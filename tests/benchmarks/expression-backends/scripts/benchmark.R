@@ -2028,6 +2028,41 @@ bench_scale_memory_budget <- function(available_bytes, vector_limit_mb = Inf) {
 # underestimate in Scale is caught by the cgroup OOM handling as a resource skip.
 BENCH_EMBEDDED_BYTES_PER_NNZ <- 58
 
+# The launch preflight estimates nnz from the source-wide density. Its memory and
+# sparse-index failures are re-decided at export time from the frozen plan's
+# exact nnz; any other failure (such as disk) binds. Shared by the export
+# command and result validation so both apply the same rule.
+bench_embedded_preflight_binds <- function(safe, reason) {
+  exact_checks <- c(
+    "estimated memory exceeds safe budget",
+    "estimated nnz exceeds 32-bit sparse index"
+  )
+  vapply(seq_along(safe), function(i) {
+    if (isTRUE(safe[i])) {
+      return(FALSE)
+    }
+    failures <- strsplit(reason[i], "; ", fixed = TRUE)[[1L]]
+    length(setdiff(failures, exact_checks)) > 0L
+  }, logical(1))
+}
+
+# Validate Scale embedded outcomes against their tier's preflight. A binding
+# preflight must have skipped with its own reason. A memory/index-only failure
+# was re-decided from the exact plan, so the export may have run, skipped on the
+# exact estimate or been OOM-killed; a preflight skip must still carry this
+# tier's reason. A passing tier never skips at preflight.
+bench_check_embedded_outcomes <- function(status, safe, reason) {
+  expected_skip <- paste0("SKIPPED(resource): preflight: ", reason)
+  preflight_skip <- startsWith(status, "SKIPPED(resource): preflight:")
+  binds <- bench_embedded_preflight_binds(safe, reason)
+  wrong <- (binds & status != expected_skip) |
+    (!binds & preflight_skip & (safe | status != expected_skip))
+  if (any(wrong)) {
+    stop("embedded outcomes do not match resource preflight", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 bench_assess_resources <- function(
   inventory,
   plan,

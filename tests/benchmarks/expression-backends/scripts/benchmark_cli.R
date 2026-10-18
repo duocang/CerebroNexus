@@ -770,18 +770,9 @@ if (identical(command, "inspect")) {
     exact_peak_mb <- 1024 + exact_plan$nnz * BENCH_EMBEDDED_BYTES_PER_NNZ / 2^20
     exact_fits <- exact_peak_mb <= tier$memory_budget_mb &&
       exact_plan$nnz <= .Machine$integer.max
-    preflight_failures <- if (tier$embedded_safe) {
-      character()
-    } else {
-      strsplit(tier$embedded_reason, "; ", fixed = TRUE)[[1L]]
-    }
-    superseded <- c(
-      "estimated memory exceeds safe budget",
-      "estimated nnz exceeds 32-bit sparse index"
-    )
     if (
-      length(setdiff(preflight_failures, superseded)) ||
-        (length(preflight_failures) && !exact_fits)
+      bench_embedded_preflight_binds(tier$embedded_safe, tier$embedded_reason) ||
+        (!tier$embedded_safe && !exact_fits)
     ) {
       row$status <- paste0(
         "SKIPPED(resource): preflight: ",
@@ -1260,19 +1251,11 @@ if (identical(command, "inspect")) {
       ,
       drop = FALSE
     ]
-    expected_skip <- paste0(
-      "SKIPPED(resource): preflight: ",
+    bench_check_embedded_outcomes(
+      embedded_rows$status,
+      checks$embedded_safe,
       checks$embedded_reason
     )
-    if (
-      any(!checks$embedded_safe & embedded_rows$status != expected_skip) ||
-        any(
-          checks$embedded_safe &
-            grepl("^SKIPPED\\(resource\\): preflight:", embedded_rows$status)
-        )
-    ) {
-      stop("embedded outcomes do not match resource preflight", call. = FALSE)
-    }
   }
 
   if (
