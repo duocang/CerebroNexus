@@ -257,10 +257,25 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   color: var(--builder-action);
   transition: background .22s ease, color .22s ease, transform .28s ease;
 }
+/* A light track with one amber arc reads as progress without shouting. */
 .builder-operation-overlay-icon .spinner {
   width: 1.15rem;
   height: 1.15rem;
   margin: 0;
+  border: 2px solid var(--c-amber-100);
+  border-top-color: var(--builder-action);
+  animation: spin .9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The global reduced-motion rule freezes every animation, which left this
+     icon a static ring. A slow turn of the small arc still shows the picker
+     or task is alive without large on-screen motion. */
+  .builder-operation-overlay-icon .spinner {
+    border-top-color: var(--builder-action);
+    opacity: 1;
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 .builder-operation-success-mark,
 .builder-operation-error-mark { display: none; font-size: var(--builder-type-title); font-weight: 800; }
@@ -449,12 +464,11 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   padding-top: var(--space-4);
   margin-top: var(--space-2);
   border-top: 1px solid var(--c-border);
-  opacity: 0;
-  transform: translateY(-.35rem);
 }
+/* Actions render with the card: a delayed fade left an empty band while the
+   native picker held focus and the page stopped painting frames. */
 .builder-operation-overlay-card.has-actions .builder-operation-overlay-actions {
   display: flex;
-  animation: builder-operation-actions-in .24s .08s ease-out forwards;
 }
 @keyframes builder-operation-backdrop-in {
   from { opacity: 0; }
@@ -463,9 +477,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 @keyframes builder-operation-card-in {
   from { opacity: 0; transform: translateY(.5rem) scale(.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes builder-operation-actions-in {
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .builder-dataset-switch-veil {
