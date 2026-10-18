@@ -1262,13 +1262,17 @@
     if (!b) return;
     // Embedded images already carry their saved calibration in the pixels.
     state = imageRenderState(cimg, state);
-    var tlData = [b.xmin, b.ymax];
-    var trData = [b.xmax, b.ymax];
-    var blData = [b.xmin, b.ymin];
-    var centerData = [
+    // Rotate the image in DATA space about the origin, exactly as R rotates the
+    // cell coordinates (rotateSpatialCoordinates). Rotating on screen about the
+    // image centre instead moves the image away from the cells it belongs to.
+    var tlData = rotateDataPoint(b.xmin, b.ymax, state.rotate);
+    var trData = rotateDataPoint(b.xmax, b.ymax, state.rotate);
+    var blData = rotateDataPoint(b.xmin, b.ymin, state.rotate);
+    var centerData = rotateDataPoint(
       (Number(b.xmin) + Number(b.xmax)) / 2,
-      (Number(b.ymin) + Number(b.ymax)) / 2
-    ];
+      (Number(b.ymin) + Number(b.ymax)) / 2,
+      state.rotate
+    );
     var tl = dataToScreen(p, tlData[0], tlData[1]);
     var tr = dataToScreen(p, trData[0], trData[1]);
     var bl = dataToScreen(p, blData[0], blData[1]);
@@ -1284,7 +1288,6 @@
     c.save();
     c.globalAlpha = state.opacity;
     c.translate(center[0] + offSX, center[1] + offSY);
-    c.rotate(-state.rotate * Math.PI / 180);
     c.scale(state.scaleX * (state.flipX ? -1 : 1),
       state.scaleY * (state.flipY ? -1 : 1));
     c.transform(tr[0] - tl[0], tr[1] - tl[1],
