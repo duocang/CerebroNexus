@@ -865,20 +865,12 @@ label,
 }
 
 
-/* Successful saves acknowledge completion without requiring a second action. */
-.builder-save-confirmation {
-  position: fixed;
-  z-index: 1100;
-  top: calc(var(--builder-topbar-height, 72px) + 8px);
-  right: 1rem;
-  max-width: min(32rem, calc(100vw - 2rem));
-  padding: var(--space-3) var(--space-4);
-  color: #244c3a;
-  background: #f1f8f3;
-  border: 1px solid #a6c5b2;
-  border-radius: var(--r-xs);
-  box-shadow: var(--shadow-2);
-  pointer-events: none;
+/* Successful saves acknowledge completion without requiring a second action.
+   It joins the toast stack (#shiny-notification-panel) with a success edge. */
+#shiny-notification-panel .shiny-notification.builder-save-confirmation {
+  padding-right: var(--space-4);
+  border-left-color: var(--c-success);
+  color: var(--c-text);
 }
 .builder-project-pending-feedback {
   font-size: var(--builder-type-body);

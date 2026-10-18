@@ -769,10 +769,18 @@
       if (prior) prior.remove();
       var confirmation = document.createElement("div");
       confirmation.id = "builder-save-confirmation";
-      confirmation.className = "builder-save-confirmation";
+      confirmation.className = "shiny-notification builder-save-confirmation";
       confirmation.setAttribute("role", "status");
       confirmation.textContent = message;
-      document.body.appendChild(confirmation);
+      // Share Shiny's toast stack (it reuses a panel with this id) so the
+      // confirmation and other notices never overlap each other.
+      var toastPanel = document.getElementById("shiny-notification-panel");
+      if (!toastPanel) {
+        toastPanel = document.createElement("div");
+        toastPanel.id = "shiny-notification-panel";
+        document.body.appendChild(toastPanel);
+      }
+      toastPanel.appendChild(confirmation);
       window.setTimeout(function () { confirmation.remove(); }, 6000);
       return;
     }

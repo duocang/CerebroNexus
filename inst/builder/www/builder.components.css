@@ -2417,20 +2417,69 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   border-top-color: var(--c-border);
   background: transparent;
 }
-#shiny-notification-panel .shiny-notification-message {
-  border: 1px solid var(--c-border-strong);
-  border-left: 3px solid var(--c-amber-600);
+/* ---- toasts -------------------------------------------------------------
+   Shiny notifications and the save confirmation stack top-right just below
+   the header and stepper, clear of the sticky stage footer at the bottom. */
+#shiny-notification-panel {
+  display: flex;
+  top: calc(var(--builder-topbar-height) + var(--builder-workflow-progress-height) + var(--space-3));
+  right: var(--space-5);
+  bottom: auto;
+  width: min(24rem, calc(100vw - 2 * var(--space-4)));
+  max-width: none;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  background: transparent;
+  /* Above dialogs (2020): a path error must stay readable over its dialog. */
+  z-index: 2030;
+  pointer-events: none;
+}
+#shiny-notification-panel .shiny-notification {
+  position: relative;
+  margin: 0;
+  padding: var(--space-3) var(--space-8) var(--space-3) var(--space-4);
+  border: 1px solid var(--c-border);
+  border-left: 3px solid var(--builder-action);
   border-radius: var(--r-md);
   background: var(--c-surface);
   color: var(--c-text);
   box-shadow: var(--shadow-3);
+  font-size: var(--builder-type-small);
+  line-height: 1.45;
+  opacity: 1;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
 }
-#shiny-notification-panel .shiny-notification-message a {
+#shiny-notification-panel .shiny-notification-message {
+  border-left-color: var(--c-amber-600);
+}
+#shiny-notification-panel .shiny-notification-warning {
+  border-left-color: var(--c-warning);
+}
+#shiny-notification-panel .shiny-notification-error {
+  border-left-color: var(--c-error);
+  color: var(--c-error-700);
+}
+#shiny-notification-panel .shiny-notification a {
   color: var(--c-amber-700);
   font-weight: 700;
 }
-#shiny-notification-panel .shiny-notification-message .shiny-notification-close {
+#shiny-notification-panel .shiny-notification-close {
+  top: var(--space-2);
+  right: var(--space-3);
   color: var(--c-text-muted);
+  font-size: var(--builder-type-subtitle);
+  font-weight: 400;
+  line-height: 1;
+}
+#shiny-notification-panel .shiny-notification-close:hover { color: var(--c-text); }
+@media (max-width: 36rem) {
+  #shiny-notification-panel {
+    right: var(--space-4);
+    left: var(--space-4);
+    width: auto;
+  }
 }
 @media (max-width: 48rem) {
   .builder-dataset-dropzone { padding: var(--space-4); }
