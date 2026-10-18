@@ -379,43 +379,10 @@ builder_project_backup_recovery_dialog <- function(offer) {
   )
 }
 
-builder_project_first_save_dialog <- function() {
-  modalDialog(
-    title = tagList(
-      tags$span(class = "builder-project-modal-kicker", "Builder project"),
-      tags$span("Save this project")
-    ),
-    tags$div(
-      class = "builder-project-dialog builder-project-first-save-dialog",
-      tags$p(
-        class = "builder-project-dialog-lead",
-        "Choose a folder for the datasets and current Builder settings."
-      ),
-      tags$div(
-        class = "builder-project-dialog-note",
-        tags$span(
-          class = "builder-project-dialog-icon",
-          `aria-hidden` = "true",
-          shiny::icon("check")
-        ),
-        tags$p(
-          paste(
-            "Includes source files and settings.",
-            "Keep this page open to prepare the dataset cache after saving."
-          )
-        )
-      )
-    ),
-    footer = tagList(
-      modalButton("Cancel"),
-      actionButton(
-        "choose_builder_project_folder",
-        "Choose folder…",
-        class = "btn btn-primary"
-      )
-    ),
-    easyClose = FALSE,
-    size = "m"
+builder_project_save_location_note <- function() {
+  paste(
+    "Includes source files and settings.",
+    "Keep this page open to prepare the dataset cache after saving."
   )
 }
 

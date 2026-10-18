@@ -1089,7 +1089,6 @@
       open_builder_project: activityCapability("open_project"),
       save_builder_project: activityCapability("save_project") ||
         activityCapability("create_project"),
-      choose_builder_project_folder: activityCapability("create_project"),
       confirm_builder_project_open: activityCapability("open_project") ||
         (builderActivityState.has_project === true &&
           activityCapability("edit_dataset")),
@@ -5773,7 +5772,7 @@
   }, true);
 
   document.addEventListener("click", function (event) {
-    var button = event.target.closest("#open_builder_project, #save_builder_project, #choose_builder_project_folder, #confirm_builder_project_open, #continue_to_review, #complete_dataset_check");
+    var button = event.target.closest("#open_builder_project, #save_builder_project, #confirm_builder_project_open, #continue_to_review, #complete_dataset_check");
     if (!button || button.disabled) return;
     var initialModal = document.querySelector("#shiny-modal");
     var prior = document.getElementById("builder-project-pending-feedback");
@@ -5783,12 +5782,12 @@
     feedback.className = "builder-project-pending-feedback";
     feedback.setAttribute("role", "status");
     var messages = {open_builder_project: "Opening…", save_builder_project: "Preparing save…",
-      choose_builder_project_folder: "Opening file browser…",
       confirm_builder_project_open: "Opening selected datasets…",
       continue_to_review: "Preparing review…", complete_dataset_check: "Checking settings…"};
     feedback.textContent = messages[button.id];
     button.insertAdjacentElement("beforebegin", feedback);
-    // First Save opens a location dialog without changing the project phase.
+    // Some clicks open a dialog (such as the discard question before Open)
+    // without changing the project phase.
     var observer = new MutationObserver(function () {
       if (!feedback.isConnected || document.querySelector("#shiny-modal") !== initialModal) {
         feedback.remove(); observer.disconnect();
