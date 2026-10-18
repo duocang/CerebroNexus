@@ -264,18 +264,24 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   margin: 0;
   border: 2px solid var(--c-amber-100);
   border-top-color: var(--builder-action);
-  animation: spin .9s linear infinite;
+  animation: spin 1.6s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  /* The global reduced-motion rule freezes every animation, which left this
-     icon a static ring. A slow turn of the small arc still shows the picker
-     or task is alive without large on-screen motion. */
+  /* Reduced motion is an accessibility choice: nothing turns. The ring is
+     whole and only its opacity breathes, so the picker or task still reads
+     as busy without any movement. */
   .builder-operation-overlay-icon .spinner {
-    border-top-color: var(--builder-action);
-    opacity: 1;
-    animation-duration: 1.6s !important;
+    border-color: var(--builder-action);
+    animation-name: builder-busy-breathe !important;
+    animation-duration: 2.4s !important;
+    animation-timing-function: ease-in-out !important;
     animation-iteration-count: infinite !important;
+    animation-direction: alternate !important;
   }
+}
+@keyframes builder-busy-breathe {
+  from { opacity: 1; }
+  to { opacity: .35; }
 }
 .builder-operation-success-mark,
 .builder-operation-error-mark { display: none; font-size: var(--builder-type-title); font-weight: 800; }
