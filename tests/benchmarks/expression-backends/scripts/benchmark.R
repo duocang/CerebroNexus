@@ -1350,11 +1350,12 @@ bench_make_full_shell <- function(
 # grows, and a real clustering/UMAP would add tens of minutes per tier without
 # changing a single number that is being measured. Everything that IS measured
 # - the counts, the dimensions, the sparsity - comes from the real file.
-
-suppressPackageStartupMessages({
-  library(Seurat)
-  library(SeuratObject)
-})
+#
+# Seurat is not attached when this file is sourced. Every benchmark process
+# sources it, and CerebroNexus does not need Seurat to read a CRB, so loading it
+# here cost each process about 5 s and added about 350 MB to every backend's
+# measured memory after load. Only embedded export builds a Seurat object; the
+# namespaced calls below load SeuratObject (and exportFromSeurat() Seurat) then.
 
 bench_make_seurat <- function(m, n_groups = 6L, seed = 42L) {
   set.seed(seed)

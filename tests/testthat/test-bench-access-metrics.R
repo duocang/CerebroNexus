@@ -342,3 +342,20 @@ test_that("native monotonic clock measures actual waiting", {
   expect_identical(got$timing$clock, "CLOCK_MONOTONIC")
   expect_gt(got$timing$resolution_secs, 0)
 })
+
+test_that("sourcing the harness does not load Seurat into access processes", {
+  skip_unless_bench_access()
+  # Every benchmark process sources benchmark.R; access processes read a CRB
+  # and must not carry Seurat's load time or memory into their measurements.
+  script <- tempfile(fileext = ".R")
+  on.exit(unlink(script), add = TRUE)
+  writeLines(c(
+    sprintf("source(%s)", deparse(normalizePath(bench_protocol, winslash = "/"))),
+    "cat(c('Seurat', 'SeuratObject') %in% loadedNamespaces(), sep = '\n')"
+  ), script)
+  output <- bench_test_system2(
+    file.path(R.home("bin"), "Rscript"), script,
+    stdout = TRUE, stderr = FALSE
+  )
+  expect_identical(tail(output, 2L), c("FALSE", "FALSE"))
+})
