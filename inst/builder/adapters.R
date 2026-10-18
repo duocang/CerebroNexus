@@ -430,6 +430,51 @@ builder_example_adapter <- function(id, object) {
   )
 }
 
+#' The pictures a source object brought, as plain bytes, for the main process.
+#'
+#' convertSCEToSeurat() keeps them per section in `@misc$cerebro_source_images`
+#' as data URIs. The import worker decodes them here so the main process can
+#' write files and describe them; nothing else of the object crosses over.
+#'
+#' @return `list(section = list(label = list(bytes = <raw>, bounds = <list>)))`,
+#'   empty when the object brought none.
+builder_source_image_payload <- function(object) {
+  if (!methods::is(object, "Seurat")) {
+    return(list())
+  }
+  sections <- tryCatch(object@misc$cerebro_source_images, error = function(e) NULL)
+  if (!is.list(sections) || !length(sections) || is.null(names(sections))) {
+    return(list())
+  }
+  result <- list()
+  for (section in names(sections)) {
+    for (label in names(sections[[section]])) {
+      entry <- sections[[section]][[label]]
+      uri <- entry$histology_image
+      bounds <- as.list(entry$histology_image_bounds)
+      if (
+        !is.character(uri) || length(uri) != 1L ||
+          !startsWith(uri, "data:image/png;base64,") ||
+          !all(c("xmin", "xmax", "ymin", "ymax") %in% names(bounds))
+      ) {
+        next
+      }
+      bytes <- tryCatch(
+        base64enc::base64decode(sub("^data:image/png;base64,", "", uri)),
+        error = function(e) NULL
+      )
+      if (is.null(bytes) || !length(bytes)) {
+        next
+      }
+      result[[section]][[label]] <- list(
+        bytes = bytes,
+        bounds = bounds[c("xmin", "xmax", "ymin", "ymax")]
+      )
+    }
+  }
+  result
+}
+
 .builder_adapter_inspect <- function(adapter, progress = NULL) {
   if (!inherits(adapter, "builder_source_adapter")) {
     .builder_adapter_abort("Expected a Builder source adapter.")
@@ -465,7 +510,8 @@ builder_example_adapter <- function(id, object) {
     format = adapter$format,
     source = source,
     snapshot_source = loaded$snapshot_source,
-    source_md5 = loaded$source_md5
+    source_md5 = loaded$source_md5,
+    source_images = builder_source_image_payload(object)
   )
 }
 
@@ -2225,7 +2271,8 @@ builder_open_snapshot <- function(snapshot) {
       list(estimated_bytes = snapshot$closure_bytes)
     ),
     snapshot = snapshot,
-    previous_snapshot = previous_snapshot
+    previous_snapshot = previous_snapshot,
+    source_images = inspected$source_images
   )
   if (is.environment(snapshot_cache)) {
     assign(
@@ -2238,7 +2285,8 @@ builder_open_snapshot <- function(snapshot) {
           "format",
           "levels",
           "source",
-          "matrix_summary"
+          "matrix_summary",
+          "source_images"
         )]
       ),
       envir = snapshot_cache

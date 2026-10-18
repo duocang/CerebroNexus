@@ -3262,6 +3262,17 @@ observe({
     settings$recommendations <- recommendations
     settings$metadata_policy <- recommendations$metadata
     settings$expression_backend <- recommendations$backend$value %||% "embedded"
+    ## Pictures the source file brought along. Failing to place one must not
+    ## fail the import: the Spatial page still takes an uploaded picture.
+    if (length(value$source_images %||% list())) {
+      seeded <- tryCatch(
+        builder_source_image_settings(value$source_images, source_image_dir()),
+        error = function(error) list()
+      )
+      if (length(seeded)) {
+        settings$images <- utils::modifyList(settings$images %||% list(), seeded)
+      }
+    }
     loaded_path <- value$retained_path %||% p$retained_path %||% p$path
     entry <- list(
       id = p$id,
@@ -3595,6 +3606,22 @@ observe({
     protocol(builder_protocol_acknowledge(protocol(), request$request_id))
   }
 })
+
+## Pictures that arrive with a source file (AnnData, SingleCellExperiment) are
+## written here and described like uploaded ones; the folder goes with the
+## session.
+source_image_state <- new.env(parent = emptyenv())
+source_image_dir <- function() {
+  if (is.null(source_image_state$path)) {
+    path <- tempfile("cerebro-builder-source-images-")
+    dir.create(path, recursive = TRUE, mode = "0700", showWarnings = FALSE)
+    source_image_state$path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+    session$onSessionEnded(function() {
+      unlink(source_image_state$path, recursive = TRUE, force = TRUE)
+    })
+  }
+  source_image_state$path
+}
 
 update_enhance_histology_choices <- function(entry) {
   collection <- builder_image_collection_normalize(

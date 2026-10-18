@@ -325,3 +325,57 @@ test_that("tissue pictures stay with their section on the Seurat object", {
     sce@metadata$spatial_images$section1$hires$histology_image_bounds
   )
 })
+
+test_that("tissue pictures that come with the file become Builder images and ship with the app", {
+  skip_if_not_installed("qs2")
+  skip_if_not_installed("png")
+  sce <- quiet(readH5adAsSCE(fixture("small_visium.h5ad")))
+  SingleCellExperiment::reducedDim(sce, "UMAP") <- SingleCellExperiment::reducedDim(sce, "spatial") / 1000
+  dir <- withr::local_tempdir()
+  path <- file.path(dir, "visium.rds")
+  saveRDS(sce, path)
+
+  ## the import worker's side: the bytes of the pictures cross over, nothing else
+  inspected <- quiet(builder_adapter_inspect(builder_seurat_file_adapter(path)))
+  payload <- inspected$source_images
+  expect_identical(names(payload), c("section1", "section2"))
+  expect_identical(names(payload$section1), "hires")
+  expect_identical(names(payload$section2), "lowres")
+  expect_identical(rawToChar(payload$section1$hires$bytes[2:4]), "PNG")
+
+  ## the main process's side: files and records like an upload's
+  images <- builder_source_image_settings(payload, file.path(dir, "images"))
+  record <- images$section1$hires
+  expect_true(file.exists(record$source_path))
+  expect_true(record$flip_y)
+  expect_identical(record$section_id, "section1")
+  expect_identical(record$image_label, "hires")
+  expect_equal(record$base_bounds, payload$section1$hires$bounds)
+  expect_identical(
+    record$source_content_md5,
+    unname(as.character(tools::md5sum(record$source_path)))
+  )
+
+  ## and the plan accepts them and the built app carries them
+  entry <- builder_e2e_entry(list(
+    id = "visium", label = "visium",
+    make = function() list(object = inspected$object)
+  ))
+  entry$settings$images <- images
+  snapshot <- builder_snapshot_seurat(
+    inspected$object, file.path(dir, "snapshot"), available_bytes = 2^40
+  )
+  entry$snapshot <- snapshot
+  plan <- builder_freeze_plan(
+    list(entry), file.path(dir, "release"), make_app = TRUE,
+    app_options = list(launch_browser = FALSE)
+  )
+  expect_null(plan$error)
+  stage <- file.path(dir, "stage")
+  dir.create(stage)
+  result <- quiet(builder_execute_plan(plan, stage, list(visium = snapshot)))
+  expect_identical(result$state, "success", info = result$error %||% "")
+  assets <- list.files(file.path(result$app_dir, "spatial-assets"))
+  expect_length(assets, 2L)
+  expect_true(all(endsWith(assets, ".png")))
+})

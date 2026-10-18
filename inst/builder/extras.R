@@ -2181,3 +2181,69 @@ builder_adjust_bounds <- function(bounds, dx = 0, dy = 0, scale = 1) {
     ymax = cy + h / 2
   )
 }
+
+## ---------------------------------------------------------------------------
+## Tissue pictures that arrive with the source file (AnnData / SingleCellExperiment)
+## ---------------------------------------------------------------------------
+
+#' Image settings for pictures that came with the source file.
+#'
+#' Writes each picture into `dir` and describes it the way an uploaded one is
+#' described, so planning, building and saving a project treat it like any other
+#' image. The picture's extent in coordinate space is known from its scale
+#' factor, so it is placed exactly there instead of being fitted by eye.
+#' Pictures keep their own orientation (row 0 on top) while the Viewer draws y
+#' upward, so they are flipped vertically, as for Seurat Visium data.
+#'
+#' @param payload From builder_source_image_payload().
+#' @param dir A directory the caller owns.
+#' @return `list(section = list(label = alignment_record))`; pictures that
+#'   cannot be used are left out.
+builder_source_image_settings <- function(payload, dir) {
+  if (!is.list(payload) || !length(payload)) {
+    return(list())
+  }
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE, mode = "0700")
+  result <- list()
+  for (section in names(payload)) {
+    for (label in names(payload[[section]])) {
+      item <- payload[[section]][[label]]
+      staged <- tempfile("source-image-", tmpdir = dir, fileext = ".png")
+      writeBin(item$bytes, staged)
+      md5 <- unname(as.character(tools::md5sum(staged)))
+      path <- file.path(dir, paste0(md5, ".png"))
+      if (file.exists(path)) {
+        unlink(staged)
+      } else if (!file.rename(staged, path)) {
+        unlink(staged)
+        next
+      }
+      name <- paste0(section, " ", label, ".png")
+      image <- builder_read_image(path, name)
+      if (!is.null(image$error)) {
+        next
+      }
+      parameters <- utils::modifyList(builder_alignment_defaults(), list(flip_y = TRUE))
+      record <- builder_alignment_record(
+        source = list(name = name, type = image$mime, size = image$bytes),
+        base_bounds = item$bounds,
+        parameters = parameters,
+        section = list(id = section, kind = "spatial"),
+        source_path = image$source_path
+      )
+      record$viewport_bounds <- item$bounds
+      record$image_label <- label
+      facts <- intersect(
+        names(image),
+        c(
+          "bytes", "width", "height", "source_width", "source_height",
+          "extent_width", "extent_height", "display_width", "display_height"
+        )
+      )
+      record[facts] <- image[facts]
+      record$source_content_md5 <- image$source_content_md5
+      result[[section]][[label]] <- record
+    }
+  }
+  result
+}

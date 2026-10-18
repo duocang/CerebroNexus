@@ -30,7 +30,15 @@ the \code{counts} layer and \code{logcounts} the \code{data} layer. Without thos
 assay (an AnnData \code{X}) is used as \code{counts} when it holds whole numbers and as
 \code{data} otherwise.
 
-Tissue images and the split of several tissue sections are not carried
-across; use \code{\link[=convertSCEToCerebro]{convertSCEToCerebro()}} or \code{\link[=convertH5adToCerebro]{convertH5adToCerebro()}} directly when
-you need them.
+Spatial coordinates (\code{reducedDim(object, "spatial")}) become one Seurat
+spatial image (a FOV of cell centroids) per tissue section, named after the
+section, so the Builder's spatial pages treat them like any other spatial
+data set. Sections are told apart by the \code{library_id} column. Without one the
+coordinates are kept as a single section.
+
+The tissue pictures in \code{metadata(object)$spatial_images} are kept per section
+in \code{@misc$cerebro_source_images} (not in \code{cerebro_spatial_images}, which the
+export would embed in the \code{.crb}). The Builder takes them from there and
+attaches them to their sections as separate image files, placed at the extent
+their scale factor gives.
 }

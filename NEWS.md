@@ -14,9 +14,9 @@
 - The Builder opens `.h5ad`, `.h5mu` and SingleCellExperiment `.rds`/`.qs2`
   files like Seurat ones (`convertSCEToSeurat()` is the conversion it uses), and
   offers PAGA, scVelo and pseudotime trajectories next to monocle2. Spatial
-  coordinates arrive as one spatial section per `library_id`. Visium tissue
-  pictures are not attached by the Builder (it takes pictures as separate
-  files); use `convertH5adToCerebro()` when you want them embedded.
+  coordinates arrive as one spatial section per `library_id`, and Visium tissue
+  pictures are attached to their sections as images at the position their scale
+  factor gives.
 
 ## Builder
 

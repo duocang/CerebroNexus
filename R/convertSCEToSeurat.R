@@ -20,8 +20,9 @@
 #'
 #' The tissue pictures in `metadata(object)$spatial_images` are kept per section
 #' in `@misc$cerebro_source_images` (not in `cerebro_spatial_images`, which the
-#' export would embed in the `.crb`; the Builder attaches pictures as separate
-#' files instead). Nothing reads them yet.
+#' export would embed in the `.crb`). The Builder takes them from there and
+#' attaches them to their sections as separate image files, placed at the extent
+#' their scale factor gives.
 #'
 #' @param object A SingleCellExperiment.
 #' @param main_assay Name of the Seurat assay to create.
