@@ -95,7 +95,7 @@ test_that("Save success is nonmodal and failure preserves an actionable retry", 
       "eval(source.slice(start,end));",
       "showBuilderProjectSaveCompletion('ready');",
       "assert.strictEqual(closed,1); assert.strictEqual(builderProjectSaveResultOpen,false); assert.strictEqual(buttons.length,0);",
-      "assert.strictEqual(notice.role,'status'); assert(notice.textContent.includes('2 CRBs')); assert.strictEqual(timeout.ms,6000); timeout.fn(); assert.strictEqual(notice.removed,true);",
+      "assert.strictEqual(notice.role,'status'); assert(notice.textContent.includes('2 dataset caches')); assert.strictEqual(timeout.ms,6000); timeout.fn(); assert.strictEqual(notice.removed,true);",
       "builderProjectSaveResultOpen=true; notice=null; timeout=null; showBuilderProjectSaveCompletion('failed');",
       "assert.strictEqual(builderProjectSaveResultOpen,true); assert.strictEqual(notice,null); assert.strictEqual(timeout,null); assert.strictEqual(buttons.length,2);",
       "buttons.find(x=>x.primary).action(); assert.strictEqual(builderProjectSaveResultOpen,false); assert.deepStrictEqual(sent,['save_builder_project']);"

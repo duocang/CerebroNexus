@@ -5349,7 +5349,7 @@ builder_project_verified_spatial_sidecar <- function(built, verification) {
       !identical(basename(path), expected)
   ) {
     stop(
-      "The verified spatial molecule sidecar does not match its CRB.",
+      "The verified spatial molecule sidecar does not match its dataset cache.",
       call. = FALSE
     )
   }
@@ -6206,12 +6206,12 @@ builder_project_prepare_build_artifacts <- function(
   registration_error <- if (build_succeeded) {
     NULL
   } else {
-    value$error %||% "Reusable CRBs could not be prepared."
+    value$error %||% "Dataset caches could not be prepared."
   }
   for (item in if (build_succeeded) plan$items else list()) {
     if (!builder_project_plan_artifact_reusable(item)) {
       registration_error <- paste0(
-        "The prepared CRB for ",
+        "The prepared cache for ",
         item$name,
         " still depends on files outside its artifact bundle."
       )
@@ -6285,7 +6285,7 @@ builder_project_prepare_build_artifacts <- function(
     built <- value$built[[item$id]] %||% NULL
     if (!.builder_project_text(built) || !file.exists(built)) {
       registration_error <- paste0(
-        "The reusable CRB for ",
+        "The dataset cache for ",
         item$name,
         " is missing."
       )
@@ -6728,9 +6728,9 @@ builder_project_dataset_status <- function(
   } else if (!configuration_ready) {
     "Settings unavailable"
   } else if (artifact_ready && checked) {
-    "Checked · CRB ready"
+    "Checked · Cached"
   } else if (checked) {
-    "Checked · No CRB"
+    "Checked · Not cached"
   } else if (source_available || artifact_ready) {
     "Needs checking"
   } else {
@@ -6743,20 +6743,20 @@ builder_project_dataset_status <- function(
       length(record$source) > 0L &&
       !any(actions %in% c("reuse", "resume", "reload"))
   ) {
-    problem <- "No reusable CRB or available source was found."
+    problem <- "No dataset cache or available source was found."
   }
   detail <- if (!is.null(source_format_problem) && artifact_ready) {
     paste(
-      "The saved CRB can still be used without loading the original source.",
+      "The cached copy can still be used without loading the original source.",
       source_format_problem
     )
   } else if (artifact_ready && checked && identical(source_state, "verify")) {
     paste(
-      "The saved CRB can be used immediately.",
+      "The cached copy can be used immediately.",
       "The source will be verified only if you load it."
     )
   } else if (artifact_ready && checked) {
-    "The saved CRB can be used immediately; the source is not loaded."
+    "The cached copy can be used immediately; the source is not loaded."
   } else if (checked && identical(source_state, "verify")) {
     "The original source will be verified while loading with saved settings."
   } else if (checked && source_available) {
@@ -8603,7 +8603,7 @@ builder_project_prepare_open_selection <- function(manifest, root, actions) {
         )
       ) {
         stop(
-          "The saved CRB inputs changed after the Project was opened.",
+          "The dataset cache inputs changed after the Project was opened.",
           call. = FALSE
         )
       }

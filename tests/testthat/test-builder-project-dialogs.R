@@ -197,3 +197,56 @@ test_that("the manual project folder dialog says what the folder holds", {
     fixed = TRUE
   )
 })
+
+test_that("the Open project dialog speaks of the dataset cache, not CRBs", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_dialogs_app()
+  record <- function(id, default, actions, crb_ready = FALSE) {
+    list(
+      id = id,
+      name = id,
+      runtime_restore_status = list(
+        actions = actions,
+        default_action = default,
+        checked = TRUE,
+        crb_ready = crb_ready,
+        message = "Configuration ready",
+        detail = NULL,
+        problem = NULL
+      )
+    )
+  }
+  manifest <- list(
+    project = list(name = "P"),
+    datasets = list(
+      record("ds1", "reuse", c("reuse", "resume", "reload", "skip"), TRUE),
+      record("ds2", "resume", c("resume", "reload", "skip")),
+      record("ds3", "resume", c("resume", "reload", "skip")),
+      record("ds4", "skip", c("resume", "skip"))
+    )
+  )
+  html <- htmltools::renderTags(
+    app_env$builder_project_restore_dialog(manifest)
+  )$html
+  text <- gsub("[[:space:]]+", " ", gsub("<[^>]+>", "", html))
+  expect_match(text, "1 cached 2 from source 1 skipped", fixed = TRUE)
+  expect_match(html, ">Open from cache (fast)</option>", fixed = TRUE)
+  expect_match(html, ">Reload from source file</option>", fixed = TRUE)
+  expect_match(html, 'data-tone="ready">Cached</span>', fixed = TRUE)
+  expect_match(html, 'data-tone="none">Not cached</span>', fixed = TRUE)
+  expect_match(html, "Cache none", fixed = TRUE)
+  expect_false(grepl("CRB", html, fixed = TRUE))
+
+  notice <- app_env$builder_project_restore_notice(4L, 0L, 0L, 1L, 3L)
+  expect_identical(
+    notice,
+    "1 dataset will open from cache; 3 datasets will load their original sources."
+  )
+
+  browser <- paste(
+    readLines(builder_test_inst_path("builder", "www", "builder.js"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_false(grepl("saved CRB", browser, fixed = TRUE))
+  expect_match(browser, '" will open from cache; "', fixed = TRUE)
+})

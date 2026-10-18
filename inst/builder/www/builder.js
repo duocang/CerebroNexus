@@ -239,9 +239,9 @@
       if (detail) {
         detail.textContent = (loadState.message ||
           "Try loading the source again.") +
-          " The saved CRB is unchanged and remains Build-ready.";
+          " The cached copy is unchanged and remains Build-ready.";
       }
-      if (footer) footer.textContent = "Source loading stopped. You can retry or continue with the saved CRB.";
+      if (footer) footer.textContent = "Source loading stopped. You can retry or continue with the cached copy.";
       return;
     }
 
@@ -264,7 +264,7 @@
     }
     if (detail) {
       detail.textContent = phase === "queued"
-        ? "Waiting for the background worker. The saved CRB remains ready for Build."
+        ? "Waiting for the background worker. The cached copy remains ready for Build."
         : "Large files can take a while. You can switch datasets; the editor will open here when ready.";
     }
     if (footer) footer.textContent = "Loading the original source in the background…";
@@ -292,7 +292,7 @@
     applyProjectSourceLoadState();
     if (message.dataset !== renderedDatasetId()) return;
     if (phase === "error") {
-      scheduleStatusAnnouncement("Original source was not loaded. The saved CRB remains ready for Build.");
+      scheduleStatusAnnouncement("Original source was not loaded. The cached copy remains ready for Build.");
     } else if (phase === "ready") {
       scheduleStatusAnnouncement("Original source loaded. Opening the editor.");
     }
@@ -758,7 +758,7 @@
     var remaining = Math.max(0, checked - reusable);
     if (status !== "failed") {
       var message = "Project saved." + (remaining > 0 ?
-        " " + remaining + " CRB" + (remaining === 1 ? " is" : "s are") +
+        " " + remaining + " dataset cache" + (remaining === 1 ? " is" : "s are") +
         " preparing. Keep this page open." :
         "");
       closeBuilderProjectSaveResult();
@@ -2667,15 +2667,6 @@
         ? counts.reused
         : (key === "source" ? counts.sourced : counts.skipped);
     });
-    var reuseLabel = dialog.querySelector(
-      '[data-project-restore-count-label="reuse"]'
-    );
-    if (reuseLabel) {
-      reuseLabel.textContent = counts.reused === 1
-        ? " saved CRB"
-        : " saved CRBs";
-    }
-
     var footerSelected = modal.querySelector(
       "[data-project-restore-footer-selected]"
     );
@@ -2701,9 +2692,7 @@
     if (!messages.length) {
       messages.push(counts.total > 0
         ? counts.reused + " " + projectRestoreDatasetLabel(counts.reused) +
-          (counts.reused === 1
-            ? " will use a saved CRB; "
-            : " will use saved CRBs; ") +
+          " will open from cache; " +
           counts.sourced + " " + projectRestoreDatasetLabel(counts.sourced) +
           (counts.sourced === 1
             ? " will load its original source."

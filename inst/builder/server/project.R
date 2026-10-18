@@ -817,7 +817,7 @@ reset_builder_project_crb_pipeline <- function() {
     inherits(task, "builder_async_task") &&
       task$state %in% c("queued", "running", "cancelling")
   ) {
-    stop("Wait for the current Project CRB to finish.", call. = FALSE)
+    stop("Wait for the dataset cache to finish.", call. = FALSE)
   }
   builder_project_crb_task(NULL)
   builder_project_crb_jobs(list())
@@ -995,10 +995,10 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
       !is.list(prepared$artifacts[[id]] %||% NULL)
   ) {
     message <- prepared$error %||%
-      "The CRB could not be generated and verified."
+      "The dataset cache could not be generated and verified."
     builder_project_update_crb_job(id, NULL)
     showNotification(
-      paste(message, "The dataset remains checked without a CRB."),
+      paste(message, "The dataset remains checked without a cache."),
       type = "warning",
       duration = 8
     )
@@ -1012,10 +1012,10 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
       identity_cache = builder_configuration_identity_cache
     )
   ) {
-    message <- "The generated CRB did not match the current dataset."
+    message <- "The generated dataset cache did not match the current dataset."
     builder_project_update_crb_job(id, NULL)
     showNotification(
-      paste(message, "The dataset remains checked without a CRB."),
+      paste(message, "The dataset remains checked without a cache."),
       type = "warning",
       duration = 8
     )
@@ -1045,7 +1045,7 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     }
     builder_project_update_crb_job(id, NULL)
     showNotification(
-      paste0(current_entry$settings$name %||% id, ": CRB ready."),
+      paste0(current_entry$settings$name %||% id, ": dataset cache ready."),
       type = "message",
       duration = 3
     )
@@ -1083,7 +1083,7 @@ builder_project_fail_crb_job <- function(id, token, error, output = NULL) {
     showNotification(
       paste(
         conditionMessage(error),
-        "The dataset remains checked without a CRB."
+        "The dataset remains checked without a cache."
       ),
       type = "warning",
       duration = 8
@@ -1185,7 +1185,7 @@ start_next_builder_project_crb_job <- function() {
     message <- if (inherits(plan, "condition")) {
       conditionMessage(plan)
     } else {
-      plan$error %||% "The CRB build plan is not ready."
+      plan$error %||% "The dataset cache plan is not ready."
     }
     return(builder_project_fail_crb_job(
       id,
@@ -3882,7 +3882,7 @@ complete_builder_project_open <- function(actions = NULL) {
     builder_project_operation_phase(operation)
     showNotification(
       paste0(
-        "The reusable CRBs could not be attached to this session: ",
+        "The dataset caches could not be attached to this session: ",
         conditionMessage(next_store)
       ),
       type = "error",
@@ -4222,7 +4222,7 @@ observe({
     message <- if (inherits(error, "condition")) {
       conditionMessage(error)
     } else {
-      as.character(error %||% "Reusable CRBs could not be registered.")
+      as.character(error %||% "Dataset caches could not be registered.")
     }
     builder_project_registration_task(NULL)
     builder_project_operation_phase("save_failed")
@@ -4319,7 +4319,7 @@ observe({
         } else if (isTRUE(saved)) {
           if (save_required) {
             showNotification(
-              "Reusable CRBs were added to the project.",
+              "Dataset caches were added to the project.",
               type = "message",
               duration = 5
             )

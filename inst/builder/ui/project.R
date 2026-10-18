@@ -532,9 +532,9 @@ builder_project_restore_notice <- function(
     paste0(
       reused,
       if (reused == 1L) {
-        " dataset will use a saved CRB; "
+        " dataset will open from cache; "
       } else {
-        " datasets will use saved CRBs; "
+        " datasets will open from cache; "
       },
       sourced,
       if (sourced == 1L) {
@@ -557,8 +557,8 @@ builder_project_restore_row_ui <- function(record) {
     )
   }
   labels <- c(
-    reuse = "CRB · FAST · Build-ready",
-    resume = "Source · Edit with saved settings",
+    reuse = "Open from cache (fast)",
+    resume = "Reload from source file",
     reload = "Re-import source · Reset settings",
     skip = "Skip · Not loaded"
   )
@@ -582,9 +582,9 @@ builder_project_restore_row_ui <- function(record) {
   status_detail <- status$detail %||% status$problem %||% NULL
   crb_tag <- if (isTRUE(status$checked)) {
     if (isTRUE(status$crb_ready)) {
-      list(label = "CRB ready", tone = "ready")
+      list(label = "Cached", tone = "ready")
     } else {
-      list(label = "No CRB", tone = "none")
+      list(label = "Not cached", tone = "none")
     }
   } else {
     NULL
@@ -631,8 +631,8 @@ builder_project_restore_row_ui <- function(record) {
           ),
           tags$span(
             class = "builder-project-restore-size",
-            title = "Stored CRB bundle size",
-            paste("CRB", artifact_size %||% "none")
+            title = "Stored dataset cache size",
+            paste("Cache", artifact_size %||% "none")
           )
         )
       )
@@ -714,17 +714,14 @@ builder_project_restore_dialog <- function(manifest) {
                 `data-project-restore-count` = "reuse",
                 reused
               ),
-              tags$span(
-                `data-project-restore-count-label` = "reuse",
-                if (reused == 1L) " saved CRB" else " saved CRBs"
-              )
+              " cached"
             ),
             tags$span(
               tags$strong(
                 `data-project-restore-count` = "source",
                 sourced
               ),
-              " source"
+              " from source"
             ),
             tags$span(
               tags$strong(
@@ -812,20 +809,20 @@ builder_project_restore_dialog <- function(manifest) {
 
 builder_project_artifact_workbench_ui <- function(entry, root = NULL) {
   artifact <- entry$project_artifact %||% list()
-  path <- artifact$path %||% "Saved CRB"
+  path <- artifact$path %||% "Dataset cache"
   tags$div(
     class = "builder-stage builder-stage-shell builder-project-artifact-stage",
     `data-workflow-stage` = "configure",
     builder_stage_header_ui(
       "Configure",
       entry$settings$name %||% entry$id,
-      "Saved CRB ready to build."
+      "Cached copy ready to build."
     ),
     builder_stage_section_ui(
       "Current data source",
       tags$div(
         class = "builder-project-artifact-card",
-        tags$span(class = "builder-project-artifact-mark", "CRB"),
+        tags$span(class = "builder-project-artifact-mark", "Cache"),
         tags$div(
           tags$strong("Ready to build"),
           tags$details(tags$summary("File location"), tags$p(path))
@@ -849,7 +846,7 @@ builder_project_artifact_workbench_ui <- function(entry, root = NULL) {
           ),
           tags$p(
             class = "builder-project-source-load-detail",
-            "Loading source. Saved CRB remains available."
+            "Loading source. The cached copy remains available."
           )
         )
       ),
