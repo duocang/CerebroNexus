@@ -5056,6 +5056,13 @@
           switch_token: datasetSwitchState.generation,
         });
       }
+      // On the Data step, opening a loaded dataset means configuring it.
+      if (
+        document.querySelector('#workbench [data-workflow-stage="upload"]') &&
+        activityCapability("navigate_workflow")
+      ) {
+        send("workflow_stage_configure", Date.now());
+      }
       if (narrowManager.matches) closeDatasetManager();
       return;
     }

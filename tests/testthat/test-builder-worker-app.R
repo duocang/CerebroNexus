@@ -629,18 +629,27 @@ test_that("workflow server exclusively owns loading and stage rendering", {
   expect_false(grepl("active_import_id()", workbench, fixed = TRUE))
   expect_false(grepl("import_focus_id()", workbench, fixed = TRUE))
   expect_false(grepl("builder_loading_workbench_ui", workbench, fixed = TRUE))
+  expect_false(grepl("imports()", workbench, fixed = TRUE))
+  expect_false(grepl("builder_importing_workbench_ui", workbench, fixed = TRUE))
   expect_match(
     workbench,
-    "upload = if (length(active_imports)) {",
+    "import_counts <- workbench_import_counts()",
     fixed = TRUE
   )
   expect_match(
     workbench,
     paste0(
-      "builder_importing_workbench_ui(length(active_imports))\n",
-      "    } else if (length(failed_imports)) {\n",
+      "    upload = if (\n",
+      "      import_counts[[\"failed\"]] > 0L && ",
+      "import_counts[[\"active\"]] == 0L\n",
+      "    ) {\n",
       "      builder_failed_import_workbench_ui("
     ),
+    fixed = TRUE
+  )
+  expect_match(
+    workbench,
+    "loading_count = import_counts[[\"active\"]]",
     fixed = TRUE
   )
   expect_match(

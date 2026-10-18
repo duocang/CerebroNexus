@@ -102,24 +102,34 @@ observeEvent(input$configure_datasets, {
   navigate_workflow_stage("configure")
 })
 
+## Import progress changes many times a second; the workbench only needs
+## the counts, so it is not rendered again on every tick.
+workbench_import_counts <- reactiveVal(c(active = 0L, failed = 0L))
+observe({
+  states <- vapply(
+    imports()$entries %||% list(),
+    function(entry) entry$load_state,
+    character(1)
+  )
+  counts <- c(
+    active = sum(!states %in% c("error", "cancelled")),
+    failed = sum(states == "error")
+  )
+  if (!identical(counts, isolate(workbench_import_counts()))) {
+    workbench_import_counts(counts)
+  }
+})
+
 output$workbench <- renderUI({
   stage <- selected_workflow_stage()
-  import_entries <- imports()$entries %||% list()
-  active_imports <- Filter(
-    function(entry) !entry$load_state %in% c("error", "cancelled"),
-    import_entries
-  )
-  failed_imports <- Filter(
-    function(entry) identical(entry$load_state, "error"),
-    import_entries
-  )
+  import_counts <- workbench_import_counts()
   switch(
     stage,
-    upload = if (length(active_imports)) {
-      builder_importing_workbench_ui(length(active_imports))
-    } else if (length(failed_imports)) {
+    upload = if (
+      import_counts[["failed"]] > 0L && import_counts[["active"]] == 0L
+    ) {
       builder_failed_import_workbench_ui(
-        length(failed_imports),
+        import_counts[["failed"]],
         dataset_count = length(store()$datasets %||% list())
       )
     } else {
@@ -128,7 +138,8 @@ output$workbench <- renderUI({
           project_active = !is.null(builder_project()),
           dataset_count = length(store()$datasets %||% list()),
           formats = builder_format_capabilities(),
-          examples = builder_example_directory()
+          examples = builder_example_directory(),
+          loading_count = import_counts[["active"]]
         ),
         class = "builder-stage-upload",
         `data-workflow-stage` = "upload"
