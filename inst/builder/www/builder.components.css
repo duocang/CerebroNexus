@@ -2774,6 +2774,10 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   top: .72rem;
   right: .8rem;
 }
+/* Keep the timer clear of the name: long names end in an ellipsis first. */
+.ds--import:has(.builder-load-time) .nm {
+  padding-right: 3rem;
+}
 .ds-ready-stamp.needs-review {
   background: transparent;
   color: var(--c-warning-700);

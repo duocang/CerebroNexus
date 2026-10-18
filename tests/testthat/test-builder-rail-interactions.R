@@ -322,3 +322,28 @@ test_that("waiting browser imports keep their rows while the queue changes", {
   expect_identical(out$statusC, "Waiting · 2 in queue")
   expect_identical(out$order, list("b", "c"))
 })
+
+test_that("the import timer leaves room for the dataset name", {
+  css <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.components.css"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  start <- regexpr(
+    ".ds--import:has(.builder-load-time) .nm {",
+    css,
+    fixed = TRUE
+  )[[1L]]
+  expect_gt(start, 0L)
+  rule <- substring(css, start)
+  rule <- substring(rule, 1L, regexpr("}", rule, fixed = TRUE)[[1L]])
+
+  expect_match(rule, "padding-right: 3rem;", fixed = TRUE)
+  expect_match(
+    css,
+    ".ds--import .builder-load-time {\n  position: absolute;",
+    fixed = TRUE
+  )
+})
