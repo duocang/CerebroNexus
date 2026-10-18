@@ -762,7 +762,27 @@ if (identical(command, "inspect")) {
     ) {
       stop("missing embedded resource assessment", call. = FALSE)
     }
-    if (!tier$embedded_safe) {
+    # The preflight estimates nnz from the source-wide density, which can over-
+    # or underestimate a cell prefix. The frozen plan holds this tier's exact
+    # nnz, so it decides memory and the sparse-index limit; any other preflight
+    # failure (such as disk) still skips.
+    exact_plan <- readRDS(query_plan_path)
+    exact_peak_mb <- 1024 + exact_plan$nnz * BENCH_EMBEDDED_BYTES_PER_NNZ / 2^20
+    exact_fits <- exact_peak_mb <= tier$memory_budget_mb &&
+      exact_plan$nnz <= .Machine$integer.max
+    preflight_failures <- if (tier$embedded_safe) {
+      character()
+    } else {
+      strsplit(tier$embedded_reason, "; ", fixed = TRUE)[[1L]]
+    }
+    superseded <- c(
+      "estimated memory exceeds safe budget",
+      "estimated nnz exceeds 32-bit sparse index"
+    )
+    if (
+      length(setdiff(preflight_failures, superseded)) ||
+        (length(preflight_failures) && !exact_fits)
+    ) {
       row$status <- paste0(
         "SKIPPED(resource): preflight: ",
         tier$embedded_reason
@@ -772,10 +792,6 @@ if (identical(command, "inspect")) {
       bench_msg("%s / %.0f cells / embedded: %s", src_name, n_cells, row$status)
       quit(status = 0L)
     }
-    # The frozen plan has the actual prefix nnz; the initial estimate uses a
-    # source-wide average and may underestimate an unusually dense prefix.
-    exact_plan <- readRDS(query_plan_path)
-    exact_peak_mb <- 1024 + exact_plan$nnz * BENCH_EMBEDDED_BYTES_PER_NNZ / 2^20
     if (
       exact_peak_mb > tier$memory_budget_mb ||
         exact_plan$nnz > .Machine$integer.max

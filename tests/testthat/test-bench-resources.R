@@ -298,17 +298,58 @@ test_that("resource checker accepts an unlimited R vector heap", {
   expect_true(file.exists(output_path))
 })
 
-test_that("embedded estimate admits human 500k on a 128 GB host with headroom", {
+test_that("embedded estimate admits human 500k on a 128 GB host from exact nnz", {
   skip_unless_bench_resources()
   source(bench_resources, local = TRUE)
-  # Source density and a 99% Scale budget of about 118 GiB on a 128 GB host.
-  got <- bench_assess_resources(
+  # The 128 GB host recorded a 99% cap of 118,532,322,754 bytes (113,040 MiB).
+  budget_mb <- 118532322754 / 2^20
+  density <- bench_assess_resources(
     data.frame(source = "human", nnz_per_cell = 4112, source_bytes = 14.2e9),
     data.frame(source = "human", n_cells = 500000),
-    memory_mb = 118 * 1024, vector_limit_mb = Inf, free_disk_bytes = 1e12,
+    memory_mb = budget_mb, vector_limit_mb = Inf, free_disk_bytes = 1e12,
     memory_fraction = 1
   )
-  expect_true(got$safe)
-  # Still at least 10% above the measured 97.2 GiB peak RSS at this tier.
-  expect_gt(got$estimated_peak_mb / 1024, 97.2 * 1.1)
+  # The source-wide density overstates this prefix, so the preflight alone skips.
+  expect_false(density$safe)
+  # The frozen plan's exact nnz fits, still at least 10% above the 97.2 GiB peak.
+  exact_mb <- 1024 + 1982146320 * BENCH_EMBEDDED_BYTES_PER_NNZ / 2^20
+  expect_lt(exact_mb, budget_mb)
+  expect_gt(exact_mb / 1024, 97.2 * 1.1)
+})
+
+test_that("exact plan nnz overrides a memory-only embedded preflight", {
+  skip_unless_bench_resources()
+  skip_if_not_installed("CerebroNexus")
+  root <- normalizePath(dirname(bench_resources))
+  stage <- tempfile("embedded-exact-")
+  dir.create(file.path(stage, "result"), recursive = TRUE)
+  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+  source(bench_resources, local = TRUE)
+  src <- names(BENCH_SOURCES)[1]
+  # A local non-HDF5 stand-in makes the read fail at once without network access.
+  dir.create(file.path(stage, "sources"))
+  writeLines("not hdf5", file.path(stage, "sources",
+    basename(sub("\\?.*$", "", BENCH_SOURCES[[src]]$url))))
+  plan_path <- file.path(stage, "plan.rds")
+  saveRDS(list(nnz = 1e6, query_plan_fingerprint = "small-prefix"), plan_path)
+  run <- function(reason) {
+    output_csv <- file.path(stage, "result", paste0(make.names(reason), ".csv"))
+    write.csv(data.frame(source = src, n_cells = 500000, estimated_nnz = 2e9,
+      memory_budget_mb = 10000, embedded_safe = FALSE, embedded_reason = reason),
+      file.path(stage, "result", "resource_check.csv"), row.names = FALSE)
+    # The stand-in cannot be read, so getting past the preflight ends in FAILED(read).
+    output <- bench_test_system2(file.path(R.home("bin"), "Rscript"),
+      c(file.path(root, "benchmark_cli.R"), "export", src,
+        "500000", "embedded", "1", "1", stage, output_csv, plan_path),
+      stdout = TRUE, stderr = TRUE,
+      env = c(paste0("BENCH_ROOT=", root), "BENCH_PROFILE=scale", "BENCH_RUN_ID=fixture"))
+    expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+    tail(read.csv(output_csv), 1L)$status
+  }
+
+  expect_true(startsWith(run("estimated memory exceeds safe budget"), "FAILED(read)"))
+  expect_match(
+    run("estimated memory exceeds safe budget; source download exceeds safe disk budget"),
+    "SKIPPED(resource): preflight:", fixed = TRUE
+  )
 })
