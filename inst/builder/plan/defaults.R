@@ -222,6 +222,15 @@ builder_resolve_colors <- function(settings, levels) {
   out
 }
 
+#' Organism suggested by the gene-name guess, or NULL when it is not confident.
+#'
+#' Only "hg" and "mm" count: "other" means the identifiers matched neither
+#' human nor mouse symbols, so the user has to choose.
+builder_detected_organism <- function(profile, dataset_profile = NULL) {
+  guess <- profile$organism_guess %||% dataset_profile$organism$code
+  if (builder_has_text(guess) && guess %in% c("hg", "mm")) guess else NULL
+}
+
 builder_default_settings <- function(
   profile,
   name,
@@ -237,7 +246,7 @@ builder_default_settings <- function(
     )
   settings <- list(
     name = name,
-    organism = NULL,
+    organism = builder_detected_organism(profile, dataset_profile),
     assay = assay,
     layer = assay_profile$default_layer,
     nUMI = if (builder_has_text(assay_profile$nUMI)) {

@@ -139,8 +139,11 @@ builder_app_bundle_request <- function(
   built,
   labels,
   verified_spatial_backends = NULL,
-  previous_file_identities = NULL
+  previous_file_identities = NULL,
+  .on_progress = NULL
 ) {
+  # Progress only: `.on_progress(label, index, count)` names each dataset pass.
+  report <- if (is.function(.on_progress)) .on_progress else function(...) NULL
   plan <- .builder_app_plan_contract(plan)
   if (
     !identical(plan[["app_contract_version"]], 1L) ||
@@ -170,6 +173,7 @@ builder_app_bundle_request <- function(
   ) {
     stop("Verified CRB labels must be inert values.", call. = FALSE)
   }
+  report("Checking datasets", 0L, length(order))
   built <- .builder_app_plain_value(built)
   labels <- .builder_app_plain_value(labels)
   item_ids <- vapply(items, `[[`, character(1), "id")
@@ -283,6 +287,7 @@ builder_app_bundle_request <- function(
   crb_identities <- lapply(
     seq_along(resolved),
     function(index) {
+      report("Checking datasets", index, length(resolved))
       .builder_app_capture_file_identity(
         resolved[[index]],
         item_ids[[index]],
@@ -319,6 +324,7 @@ builder_app_bundle_request <- function(
     .builder_app_plain_value(verified_spatial_backends)
   }
   spatial_molecule_identities <- lapply(seq_along(resolved), function(index) {
+    report("Checking spatial data", index, length(resolved))
     previous <- .builder_app_previous_closure(
       "bpcells",
       paste0(tools::file_path_sans_ext(filenames[[index]]), ".spatial"),

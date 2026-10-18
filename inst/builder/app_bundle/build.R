@@ -162,8 +162,12 @@ builder_verify_app <- function(
   request,
   auth_env_file = NULL,
   .tree_identity = .builder_app_tree_identity,
-  .retain_tree_identity = FALSE
+  .retain_tree_identity = FALSE,
+  .on_progress = NULL
 ) {
+  # Progress only: `.on_progress(label)` names the check that is running.
+  report <- if (is.function(.on_progress)) .on_progress else function(...) NULL
+  report("Checking Viewer files")
   request <- .builder_app_validate_request(request)
   if (!dir.exists(app_dir) || .builder_app_is_link(app_dir)) {
     stop("The staged App directory is missing or symbolic.", call. = FALSE)
@@ -452,6 +456,7 @@ builder_verify_app <- function(
     )
   }
   private_root <- normalizePath(private_root, winslash = "/", mustWork = TRUE)
+  report("Checking Viewer runtime")
   .builder_app_validate_private_locations(tree_before, app_dir)
   .builder_app_assert_trusted_templates(tree_before)
   .builder_app_assert_root_topology(
@@ -533,6 +538,7 @@ builder_verify_app <- function(
     }
   }
 
+  report("Checking Viewer content")
   .builder_app_assert_private_topology(tree_before, request)
   copied_content <- .builder_app_output_content_identities(
     tree_before,

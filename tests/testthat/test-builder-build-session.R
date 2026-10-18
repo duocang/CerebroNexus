@@ -144,6 +144,26 @@ test_that("the Build panel shows dataset, step and elapsed time", {
     app_env$builder_build_progress_message(list(phase = "publish"))$text,
     "Publishing release"
   )
+  expect_identical(
+    app_env$builder_build_progress_message(list(
+      phase = "verify",
+      step_label = "Checking files",
+      step_index = 120L,
+      step_count = 230L
+    ))$text,
+    "Verifying output · Checking files 120/230"
+  )
+  expect_identical(
+    app_env$builder_build_progress_message(list(
+      phase = "verify",
+      step_label = "Checking Viewer runtime"
+    ))$text,
+    "Verifying output · Checking Viewer runtime"
+  )
+  expect_identical(
+    app_env$builder_build_progress_message(list(phase = "verify"))$text,
+    "Verifying output"
+  )
   expect_false(app_env$builder_build_progress_message(NULL)$active)
 
   html <- as.character(app_env$builder_build_stage_status_body_ui(list(

@@ -1083,6 +1083,15 @@
     if (note.textContent !== reason) note.textContent = reason;
   }
 
+  // Workspace controls follow edit_dataset, but one with its own capability
+  // (Build, Build again) must not be unlocked by it: dataset-cache
+  // registration keeps the workspace editable while Build waits.
+  function workspaceControlLocked(control, projectControls, workspaceLocked) {
+    if (workspaceLocked) return true;
+    return Object.prototype.hasOwnProperty.call(projectControls, control.id) &&
+      !projectControls[control.id];
+  }
+
   function applyBuilderActivityState(roots) {
     var capabilities = builderActivityState.capabilities || {};
     var projectControls = {
@@ -1119,7 +1128,10 @@
       "#builder-workspace input, #builder-workspace select, " +
       "#builder-workspace textarea, #builder-workspace button"
     ).forEach(function (control) {
-      setActivityDisabled(control, workspaceLocked);
+      setActivityDisabled(
+        control,
+        workspaceControlLocked(control, projectControls, workspaceLocked)
+      );
     });
     matchingDynamicElements(roots, ".builder-workflow-stage-link").forEach(function (link) {
       var locked = !activityCapability("navigate_workflow");

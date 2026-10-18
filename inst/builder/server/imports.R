@@ -1809,7 +1809,7 @@ builder_start_release_settlement_process <- function(
       }
       progress_path <- args$progress_path
       handle <- runtime$builder_coordinator_claim(args$handle)
-      report_progress <- function(phase) {
+      report_progress <- function(phase, detail = NULL) {
         if (
           !is.character(progress_path) ||
             length(progress_path) != 1L ||
@@ -1821,7 +1821,13 @@ builder_start_release_settlement_process <- function(
         }
         temporary <- tempfile(".progress-", tmpdir = dirname(progress_path))
         on.exit(unlink(temporary, force = TRUE), add = TRUE)
-        saveRDS(phase, temporary, version = 2)
+        # A detail names the verification sub-step for the Build card.
+        record <- if (is.list(detail) && length(detail)) {
+          c(list(schema_version = 1L, phase = phase), detail)
+        } else {
+          phase
+        }
+        saveRDS(record, temporary, version = 2)
         try(Sys.chmod(temporary, mode = "0600"), silent = TRUE)
         moved <- isTRUE(file.rename(temporary, progress_path))
         if (!moved && file.exists(progress_path)) {

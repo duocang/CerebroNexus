@@ -252,6 +252,8 @@ builder_build_progress_note <- function(plan, phase) {
   "dataset_count",
   "dataset_name",
   "step_label",
+  "step_index",
+  "step_count",
   "started_at"
 )
 
@@ -274,6 +276,8 @@ builder_build_progress_note <- function(plan, phase) {
     dataset_count = count(detail$dataset_count),
     dataset_name = text(detail$dataset_name),
     step_label = text(detail$step_label),
+    step_index = count(detail$step_index),
+    step_count = count(detail$step_count),
     started_at = if (length(started) == 1L && is.finite(started)) {
       started
     } else {

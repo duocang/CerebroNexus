@@ -225,6 +225,28 @@ test_that("release identity ignores Finder metadata but not other dotfiles", {
   })
 })
 
+test_that("release identity reports each file without changing the identity", {
+  local({
+    builder_publish_source()
+    release <- file.path(withr::local_tempdir(), "release")
+    dir.create(file.path(release, "nested"), recursive = TRUE)
+    writeLines("a", file.path(release, "a.crb"))
+    writeLines("b", file.path(release, "nested", "b.rds"))
+    writeLines("c", file.path(release, "nested", "c.rds"))
+
+    seen <- character()
+    identity <- builder_release_identity(
+      release,
+      .on_file = function(index, total) {
+        seen <<- c(seen, paste0(index, "/", total))
+      }
+    )
+
+    expect_identical(seen, c("0/3", "1/3", "2/3", "3/3"))
+    expect_identical(identity, builder_release_identity(release))
+  })
+})
+
 test_that("output preflight reports only foreign top-level members", {
   local({
     builder_publish_source()

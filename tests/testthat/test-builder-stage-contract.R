@@ -91,6 +91,37 @@ test_that("the organism selector starts empty and required", {
   )
 })
 
+test_that("the organism selector starts on a detected guess, marked as detected", {
+  model <- list(
+    id = "ds1",
+    name = "Dataset",
+    organism = "hg",
+    organism_detected = "hg",
+    organism_choices = c("Human (hg)" = "hg", "Mouse (mm)" = "mm"),
+    group_choices = "cluster",
+    included_groups = "cluster",
+    default_group = "cluster",
+    projection_choices = "umap",
+    included_projections = "umap",
+    default_projection = "umap",
+    assay = "RNA",
+    assay_choices = "RNA",
+    layer = "data",
+    layer_choices = "data"
+  )
+
+  html <- builder_stage_html(builder_core_stage_ui("core", model))
+  expect_match(html, '<option value="hg" selected>Human (hg)</option>', fixed = TRUE)
+  expect_match(html, 'data-builder-detected-organism="hg"', fixed = TRUE)
+  expect_match(html, "Detected from gene names", fixed = TRUE)
+
+  model$organism <- NULL
+  model$organism_detected <- NULL
+  html <- builder_stage_html(builder_core_stage_ui("core", model))
+  expect_no_match(html, "data-builder-detected-organism", fixed = TRUE)
+  expect_no_match(html, "Detected from gene names", fixed = TRUE)
+})
+
 test_that("imported Marker sidecars are explicit in Optional analyses", {
   modules <- builder_enhance_modules(
     profile = list(organism_guess = "hg"),
@@ -640,5 +671,31 @@ test_that("Open App uses its default r_bg launcher without parent helpers", {
   expect_identical(
     process$get_result(),
     builder_auth_read_env_file(fixture$env_file)
+  )
+})
+
+test_that("Apply to all targets loaded unchecked datasets", {
+  entries <- list(
+    list(id = "a", settings = list(organism = NULL)),
+    list(
+      id = "b",
+      settings = list(organism = "hg", analyses = c("percent_mt_ribo", "x"))
+    ),
+    list(id = "c", settings = list(organism = NULL)),
+    list(id = "d", load_state = "artifact_ready", settings = list()),
+    list(id = "e", settings = list(organism = "zebrafish"))
+  )
+
+  targets <- builder_core_organism_targets(entries, "zebrafish", checked = "c")
+
+  expect_identical(vapply(targets, `[[`, character(1), "id"), c("a", "b"))
+  expect_identical(targets[[2L]]$settings$analyses, "x")
+  expect_identical(
+    builder_core_organism_targets(entries, "hg", checked = "c")[[2L]]$id,
+    "e"
+  )
+  expect_identical(
+    builder_core_organism_targets(entries, "hg", checked = "c")[[1L]]$settings,
+    list(organism = "hg")
   )
 })

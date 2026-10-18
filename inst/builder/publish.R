@@ -483,7 +483,8 @@ builder_release_identity <- function(
   target,
   .list_directory = .builder_release_list_directory,
   .hash_file = .builder_release_payload_md5,
-  .digest_cache = NULL
+  .digest_cache = NULL,
+  .on_file = NULL
 ) {
   target <- .builder_release_path(target)
   if (!.builder_release_exists(target)) {
@@ -551,9 +552,13 @@ builder_release_identity <- function(
       NULL
     }
   })
+  # Progress only: `.on_file(index, total)` sees each file before its digest.
+  report_file <- if (is.function(.on_file)) .on_file else function(...) NULL
+  report_file(0L, length(file_paths))
   md5 <- vapply(
     seq_along(file_paths),
     function(index) {
+      report_file(index, length(file_paths))
       cache_key <- cache_keys[[index]]
       collision_key <- if (is.null(cache_key)) {
         NULL
@@ -905,7 +910,8 @@ builder_release_identity <- function(
   token,
   .move = file.rename,
   .after_create = function(temporary) invisible(NULL),
-  .digest_cache = NULL
+  .digest_cache = NULL,
+  .on_file = NULL
 ) {
   target <- .builder_release_path(target)
   if (
@@ -1065,7 +1071,8 @@ builder_release_identity <- function(
       }
       final_identity <- builder_release_identity(
         target,
-        .digest_cache = .digest_cache
+        .digest_cache = .digest_cache,
+        .on_file = .on_file
       )
       published <- .builder_release_read_record(
         target,

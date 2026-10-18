@@ -65,6 +65,28 @@ test_that("new datasets require an explicit organism selection", {
   })
 })
 
+test_that("a detected organism is a real setting for readiness and the plan", {
+  local({
+    builder_repo_source("preview.R")
+    builder_repo_source("recommend.R")
+    builder_repo_source("plan.R")
+
+    entry <- builder_task6_entry()
+    entry$output_id <- entry$id
+    entry$settings$organism <- builder_detected_organism(
+      list(organism_guess = "hg")
+    )
+
+    state <- builder_dataset_state(entry)
+    plan <- builder_freeze_plan(list(entry), tempdir(), make_app = FALSE)
+
+    expect_false("settings_organism" %in% state$blocking_ids)
+    expect_false("settings_organism" %in% state$attention_ids)
+    expect_null(plan$error)
+    expect_identical(plan$items[[1L]]$organism, "hg")
+  })
+})
+
 test_that("external alignment diagnostics gate freezing", {
   local({
     builder_repo_source("preview.R")

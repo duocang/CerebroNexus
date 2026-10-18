@@ -999,7 +999,22 @@ builder_build_progress_message <- function(detail, now = Sys.time()) {
       if (builder_stage_has_text(step %||% "")) step
     ),
     viewer = "Packaging Viewer",
-    verify = "Verifying output",
+    verify = c(
+      "Verifying output",
+      if (builder_stage_has_text(step %||% "")) {
+        step_index <- detail$step_index %||% NULL
+        step_count <- detail$step_count %||% NULL
+        if (
+          is.numeric(step_index) &&
+            is.numeric(step_count) &&
+            step_count > 0L
+        ) {
+          paste0(step, " ", step_index, "/", step_count)
+        } else {
+          step
+        }
+      }
+    ),
     publish = "Publishing release",
     character()
   )

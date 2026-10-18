@@ -1419,6 +1419,16 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   grid-column: auto;
   grid-row: auto;
 }
+/* "Finish Checking" stays reachable while the form scrolls: the footer's
+   output wrapper sticks to the bottom of the document scrollport. */
+.builder-stage-configure > #configure_actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+}
+.builder-stage-configure > #configure_actions > .builder-stage-footer {
+  box-shadow: 0 -.5rem 1rem -.75rem rgb(0 0 0 / .22);
+}
 .builder-configure-inspect {
   margin-bottom: var(--space-4);
   border-bottom: 1px solid var(--c-border);
@@ -1935,6 +1945,28 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-field--organism:has(.selectize-input:not(.has-items)) label {
   color: var(--c-amber-700);
   font-weight: 700;
+}
+/* The note follows the live selection: it hides once the user picks another
+   organism than the one guessed from gene names. */
+.builder-organism-detected {
+  display: none;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-2);
+  color: var(--c-text-muted);
+  font-size: var(--builder-type-caption);
+}
+.builder-field--organism[data-builder-detected-organism="hg"]:has(.selectize-input .item[data-value="hg"]) .builder-organism-detected,
+.builder-field--organism[data-builder-detected-organism="mm"]:has(.selectize-input .item[data-value="mm"]) .builder-organism-detected {
+  display: block;
+}
+.builder-organism-apply-all {
+  min-height: 0;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-2);
+  padding: 0;
+  font-size: var(--builder-type-caption);
+  text-align: left;
+}
+.builder-field--organism:has(.selectize-input:not(.has-items)) .builder-organism-apply-all {
+  display: none;
 }
 .builder-field[data-builder-creatable-select="true"] select.selectized {
   display: none !important;

@@ -900,6 +900,60 @@ observeEvent(input$complete_dataset_check, {
   open_next_unchecked_dataset(id, entries, checked)
 })
 
+observeEvent(
+  input[["core-organism_apply_all"]],
+  {
+    if (
+      exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+        !isTRUE(builder_operation_allowed("edit_dataset"))
+    ) {
+      return()
+    }
+    id <- isolate(current())
+    organism <- input[["core-organism"]]
+    if (
+      is.null(id) ||
+        !identical(input[["core-rendered_for"]], id) ||
+        !builder_stage_has_text(organism)
+    ) {
+      return()
+    }
+    targets <- builder_core_organism_targets(
+      isolate(sets()),
+      organism,
+      checked = c(isolate(checked_dataset_ids()), id)
+    )
+    changed <- sum(vapply(
+      targets,
+      function(entry) isTRUE(replace_entry(entry)),
+      logical(1)
+    ))
+    label <- switch(
+      organism,
+      hg = "Human (hg)",
+      mm = "Mouse (mm)",
+      other = "Other",
+      organism
+    )
+    showNotification(
+      if (changed) {
+        paste0(
+          "Organism set to ",
+          label,
+          " on ",
+          changed,
+          if (changed == 1L) " other dataset." else " other datasets."
+        )
+      } else {
+        "No other unchecked dataset needed a change."
+      },
+      type = "message",
+      duration = 4
+    )
+  },
+  ignoreInit = TRUE
+)
+
 render_configure_workbench <- function() {
   configure_workbench_surface()
   id <- current()
@@ -989,6 +1043,10 @@ render_configure_workbench <- function() {
         "Human (hg)" = "hg",
         "Mouse (mm)" = "mm",
         "Other" = "other"
+      ),
+      organism_detected = builder_detected_organism(
+        entry$profile %||% list(),
+        entry$dataset_profile
       ),
       group_choices = unname(entry$profile$group_candidates),
       suggested_groups = entry$profile$group_preselect %||%
