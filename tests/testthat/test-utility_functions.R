@@ -1106,6 +1106,12 @@ test_that("embedded images larger than a million base64 characters stay whole", 
   skip_if_not_installed("base64enc")
   env <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), env)
+  ## R before 4.6 stops substring() at 1,000,000 characters by default; newer R
+  ## does not. Pin the old default so this fails without the explicit end on
+  ## every R version.
+  env$substring <- function(text, first, last = 1000000L) {
+    base::substring(text, first, last)
+  }
   served <- NULL
   mock <- list(
     userData = new.env(),
