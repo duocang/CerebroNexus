@@ -106,6 +106,10 @@ Use `quick` or `scale` instead of `full` for those reports. `10_export.csv` cont
 
 Numbers are medians with observed ranges, not confidence intervals. The two access processes share one built artifact. The first read may benefit from the operating-system cache. Storage and memory fields ending in `_mb` use MiB. Embedded `export_secs` includes the full exporter, while H5/BPCells measure the backend writer; do not compare that column alone as equal work.
 
+### Four-backend Scale on the 128 GB host (2026-10-18)
+
+`CURRENT` Scale is `20261018T091308Z-58e778efc30a-scale-assembled`, built with `benchmark_cli.R assemble` from the complete four-backend study `20261016T224351Z-63d5337c3647-scale` and the same-host supplement `20261018T072255Z-30a6295c85f5-scale-supplement` (Human 500k embedded, five builds). The supplement replaces only the study's five Human 500k embedded resource skips, which remain in `resource_skips.csv`; all 300 builds and 600 access processes are real measurements. Full is `20261017T174502Z-63d5337c3647-full` from the same host. Run ids containing `63d5337c` name a commit that was later rewritten on this branch to remove commit-message trailers; the identical code is `c9677606`. The supplement was measured at `30a6295c` and finalized at `ad79130b`, which only changed validation rules. Human 1k BPCells 12-gene block reads take about 0.3-0.5 s in these runs (also reproduced on the 12900K with the same code) against about 0.003 s in the October 16 runs, while every other read at that tier is unchanged; the cause is not yet identified.
+
 ### Assembled Scale evidence (2026-10-16)
 
 The latest Scale collection may have `result_kind=assembled` in its manifest.

@@ -224,10 +224,11 @@ scale_panel <- function(metric, src) {
                   width = 0.02, linewidth = 0.35) +
     geom_line(data = grid, aes(n_cells, y, colour = backend, linetype = backend), linewidth = 0.5) +
     geom_point(data = grid, aes(n_cells, y, colour = backend, shape = backend), size = 1.7) +
+    # Endpoint marks keep the legend to one identity per backend.
     geom_segment(data = bridge, aes(n_cells, y, xend = n_cells_end, yend = y_end, colour = backend),
-                 linetype = "dashed", linewidth = 0.4) +
+                 linetype = "dashed", linewidth = 0.4, show.legend = FALSE) +
     geom_point(data = endp, aes(n_cells, y, colour = backend), shape = 21, size = 2.0,
-               stroke = 0.4, fill = "white") +
+               stroke = 0.4, fill = "white", show.legend = FALSE) +
     scale_x_log10(breaks = c(1e3, 1e4, 5e4, 1e5, 3e5, 5e5, 1e6),
                   limits = if (is.finite(full_x)) c(800, full_x * 1.18),
                   labels = function(x) ifelse(x >= 1e6, paste0(x / 1e6, "M"), paste0(x / 1e3, "k"))) +
