@@ -239,3 +239,47 @@ test_that("gene names with underscores survive Seurat and the Builder", {
   crb <- readCerebro(out)
   expect_setequal(crb$getGeneNames(), genes)
 })
+
+test_that("the same data as AnnData, SCE and Seurat gives the same .crb through the Builder", {
+  skip_if_not_installed("qs2")
+  dir <- withr::local_tempdir()
+  sce <- quiet(readH5adAsSCE(fixture("small_csr.h5ad")))
+  saveRDS(sce, file.path(dir, "sce.rds"))
+  ## a Seurat object built by hand from the same parts, not by the converter
+  counts <- methods::as(SummarizedExperiment::assay(sce, "counts"), "CsparseMatrix")
+  meta <- as.data.frame(SummarizedExperiment::colData(sce))
+  hand <- quiet(SeuratObject::CreateSeuratObject(counts, meta.data = meta))
+  for (name in SingleCellExperiment::reducedDimNames(sce)) {
+    embedding <- SingleCellExperiment::reducedDim(sce, name)
+    key <- paste0(tolower(name), "_")
+    dimnames(embedding) <- list(colnames(sce), paste0(key, seq_len(ncol(embedding))))
+    hand[[name]] <- SeuratObject::CreateDimReducObject(embedding, key = key, assay = "RNA")
+  }
+  saveRDS(hand, file.path(dir, "seurat.rds"))
+
+  routes <- c(
+    h5ad = fixture("small_csr.h5ad"),
+    sce = file.path(dir, "sce.rds"),
+    seurat = file.path(dir, "seurat.rds")
+  )
+  crbs <- Map(function(path, id) build_through_builder(path, id)$crb, routes, names(routes))
+  reference <- crbs$h5ad
+  for (name in c("sce", "seurat")) {
+    other <- crbs[[name]]
+    expect_identical(other$getMetaData()$cell_barcode, reference$getMetaData()$cell_barcode, info = name)
+    expect_identical(other$getGeneNames(), reference$getGeneNames(), info = name)
+    expect_equal(
+      as.matrix(other$getExpressionMatrix()),
+      as.matrix(reference$getExpressionMatrix()),
+      info = name
+    )
+    expect_identical(sort(other$getGroups()), sort(reference$getGroups()), info = name)
+    for (projection in names(reference$projections)) {
+      expect_equal(
+        unname(as.matrix(other$getProjection(projection))),
+        unname(as.matrix(reference$getProjection(projection))),
+        info = paste(name, projection)
+      )
+    }
+  }
+})
