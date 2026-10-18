@@ -1,3 +1,11 @@
+# CerebroNexus 5.1.2
+
+- Fixes embedded background images above about 750 KB being cut short, which
+  left their last rows transparent.
+- Fixes Spatial sessions ending when a gene was chosen before Gene expression
+  had been opened, or when a dataset switch left a gene the new dataset lacks;
+  a session that ends can no longer stop the whole app.
+
 # CerebroNexus 5.1.1
 
 - Background images now open at full opacity (1.0) instead of 50% in Spatial,
@@ -5,11 +13,6 @@
 - Fixes background images drifting away from their cells in a rotated scene,
   such as the MERFISH demo. The image rotates in data space about the origin,
   the same way `spatial_plot_rotation` rotates the cell coordinates.
-- Fixes embedded background images above about 750 KB being cut short, which
-  left their last rows transparent.
-- Fixes Spatial sessions ending when a gene was chosen before Gene expression
-  had been opened, or when a dataset switch left a gene the new dataset lacks;
-  a session that ends can no longer stop the whole app.
 - Declares only the packages the code uses: `httr` is now a Suggests entry,
   and the unused `formattable` and `reshape2` are no longer listed. The Nix
   environment (`create_env.R`, `default.nix`) drops `data.table`, `formattable`
