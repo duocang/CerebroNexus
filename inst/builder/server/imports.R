@@ -14,9 +14,9 @@ dataset_mutations_locked <- function(notify = TRUE) {
     isolate(protocol())
   )
   if (isTRUE(locked) && isTRUE(notify)) {
-    showNotification(
+    builder_notify(
+      "info",
       "Wait for the active build to finish before changing datasets.",
-      type = "warning",
       duration = 6
     )
   }
@@ -471,11 +471,7 @@ process_native_dataset_files <- function(paths) {
     filename <- basename(path)
     format <- builder_path_format_capability(filename)
     if (is.list(format) && identical(format$available, FALSE)) {
-      showNotification(
-        format$unavailable_reason,
-        type = "error",
-        duration = 10
-      )
+      builder_notify("error", format$unavailable_reason)
       next
     }
     if (
@@ -483,13 +479,12 @@ process_native_dataset_files <- function(paths) {
         dir.exists(path) ||
         !tolower(tools::file_ext(filename)) %in% supported_extensions
     ) {
-      showNotification(
+      builder_notify(
+        "error",
         paste0(
           "The selected dataset is unavailable or unsupported: ",
           filename
-        ),
-        type = "error",
-        duration = 8
+        )
       )
       next
     }
@@ -535,10 +530,9 @@ observeEvent(input$builder_choose_dataset_files, {
         if (isTRUE(choice$fallback)) {
           session$sendCustomMessage("builder_dataset_picker_fallback", list())
         } else {
-          showNotification(
-            choice$error %||% "The dataset picker could not be opened.",
-            type = "error",
-            duration = 8
+          builder_notify(
+            "error",
+            choice$error %||% "The dataset picker could not be opened."
           )
         }
         return(invisible(FALSE))
@@ -3583,7 +3577,8 @@ observe({
     protocol(forgotten$protocol)
     cancelled <- length(forgotten$failed) + length(forgotten$discarded)
     if (cancelled) {
-      showNotification(
+      builder_notify(
+        "info",
         paste0(
           "Dataset removed; ",
           cancelled,
@@ -3591,7 +3586,6 @@ observe({
           if (cancelled == 1L) " was" else "s were",
           " cancelled."
         ),
-        type = "message",
         duration = 5
       )
     }
@@ -3638,7 +3632,8 @@ apply_section_bounds <- function(id, per_section, a) {
   ## Saying "done" when four of five slides have every cell off the image is
   ## how the earlier version of this hid its own bug.
   if (length(short)) {
-    showNotification(
+    builder_notify(
+      "warning",
       paste0(
         "Applied to ",
         length(per_section),
@@ -3646,17 +3641,21 @@ apply_section_bounds <- function(id, per_section, a) {
         paste(short, collapse = ", "),
         ". Bounding-box mode usually works best for multi-section objects."
       ),
-      type = "warning",
-      duration = 10
+      target = list(
+        selector = ".builder-viewer-spatial-alignment .builder-viewer-card-body"
+      )
     )
   } else {
-    showNotification(
+    builder_notify(
+      "info",
       paste0(
         "The image was fitted to the coordinates of all ",
         length(per_section),
         " sections."
       ),
-      type = "message",
+      target = list(
+        selector = ".builder-viewer-spatial-alignment .builder-viewer-card-body"
+      ),
       duration = 5
     )
   }
