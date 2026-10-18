@@ -131,6 +131,76 @@ test_that("the first backend call is the timed fresh-process query", {
   )
 })
 
+test_that("a full collection settles the heap outside every timed read", {
+  skip_unless_bench_access()
+  source(bench_protocol, local = TRUE)
+
+  rows <- list(a = c(1, 0, 2), b = c(0, 3, 0))
+  plan <- list(
+    schema_version = 2L,
+    panel = data.frame(
+      gene = c("a", "b"),
+      nnz = c(2, 1),
+      role = c("first", "hot"),
+      stringsAsFactors = FALSE
+    ),
+    subset_cells = c(3L, 1L),
+    reference_row_fingerprint = bench_numeric_fingerprint(rows$a),
+    reference_block_fingerprint = bench_numeric_fingerprint(
+      rbind(rows$a, rows$b)
+    ),
+    reference_subset_row_fingerprint = bench_numeric_fingerprint(
+      rows$a[c(3L, 1L)]
+    ),
+    reference_subset_block_fingerprint = bench_numeric_fingerprint(
+      rbind(rows$a, rows$b)[, c(3L, 1L), drop = FALSE]
+    )
+  )
+  events <- character()
+  obj <- list(
+    getExpressionRow = function(gene, cells = NULL) {
+      if (is.null(cells)) rows[[gene]] else rows[[gene]][cells]
+    },
+    getExpressionBlock = function(genes, cells = NULL) {
+      values <- do.call(rbind, rows[genes])
+      if (is.null(cells)) values else values[, cells, drop = FALSE]
+    }
+  )
+  timer <- function(fn) {
+    events <<- c(events, "start")
+    value <- fn()
+    events <<- c(events, "stop")
+    list(seconds = 0.01, value = value)
+  }
+  record <- function(timing) {
+    events[length(events)] <<- paste0("stop:", timing$phase)
+  }
+
+  bench_measure_backend(
+    obj,
+    plan,
+    hot_iterations = 2L,
+    timer = timer,
+    record = record,
+    settle = function() events <<- c(events, "settle")
+  )
+
+  # No collection is requested while a timer runs, the first read and every
+  # one-off read follow a fresh collection, and the warmed loop gets one.
+  expect_identical(
+    events,
+    c(
+      "settle", "start", "stop:first",
+      "settle", rep(c("start", "stop:hot"), 2L),
+      "settle", "start", "stop:block",
+      "settle", "start", "stop:subset_row",
+      "settle", "start", "stop:subset_block"
+    )
+  )
+  expect_identical(formals(bench_measure_backend)$settle, quote(bench_settle_heap))
+  expect_invisible(bench_settle_heap())
+})
+
 test_that("backend measurements fail closed on wrong values", {
   skip_unless_bench_access()
   source(bench_protocol, local = TRUE)

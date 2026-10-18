@@ -916,12 +916,24 @@ bench_timed <- function(
   measured
 }
 
+# Full R garbage collection outside the timers. R escalates to a full
+# collection at a fixed point in a process's allocation history, and its cost
+# is set by the whole heap (attached packages, the cell-metadata shell), not by
+# the read in progress. Without this, a 0.3-0.7 s collection lands in whichever
+# read reaches that point first; which read that is shifts with tier, source and
+# even the size of these scripts. A read that allocates enough to need a
+# collection of its own still pays for it inside its timer.
+bench_settle_heap <- function() {
+  invisible(gc(verbose = FALSE, full = TRUE))
+}
+
 bench_measure_backend <- function(
   obj,
   plan,
   hot_iterations = 5L,
   timer = bench_default_timer,
-  record = function(row) NULL
+  record = function(row) NULL,
+  settle = bench_settle_heap
 ) {
   if (!identical(plan$schema_version, 2L)) {
     stop("unsupported query-plan schema", call. = FALSE)
@@ -932,7 +944,10 @@ bench_measure_backend <- function(
     stop("query plan must contain exactly one first gene", call. = FALSE)
   }
 
-  measure <- function(fn, phase, query) {
+  measure <- function(fn, phase, query, settle_first = TRUE) {
+    if (settle_first) {
+      settle()
+    }
     bench_timed(
       fn,
       timer = timer,
@@ -959,13 +974,17 @@ bench_measure_backend <- function(
     as.numeric(obj$getExpressionRow(gene))
   }))
   hot_order <- rep(hot_genes, times = max(1L, as.integer(hot_iterations)))
+  # One collection before the warmed loop; per-read collections would cost more
+  # than the short reads they protect.
+  settle()
   hot_secs <- vapply(
     hot_order,
     function(gene) {
       measure(
         function() as.numeric(obj$getExpressionRow(gene)),
         "hot",
-        gene
+        gene,
+        settle_first = FALSE
       )$seconds
     },
     numeric(1)
