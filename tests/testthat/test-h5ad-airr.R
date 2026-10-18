@@ -224,3 +224,42 @@ test_that("convertH5adToCerebro carries the repertoire into the .crb", {
   ))
   expect_length(readRDS(crb2)$getImmuneRepertoire(), 0L)
 })
+
+## ---------------------------------------------------------------------------
+## writing receptors and pseudotime back
+## ---------------------------------------------------------------------------
+
+test_that("exportToH5ad writes the immune repertoire as scirpy's obsm['airr'] and it reads back the same", {
+  skip_if_not_installed("scRepertoire")
+  first <- readCerebro(suppressWarnings(suppressMessages(convertH5adToCerebro(
+    fixture("small_airr.h5ad"), withr::local_tempdir(),
+    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+  ))))
+  out <- file.path(withr::local_tempdir(), "airr_back.h5ad")
+  suppressMessages(exportToH5ad(first, out))
+  expect_true(rhdf5::h5read(out, "obsm/airr", read.attributes = TRUE) |> attr("encoding-type") |> identical("awkward-array"))
+
+  again <- readCerebro(suppressWarnings(suppressMessages(convertH5adToCerebro(
+    out, withr::local_tempdir(), groups = "cell_type",
+    viewer_binary = "never", verbose = FALSE
+  ))))
+  a <- first$getImmuneRepertoire()
+  b <- again$getImmuneRepertoire()
+  a <- do.call(rbind, a)
+  b <- do.call(rbind, b)
+  a <- a[order(a$barcode), ]
+  b <- b[order(b$barcode), ]
+  expect_identical(b$barcode, a$barcode)
+  expect_identical(b$CTaa, a$CTaa)
+  expect_identical(b$CTgene, a$CTgene)
+})
+
+test_that("a Cerebro object without a repertoire writes no obsm['airr']", {
+  crb <- suppressWarnings(suppressMessages(convertH5adToCerebro(
+    fixture("small_csr.h5ad"), withr::local_tempdir(),
+    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+  )))
+  out <- file.path(withr::local_tempdir(), "none.h5ad")
+  suppressMessages(exportToH5ad(crb, out))
+  expect_false("airr" %in% rhdf5::h5ls(out)$name)
+})

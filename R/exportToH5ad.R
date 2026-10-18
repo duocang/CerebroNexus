@@ -450,7 +450,10 @@
 #' \code{uns["spatial"][<library>]} with its tissue images and scale factors, so
 #' scanpy and squidpy can draw them; the spot diameter scanpy wants is estimated
 #' from the spot spacing.
-#' Immune repertoire, HLA typing, trees, trajectories, enriched
+#' Immune receptors become scirpy's \code{obsm["airr"]} (one record per chain, as
+#' an awkward array; scirpy and \code{readH5adAsSCE()} read it), and the
+#' pseudotime of each trajectory becomes an \code{obs} column.
+#' HLA typing, trees, trajectory layouts and edges, enriched
 #' pathways and extra material have no AnnData counterpart and are not
 #' exported; a message names what was left out. The file is written to a
 #' private temporary file and moved into place only when complete.
@@ -541,6 +544,8 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
   rhdf5::h5write(as.integer(matrix@p), stage, "X/indptr")
 
   skipped <- character()
+  pseudotime <- .crbPseudotimeColumns(object, cells, names(columns))
+  columns <- c(columns, pseudotime)
   obs_written <- .h5adPutDataFrame(stage, "obs", cells, columns)
   dropped <- setdiff(gsub("/", "_", names(columns), fixed = TRUE), obs_written)
   if (length(dropped)) {
@@ -597,6 +602,21 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
   } else {
     character()
   }
+  airr_notes <- character()
+  repertoire_chains <- .crbRepertoireChains(
+    tryCatch(object$getImmuneRepertoire(), error = function(e) NULL),
+    cells
+  )
+  airr_written <- FALSE
+  if (!is.null(repertoire_chains)) {
+    airr_written <- tryCatch(
+      .h5adPutAirr(stage, repertoire_chains, n_cells),
+      error = function(e) {
+        airr_notes <<- paste0("immune repertoire (", conditionMessage(e), ")")
+        FALSE
+      }
+    )
+  }
   methods_with_markers <- object$getMethodsForMarkerGenes()
   if (length(methods_with_markers)) {
     .h5adPutGroup(stage, "uns/cerebro", "dict", "0.1.0")
@@ -621,14 +641,18 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
   ## what AnnData has no place for
   has <- function(value) !is.null(value) && length(value) > 0L
   left_out <- c(
-    if (has(tryCatch(object$getImmuneRepertoire(), error = function(e) NULL))) "immune repertoire",
+    if (
+      has(tryCatch(object$getImmuneRepertoire(), error = function(e) NULL)) &&
+        !airr_written &&
+        !length(airr_notes)
+    ) "immune repertoire (no chains found for the cells)",
     if (has(object$hla_typing)) "HLA typing",
     if (length(object$trees)) "trees",
-    if (length(object$trajectories)) "trajectories",
+    if (length(object$trajectories)) "trajectory layouts and edges (pseudotime is in obs)",
     if (length(object$enriched_pathways)) "enriched pathways",
     if (length(object$extra_material)) "extra material"
   )
-  left_out <- c(left_out, skipped, spatial_notes)
+  left_out <- c(left_out, skipped, spatial_notes, airr_notes)
   if (length(left_out)) {
     message("[INFO] Not exported to h5ad: ", paste(left_out, collapse = "; "), ".")
   }

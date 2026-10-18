@@ -56,7 +56,10 @@ coordinates, \code{NaN} for cells outside every section) and, per section,
 \code{uns["spatial"][<library>]} with its tissue images and scale factors, so
 scanpy and squidpy can draw them; the spot diameter scanpy wants is estimated
 from the spot spacing.
-Immune repertoire, HLA typing, trees, trajectories, enriched
+Immune receptors become scirpy's \code{obsm["airr"]} (one record per chain, as
+an awkward array; scirpy and \code{readH5adAsSCE()} read it), and the
+pseudotime of each trajectory becomes an \code{obs} column.
+HLA typing, trees, trajectory layouts and edges, enriched
 pathways and extra material have no AnnData counterpart and are not
 exported; a message names what was left out. The file is written to a
 private temporary file and moved into place only when complete.

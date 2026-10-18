@@ -10,7 +10,8 @@
 - From AnnData it also carries scanpy marker tables and category colours,
   Visium tissue images, spatial sections, scirpy TCR/BCR repertoires and
   scanpy / scVelo trajectories. `exportToH5ad()` writes spatial coordinates and
-  tissue images back so scanpy and squidpy can draw them.
+  tissue images back so scanpy and squidpy can draw them, the immune repertoire
+  as scirpy's `obsm["airr"]` and each trajectory's pseudotime as an `obs` column.
 - The Builder opens `.h5ad`, `.h5mu` and SingleCellExperiment `.rds`/`.qs2`
   files like Seurat ones (`convertSCEToSeurat()` is the conversion it uses), and
   offers PAGA, scVelo and pseudotime trajectories next to monocle2. Spatial

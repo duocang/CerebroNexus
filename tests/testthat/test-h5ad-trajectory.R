@@ -201,3 +201,21 @@ test_that("the trajectories reach the .crb and the Viewer's methods", {
   )
   expect_true(.viewerDatasetCapabilities(obj)$trajectory)
 })
+
+test_that("exportToH5ad writes pseudotime as obs columns, NaN where a cell has none", {
+  crb <- suppressWarnings(suppressMessages(convertH5adToCerebro(
+    testthat::test_path("fixtures", "anndata", "small_trajectory.h5ad"),
+    withr::local_tempdir(), groups = "cell_type", viewer_binary = "never", verbose = FALSE
+  )))
+  out <- file.path(withr::local_tempdir(), "pt.h5ad")
+  suppressMessages(exportToH5ad(crb, out))
+  back <- suppressWarnings(suppressMessages(readH5adAsSCE(out)))
+  columns <- colnames(SummarizedExperiment::colData(back))
+  expect_true("dpt_pseudotime" %in% columns)
+  source <- suppressWarnings(suppressMessages(readH5adAsSCE(
+    testthat::test_path("fixtures", "anndata", "small_trajectory.h5ad")
+  )))
+  expect_true("dpt_pseudotime" %in% colnames(SummarizedExperiment::colData(source)))
+  shared <- !is.na(source$dpt_pseudotime)
+  expect_equal(back$dpt_pseudotime[shared], source$dpt_pseudotime[shared], tolerance = 1e-6)
+})
