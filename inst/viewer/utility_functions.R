@@ -5223,6 +5223,11 @@ serverSideGeneSelector <- function(
 
     initial_selection <- isolate(input[[input_id]])
     send_update <- function(retry_update = FALSE) {
+      ## later() callbacks outlive a closed session. Reading its reactives then
+      ## raises outside any session and stops the whole app.
+      if (isTRUE(tryCatch(session$isClosed(), error = function(error) FALSE))) {
+        return(invisible(NULL))
+      }
       ## Timers from a previous dataset/activation can run after a slow load.
       ## They must not re-register obsolete choices over the current selector.
       if (
