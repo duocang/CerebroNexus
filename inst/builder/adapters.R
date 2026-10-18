@@ -332,6 +332,25 @@ builder_example_adapter <- function(id, object) {
   )
 }
 
+## Records the package file an example object was read from: `source_md5` is
+## its content hash, `source_file` its name.
+.builder_example_source_adapter <- function(adapter, source_file, source_md5) {
+  if (is.null(source_md5)) {
+    return(adapter)
+  }
+  if (
+    !identical(adapter$type, "example") ||
+      !.builder_adapter_scalar_text(source_md5) ||
+      !grepl("^[0-9a-fA-F]{32}$", source_md5) ||
+      !.builder_adapter_scalar_text(source_file)
+  ) {
+    .builder_adapter_abort("The example source file identity is invalid.")
+  }
+  adapter$source_file <- basename(source_file)
+  adapter$source_md5 <- tolower(source_md5)
+  adapter
+}
+
 .builder_adapter_load <- function(adapter) {
   serialization <- NULL
   if (identical(adapter$type, "example")) {
@@ -2044,6 +2063,33 @@ builder_open_snapshot <- function(snapshot) {
   "..." %in% arguments || length(arguments) >= 3L
 }
 
+## The source identity a snapshot records. A file source, or an example read
+## from a package file, ends in the source file's MD5, the form a saved Project
+## compares with the copy of that file it keeps.
+.builder_adapter_source_fingerprint <- function(adapter, content_md5 = NULL) {
+  if (identical(adapter$type, "file")) {
+    return(paste(
+      "builder-snapshot-v2",
+      basename(adapter$source_state$location),
+      adapter$source_state$bytes,
+      adapter$source_state$modified_at,
+      content_md5,
+      sep = ":"
+    ))
+  }
+  if (.builder_adapter_scalar_text(adapter$source_md5 %||% NULL)) {
+    return(paste(
+      "builder-snapshot-v2",
+      adapter$source_file,
+      "example",
+      adapter$location,
+      adapter$source_md5,
+      sep = ":"
+    ))
+  }
+  adapter$fingerprint
+}
+
 .builder_register_adapter <- function(adapter, id, progress = NULL) {
   if (!.builder_adapter_scalar_text(id)) {
     .builder_adapter_abort("A dataset registration requires a non-empty id.")
@@ -2117,18 +2163,10 @@ builder_open_snapshot <- function(snapshot) {
     }
   )
   snapshot <- frozen$snapshot
-  snapshot$source_fingerprint <- if (identical(adapter$type, "file")) {
-    paste(
-      "builder-snapshot-v2",
-      basename(adapter$source_state$location),
-      adapter$source_state$bytes,
-      adapter$source_state$modified_at,
-      inspected$source_md5 %||% snapshot$object_md5,
-      sep = ":"
-    )
-  } else {
-    adapter$fingerprint
-  }
+  snapshot$source_fingerprint <- .builder_adapter_source_fingerprint(
+    adapter,
+    inspected$source_md5 %||% snapshot$object_md5
+  )
   snapshot$source_state <- adapter$source_state
   reopened <- frozen$object
   registered <- FALSE

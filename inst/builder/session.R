@@ -117,7 +117,11 @@ builder_session_example <- function(
               stop(made$error, call. = FALSE)
             }
             value <- .builder_register_adapter(
-              builder_example_adapter(example_id, made$object),
+              .builder_example_source_adapter(
+                builder_example_adapter(example_id, made$object),
+                made$source_file,
+                made$source_md5
+              ),
               id,
               progress = progress
             )
