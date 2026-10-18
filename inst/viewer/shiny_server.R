@@ -2133,6 +2133,15 @@ server <- function(input, output, session) {
     ),
     local = TRUE
   )
+  ## Spatial and Gene expression share these colour scales, so they cannot
+  ## depend on one page having been opened.
+  source(
+    file.path(
+      Cerebro.options[["cerebro_root"]],
+      "viewer/core/func_color_scale.R"
+    ),
+    local = TRUE
+  )
 
   source(
     file.path(

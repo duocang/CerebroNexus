@@ -1,5 +1,5 @@
 sys.source(
-  viewer_test_path("gene_expression", "func_color_scale.R"),
+  viewer_test_path("core", "func_color_scale.R"),
   environment()
 )
 

@@ -301,7 +301,9 @@ spatial_projection_parameters_plot_current <- reactive({
     )
   } else if (plot_type == "ImageFeaturePlot") {
     feature_to_display <- controls$feature_to_display
-    req(feature_to_display)
+    ## Right after a dataset switch the picker can still hold the previous
+    ## dataset's gene; wait for one this dataset has.
+    req(feature_to_display, feature_to_display %in% getGeneNames())
     color_variable <- feature_to_display
   } else if (plot_type == "Co-expression (RGB)") {
     ## One gene per channel; any channel may be empty. Require at least one so
