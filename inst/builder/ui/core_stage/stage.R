@@ -34,6 +34,12 @@ builder_core_stage_ui <- function(id, model) {
       ),
       div(
         class = "builder-field builder-field--organism",
+        ## CSS shows the note only while the selection still equals the guess.
+        `data-builder-detected-organism` = if (
+          builder_stage_has_text(model$organism_detected)
+        ) {
+          model$organism_detected
+        },
         `data-builder-creatable-select` = "true",
         `data-builder-create-input-label` = "Custom organism",
         `data-builder-create-placeholder` = "Type another organism",
@@ -50,7 +56,13 @@ builder_core_stage_ui <- function(id, model) {
             maxItems = 1L,
             placeholder = "Select organism"
           )
-        )
+        ),
+        if (builder_stage_has_text(model$organism_detected)) {
+          p(
+            class = "builder-organism-detected",
+            "Detected from gene names"
+          )
+        }
       ),
       div(
         class = "builder-field builder-field--assay",

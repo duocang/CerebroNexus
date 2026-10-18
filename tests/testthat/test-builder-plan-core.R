@@ -359,9 +359,49 @@ test_that("new dataset settings keep missing QC fields empty", {
 
     settings <- builder_default_settings(profile, "Real dataset")
 
-    expect_null(settings$organism)
     expect_null(settings$nUMI)
     expect_null(settings$nGene)
+  })
+})
+
+test_that("new dataset settings default the organism from the gene-name guess", {
+  local({
+    builder_repo_source("plan.R")
+    profile <- function(guess) {
+      list(
+        default_assay = "RNA",
+        assay_profiles = list(RNA = list(default_layer = "data")),
+        group_preselect = "cell_type",
+        reduction_preselect = "umap",
+        organism_guess = guess
+      )
+    }
+
+    expect_identical(
+      builder_default_settings(profile("hg"), "Human")$organism,
+      "hg"
+    )
+    expect_identical(
+      builder_default_settings(profile("mm"), "Mouse")$organism,
+      "mm"
+    )
+    ## No confident guess: the field stays empty and required.
+    other <- builder_default_settings(profile("other"), "Other")
+    expect_true("organism" %in% names(other))
+    expect_null(other$organism)
+    ## The modern profile carries the same guess when the legacy one is absent.
+    expect_identical(
+      builder_default_settings(
+        profile(NULL),
+        "Modern",
+        dataset_profile = list(organism = list(code = "mm"))
+      )$organism,
+      "mm"
+    )
+    expect_null(builder_detected_organism(
+      profile(NULL),
+      list(organism = list(code = "other"))
+    ))
   })
 })
 

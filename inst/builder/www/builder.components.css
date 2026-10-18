@@ -1936,6 +1936,18 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   color: var(--c-amber-700);
   font-weight: 700;
 }
+/* The note follows the live selection: it hides once the user picks another
+   organism than the one guessed from gene names. */
+.builder-organism-detected {
+  display: none;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-2);
+  color: var(--c-text-muted);
+  font-size: var(--builder-type-caption);
+}
+.builder-field--organism[data-builder-detected-organism="hg"]:has(.selectize-input .item[data-value="hg"]) .builder-organism-detected,
+.builder-field--organism[data-builder-detected-organism="mm"]:has(.selectize-input .item[data-value="mm"]) .builder-organism-detected {
+  display: block;
+}
 .builder-field[data-builder-creatable-select="true"] select.selectized {
   display: none !important;
 }

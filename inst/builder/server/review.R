@@ -990,6 +990,10 @@ render_configure_workbench <- function() {
         "Mouse (mm)" = "mm",
         "Other" = "other"
       ),
+      organism_detected = builder_detected_organism(
+        entry$profile %||% list(),
+        entry$dataset_profile
+      ),
       group_choices = unname(entry$profile$group_candidates),
       suggested_groups = entry$profile$group_preselect %||%
         settings$included_groups %||%
