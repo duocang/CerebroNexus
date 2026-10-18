@@ -2150,6 +2150,27 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   box-shadow: 0 8px 20px rgb(184 75 22 / .08);
   transform: translateY(-1px);
 }
+/* Shown while files are dragged over the window; drops land anywhere. */
+.builder-window-drop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 3px dashed var(--builder-action);
+  background: rgb(255 247 237 / .72);
+  pointer-events: none;
+}
+.builder-window-drop[hidden] { display: none; }
+.builder-window-drop-label {
+  padding: .9rem 1.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-weight: 650;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .12);
+}
 .builder-dataset-dropzone-icon {
   display: grid;
   width: 3rem;

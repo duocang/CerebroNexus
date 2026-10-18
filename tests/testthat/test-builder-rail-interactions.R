@@ -388,3 +388,77 @@ test_that("rail move buttons are named icons and Remove keeps its label", {
     fixed = TRUE
   )
 })
+
+test_that("files dropped anywhere in the window are added as datasets", {
+  js <- builder_rail_js()
+  definitions <- builder_rail_js_functions(
+    js,
+    functions = c(
+      "dragCarriesFiles",
+      "fileInputOwnsDrop",
+      "windowFileDropAllowed",
+      "windowFileDropOverlay",
+      "setWindowFileDragActive",
+      "handleWindowFileDrag",
+      "handleWindowFileDrop",
+      "setupWindowFileDrop"
+    ),
+    vars = "windowFileDrag"
+  )
+  out <- builder_rail_dom_run(
+    c(
+      paste0(
+        "document.body.innerHTML = '",
+        "<button class=\"builder-add-datasets\" id=\"add\">Add files</button>",
+        "<section id=\"configure\"><p id=\"text\">Configure</p></section>",
+        "<div class=\"shiny-input-container\" id=\"tables\">",
+        "<input type=\"file\"><span id=\"tables-zone\">Drop tables</span></div>",
+        "<button class=\"builder-dataset-dropzone\" id=\"zone\"></button>';"
+      ),
+      "let allowed = true;",
+      "let datasetMutationsLocked = false;",
+      "const added = [];",
+      "function activityCapability(name) { return name === 'add_dataset' && allowed; }",
+      "function enqueueClientFiles(files) { added.push(...Array.from(files, file => file.name)); }",
+      definitions
+    ),
+    c(
+      "setupWindowFileDrop();",
+      "const files = name => { const data = new DataTransfer(); data.items.add(new File(['x'], name)); return data; };",
+      "const fire = (id, type, data) => { const event = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: data }); document.getElementById(id).dispatchEvent(event); return event.defaultPrevented; };",
+      "const overlay = () => { const node = document.querySelector('.builder-window-drop'); return Boolean(node && !node.hidden); };",
+      "const zone = () => document.getElementById('zone').classList.contains('is-drag-over');",
+      "const out = {};",
+      "out.overClaimed = fire('text', 'dragover', files('a.qs2'));",
+      "out.overlayShown = overlay();",
+      "out.zoneHighlighted = zone();",
+      "out.dropClaimed = fire('text', 'drop', files('a.qs2'));",
+      "out.overlayAfterDrop = overlay();",
+      "out.zoneAfterDrop = zone();",
+      "fire('add', 'drop', files('b.rds'));",
+      "const text = new DataTransfer(); text.setData('text/plain', 'hello');",
+      "out.textClaimed = fire('text', 'dragover', text) || fire('text', 'drop', text);",
+      "out.textOverlay = overlay();",
+      "out.inputClaimed = fire('tables-zone', 'dragover', files('t.csv')) || fire('tables-zone', 'drop', files('t.csv'));",
+      "allowed = false;",
+      "out.lockedClaimed = fire('text', 'dragover', files('c.qs2')) && fire('text', 'drop', files('c.qs2'));",
+      "out.lockedOverlay = overlay();",
+      "out.added = added;",
+      "return out;"
+    )
+  )
+
+  expect_true(out$overClaimed)
+  expect_true(out$overlayShown)
+  expect_true(out$zoneHighlighted)
+  expect_true(out$dropClaimed)
+  expect_false(out$overlayAfterDrop)
+  expect_false(out$zoneAfterDrop)
+  expect_false(out$textClaimed)
+  expect_false(out$textOverlay)
+  expect_false(out$inputClaimed)
+  expect_true(out$lockedClaimed)
+  expect_false(out$lockedOverlay)
+  expect_identical(out$added, list("a.qs2", "b.rds"))
+  expect_false(grepl("function setupDatasetDropzones(", js, fixed = TRUE))
+})

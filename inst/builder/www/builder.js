@@ -1958,26 +1958,93 @@
     picker.click();
   }
 
-  function setupDatasetDropzones(roots) {
-    matchingDynamicElements(roots, ".builder-dataset-dropzone").forEach(function (dropzone) {
-      if (dropzone.dataset.dropzoneBound === "true") return;
-      dropzone.dataset.dropzoneBound = "true";
-      dropzone.addEventListener("dragover", function (event) {
-        event.preventDefault();
-        if (!activityCapability("add_dataset")) return;
-        dropzone.classList.add("is-drag-over");
-      });
-      dropzone.addEventListener("dragleave", function (event) {
-        if (event.relatedTarget && dropzone.contains(event.relatedTarget)) return;
-        dropzone.classList.remove("is-drag-over");
-      });
-      dropzone.addEventListener("drop", function (event) {
-        event.preventDefault();
-        dropzone.classList.remove("is-drag-over");
-        if (!activityCapability("add_dataset")) return;
-        enqueueClientFiles(event.dataTransfer && event.dataTransfer.files);
-      });
+  // Files dropped anywhere in the window are added as datasets. Drags that
+  // carry no files (text, links, rail rows) are left alone, and a Shiny
+  // file input keeps its own drops (tables, images).
+  var windowFileDrag = { active: false, timer: null, overlay: null };
+
+  function dragCarriesFiles(event) {
+    var types = event.dataTransfer && event.dataTransfer.types;
+    return Boolean(types) && Array.prototype.indexOf.call(types, "Files") >= 0;
+  }
+
+  function fileInputOwnsDrop(target) {
+    var container = target && target.closest
+      ? target.closest(".shiny-input-container")
+      : null;
+    return Boolean(container && container.querySelector("input[type=file]"));
+  }
+
+  function windowFileDropAllowed() {
+    return activityCapability("add_dataset") && !datasetMutationsLocked &&
+      !document.querySelector(".modal.show");
+  }
+
+  function windowFileDropOverlay() {
+    if (windowFileDrag.overlay && windowFileDrag.overlay.isConnected) {
+      return windowFileDrag.overlay;
+    }
+    var overlay = document.createElement("div");
+    overlay.className = "builder-window-drop";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.hidden = true;
+    var label = document.createElement("div");
+    label.className = "builder-window-drop-label";
+    label.textContent = "Drop files to add datasets";
+    overlay.appendChild(label);
+    document.body.appendChild(overlay);
+    windowFileDrag.overlay = overlay;
+    return overlay;
+  }
+
+  function setWindowFileDragActive(active) {
+    window.clearTimeout(windowFileDrag.timer);
+    windowFileDrag.timer = null;
+    if (windowFileDrag.active === active) return;
+    windowFileDrag.active = active;
+    windowFileDropOverlay().hidden = !active;
+    document.documentElement.classList.toggle("builder-file-drag-active", active);
+    document.querySelectorAll(".builder-dataset-dropzone").forEach(function (zone) {
+      zone.classList.toggle("is-drag-over", active);
     });
+  }
+
+  function handleWindowFileDrag(event) {
+    if (!dragCarriesFiles(event)) return;
+    if (fileInputOwnsDrop(event.target)) {
+      setWindowFileDragActive(false);
+      return;
+    }
+    // Always claim a file drag so the browser never opens the file in place
+    // of the Builder; refuse it visibly when datasets cannot be added.
+    event.preventDefault();
+    var allowed = windowFileDropAllowed();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = allowed ? "copy" : "none";
+    setWindowFileDragActive(allowed);
+    // dragover repeats while the pointer is over the page; when it stops the
+    // drag has left the window or been cancelled.
+    if (allowed) {
+      windowFileDrag.timer = window.setTimeout(function () {
+        setWindowFileDragActive(false);
+      }, 400);
+    }
+  }
+
+  function handleWindowFileDrop(event) {
+    if (!dragCarriesFiles(event)) return;
+    setWindowFileDragActive(false);
+    if (fileInputOwnsDrop(event.target)) return;
+    event.preventDefault();
+    if (!windowFileDropAllowed()) return;
+    enqueueClientFiles(event.dataTransfer && event.dataTransfer.files);
+  }
+
+  function setupWindowFileDrop() {
+    if (windowFileDrag.bound) return;
+    windowFileDrag.bound = true;
+    document.addEventListener("dragenter", handleWindowFileDrag);
+    document.addEventListener("dragover", handleWindowFileDrag);
+    document.addEventListener("drop", handleWindowFileDrop);
   }
 
   function clientQueueStatus(entry, index) {
@@ -4401,7 +4468,6 @@
 
   function enhanceDynamicContent(roots) {
     syncWorkflowProgressHeight();
-    setupDatasetDropzones(roots);
     syncSpatialAlignmentScrollbars(roots);
     updateOptionalAnalysisCount(roots);
     updateExtraMaterialCount(roots);
@@ -5809,6 +5875,7 @@
     registerBuildDialogHandler();
     registerClientImportHandlers();
     observeClientUploadProgress();
+    setupWindowFileDrop();
     registerViewerGroupHandler();
     registerViewerContentHandlers();
 
