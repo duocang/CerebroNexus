@@ -3550,7 +3550,7 @@ builder_spatial_alignment_server <- function(
         shiny::actionButton(
           "enhance-remove_image_confirm",
           "Remove image",
-          class = "btn btn-remove-soft"
+          class = "btn btn-danger"
         )
       )
     ))

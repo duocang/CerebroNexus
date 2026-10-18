@@ -292,7 +292,7 @@ builder_project_opening_dialog <- function() {
     footer = actionButton(
       "cancel_builder_project_open",
       "Cancel",
-      class = "btn builder-button-secondary"
+      class = "btn-default"
     ),
     easyClose = FALSE,
     size = "s"
@@ -329,7 +329,7 @@ builder_project_open_wait_dialog <- function(message) {
     footer = actionButton(
       "cancel_builder_project_open_wait",
       "Cancel",
-      class = "btn builder-button-secondary"
+      class = "btn-default"
     ),
     easyClose = FALSE,
     size = "s"
@@ -396,7 +396,7 @@ builder_project_existing_folder_dialog <- function(path) {
       actionButton(
         "choose_another_builder_project_folder",
         "Choose another folder",
-        class = "btn btn-outline-secondary"
+        class = "btn-default"
       ),
       actionButton(
         "confirm_existing_builder_project_folder",
@@ -428,12 +428,12 @@ builder_project_nonempty_folder_dialog <- function(path) {
       actionButton(
         "cancel_builder_project_folder",
         "Cancel",
-        class = "btn btn-outline-secondary"
+        class = "btn-default"
       ),
       actionButton(
         "choose_another_builder_project_folder",
         "Choose another folder",
-        class = "btn btn-outline-secondary"
+        class = "btn-default"
       ),
       actionButton(
         "confirm_builder_project_folder",
@@ -780,7 +780,7 @@ builder_project_restore_dialog <- function(manifest) {
         actionButton(
           "cancel_builder_project_restore",
           "Cancel",
-          class = "btn btn-outline-secondary"
+          class = "btn-default"
         ),
         actionButton(
           "confirm_builder_project_open",

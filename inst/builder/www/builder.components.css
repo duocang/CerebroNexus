@@ -2075,6 +2075,34 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .btn-primary:active,
 .btn-action:active { background: var(--builder-action-active) !important; }
 
+/* Destructive confirmations ("Discard and open", "Remove image"). Shiny's
+   actionButton also carries .btn-default, so the pair outranks it. */
+.btn.btn-danger,
+.btn.btn-danger:focus {
+  border-color: var(--c-error);
+  background: var(--c-error);
+  color: var(--c-white);
+}
+.btn.btn-danger:hover,
+.btn.btn-danger:focus-visible {
+  border-color: var(--c-error-700);
+  background: var(--c-error-700);
+  color: var(--c-white);
+}
+.btn.btn-danger:active { background: #6f1616; }
+.btn.btn-danger:focus-visible { outline-color: var(--c-error-700); }
+
+/* Dialog footers: one primary or destructive action, the rest secondary. */
+#shiny-modal .modal-footer .btn:not(.btn-primary):not(.btn-danger) {
+  border-color: var(--c-border-2);
+  background: var(--c-surface);
+  color: var(--c-text);
+}
+#shiny-modal .modal-footer .btn:not(.btn-primary):not(.btn-danger):hover {
+  border-color: var(--c-text-3);
+  background: var(--c-surface-2);
+}
+
 .btn-quiet {
   color: var(--c-text-muted); border-color: transparent; background: transparent;
 }
