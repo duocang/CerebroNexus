@@ -1339,7 +1339,17 @@ if (identical(command, "inspect")) {
   if (!all(required_source_columns %in% names(source_manifest))) {
     stop("source manifest is missing required columns", call. = FALSE)
   }
-  if (!setequal(unique(schedule$source), unique(source_manifest$source))) {
+  # A supplement's filtered schedule may use fewer sources than the runner
+  # fetched and verified; it must still cover every scheduled one. A full study
+  # must match exactly.
+  schedule_filter <- manifest_values["schedule_filter"]
+  supplement <- !is.na(schedule_filter) && nzchar(schedule_filter)
+  scheduled_sources <- unique(schedule$source)
+  fetched_sources <- unique(source_manifest$source)
+  if (
+    !all(scheduled_sources %in% fetched_sources) ||
+      (!supplement && !setequal(scheduled_sources, fetched_sources))
+  ) {
     stop("source manifest does not cover the scheduled sources", call. = FALSE)
   }
   if (
