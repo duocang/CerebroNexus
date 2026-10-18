@@ -255,8 +255,7 @@ builder_server_path_dialog <- function(
   detail = NULL,
   roots = tryCatch(builder_server_path_roots(), error = function(e) NULL),
   note = NULL,
-  kicker = "Builder project",
-  cancel_id = NULL
+  kicker = "Builder project"
 ) {
   roots_id <- paste0(input_id, "_roots")
   modalDialog(
@@ -287,12 +286,7 @@ builder_server_path_dialog <- function(
       )
     },
     footer = tagList(
-      # A server-side Cancel lets the caller reset its own state.
-      if (is.null(cancel_id)) {
-        modalButton("Cancel")
-      } else {
-        actionButton(cancel_id, "Cancel", class = "btn-default")
-      },
+      modalButton("Cancel"),
       actionButton(action_id, action_label, class = "btn btn-primary")
     ),
     # Typed paths must not be lost to a stray backdrop click or Escape.
