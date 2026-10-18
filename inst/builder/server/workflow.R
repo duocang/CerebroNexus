@@ -61,10 +61,10 @@ navigate_workflow_stage <- function(stage) {
         state,
         list(type = "open_review", snapshot = snapshot)
       ))
-      shiny::showNotification(
+      builder_notify(
+        "warning",
         "Settings changed. Review the updated plan before building.",
-        type = "warning",
-        duration = 6
+        target = "review"
       )
       return(invisible(FALSE))
     }

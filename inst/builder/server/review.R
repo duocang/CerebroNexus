@@ -935,7 +935,8 @@ observeEvent(
       other = "Other",
       organism
     )
-    showNotification(
+    builder_notify(
+      "info",
       if (changed) {
         paste0(
           "Organism set to ",
@@ -947,7 +948,7 @@ observeEvent(
       } else {
         "No other unchecked dataset needed a change."
       },
-      type = "message",
+      target = list(field = "core-organism_apply_all"),
       duration = 4
     )
   },
@@ -1293,10 +1294,10 @@ observe({
       list(action = "close")
     )
     if (state$stage %in% c("review", "build")) {
-      showNotification(
+      builder_notify(
+        "warning",
         "Settings changed. Review the updated plan before building.",
-        type = "warning",
-        duration = 6
+        target = "review"
       )
     }
   }
