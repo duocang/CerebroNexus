@@ -1514,11 +1514,16 @@ builder_example_record <- function(
         if (!nzchar(path) || !file.exists(path)) {
           return(list(error = "The package example object was not found."))
         }
+        # A saved Project keeps a copy of this file, so its content hash is
+        # the source identity a dataset cache built from the example records.
+        source_md5 <- unname(tools::md5sum(path))
         loaded <- builder_read_object(path)
         if (!is.null(loaded$error)) {
           return(loaded)
         }
         loaded$format <- "Built-in example"
+        loaded$source_file <- basename(path)
+        loaded$source_md5 <- source_md5
         loaded
       }
     })

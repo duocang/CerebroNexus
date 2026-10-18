@@ -6529,6 +6529,155 @@ test_that("completed build artifacts use the formal Project registration path", 
   expect_length(missing$artifacts, 0L)
 })
 
+test_that("a CRB built from a saved example dataset is registered", {
+  runtime <- builder_project_test_runtime()
+  runtime$builder_source_utf8(
+    builder_test_inst_path("builder", "adapters.R"),
+    envir = runtime
+  )
+  # Load: the example records the content hash of the file it was read from.
+  example <- runtime$builder_example_catalog()$complete_viewer_data
+  made <- example$make()
+  example_md5 <- unname(tools::md5sum(example$serialized_path))
+  expect_identical(made$source_md5, example_md5)
+  adapter <- runtime$.builder_example_source_adapter(
+    runtime$builder_example_adapter(example$id, made$object),
+    made$source_file,
+    made$source_md5
+  )
+  source_fingerprint <- runtime$.builder_adapter_source_fingerprint(adapter)
+  expect_identical(
+    runtime$builder_project_source_fingerprint_md5(source_fingerprint),
+    example_md5
+  )
+  root <- withr::local_tempdir()
+  entry <- list(
+    id = "ds1",
+    revision = 3L,
+    snapshot = list(source_fingerprint = source_fingerprint),
+    settings = list(name = example$label, organism = "hg"),
+    acknowledgements = character(),
+    spatial_drafts = list(),
+    path = example$serialized_path,
+    filename = basename(example$serialized_path),
+    source_origin = "example",
+    example = example$id
+  )
+
+  # Save: the Project keeps its own copy of the example file, then the
+  # dataset is checked and saved again.
+  job <- runtime$builder_project_source_job(entry, root)
+  dir.create(dirname(job$target), recursive = TRUE)
+  expect_true(file.copy(example$serialized_path, job$target))
+  source <- list(
+    kind = "managed",
+    origin = "example",
+    example = example$id,
+    filename = job$filename,
+    path = job$relative,
+    status = "ready",
+    fingerprint = runtime$builder_project_file_fingerprint(
+      job$target,
+      content = TRUE
+    )
+  )
+  manifest <- runtime$builder_project_new_manifest(root, "Examples")
+  manifest$datasets <- list(runtime$builder_project_dataset_record(
+    entry,
+    source = source,
+    checked = TRUE,
+    root = root
+  ))
+  saved <- runtime$builder_project_write(manifest, root)
+
+  # The dataset cache built for the checked dataset.
+  build <- withr::local_tempdir()
+  primary <- file.path(build, "01-complete-viewer-demo-ds1.crb")
+  writeBin(charToRaw("example-build"), primary)
+  prepared <- runtime$builder_project_prepare_build_artifacts(
+    plan = list(items = list(list(
+      id = "ds1",
+      name = example$label,
+      filename = basename(primary),
+      sidecars = character(),
+      private_assets = basename(primary)
+    ))),
+    value = list(
+      state = "success",
+      built = stats::setNames(list(primary), "ds1"),
+      verifications = list(ds1 = list())
+    ),
+    root = root,
+    previous_artifacts = list(),
+    entries = list(entry[c(
+      "id",
+      "revision",
+      "snapshot",
+      "settings",
+      "acknowledgements",
+      "spatial_drafts"
+    )])
+  )
+  expect_null(prepared$error)
+  artifact <- prepared$artifacts$ds1
+
+  registered <- runtime$builder_project_manifest_with_artifact(
+    saved$manifest,
+    root,
+    "ds1",
+    artifact
+  )
+  expect_type(registered, "list")
+  written <- runtime$builder_project_write(
+    registered,
+    root,
+    expected_revision = saved$manifest$project$revision
+  )
+  reopened <- runtime$builder_project_read(written$path)
+  expect_identical(reopened$datasets[[1L]]$artifact$status, "ready")
+  status <- runtime$builder_project_dataset_status(
+    reopened$datasets[[1L]],
+    root
+  )
+  expect_true("reuse" %in% status$actions)
+
+  # A cache that names only the example, not the file the Project keeps,
+  # is still refused, and the refusal says which check failed.
+  legacy <- artifact
+  legacy$built_from_source_fingerprint <- "example:complete_viewer_data:5.4.0"
+  refused <- runtime$builder_project_manifest_with_artifact(
+    reopened,
+    root,
+    "ds1",
+    legacy
+  )
+  expect_false(is.list(refused))
+  expect_identical(
+    attr(refused, "reason"),
+    "The dataset cache was built from a different source file."
+  )
+  runtime$.builder_app_capture_spatial_molecule_identity <- function(path) {
+    list(entries = list())
+  }
+  expect_error(
+    runtime$builder_project_write_task(
+      function(full) runtime,
+      list(
+        manifest = reopened,
+        root = root,
+        artifact_record = list(id = "ds1", artifact = legacy),
+        expected_revision = reopened$project$revision,
+        configuration_cache = list()
+      )
+    ),
+    paste(
+      "The dataset cache no longer matches this project.",
+      "The dataset cache was built from a different source file."
+    ),
+    fixed = TRUE
+  )
+})
+
 test_that("trimmed artifact plans reopen and freeze through the Project", {
   runtime <- builder_project_test_runtime()
   builder_plan_contract_source_runtime(runtime)

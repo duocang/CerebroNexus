@@ -5959,8 +5959,26 @@ builder_project_artifact_matches_entry <- function(
   identity_cache = NULL,
   .verified_artifact_digest = NULL
 ) {
+  is.null(builder_project_artifact_entry_mismatch(
+    artifact,
+    entry,
+    source = source,
+    identity_cache = identity_cache,
+    .verified_artifact_digest = .verified_artifact_digest
+  ))
+}
+
+## NULL when `artifact` was built from `entry` (and its source), otherwise
+## the reason it was not.
+builder_project_artifact_entry_mismatch <- function(
+  artifact,
+  entry,
+  source = NULL,
+  identity_cache = NULL,
+  .verified_artifact_digest = NULL
+) {
   if (!is.list(artifact) || !is.list(entry)) {
-    return(FALSE)
+    return("The dataset cache or its configuration is missing.")
   }
   runtime_configuration <- entry$runtime_project_configuration %||% list()
   contract_version <- tryCatch(
@@ -5972,7 +5990,7 @@ builder_project_artifact_matches_entry <- function(
     error = function(error) NA_integer_
   )
   if (is.na(contract_version)) {
-    return(FALSE)
+    return("The saved configuration uses an unsupported contract version.")
   }
   verified_artifact_digest <- as.character(
     runtime_configuration$artifact_digest %||% ""
@@ -6041,7 +6059,7 @@ builder_project_artifact_matches_entry <- function(
     ))
   }
   if (!digest_matches) {
-    return(FALSE)
+    return("The dataset cache was built from a different configuration.")
   }
   artifact_source <- artifact$built_from_source_fingerprint %||% NULL
   current_source <- entry$snapshot$source_fingerprint %||% NULL
@@ -6053,17 +6071,22 @@ builder_project_artifact_matches_entry <- function(
   ) {
     current_md5 <- tolower(as.character(source$fingerprint$md5))
   }
-  if (!is.null(current_md5)) {
-    return(identical(
+  source_matches <- if (!is.null(current_md5)) {
+    identical(
       builder_project_source_fingerprint_md5(artifact_source),
       current_md5
-    ))
-  }
-  !.builder_project_text(current_source) ||
-    identical(
-      as.character(artifact_source %||% ""),
-      as.character(current_source)
     )
+  } else {
+    !.builder_project_text(current_source) ||
+      identical(
+        as.character(artifact_source %||% ""),
+        as.character(current_source)
+      )
+  }
+  if (!isTRUE(source_matches)) {
+    return("The dataset cache was built from a different source file.")
+  }
+  NULL
 }
 
 builder_project_entries_requiring_crb <- function(
@@ -7608,28 +7631,33 @@ builder_project_manifest_with_artifact <- function(
     },
     character(1)
   )
+  # FALSE carries the failed check as its "reason" attribute.
+  rejected <- function(reason) structure(FALSE, reason = reason)
   index <- match(id, ids)
   if (is.na(index)) {
-    return(FALSE)
+    return(rejected("The dataset is no longer in this project."))
   }
   record <- records[[index]]
   if (!builder_project_record_configuration_confirmed(record)) {
-    return(FALSE)
+    return(rejected("The saved configuration is no longer checked."))
   }
   saved_entry <- tryCatch(
     builder_project_read_dataset_config(record, project$root),
     error = identity
   )
-  if (
-    inherits(saved_entry, "condition") ||
-      !builder_project_artifact_available(artifact, project$root) ||
-      !builder_project_artifact_matches_entry(
-        artifact,
-        saved_entry,
-        source = record$source %||% NULL
-      )
-  ) {
-    return(FALSE)
+  if (inherits(saved_entry, "condition")) {
+    return(rejected(conditionMessage(saved_entry)))
+  }
+  if (!builder_project_artifact_available(artifact, project$root)) {
+    return(rejected("The dataset cache file is missing or changed."))
+  }
+  mismatch <- builder_project_artifact_entry_mismatch(
+    artifact,
+    saved_entry,
+    source = record$source %||% NULL
+  )
+  if (!is.null(mismatch)) {
+    return(rejected(mismatch))
   }
   stored <- artifact
   if (
@@ -7704,7 +7732,11 @@ builder_project_write_task <- function(runtime_for, args) {
       artifact_record$artifact
     )
     if (!is.list(manifest)) {
-      stop("The dataset cache no longer matches this project.")
+      reason <- attr(manifest, "reason", exact = TRUE)
+      stop(
+        "The dataset cache no longer matches this project.",
+        if (is.character(reason) && length(reason) == 1L) paste0(" ", reason)
+      )
     }
   }
   written <- runtime$builder_project_write(
