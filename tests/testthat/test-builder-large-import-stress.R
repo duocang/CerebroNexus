@@ -78,7 +78,7 @@ test_that("multiple large QS2 imports stay asynchronous and memory bounded", {
         ))
       }
       if (Sys.time() >= deadline) {
-        fail("Timed out waiting for a large QS2 import.")
+        stop("Timed out waiting for a large QS2 import.", call. = FALSE)
       }
     }
   }

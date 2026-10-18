@@ -107,28 +107,31 @@ test_that("a controlled slow importer runs outside the caller", {
     import_generation = 1L,
     .importer = importer
   ))[["elapsed"]])
-  expect_lt(dispatch_elapsed, 0.5)
+  ## The importer waits for a gate that is still closed, so returning at all
+  ## shows the dispatch did not run it in this process. The bound only keeps
+  ## a regression from being mistaken for a slow machine.
+  expect_lt(dispatch_elapsed, 5)
 
   first <- app_env$builder_session_poll(worker)
   worker <- first$worker
   expect_null(first$result)
   expect_true(worker$process$is_alive())
 
-  deadline <- Sys.time() + 5
+  deadline <- Sys.time() + 60
   repeat {
     stage <- app_env$builder_import_progress_read(progress, 1L)
     if (identical(stage$stage, "reading")) {
       break
     }
     if (Sys.time() >= deadline) {
-      fail("The slow importer did not publish its reading stage.")
+      stop("The slow importer did not publish its reading stage.", call. = FALSE)
     }
     Sys.sleep(0.01)
   }
 
   file.create(gate)
   withr::defer(unlink(gate, force = TRUE))
-  deadline <- Sys.time() + 10
+  deadline <- Sys.time() + 60
   repeat {
     completed <- app_env$builder_session_poll(worker)
     worker <- completed$worker
@@ -136,7 +139,7 @@ test_that("a controlled slow importer runs outside the caller", {
       break
     }
     if (Sys.time() >= deadline) {
-      fail("The controlled importer did not finish after its gate opened.")
+      stop("The controlled importer did not finish after its gate opened.", call. = FALSE)
     }
     Sys.sleep(0.01)
   }

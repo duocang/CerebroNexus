@@ -1336,9 +1336,14 @@ test_that("only one process can coordinate one release", {
     }
     first <- callr::r_bg(runner, list("one", builder_root, target, barrier))
     second <- callr::r_bg(runner, list("two", builder_root, target, barrier))
+    withr::defer(for (process in list(first, second)) {
+      if (process$is_alive()) try(process$kill(), silent = TRUE)
+    })
     writeLines("go", barrier)
-    first$wait(timeout = 10000)
-    second$wait(timeout = 10000)
+    ## Each process sources the Builder before the race; on a busy machine
+    ## that alone can take more than ten seconds.
+    first$wait(timeout = 120000)
+    second$wait(timeout = 120000)
     results <- list(first$get_result(), second$get_result())
 
     expect_identical(

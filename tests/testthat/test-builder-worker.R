@@ -1211,7 +1211,7 @@ if (builder_lifecycle_api_available) {
         break
       }
       if (Sys.time() >= deadline) {
-        fail("The gated Builder worker did not finish startup.")
+        stop("The gated Builder worker did not finish startup.", call. = FALSE)
       }
       Sys.sleep(0.01)
     }

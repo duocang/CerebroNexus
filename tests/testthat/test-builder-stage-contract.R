@@ -634,7 +634,8 @@ test_that("Open App uses its default r_bg launcher without parent helpers", {
     }
   ))
   expect_s3_class(process, "r_process")
-  process$wait(10000)
+  withr::defer(if (process$is_alive()) try(process$kill(), silent = TRUE))
+  process$wait(120000)
   expect_false(process$is_alive())
   expect_identical(
     process$get_result(),

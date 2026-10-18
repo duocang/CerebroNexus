@@ -114,7 +114,7 @@ test_that("real worker fully collects after rejecting a non-Seurat RDS", {
       break
     }
     if (Sys.time() >= deadline) {
-      fail("The non-Seurat import did not finish.")
+      stop("The non-Seurat import did not finish.", call. = FALSE)
     }
   }
 
