@@ -1060,7 +1060,21 @@ test_that("Build stage exclusively owns its live status projection", {
     )),
     1L
   )
-  expect_match(status_renderer, "flow = build_flow()", fixed = TRUE)
+  expect_match(status_renderer, "flow <- build_flow()", fixed = TRUE)
+  expect_match(status_renderer, "flow = flow", fixed = TRUE)
+  ## A plain Save also registers dataset caches; only a build this session
+  ## started may show "Saving reusable CRBs", and the phase is reactive so
+  ## the card leaves "Build in progress" when registration ends.
+  expect_match(
+    status_renderer,
+    'finalizing <- identical(flow$stage %||% NULL, "building") &&',
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "isolate(builder_project_operation_phase())",
+    status_renderer,
+    fixed = TRUE
+  ))
   expect_match(status_renderer, "protocol = protocol()", fixed = TRUE)
   expect_match(status_renderer, "busy_note()", fixed = TRUE)
   expect_match(

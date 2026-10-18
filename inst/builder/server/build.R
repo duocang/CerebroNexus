@@ -203,14 +203,23 @@ current_build_options <- function() {
 
 build_stage_status_projection <- reactive({
   req(identical(workflow()$stage, "build"))
-  finalizing <- exists(
-    "builder_project_operation_phase",
-    mode = "function",
-    inherits = TRUE
-  ) &&
-    isolate(builder_project_operation_phase()) %in% c("registering", "saving")
+  flow <- build_flow()
+  ## "Saving reusable CRBs" only follows a build this session started. A
+  ## plain Save also registers dataset caches; that is not a build, and Build
+  ## stays available (its own lock explains the wait). The phase is read
+  ## reactively so the card updates when registration ends instead of
+  ## staying on "Build in progress".
+  project_phase <- if (
+    exists("builder_project_operation_phase", mode = "function", inherits = TRUE)
+  ) {
+    builder_project_operation_phase()
+  } else {
+    "idle"
+  }
+  finalizing <- identical(flow$stage %||% NULL, "building") &&
+    project_phase %in% c("registering", "saving")
   builder_build_stage_status_model(
-    flow = build_flow(),
+    flow = flow,
     protocol = protocol(),
     note = if (finalizing) {
       "Export complete. Saving reusable CRBs to the Builder Project…"
