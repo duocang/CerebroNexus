@@ -70,7 +70,7 @@ body {
   border-radius: var(--r-sm);
   background: var(--c-text);
   color: var(--c-white);
-  font-size: .82rem;
+  font-size: var(--builder-type-small);
   font-weight: 650;
   opacity: 0;
   pointer-events: none;
@@ -100,7 +100,7 @@ body {
 
 .topbar h1 {
   color: var(--c-text);
-  font-size: .9rem;
+  font-size: var(--builder-type-body);
   font-weight: 650;
   letter-spacing: -.012em;
 }
@@ -145,19 +145,19 @@ body {
   border-color: var(--c-border-2);
   border-radius: 50%;
   background: var(--c-white);
-  font-size: .69rem;
+  font-size: var(--builder-type-micro);
   font-weight: 650;
 }
 
 .builder-workflow-step-copy strong {
   color: var(--c-text-2);
-  font-size: .84rem;
+  font-size: var(--builder-type-small);
   font-weight: 600;
 }
 
 .builder-workflow-step-copy small {
   color: var(--c-text-3);
-  font-size: .68rem;
+  font-size: var(--builder-type-micro);
 }
 
 .builder-workflow-progress li[aria-current="step"] > span,
@@ -199,7 +199,7 @@ body {
 .builder-loading-copy h2 {
   margin: 0;
   color: var(--c-text);
-  font-size: 1.35rem;
+  font-size: var(--builder-type-title);
   font-weight: 670;
   letter-spacing: -.025em;
   text-wrap: balance;
@@ -209,7 +209,7 @@ body {
   max-width: 42rem;
   margin: .35rem 0 0;
   color: var(--c-text-2);
-  font-size: .86rem;
+  font-size: var(--builder-type-body);
   text-wrap: pretty;
 }
 .builder-import-failed-state .builder-loading-copy {
@@ -225,7 +225,7 @@ body {
   gap: .5rem;
   margin: .9rem 0 0;
   color: var(--c-text-2);
-  font-size: .8rem;
+  font-size: var(--builder-type-small);
 }
 
 .builder-import-loading-dot {
@@ -276,7 +276,7 @@ body {
 
 .builder-data-sources-label {
   color: var(--c-text-3);
-  font-size: .65rem;
+  font-size: var(--builder-type-micro);
   font-weight: 700;
   letter-spacing: .1em;
 }
@@ -320,7 +320,7 @@ body {
   border-bottom: 0;
   color: var(--c-text-3);
   font-family: var(--builder-font-sans);
-  font-size: .64rem;
+  font-size: var(--builder-type-micro);
   font-weight: 700;
   letter-spacing: .12em;
 }
@@ -376,7 +376,7 @@ body {
   border-radius: 50%;
   background: transparent;
   color: var(--c-text-3);
-  font-size: .67rem;
+  font-size: var(--builder-type-micro);
   font-weight: 650;
 }
 
@@ -387,18 +387,18 @@ body {
 
 .ds .nm {
   color: var(--c-text);
-  font-size: .84rem;
+  font-size: var(--builder-type-small);
   font-weight: 620;
 }
 
 .ds .meta {
   color: var(--c-text-3);
-  font-size: .7rem;
+  font-size: var(--builder-type-micro);
 }
 
 .ds[data-load-state="ready"] .ds-ready-stamp.needs-review {
   color: var(--c-warning-700);
-  font-size: .71rem;
+  font-size: var(--builder-type-micro);
   font-weight: 600;
 }
 
@@ -447,7 +447,7 @@ body {
   min-height: 1.7rem;
   border-color: transparent;
   background: transparent;
-  font-size: .68rem;
+  font-size: var(--builder-type-micro);
   font-weight: 560;
 }
 
@@ -502,7 +502,7 @@ body {
   max-width: 52rem;
   margin-top: .6rem;
   color: var(--c-text-2);
-  font-size: .86rem;
+  font-size: var(--builder-type-body);
   text-wrap: pretty;
 }
 
@@ -511,14 +511,14 @@ body {
 .builder-viewer-content-head h4 {
   color: var(--c-text);
   font-family: var(--builder-font-sans);
-  font-size: .98rem;
+  font-size: var(--builder-type-subtitle);
   font-weight: 670;
   letter-spacing: -.012em;
 }
 
 .builder-stage-configure .builder-stage-section > h3 {
   margin-bottom: .8rem;
-  font-size: .98rem;
+  font-size: var(--builder-type-subtitle);
 }
 
 .builder-configure-inspect {
@@ -530,7 +530,7 @@ label,
 .control-label {
   margin-bottom: .34rem;
   color: var(--c-text-2);
-  font-size: .74rem;
+  font-size: var(--builder-type-caption);
   font-weight: 620;
 }
 
@@ -542,7 +542,7 @@ label,
   background: var(--c-white) !important;
   color: var(--c-text) !important;
   box-shadow: none !important;
-  font-size: .84rem;
+  font-size: var(--builder-type-small);
 }
 
 .form-control:hover,
@@ -570,7 +570,7 @@ label,
   padding: .5rem 0;
   color: var(--c-text-2);
   cursor: pointer;
-  font-size: .85rem;
+  font-size: var(--builder-type-body);
 }
 
 .builder-configure-metadata > summary:focus-visible {
@@ -598,7 +598,7 @@ label,
   background: transparent;
   color: var(--c-text-3);
   font-family: var(--builder-font-sans);
-  font-size: .7rem;
+  font-size: var(--builder-type-micro);
   font-weight: 540;
 }
 
@@ -612,7 +612,7 @@ label,
 
 .builder-detected-content-count {
   color: var(--c-text-3);
-  font-size: .72rem;
+  font-size: var(--builder-type-caption);
   font-variant-numeric: tabular-nums;
 }
 
@@ -672,13 +672,13 @@ label,
 .builder-stage-configure .builder-viewer-card-title,
 .builder-viewer-card-title {
   color: var(--c-text);
-  font-size: .86rem;
+  font-size: var(--builder-type-body);
   font-weight: 620;
 }
 
 .builder-viewer-card-count {
   color: var(--c-text-3);
-  font-size: .69rem;
+  font-size: var(--builder-type-micro);
   font-weight: 500;
 }
 
@@ -834,7 +834,7 @@ label,
 
   .builder-dataset-dropzone-copy h2,
   .builder-stage-header h2 {
-    font-size: 1.5rem;
+    font-size: var(--builder-type-display);
   }
 
   .builder-viewer-card-count {
@@ -881,7 +881,7 @@ label,
   pointer-events: none;
 }
 .builder-project-pending-feedback {
-  font-size: .85rem;
+  font-size: var(--builder-type-body);
   color: var(--text-2, #515b54);
 }
 .builder-restore-status {

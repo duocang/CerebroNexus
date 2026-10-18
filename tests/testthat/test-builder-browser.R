@@ -302,7 +302,7 @@ test_that("Spatial editor exposes named images and dynamic action boundaries", {
     paste0(
       ".spatial-image-file-summary .enhance-tissue-file-name {\n",
       "  flex: 1 1 auto;\n",
-      "  font-size: .82rem;"
+      "  font-size: var(--builder-type-small);"
     ),
     fixed = TRUE
   )

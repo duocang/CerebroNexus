@@ -442,7 +442,7 @@ test_that("dataset source titles use the full interface font size", {
     paste(
       ".rail-add-title strong {",
       "  color: var(--c-text);",
-      "  font-size: 1rem;",
+      "  font-size: var(--builder-type-subtitle);",
       sep = "\n"
     ),
     fixed = TRUE

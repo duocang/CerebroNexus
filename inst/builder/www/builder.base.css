@@ -23,7 +23,7 @@ body {
   background: var(--c-bg);
   color: var(--c-text);
   font-family: var(--builder-font-sans);
-  font-size: 1rem;
+  font-size: var(--builder-type-subtitle);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
@@ -33,7 +33,7 @@ label, .control-label {
   display: block;
   margin-bottom: .3rem;
   color: var(--c-text-muted);
-  font-size: .78rem;
+  font-size: var(--builder-type-caption);
   font-weight: 600;
   line-height: 1.35;
 }
@@ -43,7 +43,7 @@ label, .control-label {
   border: 1px solid var(--c-border-2) !important;
   border-radius: var(--r-sm) !important;
   box-shadow: none !important;
-  font-size: .875rem !important;
+  font-size: var(--builder-type-body) !important;
   color: var(--c-text) !important;
   background: var(--c-surface) !important;
   min-height: 2.65rem;
@@ -91,7 +91,7 @@ label, .control-label {
 }
 input[type="checkbox"] { accent-color: var(--builder-action); }
 
-pre, code { font-family: var(--font-mono); font-size: .8rem; }
+pre, code { font-family: var(--font-mono); font-size: var(--builder-type-small); }
 pre {
   background: var(--c-surface-2); border: 1px solid var(--c-border);
   border-radius: var(--r-sm); padding: .6rem .8rem; overflow-x: auto;

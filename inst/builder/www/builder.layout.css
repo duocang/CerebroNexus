@@ -40,10 +40,10 @@
 .topbar .wordmark { display: flex; align-items: center; gap: .7rem; }
 .topbar .wordmark svg { height: 17px; width: auto; display: block; }
 .topbar h1 {
-  font-size: .95rem; font-weight: 600; margin: 0; letter-spacing: -.01em;
+  font-size: var(--builder-type-subtitle); font-weight: 600; margin: 0; letter-spacing: -.01em;
 }
 .topbar .formats {
-  font-size: .76rem; color: var(--c-text-subtle); font-family: var(--font-mono);
+  font-size: var(--builder-type-caption); color: var(--c-text-subtle); font-family: var(--font-mono);
   margin-left: 0;
 }
 .builder-project-toolbar {
@@ -88,10 +88,10 @@
   width: 1.5rem;
   height: 1.5rem;
   flex-basis: 1.5rem;
-  font-size: .74rem;
+  font-size: var(--builder-type-caption);
 }
 #workflow_progress.is-workflow-compact .builder-workflow-step-copy strong {
-  font-size: .86rem;
+  font-size: var(--builder-type-body);
 }
 #workflow_progress.is-workflow-compact .builder-workflow-step-copy small {
   display: none;
@@ -259,11 +259,11 @@
   white-space: nowrap;
   font-weight: 600;
 }
-.rail-summary-state { color: var(--c-text-muted); font-size: .78rem; }
+.rail-summary-state { color: var(--c-text-muted); font-size: var(--builder-type-caption); }
 .rail-summary-action {
   flex: 0 0 auto;
   color: var(--builder-action-active);
-  font-size: .8rem;
+  font-size: var(--builder-type-small);
   font-weight: 600;
 }
 
@@ -282,7 +282,7 @@
 .rail-head {
   padding: .75rem .95rem;
   border-bottom: 1px solid var(--c-border);
-  font-size: .75rem;
+  font-size: var(--builder-type-caption);
   font-family: var(--font-mono);
   letter-spacing: .09em;
   text-transform: uppercase;
@@ -291,7 +291,7 @@
   justify-content: space-between;
   align-items: center;
 }
-.rail-empty { padding: 1.1rem .95rem; color: var(--c-text-subtle); font-size: .875rem; }
+.rail-empty { padding: 1.1rem .95rem; color: var(--c-text-subtle); font-size: var(--builder-type-body); }
 .rail-add-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -340,7 +340,7 @@
 }
 .rail-add-title strong {
   color: var(--c-text);
-  font-size: 1rem;
+  font-size: var(--builder-type-subtitle);
   line-height: 1.2;
 }
 .rail-add-detail {
@@ -348,7 +348,7 @@
   width: 100%;
   overflow: hidden;
   color: var(--c-text-muted);
-  font-size: .68rem;
+  font-size: var(--builder-type-micro);
   line-height: 1.3;
   text-align: center;
   text-overflow: ellipsis;
@@ -357,7 +357,7 @@
 .builder-format-deprecated {
   display: block;
   color: var(--c-text-subtle, var(--c-text-muted));
-  font-size: .68rem;
+  font-size: var(--builder-type-micro);
   line-height: 1.35;
   text-align: center;
 }
@@ -367,19 +367,19 @@
 }
 .builder-dataset-dropzone .builder-format-deprecated {
   margin-top: .2rem;
-  font-size: .74rem;
+  font-size: var(--builder-type-caption);
   text-align: inherit;
 }
 .builder-format-unavailable {
   display: grid;
   gap: .2rem;
   color: var(--c-error);
-  font-size: .76rem;
+  font-size: var(--builder-type-caption);
   line-height: 1.4;
 }
 .builder-format-unavailable--rail {
   padding: 0 .25rem;
-  font-size: .7rem;
+  font-size: var(--builder-type-micro);
   text-align: left;
 }
 
@@ -446,7 +446,7 @@
   border-radius: 50%;
   background: var(--c-surface);
   color: var(--c-text-muted);
-  font-size: .75rem;
+  font-size: var(--builder-type-caption);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   line-height: 1;
@@ -465,11 +465,11 @@
 
 .ds-body { min-width: 0; flex: 1; }
 .ds .nm {
-  display: block; font-weight: 600; font-size: .9rem; line-height: 1.5;
+  display: block; font-weight: 600; font-size: var(--builder-type-body); line-height: 1.5;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .ds .meta {
-  display: block; font-family: var(--font-mono); font-size: .75rem;
+  display: block; font-family: var(--font-mono); font-size: var(--builder-type-caption);
   color: var(--c-text-subtle);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -527,7 +527,7 @@
   align-items: center;
   gap: .3rem;
   font: inherit;
-  font-size: .75rem;
+  font-size: var(--builder-type-caption);
   line-height: 1;
 }
 .ds-action-label { white-space: nowrap; }

@@ -77,9 +77,14 @@
   --builder-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
                        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
                        "Helvetica Neue", Arial, sans-serif;
-  --builder-type-title: 1rem;
-  --builder-type-body: .875rem;
+  /* Type scale. micro is for uppercase kickers and badges only. */
+  --builder-type-micro: .6875rem;
   --builder-type-caption: .75rem;
+  --builder-type-small: .8125rem;
+  --builder-type-body: .875rem;
+  --builder-type-subtitle: 1rem;
+  --builder-type-title: 1.25rem;
+  --builder-type-display: 1.5rem;
   --builder-measure-copy: 48rem;
   --builder-measure-form: 56rem;
   --builder-measure-data: none;

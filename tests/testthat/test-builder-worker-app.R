@@ -1280,7 +1280,7 @@ test_that("login and connection settings use prominent setting rows", {
   )
   expect_match(css, "border: 1px solid var(--c-border);", fixed = TRUE)
   expect_match(css, "min-height: 3.25rem;", fixed = TRUE)
-  expect_match(css, "font-size: .84rem;", fixed = TRUE)
+  expect_match(css, "font-size: var(--builder-type-small);", fixed = TRUE)
 })
 
 test_that("dataset mutation lock covers every active build state", {
