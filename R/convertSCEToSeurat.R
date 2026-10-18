@@ -12,9 +12,16 @@
 #' assay (an AnnData `X`) is used as `counts` when it holds whole numbers and as
 #' `data` otherwise.
 #'
-#' Tissue images and the split of several tissue sections are not carried
-#' across; use [convertSCEToCerebro()] or [convertH5adToCerebro()] directly when
-#' you need them.
+#' Spatial coordinates (`reducedDim(object, "spatial")`) become one Seurat
+#' spatial image (a FOV of cell centroids) per tissue section, named after the
+#' section, so the Builder's spatial pages treat them like any other spatial
+#' data set. Sections are told apart by the `library_id` column. Without one the
+#' coordinates are kept as a single section.
+#'
+#' The tissue pictures in `metadata(object)$spatial_images` are kept per section
+#' in `@misc$cerebro_source_images` (not in `cerebro_spatial_images`, which the
+#' export would embed in the `.crb`; the Builder attaches pictures as separate
+#' files instead). Nothing reads them yet.
 #'
 #' @param object A SingleCellExperiment.
 #' @param main_assay Name of the Seurat assay to create.
@@ -154,8 +161,36 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
     )
   }
 
+  spatial <- .spatialSections(object)
+  if (!is.null(spatial)) {
+    ## the sections replace the plain coordinate reduction
+    result@reductions[[spatial$reduction]] <- NULL
+    sections <- list()
+    for (library in names(spatial$cells)) {
+      cells <- spatial$cells[[library]]
+      coordinates <- data.frame(
+        x = spatial$coordinates[cells, 1L],
+        y = spatial$coordinates[cells, 2L],
+        cell = cells
+      )
+      fov <- SeuratObject::CreateFOV(
+        coordinates,
+        type = "centroids",
+        assay = main_assay,
+        key = paste0("section", length(sections) + 1L, "_")
+      )
+      result[[library]] <- fov
+      sections[[library]] <- spatial$images[[library]]
+    }
+    sections <- Filter(length, sections)
+    if (length(sections)) {
+      result@misc$cerebro_source_images <- sections
+    }
+  }
+
   carried <- as.list(object@metadata)
   carried$spatial_images <- NULL
+  carried$spatial_sections <- NULL
   if (is.list(carried$trajectories)) {
     carried$trajectories <- .finiteTrajectories(carried$trajectories)
   }
@@ -196,4 +231,47 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
     }, logical(1))]
   })
   result[lengths(result) > 0L]
+}
+
+## Tissue sections of an object: which cells belong to which library, their
+## coordinates and the picture of each. NULL when there are no spatial
+## coordinates, or when the sections cannot be told apart.
+.spatialSections <- function(object) {
+  reductions <- SingleCellExperiment::reducedDimNames(object)
+  reduction <- reductions[tolower(reductions) == "spatial"][1L]
+  if (is.na(reduction)) {
+    return(NULL)
+  }
+  coordinates <- SingleCellExperiment::reducedDim(object, reduction)
+  if (!is.matrix(coordinates) || ncol(coordinates) < 2L) {
+    return(NULL)
+  }
+  rownames(coordinates) <- colnames(object)
+  images <- object@metadata$spatial_images
+  if (!is.list(images)) {
+    images <- list()
+  }
+  cell_data <- SummarizedExperiment::colData(object)
+  library_of <- if ("library_id" %in% colnames(cell_data)) {
+    as.character(cell_data[["library_id"]])
+  } else {
+    NULL
+  }
+  if (!is.null(library_of) && !anyNA(library_of) && length(unique(library_of)) > 1L) {
+    cells <- split(colnames(object), factor(library_of, levels = unique(library_of)))
+  } else if (length(images) > 1L) {
+    message(
+      "[INFO] The tissue images of ", length(images), " libraries cannot be assigned ",
+      "to cells without a `library_id` column; the images were left out."
+    )
+    cells <- list(spatial = colnames(object))
+    images <- list()
+  } else {
+    name <- if (length(images) == 1L) names(images) else "spatial"
+    cells <- stats::setNames(list(colnames(object)), name)
+  }
+  if (any(!nzchar(names(cells)))) {
+    return(NULL)
+  }
+  list(cells = cells, coordinates = coordinates, images = images, reduction = reduction)
 }

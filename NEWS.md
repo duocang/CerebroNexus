@@ -13,9 +13,10 @@
   tissue images back so scanpy and squidpy can draw them.
 - The Builder opens `.h5ad`, `.h5mu` and SingleCellExperiment `.rds`/`.qs2`
   files like Seurat ones (`convertSCEToSeurat()` is the conversion it uses), and
-  offers PAGA, scVelo and pseudotime trajectories next to monocle2. Tissue
-  images and multi-section splits of AnnData sources are not carried through the
-  Builder; use `convertH5adToCerebro()` for those.
+  offers PAGA, scVelo and pseudotime trajectories next to monocle2. Spatial
+  coordinates arrive as one spatial section per `library_id`. Visium tissue
+  pictures are not attached by the Builder (it takes pictures as separate
+  files); use `convertH5adToCerebro()` when you want them embedded.
 
 ## Builder
 

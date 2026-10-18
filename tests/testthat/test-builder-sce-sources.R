@@ -64,9 +64,12 @@ test_that("counts, data layers and spatial coordinates are placed by what they h
   sce <- quiet(readH5adAsSCE(fixture("small_spatial.h5ad")))
   seurat <- convertSCEToSeurat(sce)
   expect_identical(SeuratObject::Layers(seurat), "counts")
-  expect_true("spatial" %in% names(seurat@reductions))
+  ## coordinates become a spatial image with the cells' centroids
+  expect_identical(SeuratObject::Images(seurat), "spatial")
+  expect_false("spatial" %in% names(seurat@reductions))
+  tissue <- SeuratObject::GetTissueCoordinates(seurat[["spatial"]])
   expect_equal(
-    unname(SeuratObject::Embeddings(seurat[["spatial"]])[, 1]),
+    unname(tissue$x[match(colnames(sce), tissue$cell)]),
     unname(SingleCellExperiment::reducedDim(sce, "spatial")[, 1])
   )
 
@@ -282,4 +285,43 @@ test_that("the same data as AnnData, SCE and Seurat gives the same .crb through 
       )
     }
   }
+})
+
+test_that("Visium sections reach the .crb as separate spatial entries through the Builder", {
+  skip_if_not_installed("qs2")
+  ## the Builder wants a projection to lead with: give the sections one
+  sce <- quiet(readH5adAsSCE(fixture("small_visium.h5ad")))
+  SingleCellExperiment::reducedDim(sce, "UMAP") <- SingleCellExperiment::reducedDim(sce, "spatial") / 1000
+  path <- file.path(withr::local_tempdir(), "visium.rds")
+  saveRDS(sce, path)
+  built <- build_through_builder(path, "h5ad_visium")
+  crb <- built$crb
+  expect_identical(names(crb$spatial), c("section1", "section2"))
+  s1 <- crb$getSpatialData("section1", FALSE)
+  s2 <- crb$getSpatialData("section2", FALSE)
+  expect_equal(c(nrow(s1$coordinates), nrow(s2$coordinates)), c(50, 49))
+  ## the same coordinates as the direct conversion
+  direct <- readCerebro(quiet(convertH5adToCerebro(
+    fixture("small_visium.h5ad"), withr::local_tempdir(),
+    groups = c("library_id", "layer"), viewer_binary = "never", verbose = FALSE
+  )))
+  d1 <- direct$getSpatialData("spatial [section1]", FALSE)
+  expect_equal(
+    s1$coordinates[order(rownames(s1$coordinates)), c("x", "y")],
+    d1$coordinates[order(rownames(d1$coordinates)), c("x", "y")]
+  )
+  ## pictures are not embedded (the Builder only takes external ones) but are kept
+  expect_length(s1$histology_images, 0L)
+})
+
+test_that("tissue pictures stay with their section on the Seurat object", {
+  sce <- quiet(readH5adAsSCE(fixture("small_visium.h5ad")))
+  seurat <- convertSCEToSeurat(sce)
+  expect_identical(SeuratObject::Images(seurat), c("section1", "section2"))
+  expect_null(seurat@misc$cerebro_spatial_images)
+  expect_identical(names(seurat@misc$cerebro_source_images), c("section1", "section2"))
+  expect_identical(
+    seurat@misc$cerebro_source_images$section1$hires$histology_image_bounds,
+    sce@metadata$spatial_images$section1$hires$histology_image_bounds
+  )
 })
