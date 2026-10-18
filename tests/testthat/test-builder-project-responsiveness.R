@@ -1201,3 +1201,155 @@ test_that("a new configuration is verified once, not again after its rename", {
     cache
   ))
 })
+
+test_that("a manual Save keeps the workspace editable unless it stages attachments", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    server_env <- environment(request_builder_project_save)
+    started <- new.env(parent = emptyenv())
+    server_env$start_builder_project_save_request <- function(...) {
+      started$args <- list(...)
+      invisible(TRUE)
+    }
+    jobs <- new.env(parent = emptyenv())
+    jobs$value <- list()
+    server_env$builder_project_attachment_jobs <- function(entries, root) {
+      if (inherits(jobs$value, "condition")) stop(jobs$value)
+      jobs$value
+    }
+    builder_project(list(
+      root = "project-root",
+      path = "project-root/builder-project.json",
+      name = "P",
+      manifest = list(project = list(id = "p1", revision = 1L), datasets = list())
+    ))
+    phase_after <- function(...) {
+      builder_project_operation_phase("idle")
+      request_builder_project_save(...)
+      isolate(builder_project_operation_phase())
+    }
+
+    ## Nothing to stage: the manifest is written in the background.
+    expect_identical(phase_after(show_actions = TRUE), "autosaving")
+    expect_true(started$args$background)
+    expect_true(isTRUE(builder_capabilities()$edit_dataset))
+
+    ## New attachments are staged under the lock, decided before the request
+    ## runs so an edit in between is never accepted and then refused.
+    jobs$value <- list(list(entry_id = "ds1"))
+    expect_identical(phase_after(show_actions = TRUE), "saving")
+    jobs$value <- simpleError("source missing")
+    expect_identical(phase_after(show_actions = TRUE), "saving")
+    jobs$value <- list()
+    expect_identical(phase_after(show_actions = TRUE, background = FALSE), "saving")
+  })
+})
+
+test_that("staging attachments unlocks the workspace again for the manifest write", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    server_env <- environment(start_builder_project_table_asset_save)
+    calls <- new.env(parent = emptyenv())
+    server_env$builder_project_worker_task_call <- function(...) {
+      list(is_alive = function() FALSE, get_result = function() list("staged"))
+    }
+    server_env$builder_project_attachment_results_match <- function(jobs, results) TRUE
+    server_env$builder_project_table_save_signature <- function(project, entries) "sig"
+    server_env$builder_project_attachment_jobs <- function(entries, root) list("job")
+    server_env$complete_builder_project_save_request <- function(...) {
+      calls$phase <- isolate(builder_project_operation_phase())
+      invisible(TRUE)
+    }
+    builder_project(list(root = "project-root", manifest = list()))
+
+    for (background in c(TRUE, FALSE)) {
+      calls$phase <- NULL
+      builder_project_operation_phase("saving")
+      start_builder_project_table_asset_save(
+        list("job"),
+        "sig",
+        show_actions = TRUE,
+        materialize = TRUE,
+        notify = FALSE,
+        after = NULL,
+        background = background
+      )
+      expect_true(builder_responsiveness_run_later(function() !is.null(calls$phase)))
+      expect_identical(
+        calls$phase,
+        if (background) "autosaving" else "saving",
+        info = background
+      )
+    }
+  })
+})
+
+test_that("a Save adopts the staged attachment copies into the workspace", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_responsiveness_app()
+
+  shiny::testServer(app_env$server, {
+    server_env <- environment(save_builder_project_state)
+    entry <- list(
+      id = "ds1",
+      revision = 0L,
+      snapshot = list(
+        path = "/private/ds1",
+        owner_token = "owner",
+        object_md5 = strrep("a", 32L)
+      ),
+      profile = list(marker = "a", extras = list()),
+      settings = list(
+        name = "A",
+        tables = list(t1 = list(source_path = "C:/session/t.csv"))
+      )
+    )
+    use_state_only_fixture(list(entry))
+    staged <- entry
+    staged$settings$tables$t1 <- list(
+      source_path = "project-root/attachments/ds1/a",
+      project_asset = list(path = "attachments/ds1/a")
+    )
+    project <- list(
+      root = "project-root",
+      path = "project-root/builder-project.json",
+      name = "P",
+      manifest = list(project = list(id = "p1", name = "P", revision = 1L), datasets = list())
+    )
+    builder_project(project)
+    pending <- new.env(parent = emptyenv())
+    server_env$builder_project_apply_attachment_results <- function(entries, results, root) {
+      list(staged)
+    }
+    server_env$builder_project_manifest_context <- function(...) list()
+    server_env$start_builder_project_manifest_write <- function(manifest, project, complete, ...) {
+      pending$complete <- complete
+      invisible(TRUE)
+    }
+
+    save_builder_project_state(
+      materialize = FALSE,
+      notify = FALSE,
+      manage_lifecycle = FALSE,
+      table_asset_results = list("staged"),
+      on_complete = function(ok) pending$ok <- ok
+    )
+    pending$complete(list(
+      manifest = project$manifest,
+      path = project$path,
+      built = list(entries = list(staged), jobs = list())
+    ))
+
+    ## The workspace now refers to the Project copy, so the next Save has no
+    ## attachment to stage again.
+    expect_true(isTRUE(pending$ok))
+    expect_identical(
+      isolate(sets())[[1L]]$settings$tables$t1$project_asset$path,
+      "attachments/ds1/a"
+    )
+  })
+})

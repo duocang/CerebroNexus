@@ -2475,7 +2475,10 @@ save_builder_project_state <- function(
     if (!is.null(written$built)) {
       built <- written$built
     }
-    entries_changed <- !identical(entries, built$entries)
+    # Compare with what the workspace holds, not with `entries`: those already
+    # carry the staged attachment results, so comparing with them never
+    # adopted the Project copies and every later Save staged them again.
+    entries_changed <- !identical(live_base, built$entries)
     if (length(written$configuration_cache)) {
       list2env(
         written$configuration_cache,
@@ -2764,7 +2767,8 @@ start_builder_project_table_asset_save <- function(
   show_actions,
   materialize,
   notify,
-  after
+  after,
+  background = FALSE
 ) {
   generation <- as.double(isolate(builder_project_table_asset_generation())) + 1
   builder_project_table_asset_generation(generation)
@@ -2859,6 +2863,14 @@ start_builder_project_table_asset_save <- function(
         after
       ))
     }
+    if (
+      isTRUE(background) &&
+        identical(isolate(builder_project_operation_phase()), "saving")
+    ) {
+      # The attachments are staged and checked against the live settings;
+      # the manifest write merges later edits, so unlock the workspace again.
+      builder_project_operation_phase("autosaving")
+    }
     complete_builder_project_save_request(
       show_actions = show_actions,
       materialize = materialize,
@@ -2878,7 +2890,8 @@ start_builder_project_save_request <- function(
   show_actions = FALSE,
   materialize = TRUE,
   notify = TRUE,
-  after = NULL
+  after = NULL,
+  background = FALSE
 ) {
   removeNotification("builder-project-save-error")
   session$onFlushed(
@@ -2908,8 +2921,9 @@ start_builder_project_save_request <- function(
           )
         } else if (length(prepared$jobs)) {
           if (identical(builder_project_operation_phase(), "autosaving")) {
-            # Attachment staging rejects concurrent edits, so this rarer
-            # autosave keeps the ordinary save lock.
+            # Attachment staging rejects concurrent edits, so the workspace is
+            # locked while new attachments are staged (usually well under a
+            # second); the manifest write afterwards runs in the background.
             builder_project_operation_phase("saving")
           }
           start_builder_project_table_asset_save(
@@ -2918,7 +2932,8 @@ start_builder_project_save_request <- function(
             show_actions,
             materialize,
             notify,
-            after
+            after,
+            background = isTRUE(background)
           )
         } else {
           complete_builder_project_save_request(
@@ -2935,20 +2950,36 @@ start_builder_project_save_request <- function(
   invisible(TRUE)
 }
 
+## Saves write the manifest in the background ("autosaving"): the workspace
+## stays editable, and edits made meanwhile are merged back and leave the
+## Project dirty (builder_project_merge_saved_entries). Only other manifest
+## writers (Save, Open, Build) wait. `background = FALSE` locks the workspace
+## for the whole Save instead.
 request_builder_project_save <- function(
   show_actions = FALSE,
   materialize = TRUE,
   notify = TRUE,
   after = NULL,
-  background = FALSE
+  background = TRUE
 ) {
   if (
     isolate(builder_project_operation_phase()) %in% c("saving", "autosaving")
   ) {
     return(invisible(FALSE))
   }
+  # Decide the lock now, not when the request runs after this flush: a Save
+  # that stages new attachments starts locked, so an edit made in between is
+  # not accepted by the browser and then refused by the locked server.
+  stages_attachments <- isTRUE(background) && isTRUE(tryCatch(
+    {
+      project <- isolate(builder_project())
+      is.list(project) &&
+        length(builder_project_attachment_jobs(isolate(sets()), project$root)) > 0L
+    },
+    error = function(error) TRUE
+  ))
   builder_project_operation_phase(
-    if (isTRUE(background)) "autosaving" else "saving"
+    if (isTRUE(background) && !stages_attachments) "autosaving" else "saving"
   )
   completion <- after
   if (isTRUE(show_actions)) {
@@ -2978,7 +3009,8 @@ request_builder_project_save <- function(
     show_actions = show_actions,
     materialize = materialize,
     notify = notify,
-    after = after
+    after = after,
+    background = background
   )
 }
 
