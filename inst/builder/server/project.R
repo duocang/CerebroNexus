@@ -309,9 +309,9 @@ builder_operation_allowed <- function(operation, notify = TRUE) {
   activity$project_phase <- isolate(builder_current_project_phase())
   allowed <- isTRUE(builder_activity_capabilities(activity)[[operation]])
   if (!allowed && isTRUE(notify)) {
-    showNotification(
+    builder_notify(
+      "info",
       builder_activity_reason(activity, operation),
-      type = "warning",
       duration = 6
     )
   }
@@ -997,10 +997,10 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     message <- prepared$error %||%
       "The dataset cache could not be generated and verified."
     builder_project_update_crb_job(id, NULL)
-    showNotification(
+    builder_notify(
+      "warning",
       paste(message, "The dataset remains checked without a cache."),
-      type = "warning",
-      duration = 8
+      target = list(dataset = id)
     )
     return(invisible(FALSE))
   }
@@ -1014,10 +1014,10 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
   ) {
     message <- "The generated dataset cache did not match the current dataset."
     builder_project_update_crb_job(id, NULL)
-    showNotification(
+    builder_notify(
+      "warning",
       paste(message, "The dataset remains checked without a cache."),
-      type = "warning",
-      duration = 8
+      target = list(dataset = id)
     )
     return(invisible(FALSE))
   }
@@ -1028,7 +1028,8 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     }
     if (!isTRUE(recorded)) {
       builder_project_update_crb_job(id, NULL)
-      showNotification(
+      builder_notify(
+        "warning",
         tagList(
           "Dataset cache not saved. Select Save to retry.",
           if (inherits(recorded, "condition")) {
@@ -1038,15 +1039,16 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
             )
           }
         ),
-        type = "warning",
-        duration = NULL
+        target = list(dataset = id),
+        action = list(label = "Save", click = "save_builder_project")
       )
       return(invisible(FALSE))
     }
     builder_project_update_crb_job(id, NULL)
-    showNotification(
+    builder_notify(
+      "success",
       paste0(current_entry$settings$name %||% id, ": dataset cache ready."),
-      type = "message",
+      target = list(dataset = id),
       duration = 3
     )
     invisible(TRUE)
@@ -1080,13 +1082,13 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
 builder_project_fail_crb_job <- function(id, token, error, output = NULL) {
   if (builder_project_crb_job_current(id, token)) {
     builder_project_update_crb_job(id, NULL)
-    showNotification(
+    builder_notify(
+      "warning",
       paste(
         conditionMessage(error),
         "The dataset remains checked without a cache."
       ),
-      type = "warning",
-      duration = 8
+      target = list(dataset = id)
     )
   }
   if (.builder_project_text(output %||% NULL)) {
@@ -1395,9 +1397,10 @@ observeEvent(input$cancel_builder_project_crbs, {
     return()
   }
   cancel_builder_project_crb_queue()
-  showNotification(
+  builder_notify(
+    "info",
     "Dataset cache builds stopped. Save again to build them.",
-    type = "message",
+    target = "status",
     duration = 5
   )
 })
@@ -1497,12 +1500,7 @@ builder_project_fail_open <- function(generation, error) {
   } else {
     as.character(error %||% "The project file could not be opened.")
   }
-  showNotification(
-    message,
-    type = "error",
-    duration = 8,
-    session = session
-  )
+  builder_notify("error", message, session = session)
   invisible(FALSE)
 }
 
@@ -1846,11 +1844,7 @@ builder_project_start_source_sync <- function() {
       failed = length(jobs),
       error = message
     ))
-    showNotification(
-      message,
-      type = "error",
-      duration = 8
-    )
+    builder_notify("error", message)
     return(invisible(FALSE))
   }
   project <- isolate(builder_project())
@@ -1874,7 +1868,7 @@ builder_project_start_source_sync <- function() {
       failed = length(jobs),
       error = conditionMessage(source_run)
     ))
-    showNotification(conditionMessage(source_run), type = "error", duration = 8)
+    builder_notify("error", conditionMessage(source_run))
     return(invisible(FALSE))
   }
   progress_path <- tempfile(
@@ -1907,7 +1901,7 @@ builder_project_start_source_sync <- function() {
       failed = length(jobs),
       error = conditionMessage(process)
     ))
-    showNotification(conditionMessage(process), type = "error", duration = 8)
+    builder_notify("error", conditionMessage(process))
     return(invisible(FALSE))
   }
   queued <- isolate(builder_project_source_queue())
@@ -2070,14 +2064,13 @@ builder_project_poll_source_sync <- function() {
     ))
     if (inherits(written, "error") || is.null(written)) {
       failed <- max(1L, failed)
-      showNotification(
+      builder_notify(
+        "error",
         if (inherits(written, "error")) {
           conditionMessage(written)
         } else {
           "The Project source results could not be saved."
-        },
-        type = "error",
-        duration = 8
+        }
       )
     } else {
       project <- isolate(builder_project())
@@ -2419,9 +2412,10 @@ save_builder_project_state <- function(
   project <- isolate(builder_project())
   if (is.null(project)) {
     if (isTRUE(notify)) {
-      showNotification(
+      builder_notify(
+        "info",
         "Choose a project folder first: select Save.",
-        type = "warning",
+        target = "status",
         duration = 6
       )
     }
@@ -2457,11 +2451,10 @@ save_builder_project_state <- function(
     )
     if (!isTRUE(materialized$ok)) {
       if (isTRUE(notify)) {
-        showNotification(
+        builder_notify(
+          "error",
           materialized$error %||%
-            "Current spatial settings could not be saved.",
-          type = "error",
-          duration = 7
+            "Current spatial settings could not be saved."
         )
       }
       return(save_failed(
@@ -2483,11 +2476,7 @@ save_builder_project_state <- function(
   apply_written <- function(written) {
     if (inherits(written, "condition")) {
       if (isTRUE(notify)) {
-        showNotification(
-          conditionMessage(written),
-          type = "error",
-          duration = 8
-        )
+        builder_notify("error", conditionMessage(written))
       }
       return(save_failed(conditionMessage(written)))
     }
@@ -2580,13 +2569,14 @@ save_builder_project_state <- function(
         )
       )
     } else if (isTRUE(notify)) {
-      showNotification(
+      builder_notify(
+        "success",
         if (length(built$jobs)) {
           "Settings saved. Saving source files…"
         } else {
           "Project saved."
         },
-        type = "message",
+        target = "status",
         duration = 4
       )
     }
@@ -2619,7 +2609,7 @@ save_builder_project_state <- function(
   )
   if (inherits(built, "condition")) {
     if (isTRUE(notify)) {
-      showNotification(conditionMessage(built), type = "error", duration = 7)
+      builder_notify("error", conditionMessage(built))
     }
     return(save_failed(conditionMessage(built)))
   }
@@ -2730,11 +2720,7 @@ complete_builder_project_save_request <- function(
     error = function(error) {
       builder_project_last_save_error(conditionMessage(error))
       if (isTRUE(notify)) {
-        showNotification(
-          conditionMessage(error),
-          type = "error",
-          duration = 8
-        )
+        builder_notify("error", conditionMessage(error))
       }
       FALSE
     }
@@ -2753,15 +2739,14 @@ fail_builder_project_table_asset_save <- function(
 ) {
   builder_project_last_save_error(message)
   if (isTRUE(notify)) {
-    showNotification(
+    builder_notify(
+      "error",
       tagList(
         message,
         if (builder_has_text(detail)) {
           tags$details(tags$summary("Details"), tags$p(detail))
         }
       ),
-      type = "error",
-      duration = NULL,
       id = "builder-project-save-error"
     )
   }
@@ -2912,7 +2897,7 @@ start_builder_project_save_request <- function(
   after = NULL,
   background = FALSE
 ) {
-  removeNotification("builder-project-save-error")
+  builder_notify_clear("builder-project-save-error")
   session$onFlushed(
     function() {
       shiny::isolate({
@@ -3071,18 +3056,20 @@ observe({
     background = TRUE,
     after = function(ok) {
       if (!isTRUE(ok)) {
-        showNotification(
-          "Dataset not saved. Select Save to retry.",
-          type = "error",
-          duration = 8
-        )
+        builder_notify("error", "Dataset not saved. Select Save to retry.")
       }
     }
   )
 })
 
 show_builder_project_folder_error <- function(message, type = "error") {
-  showNotification(message, type = type, duration = 7)
+  builder_notify(
+    type,
+    message,
+    target = list(
+      field = c("builder_project_server_folder", "builder_project_server_manifest")
+    )
+  )
   invisible(FALSE)
 }
 
@@ -3422,7 +3409,7 @@ observeEvent(input$save_builder_project, {
       return()
     }
     if (builder_project_save_is_noop()) {
-      removeNotification("builder-project-save-error")
+      builder_notify_clear("builder-project-save-error")
       return(report_builder_project_unchanged_save())
     }
     request_builder_project_save(show_actions = TRUE, materialize = TRUE)
@@ -3535,12 +3522,12 @@ observeEvent(
         error = "Source restoration cancelled."
       )
     }
-    showNotification(
+    builder_notify(
+      "info",
       paste(
         "Restoration cancelled. Completed datasets are available.",
         "Reopen the project to retry."
       ),
-      type = "message",
       duration = 10
     )
   },
@@ -3833,13 +3820,12 @@ complete_builder_project_open <- function(actions = NULL) {
     builder_project_restore(NULL)
     builder_project_open_actions(NULL)
     shiny::removeModal()
-    showNotification(
+    builder_notify(
+      "error",
       paste(
         "The Project changed while dataset choices were open.",
         "Reopen it and review the current choices."
-      ),
-      type = "error",
-      duration = 10
+      )
     )
     return(invisible(FALSE))
   }
@@ -3855,13 +3841,12 @@ complete_builder_project_open <- function(actions = NULL) {
   )
   if (inherits(prepared, "condition")) {
     builder_project_operation_phase(operation)
-    showNotification(
+    builder_notify(
+      "error",
       paste0(
         "The selected Project datasets could not be opened: ",
         conditionMessage(prepared)
-      ),
-      type = "error",
-      duration = 10
+      )
     )
     return(invisible(FALSE))
   }
@@ -3883,13 +3868,12 @@ complete_builder_project_open <- function(actions = NULL) {
   )
   if (inherits(next_store, "condition")) {
     builder_project_operation_phase(operation)
-    showNotification(
+    builder_notify(
+      "error",
       paste0(
         "The dataset caches could not be attached to this session: ",
         conditionMessage(next_store)
-      ),
-      type = "error",
-      duration = 10
+      )
     )
     return(invisible(FALSE))
   }
@@ -3991,13 +3975,12 @@ complete_builder_project_open <- function(actions = NULL) {
           }
         }
         if (length(failed)) {
-          showNotification(
+          builder_notify(
+            "error",
             paste0(
               "Could not start loading the saved dataset. ",
               paste(failed, collapse = " ")
-            ),
-            type = "error",
-            duration = 8
+            )
           )
           add_error(paste(failed, collapse = "\n"))
         }
@@ -4113,9 +4096,10 @@ observeEvent(input$project_resume_current_source, {
     )
   }
   if (is.null(record) || !"resume" %in% (status$actions %||% character())) {
-    showNotification(
+    builder_notify(
+      "warning",
       "The source file must be re-linked before editing.",
-      type = "warning"
+      target = list(dataset = id)
     )
     return()
   }
@@ -4133,13 +4117,13 @@ observeEvent(input$project_resume_current_source, {
     pending <- isolate(builder_project_pending_entries())
     pending[[id]] <- previous_pending
     builder_project_pending_entries(pending)
-    showNotification(
+    builder_notify(
+      "error",
       paste0(
         "The source dataset could not be loaded: ",
         conditionMessage(started)
       ),
-      type = "error",
-      duration = 8
+      target = list(dataset = id)
     )
     send_builder_project_source_load_state(
       id,
@@ -4156,7 +4140,7 @@ observeEvent(input$project_resume_current_source, {
       "The source could not be queued for the background worker.",
       "Try loading it again."
     )
-    showNotification(message, type = "error", duration = 8)
+    builder_notify("error", message, target = list(dataset = id))
     send_builder_project_source_load_state(id, "error", message)
     return()
   }
@@ -4229,7 +4213,7 @@ observe({
     }
     builder_project_registration_task(NULL)
     builder_project_operation_phase("save_failed")
-    showNotification(message, type = "error", duration = 8)
+    builder_notify("error", message)
     invisible(FALSE)
   }
 
@@ -4317,13 +4301,14 @@ observe({
         }
         if (builder_has_text(registration_error)) {
           if (isTRUE(prepared$build_succeeded)) {
-            showNotification(registration_error, type = "error", duration = 8)
+            builder_notify("error", registration_error)
           }
         } else if (isTRUE(saved)) {
           if (save_required) {
-            showNotification(
+            builder_notify(
+              "success",
               "Dataset caches were added to the project.",
-              type = "message",
+              target = "status",
               duration = 5
             )
           }
