@@ -368,3 +368,65 @@ test_that("a missing reduction is reported with a way out", {
     "No dimensional reductions available.*scater::runUMAP"
   )
 })
+
+## ---------------------------------------------------------------------------
+## further modalities / alternative experiments as extra features
+## ---------------------------------------------------------------------------
+
+test_that("extra_modalities reads a MuData modality as an alternative experiment", {
+  path <- testthat::test_path("fixtures", "anndata", "small_mudata.h5mu")
+  sce <- suppressWarnings(suppressMessages(readH5adAsSCE(path, modality = "gex", extra_modalities = "prot")))
+  expect_identical(SingleCellExperiment::altExpNames(sce), "prot")
+  expect_equal(dim(SingleCellExperiment::altExp(sce, "prot")), c(4, 120))
+  expect_identical(colnames(SingleCellExperiment::altExp(sce, "prot")), colnames(sce))
+  expect_error(
+    readH5adAsSCE(path, modality = "gex", extra_modalities = "nope"),
+    "not found"
+  )
+  expect_error(
+    readH5adAsSCE(testthat::test_path("fixtures", "anndata", "small_csr.h5ad"), extra_modalities = "prot"),
+    "only for MuData"
+  )
+})
+
+test_that("extra features reach the .crb as <experiment>:<feature>", {
+  path <- testthat::test_path("fixtures", "anndata", "small_mudata.h5mu")
+  crb <- readCerebro(suppressWarnings(suppressMessages(convertH5adToCerebro(
+    path, withr::local_tempdir(), modality = "gex", extra_modalities = "prot",
+    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+  ))))
+  genes <- crb$getGeneNames()
+  expect_equal(length(genes), 60 + 4)
+  expect_identical(genes[grepl("^prot:", genes)], paste0("prot:P", 0:3))
+  plain <- readCerebro(suppressWarnings(suppressMessages(convertH5adToCerebro(
+    path, withr::local_tempdir(), modality = "gex",
+    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+  ))))
+  expect_equal(length(plain$getGeneNames()), 60)
+  ## the main genes are untouched
+  expect_equal(
+    as.matrix(crb$getExpressionMatrix(genes = plain$getGeneNames()[1:3])),
+    as.matrix(plain$getExpressionMatrix(genes = plain$getGeneNames()[1:3]))
+  )
+})
+
+test_that("a SingleCellExperiment's altExp can be added by name, and an unknown one is refused", {
+  sce <- suppressWarnings(suppressMessages(readH5adAsSCE(
+    testthat::test_path("fixtures", "anndata", "small_mudata.h5mu"),
+    modality = "gex", extra_modalities = "prot"
+  )))
+  out <- withr::local_tempdir()
+  crb <- readCerebro(suppressWarnings(suppressMessages(convertSCEToCerebro(
+    sce, out, assay = "X", groups = "cell_type", nUMI = "nUMI", nGene = "nGene",
+    extra_features = "prot", viewer_binary = "never", verbose = FALSE, .source_name = "x.rds"
+  ))))
+  expect_equal(sum(grepl("^prot:", crb$getGeneNames())), 4)
+  expect_error(
+    suppressMessages(convertSCEToCerebro(
+      sce, withr::local_tempdir(), assay = "X", groups = "cell_type",
+      nUMI = "nUMI", nGene = "nGene", extra_features = "ADT",
+      viewer_binary = "never", verbose = FALSE, .source_name = "x.rds"
+    )),
+    "not found"
+  )
+})

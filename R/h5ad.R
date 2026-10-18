@@ -620,6 +620,10 @@
 #' @param use_raw Use \code{raw/X} (and \code{raw/var}) as the expression
 #'   matrix, as scanpy workflows often keep the full, unfiltered gene set
 #'   there. \code{layers} are then not read, because their genes differ.
+#' @param extra_modalities For a MuData file: other modalities to read next to
+#'   the expression one (for example \code{"prot"} for antibody counts). Each
+#'   becomes an alternative experiment of the result, with its own features and
+#'   the cells of the expression modality (cells it lacks get zeros).
 #' @param modality For a MuData file (\code{.h5mu}), the modality to read, e.g.
 #'   \code{"gex"}. Optional when the file has one modality or one obviously
 #'   expression-like name (\code{rna}, \code{gex}).
@@ -665,6 +669,7 @@ readH5adAsSCE <- function(
   airr = "auto",
   airr_sample = NULL,
   spatial_images = "auto",
+  extra_modalities = NULL,
   verbose = FALSE
 ) {
   .h5adRequire()
@@ -795,6 +800,9 @@ readH5adAsSCE <- function(
     rowData = row_data,
     reducedDims = embeddings
   )
+  if (length(extra_modalities)) {
+    sce <- .h5adAddAltModalities(sce, file, modalities, extra_modalities, modality, verbose)
+  }
   markers <- c(.h5adReadRankGenes(ctx), .h5adReadCerebroMarkers(ctx))
   if (length(markers)) {
     sce@metadata$marker_genes <- markers
@@ -824,6 +832,53 @@ readH5adAsSCE <- function(
   images <- .h5adReadSpatialImages(ctx, spatial_images, verbose)
   if (length(images)) {
     sce@metadata$spatial_images <- images
+  }
+  sce
+}
+
+#' Read further modalities of a MuData file as alternative experiments.
+#'
+#' Features keep their own names; cells are those of the main experiment (a cell
+#' the modality does not have gets zeros, a cell it has extra is dropped).
+#' @keywords internal
+#' @noRd
+.h5adAddAltModalities <- function(sce, file, available, wanted, main, verbose = FALSE) {
+  if (!length(available)) {
+    stop("`extra_modalities` is only for MuData (.h5mu) files.", call. = FALSE)
+  }
+  unknown <- setdiff(wanted, available)
+  if (length(unknown)) {
+    stop(
+      "Modality `", unknown[[1L]], "` not found; the file has: ",
+      paste(available, collapse = ", "), call. = FALSE
+    )
+  }
+  for (name in setdiff(wanted, main)) {
+    ctx <- .h5adContext(file, root = paste0("mod/", name))
+    obs <- .h5adReadDataFrame(ctx, "obs", verbose)
+    var <- .h5adReadDataFrame(ctx, "var", verbose)
+    genes <- make.unique(as.character(var$index))
+    values <- .h5adReadMatrix(ctx, "X", length(obs$index), length(genes))
+    triplets <- Matrix::summary(methods::as(values, "CsparseMatrix"))
+    column <- match(obs$index, colnames(sce))[triplets$j]
+    keep <- !is.na(column)
+    full <- Matrix::sparseMatrix(
+      i = triplets$i[keep],
+      j = column[keep],
+      x = triplets$x[keep],
+      dims = c(length(genes), ncol(sce)),
+      dimnames = list(genes, colnames(sce))
+    )
+    SingleCellExperiment::altExp(sce, name) <- SummarizedExperiment::SummarizedExperiment(
+      assays = list(X = full)
+    )
+    if (verbose) {
+      message(
+        "[INFO] Read modality `", name, "` (", length(genes), " features) as an ",
+        "alternative experiment; ", sum(!colnames(sce) %in% obs$index),
+        " cell(s) of the expression modality have no values there."
+      )
+    }
   }
   sce
 }

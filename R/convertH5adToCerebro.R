@@ -50,6 +50,10 @@
 #'   \code{counts} layer (or from \code{assay}).
 #' @param groups Character vector of \code{obs} columns to use as grouping
 #'   variables. Required; an error lists the usable columns when omitted.
+#' @param extra_modalities For an \code{.h5mu} file, other modalities to add to
+#'   the expression data as extra features, for example \code{"prot"}. Their
+#'   features are named \code{<modality>:<feature>}. See
+#'   \code{\link{convertSCEToCerebro}}, argument \code{extra_features}.
 #' @param experiment_name,organism,groups_naming,max_group_levels,add_all_meta_data,use_delayed_array,expression_matrix_mode,codec,viewer_binary,viewer_binary_threshold,verbose,cell_cycle,main_group,projections,add_most_expressed_genes,most_expressed_genes
 #'   As in \code{\link{convertSCEToCerebro}}. \code{experiment_name} defaults to
 #'   the file's base name.
@@ -104,6 +108,7 @@ convertH5adToCerebro <- function(
   gene_names = NULL,
   airr = "auto",
   airr_sample = NULL,
+  extra_modalities = NULL,
   experiment_name = NULL,
   organism = "Human",
   groups = NULL,
@@ -150,6 +155,7 @@ convertH5adToCerebro <- function(
     airr = airr,
     airr_sample = airr_sample,
     spatial_images = spatial_images,
+    extra_modalities = extra_modalities,
     verbose = verbose
   )
 
@@ -173,6 +179,7 @@ convertH5adToCerebro <- function(
     sce_file = sce,
     result_dir = result_dir,
     assay = assay,
+    extra_features = if (length(extra_modalities)) TRUE else NULL,
     experiment_name = experiment_name,
     organism = organism,
     groups = groups,

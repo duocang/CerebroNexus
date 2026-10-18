@@ -30,6 +30,7 @@ convertSCEToCerebro(
   add_most_expressed_genes = TRUE,
   most_expressed_genes = NULL,
   spatial_split_by = NULL,
+  extra_features = NULL,
   .source_name = NULL
 )
 }
@@ -43,6 +44,13 @@ it is stored with whichever of these serializers was used.}
 
 \item{result_dir}{Directory the \code{.crb} is written to (created if
 missing). The file is named \code{cerebro_<basename>.crb}.}
+
+\item{extra_features}{Alternative experiments (\code{altExp}, for example
+antibody counts \code{"ADT"}) to add to the expression data as extra
+features: their names, or \code{TRUE} for all. Features are named
+\code{<experiment>:<feature>}. They are taken from the assay of the same name
+as \code{assay} when it exists, otherwise from \code{X}, \code{counts} or
+the first assay, so check that this is on the same scale as the genes.}
 
 \item{assay}{Name of the assay to export; default \code{"logcounts"}.}
 

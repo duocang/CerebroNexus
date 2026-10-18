@@ -12,6 +12,9 @@
   scanpy / scVelo trajectories. `exportToH5ad()` writes spatial coordinates and
   tissue images back so scanpy and squidpy can draw them, the immune repertoire
   as scirpy's `obsm["airr"]` and each trajectory's pseudotime as an `obs` column.
+- CITE-seq data: `extra_modalities =` (MuData, e.g. `"prot"`) and `extra_features =`
+  (SingleCellExperiment `altExp`, e.g. `"ADT"`) add the antibody features to the
+  expression data as `<experiment>:<feature>`.
 - The Builder opens `.h5ad`, `.h5mu` and SingleCellExperiment `.rds`/`.qs2`
   files like Seurat ones (`convertSCEToSeurat()` is the conversion it uses), and
   offers PAGA, scVelo and pseudotime trajectories next to monocle2. Spatial

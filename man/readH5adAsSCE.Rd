@@ -12,6 +12,7 @@ readH5adAsSCE(
   airr = "auto",
   airr_sample = NULL,
   spatial_images = "auto",
+  extra_modalities = NULL,
   verbose = FALSE
 )
 }
@@ -23,6 +24,11 @@ together with \code{modality}. Files written by anndata before 0.7
 \item{use_raw}{Use \code{raw/X} (and \code{raw/var}) as the expression
 matrix, as scanpy workflows often keep the full, unfiltered gene set
 there. \code{layers} are then not read, because their genes differ.}
+
+\item{extra_modalities}{For a MuData file: other modalities to read next to
+the expression one (for example \code{"prot"} for antibody counts). Each
+becomes an alternative experiment of the result, with its own features and
+the cells of the expression modality (cells it lacks get zeros).}
 
 \item{modality}{For a MuData file (\code{.h5mu}), the modality to read, e.g.
 \code{"gex"}. Optional when the file has one modality or one obviously

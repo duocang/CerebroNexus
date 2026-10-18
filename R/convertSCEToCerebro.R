@@ -86,6 +86,12 @@
 #'   it is stored with whichever of these serializers was used.
 #' @param result_dir Directory the \code{.crb} is written to (created if
 #'   missing). The file is named \code{cerebro_<basename>.crb}.
+#' @param extra_features Alternative experiments (\code{altExp}, for example
+#'   antibody counts \code{"ADT"}) to add to the expression data as extra
+#'   features: their names, or \code{TRUE} for all. Features are named
+#'   \code{<experiment>:<feature>}. They are taken from the assay of the same name
+#'   as \code{assay} when it exists, otherwise from \code{X}, \code{counts} or
+#'   the first assay, so check that this is on the same scale as the genes.
 #' @param assay Name of the assay to export; default \code{"logcounts"}.
 #' @param experiment_name Experiment name stored in the Cerebro object. Defaults
 #'   to the file's base name, or \code{"SingleCellExperiment"} for an in-memory
@@ -168,6 +174,7 @@ convertSCEToCerebro <- function(
   add_most_expressed_genes = TRUE,
   most_expressed_genes = NULL,
   spatial_split_by = NULL,
+  extra_features = NULL,
   .source_name = NULL
 ) {
   expression_matrix_mode <- match.arg(expression_matrix_mode)
@@ -225,6 +232,9 @@ convertSCEToCerebro <- function(
   }
 
   sce <- .sceEnsureQcColumns(sce, nUMI, nGene, assay, verbose)
+  if (!is.null(extra_features) && !isFALSE(extra_features)) {
+    sce <- .sceAppendAltExps(sce, assay, extra_features, verbose)
+  }
 
   ## Tissue images of several Visium libraries each belong to their own section
   ## (scanpy/squidpy name them in obs["library_id"]): split by it unless told
@@ -380,4 +390,58 @@ convertSCEToCerebro <- function(
   rm(sce)
   gc()
   invisible(out_file)
+}
+
+#' Add alternative experiments to the expression data as extra features.
+#'
+#' Returns a SingleCellExperiment with one assay, named `assay`: the main
+#' features followed by the features of each experiment, named
+#' "<experiment>:<feature>". Cell data, reduced dimensions and metadata are kept.
+#' @keywords internal
+#' @noRd
+.sceAppendAltExps <- function(sce, assay, which, verbose = FALSE) {
+  available <- SingleCellExperiment::altExpNames(sce)
+  if (isTRUE(which)) {
+    which <- available
+  }
+  which <- as.character(which)
+  if (!length(which)) {
+    return(sce)
+  }
+  unknown <- setdiff(which, available)
+  if (length(unknown)) {
+    stop(
+      "Alternative experiment `", unknown[[1L]], "` not found",
+      if (length(available)) paste0("; the object has: ", paste(available, collapse = ", ")) else "",
+      ".",
+      call. = FALSE
+    )
+  }
+  as_sparse <- function(x) {
+    if (!methods::is(x, "dgCMatrix")) {
+      x <- methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+    }
+    x
+  }
+  pieces <- list(as_sparse(SummarizedExperiment::assay(sce, assay)))
+  for (name in which) {
+    alt <- SingleCellExperiment::altExp(sce, name)
+    names_in_alt <- SummarizedExperiment::assayNames(alt)
+    source <- intersect(c(assay, "X", "counts"), names_in_alt)
+    source <- if (length(source)) source[[1L]] else names_in_alt[[1L]]
+    values <- as_sparse(SummarizedExperiment::assay(alt, source))
+    dimnames(values) <- list(paste0(name, ":", rownames(alt)), colnames(sce))
+    pieces[[length(pieces) + 1L]] <- values
+    if (verbose) {
+      message("[INFO] Added ", nrow(values), " feature(s) of `", name, "` (assay `", source, "`).")
+    }
+  }
+  combined <- do.call(rbind, pieces)
+  result <- SingleCellExperiment::SingleCellExperiment(
+    assays = stats::setNames(list(combined), assay),
+    colData = SummarizedExperiment::colData(sce),
+    reducedDims = SingleCellExperiment::reducedDims(sce)
+  )
+  result@metadata <- sce@metadata
+  result
 }

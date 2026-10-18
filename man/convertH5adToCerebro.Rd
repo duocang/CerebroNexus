@@ -13,6 +13,7 @@ convertH5adToCerebro(
   gene_names = NULL,
   airr = "auto",
   airr_sample = NULL,
+  extra_modalities = NULL,
   experiment_name = NULL,
   organism = "Human",
   groups = NULL,
@@ -52,6 +53,11 @@ the matrix is \code{raw/X} and this must stay \code{"X"}.}
 
 \item{use_raw}{Use \code{raw/X} (and \code{raw/var}) as the expression
 matrix; see \code{\link{readH5adAsSCE}}.}
+
+\item{extra_modalities}{For an \code{.h5mu} file, other modalities to add to
+the expression data as extra features, for example \code{"prot"}. Their
+features are named \code{<modality>:<feature>}. See
+\code{\link{convertSCEToCerebro}}, argument \code{extra_features}.}
 
 \item{modality}{For a MuData file, the modality to convert (e.g.
 \code{"gex"}); see \code{\link{readH5adAsSCE}}.}
