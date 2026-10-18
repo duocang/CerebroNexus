@@ -1478,7 +1478,7 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
   )) *
     1000
   if (is.finite(elapsed_ms) && elapsed_ms >= worker$startup_timeout_ms) {
-    try(worker$process$interrupt(), silent = TRUE)
+    .builder_worker_interrupt(worker$process)
     worker$state <- "failed"
     worker$ready <- FALSE
     worker$error <- "The background worker startup timed out."
@@ -1868,6 +1868,32 @@ builder_worker_poll_startup <- function(worker, timeout = 0) {
 #' every marked descendant is gone before orphan cleanup. `verify_tree = FALSE`
 #' kills the marked tree at once without waiting for an interrupt (which callr
 #' cannot deliver on Windows); user-requested stops use it.
+## Asks a busy worker session to stop its current call, so the call's
+## on.exit() handlers (rollbacks) run before any forced kill. On Windows a
+## CTRL+C event (what callr's interrupt() sends) does not reach a busy R
+## session; CTRL+BREAK does, and R handles it as the same user interrupt.
+.builder_worker_interrupt <- function(
+  process,
+  os_type = .Platform$OS.type,
+  .ctrl_break = function(pid) {
+    ps::ps_interrupt(ps::ps_handle(pid), ctrl_c = FALSE)
+  }
+) {
+  if (identical(os_type, "windows")) {
+    sent <- tryCatch(
+      {
+        .ctrl_break(process$get_pid())
+        TRUE
+      },
+      error = function(error) FALSE
+    )
+    if (isTRUE(sent)) {
+      return(invisible(TRUE))
+    }
+  }
+  invisible(!inherits(try(process$interrupt(), silent = TRUE), "try-error"))
+}
+
 builder_worker_stop <- function(worker, grace_ms = 5000L, verify_tree = TRUE) {
   .builder_worker_assert(worker)
   grace_ms <- .builder_worker_grace_ms(grace_ms)
@@ -1937,7 +1963,7 @@ builder_worker_stop <- function(worker, grace_ms = 5000L, verify_tree = TRUE) {
   } else if (identical(state, "idle")) {
     try(worker$process$close(), silent = TRUE)
   } else {
-    try(worker$process$interrupt(), silent = TRUE)
+    .builder_worker_interrupt(worker$process)
     repeat {
       alive_now <- try(worker$process$is_alive(), silent = TRUE)
       if (inherits(alive_now, "try-error")) {

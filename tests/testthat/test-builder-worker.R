@@ -1878,6 +1878,35 @@ if (builder_lifecycle_api_available && builder_worker_stop_api_available) {
     expect_false(old_process$is_alive())
   })
 
+  test_that("worker interrupts use CTRL+BREAK on Windows", {
+    calls <- character()
+    process <- list(
+      get_pid = function() 4242L,
+      interrupt = function() {
+        calls <<- c(calls, "interrupt")
+        TRUE
+      }
+    )
+    .builder_worker_interrupt(
+      process,
+      os_type = "windows",
+      .ctrl_break = function(pid) calls <<- c(calls, paste("break", pid))
+    )
+    expect_identical(calls, "break 4242")
+
+    calls <- character()
+    .builder_worker_interrupt(
+      process,
+      os_type = "windows",
+      .ctrl_break = function(pid) stop("no console")
+    )
+    expect_identical(calls, "interrupt")
+
+    calls <- character()
+    .builder_worker_interrupt(process, os_type = "unix")
+    expect_identical(calls, "interrupt")
+  })
+
   test_that("worker stop lets an active call unwind before force kill", {
     skip_if_not_installed("callr")
     worker <- builder_worker_start(builder_profile_inst_path("builder"))
