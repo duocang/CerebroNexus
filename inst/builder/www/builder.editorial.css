@@ -840,10 +840,6 @@ label,
   background: var(--c-surface-2);
 }
 
-.builder-worker-status {
-  border-radius: var(--r-sm);
-  box-shadow: var(--shadow-2);
-}
 
 @media (max-width: 68.75rem) {
   :root {

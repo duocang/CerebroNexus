@@ -559,24 +559,25 @@ ui <- shiny::bootstrapPage(
       tags$h1(class = "visually-hidden", "CerebroNexus Builder")
     ),
     uiOutput("busy", inline = TRUE),
-    builder_project_toolbar_ui()
-  ),
-  div(
-    id = "builder-worker-status",
-    class = "builder-worker-status is-starting",
-    `aria-hidden` = "false",
-    span(class = "builder-worker-status-dot", `aria-hidden` = "true"),
-    span(
-      class = "builder-worker-status-copy",
-      strong(
-        id = "builder-worker-status-title",
-        "Starting Builder\u2026"
-      ),
+    ## Worker start-up status sits in the header, not a floating card.
+    div(
+      id = "builder-worker-status",
+      class = "builder-worker-status is-starting",
+      `aria-hidden` = "false",
+      span(class = "builder-worker-status-dot", `aria-hidden` = "true"),
       span(
-        id = "builder-worker-status-detail",
-        "Preparing your workspace\u2026"
+        class = "builder-worker-status-copy",
+        strong(
+          id = "builder-worker-status-title",
+          "Starting Builder\u2026"
+        ),
+        span(
+          id = "builder-worker-status-detail",
+          "Preparing your workspace\u2026"
+        )
       )
-    )
+    ),
+    builder_project_toolbar_ui()
   ),
   uiOutput("workflow_progress"),
   ## Global notices (builder_notify with no target) slide in here.
