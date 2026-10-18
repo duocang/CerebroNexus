@@ -209,3 +209,13 @@ test_that("a scirpy repertoire is offered and built by the Builder", {
   expect_true(length(built$crb$immune_repertoire) >= 1L ||
     length(built$crb$getImmuneRepertoire()) >= 1L)
 })
+
+test_that("a normalised-only file still gets per-cell count columns", {
+  sce <- quiet(readH5adAsSCE(fixture("small_csr.h5ad")))
+  SummarizedExperiment::assay(sce, "counts") <- NULL
+  SummarizedExperiment::assay(sce, "X") <- log1p(SummarizedExperiment::assay(sce, "X") / 3 + 0.37)
+  seurat <- convertSCEToSeurat(sce)
+  expect_identical(SeuratObject::Layers(seurat), "data")
+  expect_true(all(seurat$nCount_RNA > 0))
+  expect_true(all(seurat$nFeature_RNA > 0))
+})

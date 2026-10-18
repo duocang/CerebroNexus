@@ -89,6 +89,32 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
     meta.data = cell_data
   ))
 
+  ## The Builder and the export need a per-cell count and gene count. Seurat
+  ## derives them from the counts layer, which a normalised-only file lacks, so
+  ## use what the file recorded (scanpy: total_counts / n_genes_by_counts), or
+  ## sum the matrix that is there.
+  reference <- if (!is.null(counts)) counts else data
+  fill <- function(target, candidates, from_matrix) {
+    present <- result@meta.data[[target]]
+    if (!is.null(present) && any(present > 0, na.rm = TRUE)) {
+      return(invisible(NULL))
+    }
+    found <- intersect(candidates, colnames(cell_data))
+    found <- found[vapply(found, function(n) is.numeric(cell_data[[n]]), logical(1))]
+    values <- if (length(found)) cell_data[[found[[1L]]]] else from_matrix()
+    result[[target]] <<- as.numeric(values)
+  }
+  fill(
+    paste0("nCount_", main_assay),
+    c("total_counts", "n_counts", "nCount_RNA", "nUMI"),
+    function() Matrix::colSums(reference)
+  )
+  fill(
+    paste0("nFeature_", main_assay),
+    c("n_genes_by_counts", "n_genes", "nFeature_RNA", "nGene"),
+    function() Matrix::colSums(reference > 0)
+  )
+
   used_keys <- character()
   for (name in SingleCellExperiment::reducedDimNames(object)) {
     embedding <- SingleCellExperiment::reducedDim(object, name)
