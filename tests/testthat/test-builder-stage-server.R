@@ -1267,9 +1267,9 @@ test_that("Build result survives unsafe folder selection and clears on acceptanc
     )
     notifications <- character()
     assign(
-      "showNotification",
-      function(ui, ...) {
-        notifications <<- c(notifications, as.character(ui))
+      "builder_notify",
+      function(type, message, ...) {
+        notifications <<- c(notifications, as.character(message))
       },
       envir = folder_env
     )
@@ -2402,9 +2402,9 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
     notifications <- character()
     dialog_messages <- list()
     assign(
-      "showNotification",
-      function(ui, ...) {
-        notifications <<- c(notifications, as.character(ui))
+      "builder_notify",
+      function(type, message, ...) {
+        notifications <<- c(notifications, as.character(message))
       },
       envir = fn_env
     )
@@ -2556,9 +2556,9 @@ test_that("active Build states reject forged stage actions", {
       envir = fn_env
     )
     assign(
-      "showNotification",
-      function(ui, ...) {
-        notifications <<- c(notifications, as.character(ui))
+      "builder_notify",
+      function(type, message, ...) {
+        notifications <<- c(notifications, as.character(message))
       },
       envir = fn_env
     )
@@ -2714,9 +2714,9 @@ test_that("active builds lock dataset imports and rail mutations", {
     real_session <- session
     notifications <- character()
     assign(
-      "showNotification",
-      function(ui, ...) {
-        notifications <<- c(notifications, as.character(ui))
+      "builder_notify",
+      function(type, message, ...) {
+        notifications <<- c(notifications, as.character(message))
       },
       envir = environment(start_load)
     )
@@ -2875,9 +2875,9 @@ test_that("Build recovery actions preserve confirmation only when safe", {
       envir = server_env
     )
     assign(
-      "showNotification",
-      function(ui, ...) {
-        notifications <<- c(notifications, as.character(ui))
+      "builder_notify",
+      function(type, message, ...) {
+        notifications <<- c(notifications, as.character(message))
       },
       envir = server_env
     )

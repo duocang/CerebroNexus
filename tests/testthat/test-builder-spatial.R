@@ -29,6 +29,7 @@ builder_spatial_test_source("state/core.R")
 builder_spatial_test_source("extras.R")
 builder_spatial_test_source("worker.R")
 builder_spatial_test_source("plan/defaults.R")
+builder_spatial_test_source("notify.R")
 builder_spatial_test_source("spatial_alignment_server.R")
 
 test_that("image alignment scale remains strictly positive", {
@@ -571,12 +572,19 @@ test_that("pending tissue image requires its matching preview and snapshot", {
   committed <- list()
   commit_count <- 0L
   notifications <- character()
-  testthat::local_mocked_bindings(
-    showNotification = function(ui, ...) {
-      notifications <<- c(notifications, as.character(ui))
+  notify_env <- environment(builder_spatial_alignment_server)
+  while (!exists("builder_notify", envir = notify_env, inherits = FALSE)) {
+    notify_env <- parent.env(notify_env)
+  }
+  real_notify <- get("builder_notify", envir = notify_env)
+  assign(
+    "builder_notify",
+    function(type, message, ...) {
+      notifications <<- c(notifications, as.character(message))
     },
-    .package = "shiny"
+    envir = notify_env
   )
+  withr::defer(assign("builder_notify", real_notify, envir = notify_env))
   preview <- list(
     available = TRUE,
     bounds = list(xmin = 0, xmax = 10, ymin = 0, ymax = 10),
