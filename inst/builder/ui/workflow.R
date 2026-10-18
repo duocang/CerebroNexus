@@ -252,8 +252,10 @@ builder_server_path_dialog <- function(
   action_id,
   label,
   action_label,
-  detail = NULL
+  detail = NULL,
+  roots = tryCatch(builder_server_path_roots(), error = function(e) NULL)
 ) {
+  roots_id <- paste0(input_id, "_roots")
   modalDialog(
     title = title,
     tags$p(
@@ -268,8 +270,16 @@ builder_server_path_dialog <- function(
       type = "text",
       class = "shiny-input-text form-control",
       autocomplete = "off",
-      spellcheck = "false"
+      spellcheck = "false",
+      `aria-describedby` = if (length(roots)) roots_id
     ),
+    if (length(roots)) {
+      tags$p(
+        id = roots_id,
+        class = "builder-project-dialog-note builder-server-path-roots",
+        paste0("Allowed folders: ", builder_server_path_roots_label(roots))
+      )
+    },
     footer = tagList(
       modalButton("Cancel"),
       actionButton(action_id, action_label, class = "btn btn-primary")

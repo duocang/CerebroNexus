@@ -61,3 +61,58 @@ test_that("server path dialogs keep typed paths on a backdrop click", {
   expect_match(html, 'data-backdrop="static"', fixed = TRUE)
   expect_match(html, 'data-keyboard="false"', fixed = TRUE)
 })
+
+test_that("server path dialogs and errors name the allowed folders", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_dialogs_app()
+  root <- withr::local_tempdir()
+  allowed <- file.path(root, "allowed")
+  outside <- file.path(root, "outside")
+  dir.create(allowed)
+  dir.create(outside)
+  label <- app_env$builder_server_path_roots_label(
+    app_env$builder_server_path_roots(allowed)
+  )
+  expect_match(label, "allowed", fixed = TRUE)
+
+  error <- tryCatch(
+    app_env$builder_server_path_resolve(outside, "directory", roots = allowed),
+    error = conditionMessage
+  )
+  expect_identical(
+    error,
+    paste0(
+      "The path is outside the allowed server folders. Allowed: ",
+      label,
+      "."
+    )
+  )
+
+  html <- htmltools::renderTags(app_env$builder_server_path_dialog(
+    title = "Choose output folder",
+    input_id = "builder_build_server_folder",
+    action_id = "use_builder_build_server_folder",
+    label = "Parent folder",
+    action_label = "Build here",
+    roots = app_env$builder_server_path_roots(allowed)
+  ))$html
+  expect_match(html, paste0("Allowed folders: ", label), fixed = TRUE)
+  expect_match(
+    html,
+    'aria-describedby="builder_build_server_folder_roots"',
+    fixed = TRUE
+  )
+  ## The default roots are shown when none are passed.
+  default_html <- htmltools::renderTags(app_env$builder_server_path_dialog(
+    title = "Open project",
+    input_id = "builder_project_server_manifest",
+    action_id = "use_builder_project_server_manifest",
+    label = "Project file",
+    action_label = "Open project"
+  ))$html
+  expect_match(
+    default_html,
+    app_env$builder_server_path_roots_label(app_env$builder_server_path_roots()),
+    fixed = TRUE
+  )
+})

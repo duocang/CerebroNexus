@@ -275,9 +275,23 @@ builder_server_path_resolve <- function(
     logical(1)
   ))
   if (!allowed) {
-    stop("The path is outside the allowed server folders.", call. = FALSE)
+    stop(
+      paste0(
+        "The path is outside the allowed server folders. Allowed: ",
+        builder_server_path_roots_label(allowed_roots),
+        "."
+      ),
+      call. = FALSE
+    )
   }
   path
+}
+
+builder_server_path_roots_label <- function(roots) {
+  if (.Platform$OS.type == "windows") {
+    roots <- gsub("/", "\\", roots, fixed = TRUE)
+  }
+  paste(roots, collapse = "; ")
 }
 
 builder_native_picker_kinds <- function() {
