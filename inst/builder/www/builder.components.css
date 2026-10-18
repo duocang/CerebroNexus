@@ -1467,8 +1467,11 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   bottom: 0;
   z-index: 4;
 }
+/* A clear top edge so content scrolling underneath reads as passing behind
+   the footer (the old -.75rem-spread shadow was all but invisible). */
 .builder-stage-configure > #configure_actions > .builder-stage-footer {
-  box-shadow: 0 -.5rem 1rem -.75rem rgb(0 0 0 / .22);
+  border-top: 1px solid var(--c-border-2);
+  box-shadow: 0 -6px 16px -8px rgb(17 17 26 / .18);
 }
 /* The summary flows straight into "Available metadata"; the one divider
    sits under that line, above Essentials. */
