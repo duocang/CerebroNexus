@@ -292,6 +292,8 @@ cv_alignment_appearance <- function(alignment) {
   )
 }
 
+## A named xmin/xmax/ymin/ymax rectangle, or NULL unless finite and ordered.
+## Validates both image bounds and viewports.
 cv_viewport_bounds <- function(value) {
   required <- c("xmin", "xmax", "ymin", "ymax")
   if (
@@ -378,63 +380,12 @@ cv_external_images <- function(
   }
   labels <- names(configured)
   root <- Cerebro.options[["cerebro_root"]]
-  normalize_bounds <- function(value) {
-    required <- c("xmin", "xmax", "ymin", "ymax")
-    if (
-      is.null(value) ||
-        is.null(names(value)) ||
-        !all(required %in% names(value))
-    ) {
-      return(NULL)
-    }
-    numbers <- suppressWarnings(as.numeric(unlist(
-      value[required],
-      use.names = FALSE
-    )))
-    if (
-      length(numbers) != 4L ||
-        anyNA(numbers) ||
-        any(!is.finite(numbers)) ||
-        numbers[[1L]] >= numbers[[2L]] ||
-        numbers[[3L]] >= numbers[[4L]]
-    ) {
-      return(NULL)
-    }
-    stats::setNames(as.list(numbers), required)
-  }
   out <- list()
-  image_mime <- function(image_path) {
-    if (!isTRUE(file_test("-f", image_path))) {
-      return(NULL)
-    }
-    ext <- tolower(tools::file_ext(image_path))
-    if (!(ext %in% c("png", "jpg", "jpeg"))) {
-      return(NULL)
-    }
-    bytes <- tryCatch(
-      readBin(image_path, what = "raw", n = 8L),
-      error = function(error) raw()
-    )
-    png_magic <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
-    jpeg_magic <- as.raw(c(0xff, 0xd8, 0xff))
-    if (identical(ext, "png") && identical(bytes, png_magic)) {
-      return("image/png")
-    }
-    if (
-      ext %in%
-        c("jpg", "jpeg") &&
-        length(bytes) >= length(jpeg_magic) &&
-        identical(bytes[seq_along(jpeg_magic)], jpeg_magic)
-    ) {
-      return("image/jpeg")
-    }
-    NULL
-  }
   for (i in seq_along(configured)) {
     descriptor <- configured[[i]]
     path <- if (is.list(descriptor)) descriptor[["path"]] else descriptor
     bounds <- if (is.list(descriptor)) {
-      normalize_bounds(descriptor[["bounds"]])
+      cv_viewport_bounds(descriptor[["bounds"]])
     } else {
       NULL
     }
@@ -442,7 +393,7 @@ cv_external_images <- function(
     if (is.null(img_path)) {
       next
     }
-    mime <- image_mime(img_path)
+    mime <- viewerImageMime(img_path)
     if (is.null(mime)) {
       next
     }
@@ -460,7 +411,7 @@ cv_external_images <- function(
       label = label,
       bounds = bounds,
       viewport = if (is.list(descriptor)) {
-        normalize_bounds(descriptor$viewport_bounds)
+        cv_viewport_bounds(descriptor$viewport_bounds)
       } else {
         NULL
       },
@@ -1308,7 +1259,7 @@ cv_build_spatial <- function(crb, cells) {
     rois <- spatial_metadata_facet(
       metadata,
       rownames(sd$coordinates),
-      c("sample_roi", "roi", "roi_id", "region_of_interest")
+      spatial_roi_fields
     )$values
     if (length(rois) > 1L) {
       for (roi in rois) {
@@ -1401,9 +1352,9 @@ cv_build_trekker <- function(crb, cells, md) {
   )
   alignment <- tk[["histology_alignment", exact = TRUE]]
   appearance <- cv_alignment_appearance(alignment)
-  external_histology <- viewerTrekkerExternalImage()
-  histology <- external_histology$uri %||%
-    tk[["histology_image", exact = TRUE]]
+  background <- viewerTrekkerBackground(tk)
+  external_histology <- background$external
+  histology <- background$uri
   if (
     is.character(histology) &&
       length(histology) == 1L &&
@@ -1424,24 +1375,13 @@ cv_build_trekker <- function(crb, cells, md) {
       centre <- if (length(finite_y)) finite_y[[1L]] else 0
       yr <- c(centre - 0.5, centre + 0.5)
     }
-    bounds <- external_histology$bounds %||%
-      tk[["histology_image_bounds", exact = TRUE]]
-    required_bounds <- c("xmin", "xmax", "ymin", "ymax")
-    valid_bounds <- !is.null(bounds) &&
-      !is.null(names(bounds)) &&
-      all(required_bounds %in% names(bounds))
-    if (valid_bounds) {
-      bounds <- suppressWarnings(as.numeric(bounds[required_bounds]))
-      valid_bounds <- length(bounds) == 4L &&
-        !anyNA(bounds) &&
-        all(is.finite(bounds)) &&
-        bounds[[1L]] < bounds[[2L]] &&
-        bounds[[3L]] < bounds[[4L]]
-    }
-    if (!valid_bounds) {
-      bounds <- c(xr[[1L]], xr[[2L]], yr[[1L]], yr[[2L]])
-    }
-    names(bounds) <- required_bounds
+    bounds <- cv_viewport_bounds(background$bounds) %||%
+      list(
+        xmin = xr[[1L]],
+        xmax = xr[[2L]],
+        ymin = yr[[1L]],
+        ymax = yr[[2L]]
+      )
     source <- if (is.list(alignment)) {
       as.character(alignment[["source"]] %||% character())
     } else {
@@ -1472,7 +1412,7 @@ cv_build_trekker <- function(crb, cells, md) {
       },
       label = label,
       uri = histology,
-      bounds = as.list(bounds),
+      bounds = bounds,
       viewport = cv_viewport_bounds(external_histology$viewport_bounds),
       preset = preset,
       coord_span = c(diff(xr), diff(yr))

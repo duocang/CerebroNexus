@@ -11,34 +11,6 @@ spatial_background_render_payload <- function(
 ) {
   image_data <- NULL
   image_bounds <- list()
-  viewport_bounds <- if (
-    !is.null(descriptor) && identical(descriptor$source, "embedded")
-  ) {
-    descriptor$alignment$viewport_bounds
-  } else if (!is.null(descriptor)) {
-    descriptor$viewport_bounds
-  } else {
-    NULL
-  }
-  required_bounds <- c("xmin", "xmax", "ymin", "ymax")
-  viewport_values <- suppressWarnings(as.numeric(unlist(
-    viewport_bounds[required_bounds],
-    use.names = FALSE
-  )))
-  if (
-    length(viewport_values) != 4L ||
-      anyNA(viewport_values) ||
-      any(!is.finite(viewport_values)) ||
-      viewport_values[[1L]] >= viewport_values[[2L]] ||
-      viewport_values[[3L]] >= viewport_values[[4L]]
-  ) {
-    viewport_bounds <- NULL
-  } else {
-    viewport_bounds <- stats::setNames(
-      as.list(viewport_values),
-      required_bounds
-    )
-  }
   if (!is.null(descriptor) && identical(descriptor$source, "embedded")) {
     image_data <- viewerEmbeddedImageUrl(
       descriptor$image,
@@ -87,7 +59,6 @@ spatial_background_render_payload <- function(
     background_image = image_data,
     background_identity = identity,
     image_bounds = image_bounds,
-    viewport_bounds = viewport_bounds,
     background_flip_x = preset$flipX,
     background_flip_y = preset$flipY,
     background_scale_x = preset$scaleX,

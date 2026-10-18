@@ -8,9 +8,7 @@ observe(
     controls <- spatial_projection_controls()
     req(controls)
     sampling <- controls[c("projection", "percentage_cells_to_show")]
-    if (!identical(isolate(spatial_projection_sampling()), sampling)) {
-      spatial_projection_sampling(sampling)
-    }
+    viewerPublishChanged(spatial_projection_sampling, sampling)
   },
   priority = 950
 )
@@ -72,11 +70,11 @@ spatial_projection_cells_to_show_current <- reactive({
   for (scope in list(
     list(
       value = spatial_projection_selected_sample(),
-      fields = c("sample", "sample_id", "orig.ident")
+      fields = spatial_sample_fields
     ),
     list(
       value = spatial_roi_value(input[["spatial_projection_roi"]] %||% ""),
-      fields = c("sample_roi", "roi", "roi_id", "region_of_interest")
+      fields = spatial_roi_fields
     )
   )) {
     selected <- scope$value %||% ""
@@ -137,9 +135,7 @@ observe(
       spatial_projection_cells_to_show_current(),
       error = function(error) NULL
     )
-    if (!identical(isolate(spatial_projection_cells_state()), value)) {
-      spatial_projection_cells_state(value)
-    }
+    viewerPublishChanged(spatial_projection_cells_state, value)
   },
   priority = 900
 )

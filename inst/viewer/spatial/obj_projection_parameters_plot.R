@@ -63,7 +63,7 @@ spatial_projection_scene_defaults <- function() {
       spatial_metadata_facet(
         metadata,
         rownames(record[["coordinates"]]) %||% character(),
-        c("sample", "sample_id", "orig.ident")
+        spatial_sample_fields
       )$values
     })
     samples <- unique(unlist(facets, use.names = FALSE))
@@ -161,9 +161,7 @@ observe(
         defaults$percentage_cells_to_show
       ))
     )
-    if (!identical(isolate(spatial_projection_controls()), controls)) {
-      spatial_projection_controls(controls)
-    }
+    viewerPublishChanged(spatial_projection_controls, controls)
   },
   priority = 1000
 )
@@ -339,7 +337,7 @@ spatial_projection_parameters_plot_current <- reactive({
         sample_facet <- spatial_metadata_facet(
           getMetaData(),
           spatial_cells,
-          c("sample", "sample_id", "orig.ident")
+          spatial_sample_fields
         )
         spatial_cells <- names(sample_facet$by_cell)[
           !is.na(sample_facet$by_cell) &
@@ -349,7 +347,7 @@ spatial_projection_parameters_plot_current <- reactive({
       spatial_metadata_facet(
         getMetaData(),
         spatial_cells,
-        c("sample_roi", "roi", "roi_id", "region_of_interest")
+        spatial_roi_fields
       )
     }
   )
@@ -576,9 +574,7 @@ observe(
       spatial_projection_parameters_plot_current(),
       error = function(error) NULL
     )
-    if (!identical(isolate(spatial_projection_parameters_state()), value)) {
-      spatial_projection_parameters_state(value)
-    }
+    viewerPublishChanged(spatial_projection_parameters_state, value)
   },
   priority = 900
 )

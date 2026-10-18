@@ -71,20 +71,16 @@ output[["trajectory_projection_appearance_UI"]] <- renderUI({
   }
 
   tagList(
-    sliderInput(
+    viewerLimitedSlider(
       "trajectory_point_size",
       label = "Point size",
-      min = preferences[["cell_point_size"]][["min"]],
-      max = preferences[["cell_point_size"]][["max"]],
-      step = preferences[["cell_point_size"]][["step"]],
+      limits = preferences[["cell_point_size"]],
       value = isolate(trajectory_projection_appearance$point_size)
     ),
-    sliderInput(
+    viewerLimitedSlider(
       "trajectory_point_opacity",
       label = "Point opacity",
-      min = preferences[["cell_point_opacity"]][["min"]],
-      max = preferences[["cell_point_opacity"]][["max"]],
-      step = preferences[["cell_point_opacity"]][["step"]],
+      limits = preferences[["cell_point_opacity"]],
       value = isolate(trajectory_projection_appearance$point_opacity)
     ),
     if (categorical) {
@@ -111,18 +107,10 @@ output[["trajectory_projection_data_parameters_UI"]] <- renderUI({
   req(input[["trajectory_projection_more_render_request"]])
 
   tagList(
-    sliderInput(
+    viewerLimitedSlider(
       "trajectory_percentage_cells_to_show",
       label = "Show % of cells",
-      min = preferences[["cell_percentage_cells_to_show"]][[
-        "min"
-      ]],
-      max = preferences[["cell_percentage_cells_to_show"]][[
-        "max"
-      ]],
-      step = preferences[["cell_percentage_cells_to_show"]][[
-        "step"
-      ]],
+      limits = preferences[["cell_percentage_cells_to_show"]],
       value = isolate(
         trajectory_projection_appearance$percentage_cells_to_show
       )

@@ -10,6 +10,11 @@
 ## only the host packages need to be installed, not CerebroNexus itself.
 ##----------------------------------------------------------------------------##
 
+## Metadata columns naming a cell's sample and its region of interest, in order
+## of preference.
+spatial_sample_fields <- c("sample", "sample_id", "orig.ident")
+spatial_roi_fields <- c("sample_roi", "roi", "roi_id", "region_of_interest")
+
 spatial_dataset_name <- function(crb_files, selected) {
   if (
     is.null(crb_files) ||
@@ -395,7 +400,7 @@ format_spatial_preset_code <- function(
   flip_x,
   flip_y,
   rotation,
-  image_opacity = 0.5
+  image_opacity = 1
 ) {
   targets <- list(dataset, spatial_name, image_label)
   if (
@@ -707,7 +712,7 @@ spatial_roi_transform_context <- function(
   roi <- spatial_metadata_facet(
     metadata,
     cells,
-    c("sample_roi", "roi", "roi_id", "region_of_interest")
+    spatial_roi_fields
   )
   scoped_cells <- cells
   if (
@@ -719,7 +724,7 @@ spatial_roi_transform_context <- function(
     sample <- spatial_metadata_facet(
       metadata,
       cells,
-      c("sample", "sample_id", "orig.ident")
+      spatial_sample_fields
     )
     scoped_cells <- names(sample$by_cell)[
       !is.na(sample$by_cell) & sample$by_cell == sample_value
@@ -802,10 +807,6 @@ spatial_split_columns <- function(
   )]
 }
 
-spatial_scene_choices <- function(spatial_names, spatial_data, metadata) {
-  stats::setNames(spatial_names, spatial_names)
-}
-
 spatial_default_roi_selection <- function(roi_values) {
   roi_values <- unique(as.character(roi_values %||% character()))
   roi_values <- roi_values[!is.na(roi_values) & nzchar(roi_values)]
@@ -821,10 +822,6 @@ spatial_default_roi_selection <- function(roi_values) {
 ## Resolve only options$spatial_images[[dataset]][[spatial_name]]. Each result
 ## is a descriptor so its display label is never confused with a filesystem
 ## path, and descriptor bounds survive all the way to the renderer.
-
-spatial_background_key <- function(source, label) {
-  paste0(source, "::", label)
-}
 
 spatial_background_display_label <- function(label) {
   stripped <- sub(

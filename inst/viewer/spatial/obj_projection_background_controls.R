@@ -50,9 +50,7 @@ observe(
       "background_descriptor",
       "projection"
     )]
-    if (!identical(isolate(spatial_background_edit_model()), model)) {
-      spatial_background_edit_model(model)
-    }
+    viewerPublishChanged(spatial_background_edit_model, model)
   },
   priority = 900
 )
@@ -393,7 +391,7 @@ observeEvent(input[["spatial_projection_background_copy_preset"]], {
     rotation = null_to(input[["spatial_projection_background_rotate"]], 0),
     image_opacity = null_to(
       input[["spatial_projection_background_opacity"]],
-      0.5
+      1
     )
   )
   spatial_preset_code(code)

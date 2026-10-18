@@ -93,16 +93,6 @@
   white-space: normal; overflow-wrap: anywhere;
 }
 .coordviews-page .cv-bg-session-note { color: var(--c-text-2); font-size: 12px; margin: 12px 0 0; }
-.coordviews-page .cv-bg-space-tab {
-  max-width: 185px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 6px 10px; border: 1px solid var(--c-border); border-radius: 6px;
-  background: var(--c-surface); color: var(--c-text-2); cursor: pointer;
-  font: 600 11.5px/1.2 inherit;
-}
-.coordviews-page .cv-bg-space-tab:hover { background: var(--c-surface-2); }
-.coordviews-page .cv-bg-space-tab.is-on {
-  border-color: var(--c-amber-200); background: var(--c-amber-50); color: var(--c-amber-700);
-}
 /* ---- segmented toggle (clonal-panel layout) ----------------------------- */
 .coordviews-page .cv-seg {
   width: 100%;

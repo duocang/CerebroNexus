@@ -1,3 +1,24 @@
+## The Viewer's content contract is the single source of truth for coordinate
+## appearance; load its runtime copy once per R process.
+.viewerContentContract <- local({
+  contract <- NULL
+  function() {
+    if (is.null(contract)) {
+      contract <<- new.env(parent = baseenv())
+      sys.source(
+        system.file(
+          "viewer",
+          "core",
+          "viewer_content_contract.R",
+          package = "CerebroNexus"
+        ),
+        contract
+      )
+    }
+    contract
+  }
+})
+
 #' Normalize Viewer-only coordinate appearance for createShinyApp
 #' @keywords internal
 #' @noRd
@@ -17,7 +38,7 @@
   }
   leaf <- function(value, context) {
     named(value, context)
-    normalized <- viewerSpatialPointSetting(value, roi)
+    normalized <- .viewerContentContract()$viewerSpatialPointSetting(value, roi)
     if (is.null(normalized)) {
       stop(
         context,

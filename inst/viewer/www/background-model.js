@@ -54,7 +54,7 @@
     var pr = (img && img.preset) || {};
     return {
       show: true,
-      opacity: (pr.opacity != null ? pr.opacity : 0.5),
+      opacity: (pr.opacity != null ? pr.opacity : 1),
       offsetX: (pr.offsetX != null ? pr.offsetX : 0),
       offsetY: (pr.offsetY != null ? pr.offsetY : 0),
       scaleX: (pr.scaleX != null ? pr.scaleX : 1),

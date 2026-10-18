@@ -318,7 +318,7 @@ test_that("Spatial image controls seed and reset presets, synchronize values and
       scale_y = 2,
       rotate = 90,
       ## This preset sets no image_opacity, so the Viewer default applies.
-      opacity = 0.5
+      opacity = 1
     )
     for (field in names(expected)) {
       control <- xml2::xml_find_first(

@@ -909,9 +909,7 @@
     var percentage = Number(space.builder_percentage_cells);
     if (!isFinite(percentage) || percentage >= 100) return null;
     if (!space._pctMask || space._pctMask.length !== D.n) {
-      space._pctMask = new Uint8Array(D.n);
-      for (var j = 0; j < D.n; j++)
-        space._pctMask[j] = (Math.imul(j + 1, 2654435761) >>> 0) / 4294967296 < percentage / 100 ? 1 : 0;
+      space._pctMask = percentageMask(D.n, percentage);
     }
     return space._pctMask;
   }
@@ -953,16 +951,16 @@
   }
   // Legend-visible AND filter-active — the single gate every render/hit-test uses.
   function shown(i, p) { return visible(i, p) && activeCell(i, p); }
-  // Stable per-cell subsample: the same subset persists across redraws/toggles
-  // (deterministic hash), so lowering "% of cells" never reshuffles the view.
+  // Stable per-cell value in [0, 1): the same subset persists across
+  // redraws/toggles, so lowering "% of cells" never reshuffles the view.
+  function cellHash(i) { return (Math.imul(i + 1, 2654435761) >>> 0) / 4294967296; }
+  function percentageMask(n, percentage) {
+    var mask = new Uint8Array(n), thr = percentage / 100;
+    for (var i = 0; i < n; i++) mask[i] = cellHash(i) < thr ? 1 : 0;
+    return mask;
+  }
   function rebuildPctMask() {
-    if (!D || pctShow >= 100) { pctMask = null; return; }
-    var n = D.n, thr = pctShow / 100;
-    pctMask = new Uint8Array(n);
-    for (var i = 0; i < n; i++) {
-      var h = (Math.imul(i + 1, 2654435761) >>> 0) / 4294967296;
-      pctMask[i] = h < thr ? 1 : 0;
-    }
+    pctMask = (!D || pctShow >= 100) ? null : percentageMask(D.n, pctShow);
   }
   // After a filter / subsample change: drop now-inactive cells from the current
   // selection, then redraw. Keeps the coordinated selection consistent.
@@ -1264,13 +1262,17 @@
     if (!b) return;
     // Embedded images already carry their saved calibration in the pixels.
     state = imageRenderState(cimg, state);
-    var tlData = [b.xmin, b.ymax];
-    var trData = [b.xmax, b.ymax];
-    var blData = [b.xmin, b.ymin];
-    var centerData = [
+    // Rotate the image in DATA space about the origin, exactly as R rotates the
+    // cell coordinates (rotateSpatialCoordinates). Rotating on screen about the
+    // image centre instead moves the image away from the cells it belongs to.
+    var tlData = rotateDataPoint(b.xmin, b.ymax, state.rotate);
+    var trData = rotateDataPoint(b.xmax, b.ymax, state.rotate);
+    var blData = rotateDataPoint(b.xmin, b.ymin, state.rotate);
+    var centerData = rotateDataPoint(
       (Number(b.xmin) + Number(b.xmax)) / 2,
-      (Number(b.ymin) + Number(b.ymax)) / 2
-    ];
+      (Number(b.ymin) + Number(b.ymax)) / 2,
+      state.rotate
+    );
     var tl = dataToScreen(p, tlData[0], tlData[1]);
     var tr = dataToScreen(p, trData[0], trData[1]);
     var bl = dataToScreen(p, blData[0], blData[1]);
@@ -1286,7 +1288,6 @@
     c.save();
     c.globalAlpha = state.opacity;
     c.translate(center[0] + offSX, center[1] + offSY);
-    c.rotate(-state.rotate * Math.PI / 180);
     c.scale(state.scaleX * (state.flipX ? -1 : 1),
       state.scaleY * (state.flipY ? -1 : 1));
     c.transform(tr[0] - tl[0], tr[1] - tl[1],
@@ -5333,8 +5334,7 @@
         count[b] = (count[b] || 0) + 1;
         x[i] = count[b] - 1;
         // stable per-cell jitter fills the band strip (0.1 .. 0.9 within band b)
-        var h = (Math.imul(i + 1, 2654435761) >>> 0) / 4294967296;
-        y[i] = b + 0.1 + h * 0.8;
+        y[i] = b + 0.1 + cellHash(i) * 0.8;
       }
       sp._axisSpec = {
         xlab: 'cells in tier  (width ∝ count) →',
@@ -8222,7 +8222,7 @@
           uri: panelImage,
           bounds: panelBounds,
           preset: panel.image_preset || {
-            opacity: isFinite(opacity) ? opacity : 0.5,
+            opacity: isFinite(opacity) ? opacity : 1,
             offsetX: Number(meta.background_offset_x) || 0,
             offsetY: Number(meta.background_offset_y) || 0,
             scaleX: Number(meta.background_scale_x) || 1,
@@ -8307,7 +8307,7 @@
             id: imageId, label: meta.image_label || 'Tissue background',
             uri: meta.background_image, bounds: bounds,
             preset: {
-              opacity: isFinite(opacity) ? opacity : 0.5,
+              opacity: isFinite(opacity) ? opacity : 1,
               offsetX: Number(meta.background_offset_x) || 0,
               offsetY: Number(meta.background_offset_y) || 0,
               scaleX: Number(meta.background_scale_x) || 1,

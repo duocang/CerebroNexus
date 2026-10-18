@@ -402,7 +402,7 @@ spatialImagePreset <- function(options, dataset, spatial_name, image_label) {
     flipX = FALSE,
     flipY = FALSE,
     rotation = 0,
-    opacity = 0.5
+    opacity = 1
   )
   keys <- list(dataset, spatial_name, image_label)
   if (
@@ -732,6 +732,33 @@ viewerMemoOne <- function() {
     state$set <- TRUE
     value
   }
+}
+
+## Write a reactiveVal only when its value changes, so dependants do not re-run
+## for an identical value.
+viewerPublishChanged <- function(state, value) {
+  if (!identical(shiny::isolate(state()), value)) {
+    state(value)
+  }
+  invisible(value)
+}
+
+## A slider bounded by one preference's min/max/step limits.
+viewerLimitedSlider <- function(
+  inputId,
+  label,
+  limits,
+  value,
+  min = limits[["min"]]
+) {
+  sliderInput(
+    inputId,
+    label = label,
+    min = min,
+    max = limits[["max"]],
+    step = limits[["step"]],
+    value = value
+  )
 }
 
 viewerOutputTab <- function(ids) {
@@ -6020,6 +6047,21 @@ viewerEmbeddedImageUrl <- function(data_uri, session = NULL) {
   url
 }
 
+## Size and modification time of one regular file, or NULL. A registered image
+## is served only while both still match the version that was hashed.
+viewerFileVersion <- function(path) {
+  info <- suppressWarnings(file.info(path))
+  if (nrow(info) != 1L || isTRUE(info$isdir[[1L]])) {
+    return(NULL)
+  }
+  bytes <- unname(as.numeric(info$size[[1L]]))
+  modified <- unname(as.numeric(info$mtime[[1L]]))
+  if (!is.finite(bytes) || !is.finite(modified)) {
+    return(NULL)
+  }
+  list(bytes = bytes, modified = modified)
+}
+
 viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
   if (is.null(session)) {
     session <- get0("session", envir = parent.frame(), inherits = TRUE)
@@ -6035,20 +6077,12 @@ viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
   if (is.null(path) || is.null(mime)) {
     return(NULL)
   }
-  info <- suppressWarnings(file.info(path))
-  bytes <- if (nrow(info) == 1L) {
-    unname(as.numeric(info$size[[1L]]))
-  } else {
-    NA_real_
-  }
-  modified <- if (nrow(info) == 1L) {
-    unname(as.numeric(info$mtime[[1L]]))
-  } else {
-    NA_real_
-  }
-  if (!is.finite(bytes) || !is.finite(modified) || isTRUE(info$isdir[[1L]])) {
+  version <- viewerFileVersion(path)
+  if (is.null(version)) {
     return(NULL)
   }
+  bytes <- version$bytes
+  modified <- version$modified
   ## Background frames resend this descriptor; hash a file version once.
   if (is.null(session$userData$cerebro_private_image_md5)) {
     session$userData$cerebro_private_image_md5 <- new.env(parent = emptyenv())
@@ -6088,21 +6122,11 @@ viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
     paste0("cerebro-image-", md5),
     data,
     function(data, request) {
-      current <- suppressWarnings(file.info(data$path))
-      current_bytes <- if (nrow(current) == 1L) {
-        unname(as.numeric(current$size[[1L]]))
-      } else {
-        NA_real_
-      }
-      current_modified <- if (nrow(current) == 1L) {
-        unname(as.numeric(current$mtime[[1L]]))
-      } else {
-        NA_real_
-      }
+      current <- viewerFileVersion(data$path)
       if (
-        !identical(current_bytes, data$bytes) ||
-          !identical(current_modified, data$modified) ||
-          isTRUE(current$isdir[[1L]])
+        is.null(current) ||
+          !identical(current$bytes, data$bytes) ||
+          !identical(current$modified, data$modified)
       ) {
         return(shiny::httpResponse(404L, "text/plain", "Not found"))
       }
@@ -6175,6 +6199,17 @@ viewerTrekkerExternalImage <- function() {
     },
     preset = spatialImagePreset(options, dataset, "trekker", label),
     label = if (is.list(descriptor)) descriptor$label %||% label else label
+  )
+}
+
+## The Trekker background shared by the Trekker page and Linked views: a
+## configured external image wins over the image embedded in the Trekker slot.
+viewerTrekkerBackground <- function(tk) {
+  external <- viewerTrekkerExternalImage()
+  list(
+    external = external,
+    uri = external$uri %||% tk[["histology_image", exact = TRUE]],
+    bounds = external$bounds %||% tk[["histology_image_bounds", exact = TRUE]]
   )
 }
 

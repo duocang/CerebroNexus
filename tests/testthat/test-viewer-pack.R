@@ -734,10 +734,13 @@ test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
 
   projection_calls <- 0L
   scope <- new.env(parent = globalenv())
+  ## Shared runtime helpers such as viewerMemoOne(); the mocks below win.
+  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
   scope$reactive <- function(x) function() eval(substitute(x))
   scope$reactiveVal <- function(...) function(...) NULL
   scope$req <- function(...) invisible(NULL)
   scope$observeEvent <- function(...) invisible(NULL)
+  scope$observe <- function(...) invisible(NULL)
   scope$`%||%` <- function(a, b) if (is.null(a)) b else a
   scope$getImmuneRepertoire <- function(...) NULL
   scope$getImmuneRepertoireSummary <- function(...) list(available = TRUE)

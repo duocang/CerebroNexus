@@ -47,6 +47,15 @@ source(
 ## CRBs without a stored cell fingerprint would otherwise hash every barcode on
 ## each session's load. The value depends only on the file's cells.
 .viewer_cell_fingerprint_cache <- new.env(parent = emptyenv())
+## Process caches key one version of a file by its path, size and mtime.
+.viewerFileVersionKey <- function(path, info) {
+  paste(
+    normalizePath(path, winslash = "/", mustWork = FALSE),
+    info$size,
+    format(as.numeric(info$mtime), digits = 17),
+    sep = "\r"
+  )
+}
 ## Viewer Pack assets are verified against their manifest checksum before a
 ## session exposes them. Hash each file version once per process, not once per
 ## session and asset.
@@ -59,12 +68,7 @@ source(
       if (is.na(info$size) || isTRUE(info$isdir)) {
         return(NA_character_)
       }
-      key <- paste(
-        normalizePath(path, winslash = "/", mustWork = FALSE),
-        info$size,
-        format(as.numeric(info$mtime), digits = 17),
-        sep = "\r"
-      )
+      key <- .viewerFileVersionKey(path, info)
       cached <- .viewer_file_md5_cache[[key]]
       if (!is.null(cached)) {
         return(cached)
@@ -88,12 +92,7 @@ source(
   if (is.null(info) || is.na(info$size) || isTRUE(info$isdir)) {
     return(compute())
   }
-  key <- paste(
-    normalizePath(path, winslash = "/", mustWork = FALSE),
-    info$size,
-    format(as.numeric(info$mtime), digits = 17),
-    sep = "\r"
-  )
+  key <- .viewerFileVersionKey(path, info)
   cached <- .viewer_cell_fingerprint_cache[[key]]
   if (!is.null(cached)) {
     return(cached)
@@ -109,15 +108,6 @@ source(
   ),
   local = TRUE
 )
-.overview_file <- file.path(
-  Cerebro.options[["cerebro_root"]],
-  "viewer/dataset_overviews.rds"
-)
-.saved_overviews <- if (file.exists(.overview_file)) {
-  readRDS(.overview_file)
-} else {
-  list()
-}
 .crb_launch_state <- new.env(parent = emptyenv())
 .crb_launch_state$prototypes <- Cerebro.options[[".dataset_prototypes"]]
 if (!is.list(.crb_launch_state$prototypes)) {
@@ -367,12 +357,7 @@ server <- function(input, output, session) {
       NULL
     }
     info <- viewerDatasetInfo(catalog, target)
-    saved_overview <- if (!is.null(info)) {
-      info$overview %||% viewerSavedOverview(.saved_overviews, info$path)
-    } else {
-      NULL
-    }
-    viewerOverviewTruncated(saved_overview) ||
+    viewerOverviewTruncated(info$overview) ||
       viewerDatasetLoadRequired(
         isolate(input[["sidebar"]]),
         info,
@@ -452,9 +437,7 @@ server <- function(input, output, session) {
   observe(
     {
       percentage <- current_scatter_defaults()$percentage_cells_to_show
-      if (!identical(isolate(current_scatter_percentage()), percentage)) {
-        current_scatter_percentage(percentage)
-      }
+      viewerPublishChanged(current_scatter_percentage, percentage)
     },
     priority = 1000
   )
@@ -528,8 +511,6 @@ server <- function(input, output, session) {
       page
     )
   }
-
-  current_expression_scatter_defaults <- current_scatter_defaults
 
   ## listen to selected 'input_file', initialize before UI element is loaded
   observeEvent(input[['input_file']], ignoreNULL = FALSE, {
@@ -867,9 +848,6 @@ server <- function(input, output, session) {
         selected,
         available_crb_files$labels
       )
-      if (is.null(info$overview)) {
-        info$overview <- viewerSavedOverview(.saved_overviews, info$path)
-      }
       # Legacy summaries retained only ten categories. Rebuild those once from
       # metadata rather than misrepresenting the remainder as one category.
       if (viewerOverviewTruncated(info$overview)) {
