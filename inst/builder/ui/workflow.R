@@ -274,7 +274,8 @@ builder_server_path_dialog <- function(
       modalButton("Cancel"),
       actionButton(action_id, action_label, class = "btn btn-primary")
     ),
-    easyClose = TRUE,
+    # Typed paths must not be lost to a stray backdrop click or Escape.
+    easyClose = FALSE,
     size = "m"
   )
 }

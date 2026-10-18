@@ -47,3 +47,17 @@ test_that("project pickers close the open dialog before the picker overlay", {
     expect_identical(events$log, c("remove", "picker:project_manifest"))
   })
 })
+
+test_that("server path dialogs keep typed paths on a backdrop click", {
+  skip_if_not_installed("shiny")
+  app_env <- builder_dialogs_app()
+  html <- htmltools::renderTags(app_env$builder_server_path_dialog(
+    title = "Choose project folder",
+    input_id = "builder_project_server_folder",
+    action_id = "use_builder_project_server_folder",
+    label = "Project folder",
+    action_label = "Continue"
+  ))$html
+  expect_match(html, 'data-backdrop="static"', fixed = TRUE)
+  expect_match(html, 'data-keyboard="false"', fixed = TRUE)
+})
