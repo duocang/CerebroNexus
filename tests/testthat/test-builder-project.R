@@ -3098,18 +3098,18 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
     record
   ))$html
 
-  expect_match(html, "CRB · FAST · Build-ready", fixed = TRUE)
-  expect_match(html, "Source · Edit with saved settings", fixed = TRUE)
+  expect_match(html, "Open from cache (fast)", fixed = TRUE)
+  expect_match(html, "Reload from source file", fixed = TRUE)
   expect_match(html, '<option value="reuse" selected>', fixed = TRUE)
   expect_match(html, ">Checked</span>", fixed = TRUE)
-  expect_match(html, 'data-tone="ready">CRB ready</span>', fixed = TRUE)
+  expect_match(html, 'data-tone="ready">Cached</span>', fixed = TRUE)
   expect_match(
     html,
-    "The saved CRB can be used immediately; the source is not loaded.",
+    "The cached copy can be used immediately; the source is not loaded.",
     fixed = TRUE
   )
   expect_match(html, "Source 6 B", fixed = TRUE)
-  expect_match(html, "CRB 8 B", fixed = TRUE)
+  expect_match(html, "Cache 8 B", fixed = TRUE)
   expect_identical(
     runtime$builder_project_restore_artifact_size(list(
       artifact = list(
@@ -3134,9 +3134,9 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
   no_crb_html <- htmltools::renderTags(
     runtime$builder_project_restore_row_ui(no_crb)
   )$html
-  expect_match(no_crb_html, 'data-tone="none">No CRB</span>', fixed = TRUE)
+  expect_match(no_crb_html, 'data-tone="none">Not cached</span>', fixed = TRUE)
   expect_false(grepl(
-    'data-tone="ready">CRB ready</span>',
+    'data-tone="ready">Cached</span>',
     no_crb_html,
     fixed = TRUE
   ))
@@ -3145,7 +3145,7 @@ test_that("restore choices render descriptive labels and prefer checked CRB reus
   Sys.setFileTime(source_path, Sys.time() + 120)
   deferred <- runtime$builder_project_dataset_status(record, root)
   expect_identical(deferred$default_action, "reuse")
-  expect_identical(deferred$message, "Checked · CRB ready")
+  expect_identical(deferred$message, "Checked · Cached")
   expect_true(deferred$checked)
   expect_true(deferred$crb_ready)
   expect_match(
@@ -3229,7 +3229,7 @@ test_that("saved CRB workbench states the active data source", {
 
   expect_match(
     workbench,
-    "Saved CRB ready to build.",
+    "Cached copy ready to build.",
     fixed = TRUE
   )
   expect_match(workbench, "Ready to build", fixed = TRUE)
@@ -3240,7 +3240,7 @@ test_that("saved CRB workbench states the active data source", {
   )
   expect_match(workbench, 'id="project-source-load-status"', fixed = TRUE)
   expect_match(workbench, 'aria-live="polite"', fixed = TRUE)
-  expect_match(workbench, "Saved CRB remains available.", fixed = TRUE)
+  expect_match(workbench, "The cached copy remains available.", fixed = TRUE)
   expect_match(actions, "Load original source to edit", fixed = TRUE)
   expect_match(actions, "builder-project-source-load-button", fixed = TRUE)
   expect_match(
@@ -3309,7 +3309,7 @@ test_that("missing saved settings reload the source instead of forcing a skip", 
     "6 B"
   )
   expect_null(runtime$builder_project_restore_artifact_size(record))
-  expect_match(html, "CRB none", fixed = TRUE)
+  expect_match(html, "Cache none", fixed = TRUE)
 
   record$release$included <- FALSE
   record$runtime_restore_status <- runtime$builder_project_dataset_status(
@@ -4420,7 +4420,7 @@ test_that("ready CRB confirmation validates the complete state before committing
   expect_false(grepl("order(vapply(", observer, fixed = TRUE))
   expect_match(
     observer,
-    "The reusable CRBs could not be attached to this session",
+    "The dataset caches could not be attached to this session",
     fixed = TRUE
   )
 })
@@ -6646,7 +6646,7 @@ test_that("verified spatial molecule sidecars stay paired with their CRB", {
       crb,
       list(spatial_molecule_path = wrong)
     ),
-    "does not match its CRB",
+    "does not match its dataset cache",
     fixed = TRUE
   )
 })

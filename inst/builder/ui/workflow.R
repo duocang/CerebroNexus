@@ -252,13 +252,19 @@ builder_server_path_dialog <- function(
   action_id,
   label,
   action_label,
-  detail = NULL
+  detail = NULL,
+  roots = tryCatch(builder_server_path_roots(), error = function(e) NULL),
+  note = NULL
 ) {
+  roots_id <- paste0(input_id, "_roots")
   modalDialog(
     title = title,
     tags$p(
       "Enter an absolute path on this server."
     ),
+    if (is.character(note) && length(note) == 1L && nzchar(note)) {
+      tags$p(class = "builder-project-dialog-note", note)
+    },
     if (is.character(detail) && length(detail) == 1L && nzchar(detail)) {
       tags$details(tags$summary("Details"), tags$p(detail))
     },
@@ -268,13 +274,22 @@ builder_server_path_dialog <- function(
       type = "text",
       class = "shiny-input-text form-control",
       autocomplete = "off",
-      spellcheck = "false"
+      spellcheck = "false",
+      `aria-describedby` = if (length(roots)) roots_id
     ),
+    if (length(roots)) {
+      tags$p(
+        id = roots_id,
+        class = "builder-project-dialog-note builder-server-path-roots",
+        paste0("Allowed folders: ", builder_server_path_roots_label(roots))
+      )
+    },
     footer = tagList(
       modalButton("Cancel"),
       actionButton(action_id, action_label, class = "btn btn-primary")
     ),
-    easyClose = TRUE,
+    # Typed paths must not be lost to a stray backdrop click or Escape.
+    easyClose = FALSE,
     size = "m"
   )
 }

@@ -10,6 +10,8 @@ builder_project_auto_save_signature <- reactiveVal(NULL)
 builder_project_operation_phase <- reactiveVal("idle")
 builder_project_last_save_error <- reactiveVal(NULL)
 builder_project_pending_folder <- reactiveVal(NULL)
+# Which project picker the "choosing" phase belongs to: "create" or "open".
+builder_project_picker_kind <- reactiveVal(NULL)
 builder_project_source_sync <- reactiveVal(list(
   status = "idle",
   completed = 0L,
@@ -356,7 +358,8 @@ observeEvent(
       builder_connection_state("connected")
       activity_message <- builder_activity_message(
         isolate(builder_activity()),
-        build_overlay = isolate(builder_build_overlay())
+        build_overlay = isolate(builder_build_overlay()),
+        picker_kind = isolate(builder_project_picker_kind())
       )
       session$onFlushed(
         function() {
@@ -375,8 +378,10 @@ observeEvent(
 builder_activity_message <- function(
   activity,
   restore_progress = list(),
-  build_overlay = list(active = FALSE)
+  build_overlay = list(active = FALSE),
+  picker_kind = NULL
 ) {
+  creating <- identical(picker_kind, "create")
   capabilities <- builder_activity_capabilities(activity)
   phase <- activity$project_phase
   build_active <- is.list(build_overlay) && isTRUE(build_overlay$active)
@@ -419,7 +424,7 @@ builder_activity_message <- function(
   } else {
     switch(
       phase,
-      choosing = "Choose project location",
+      choosing = if (creating) "Choose project folder" else "Open project",
       opening = "Opening project",
       restoring = "Restoring datasets",
       saving = "Saving project",
@@ -432,7 +437,11 @@ builder_activity_message <- function(
   } else {
     switch(
       phase,
-      choosing = "The project picker is open.",
+      choosing = if (creating) {
+        paste("The folder picker is open.", builder_project_save_location_note())
+      } else {
+        "The project picker is open."
+      },
       saving = "Keep this page open until saving finishes.",
       opening = "Checking saved datasets…",
       restoring = if (builder_has_text(restore_file)) {
@@ -503,7 +512,8 @@ observe({
     builder_activity_message(
       activity,
       builder_project_restore_progress(),
-      builder_build_overlay()
+      builder_build_overlay(),
+      builder_project_picker_kind()
     )
   )
 })
@@ -807,7 +817,7 @@ reset_builder_project_crb_pipeline <- function() {
     inherits(task, "builder_async_task") &&
       task$state %in% c("queued", "running", "cancelling")
   ) {
-    stop("Wait for the current Project CRB to finish.", call. = FALSE)
+    stop("Wait for the dataset cache to finish.", call. = FALSE)
   }
   builder_project_crb_task(NULL)
   builder_project_crb_jobs(list())
@@ -985,10 +995,10 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
       !is.list(prepared$artifacts[[id]] %||% NULL)
   ) {
     message <- prepared$error %||%
-      "The CRB could not be generated and verified."
+      "The dataset cache could not be generated and verified."
     builder_project_update_crb_job(id, NULL)
     showNotification(
-      paste(message, "The dataset remains checked without a CRB."),
+      paste(message, "The dataset remains checked without a cache."),
       type = "warning",
       duration = 8
     )
@@ -1002,10 +1012,10 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
       identity_cache = builder_configuration_identity_cache
     )
   ) {
-    message <- "The generated CRB did not match the current dataset."
+    message <- "The generated dataset cache did not match the current dataset."
     builder_project_update_crb_job(id, NULL)
     showNotification(
-      paste(message, "The dataset remains checked without a CRB."),
+      paste(message, "The dataset remains checked without a cache."),
       type = "warning",
       duration = 8
     )
@@ -1035,7 +1045,7 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     }
     builder_project_update_crb_job(id, NULL)
     showNotification(
-      paste0(current_entry$settings$name %||% id, ": CRB ready."),
+      paste0(current_entry$settings$name %||% id, ": dataset cache ready."),
       type = "message",
       duration = 3
     )
@@ -1073,7 +1083,7 @@ builder_project_fail_crb_job <- function(id, token, error, output = NULL) {
     showNotification(
       paste(
         conditionMessage(error),
-        "The dataset remains checked without a CRB."
+        "The dataset remains checked without a cache."
       ),
       type = "warning",
       duration = 8
@@ -1175,7 +1185,7 @@ start_next_builder_project_crb_job <- function() {
     message <- if (inherits(plan, "condition")) {
       conditionMessage(plan)
     } else {
-      plan$error %||% "The CRB build plan is not ready."
+      plan$error %||% "The dataset cache plan is not ready."
     }
     return(builder_project_fail_crb_job(
       id,
@@ -2405,7 +2415,13 @@ save_builder_project_state <- function(
 ) {
   project <- isolate(builder_project())
   if (is.null(project)) {
-    shiny::showModal(builder_project_first_save_dialog())
+    if (isTRUE(notify)) {
+      showNotification(
+        "Choose a project folder first: select Save.",
+        type = "warning",
+        duration = 6
+      )
+    }
     return(invisible(FALSE))
   }
   if (
@@ -3098,7 +3114,8 @@ show_builder_project_server_path <- function(
     } else {
       "Open project"
     },
-    detail = detail
+    detail = detail,
+    note = if (identical(kind, "create")) builder_project_save_location_note()
   ))
   invisible(TRUE)
 }
@@ -3180,6 +3197,10 @@ request_builder_project_folder <- function() {
   if (!builder_operation_allowed("create_project")) {
     return(invisible(FALSE))
   }
+  # The picker overlay (Enter path · Cancel) sits below Shiny modals; a dialog
+  # left open here would hide the manual-path fallback.
+  shiny::removeModal()
+  builder_project_picker_kind("create")
   builder_project_operation_phase("choosing")
   builder_schedule_native_picker(
     "project_directory",
@@ -3207,10 +3228,6 @@ request_builder_project_folder <- function() {
   )
   invisible(TRUE)
 }
-
-observeEvent(input$choose_builder_project_folder, {
-  request_builder_project_folder()
-})
 
 observeEvent(input$use_builder_project_server_folder, {
   if (!builder_operation_allowed("create_project")) {
@@ -3394,7 +3411,9 @@ observeEvent(input$save_builder_project, {
     if (!builder_operation_allowed("create_project")) {
       return()
     }
-    shiny::showModal(builder_project_first_save_dialog())
+    # The first Save goes straight to the folder picker; the overlay and the
+    # manual-path dialog say what the folder will hold.
+    request_builder_project_folder()
   } else {
     if (!builder_operation_allowed("save_project")) {
       return()
@@ -3421,6 +3440,9 @@ request_builder_project_open <- function(confirmed = FALSE) {
   }
   builder_project_open_discard_confirmed(isTRUE(confirmed))
   previous_phase <- isolate(builder_project_operation_phase())
+  # Keep the picker overlay and its manual-path fallback visible.
+  shiny::removeModal()
+  builder_project_picker_kind("open")
   builder_project_operation_phase("choosing")
   builder_schedule_native_picker(
     "project_manifest",
@@ -3860,7 +3882,7 @@ complete_builder_project_open <- function(actions = NULL) {
     builder_project_operation_phase(operation)
     showNotification(
       paste0(
-        "The reusable CRBs could not be attached to this session: ",
+        "The dataset caches could not be attached to this session: ",
         conditionMessage(next_store)
       ),
       type = "error",
@@ -4200,7 +4222,7 @@ observe({
     message <- if (inherits(error, "condition")) {
       conditionMessage(error)
     } else {
-      as.character(error %||% "Reusable CRBs could not be registered.")
+      as.character(error %||% "Dataset caches could not be registered.")
     }
     builder_project_registration_task(NULL)
     builder_project_operation_phase("save_failed")
@@ -4297,7 +4319,7 @@ observe({
         } else if (isTRUE(saved)) {
           if (save_required) {
             showNotification(
-              "Reusable CRBs were added to the project.",
+              "Dataset caches were added to the project.",
               type = "message",
               duration = 5
             )
