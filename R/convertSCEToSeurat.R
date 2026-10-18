@@ -89,6 +89,16 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
     meta.data = cell_data
   ))
 
+  ## Seurat's constructors write "_" in a gene name as "-", but accept it once
+  ## the assay exists. Put the file's own names back so a gene keeps the name it
+  ## has in the source.
+  seurat_features <- rownames(result)
+  if (!identical(seurat_features, rownames(object))) {
+    restored <- result[[main_assay]]
+    rownames(restored) <- rownames(object)
+    result[[main_assay]] <- restored
+  }
+
   ## The Builder and the export need a per-cell count and gene count. Seurat
   ## derives them from the counts layer, which a normalised-only file lacks, so
   ## use what the file recorded (scanpy: total_counts / n_genes_by_counts), or

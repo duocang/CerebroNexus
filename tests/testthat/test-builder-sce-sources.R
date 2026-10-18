@@ -219,3 +219,23 @@ test_that("a normalised-only file still gets per-cell count columns", {
   expect_true(all(seurat$nCount_RNA > 0))
   expect_true(all(seurat$nFeature_RNA > 0))
 })
+
+test_that("gene names with underscores survive Seurat and the Builder", {
+  skip_if_not_installed("Seurat")
+  sce <- quiet(readH5adAsSCE(fixture("small_csr.h5ad")))
+  genes <- rownames(sce)
+  genes[1:2] <- c("Blank_1", "APOBEC3A_B")
+  rownames(sce) <- genes
+  seurat <- quiet(convertSCEToSeurat(sce))
+  ## Seurat's constructors rewrite them; the converter puts the file's names back
+  expect_identical(rownames(seurat)[1:2], c("Blank_1", "APOBEC3A_B"))
+  expect_identical(rownames(SeuratObject::LayerData(seurat, "counts"))[1:2], c("Blank_1", "APOBEC3A_B"))
+  out <- file.path(withr::local_tempdir(), "x.crb")
+  quiet(exportFromSeurat(
+    seurat, assay = "RNA", slot = "counts", file = out, experiment_name = "x",
+    organism = "hg", groups = "cell_type", nUMI = "nCount_RNA", nGene = "nFeature_RNA",
+    verbose = FALSE, viewer_binary = "never"
+  ))
+  crb <- readCerebro(out)
+  expect_setequal(crb$getGeneNames(), genes)
+})
