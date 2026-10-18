@@ -363,6 +363,7 @@ test_that("generated-App content freezes defaults for every dataset", {
         overview_point_size = 8,
         overview_point_opacity = 0.55,
         overview_percentage_cells_to_show = 60,
+        spatial_percentage_cells_to_show = 100,
         spatial_point_appearance = list(
           fov = list(point_opacity = 0.42, point_size = 8)
         ),
@@ -372,7 +373,8 @@ test_that("generated-App content freezes defaults for every dataset", {
           palette = "cerebro_orange",
           panel_mode = "shared",
           panel_palette = "default"
-        )
+        ),
+        extra_material_table_index = viewerExtraMaterialTableIndex(NULL)
       )
     )
   )
