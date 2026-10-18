@@ -2447,7 +2447,13 @@ builder_spatial_alignment_server <- function(
     }
     image <- builder_read_image(upload$datapath[[1L]], filename = filename)
     if (!is.null(image$error)) {
-      shiny::showNotification(image$error, type = "error", duration = 8)
+      builder_notify(
+        "error",
+        image$error,
+        target = list(
+          selector = ".builder-viewer-spatial-alignment .builder-viewer-card-body"
+        )
+      )
       return(invisible(FALSE))
     }
     extension <- if (identical(image$mime, "image/png")) "png" else "jpg"
@@ -2461,7 +2467,13 @@ builder_spatial_alignment_server <- function(
       image$bytes
     )
     if (!is.null(retained$error)) {
-      shiny::showNotification(retained$error, type = "error", duration = 8)
+      builder_notify(
+        "error",
+        retained$error,
+        target = list(
+          selector = ".builder-viewer-spatial-alignment .builder-viewer-card-body"
+        )
+      )
       return(invisible(FALSE))
     }
     ## builder_read_image() already computed the content fingerprint. The
@@ -2609,11 +2621,13 @@ builder_spatial_alignment_server <- function(
         !.builder_alignment_valid_bounds(preview$bounds)
     ) {
       pending_upload(NULL)
-      shiny::showNotification(
+      builder_notify(
+        "error",
         preview$message %||%
           "The spatial preview is not available for this tissue section.",
-        type = "error",
-        duration = 8
+        target = list(
+          selector = ".builder-viewer-spatial-alignment .builder-viewer-card-body"
+        )
       )
       return()
     }
@@ -2646,10 +2660,10 @@ builder_spatial_alignment_server <- function(
           )) %||%
             character())
     ) {
-      shiny::showNotification(
+      builder_notify(
+        "error",
         "Image labels must be non-empty and unique within the current ROI.",
-        type = "error",
-        duration = 5
+        target = list(field = "enhance-new_image_label")
       )
       return()
     }
@@ -3175,7 +3189,13 @@ builder_spatial_alignment_server <- function(
         "to finish, then try again."
       )
       if (isTRUE(notify)) {
-        shiny::showNotification(message, type = "warning", duration = 5)
+        builder_notify(
+          "warning",
+          message,
+          target = list(
+            selector = ".builder-viewer-spatial-alignment .builder-viewer-card-body"
+          )
+        )
       }
       return(list(
         ok = FALSE,
@@ -3305,7 +3325,13 @@ builder_spatial_alignment_server <- function(
           } else {
             "The coordinate settings could not be saved."
           }
-          shiny::showNotification(message, type = "error", duration = 8)
+          builder_notify(
+            "error",
+            message,
+            target = list(
+              selector = ".builder-viewer-spatial-alignment .builder-viewer-card-body"
+            )
+          )
         }
         return(list(
           ok = FALSE,
@@ -3588,13 +3614,15 @@ builder_spatial_alignment_server <- function(
       ) {
         return()
       }
-      shiny::showNotification(
+      builder_notify(
+        "error",
         paste(
           "The image was uploaded, but the browser could not display it.",
           "Switch views to retry, or remove and add the image again."
         ),
-        type = "error",
-        duration = 8
+        target = list(
+          selector = ".builder-viewer-spatial-alignment .builder-viewer-card-body"
+        )
       )
     },
     ignoreInit = TRUE
@@ -3696,10 +3724,10 @@ builder_spatial_alignment_server <- function(
       error = function(error) error
     )
     if (inherits(images, "condition")) {
-      shiny::showNotification(
+      builder_notify(
+        "error",
         conditionMessage(images),
-        type = "error",
-        duration = 5
+        target = list(field = "enhance-renamed_image_label")
       )
       return()
     }
