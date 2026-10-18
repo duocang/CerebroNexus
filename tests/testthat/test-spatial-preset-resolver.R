@@ -210,7 +210,7 @@ test_that("one preset resolver owns every image setting and default", {
       flipX = FALSE,
       flipY = FALSE,
       rotation = 90,
-      opacity = 0.5
+      opacity = 1
     )
   )
   expect_identical(
@@ -396,7 +396,7 @@ test_that("copy preset formatter emits exact canonical image settings", {
       offset_x = 2,
       offset_y = -3,
       rotation = 90,
-      image_opacity = 0.5
+      image_opacity = 1
     )
   )
   expect_false(grepl("spatial_images_offset_x", code, fixed = TRUE))
@@ -449,13 +449,21 @@ test_that("configured image opacity sets the initial opacity of every image", {
     options <- spatial_options
     options$spatial_image_settings$Atlas$sliceA$`H&E`$image_opacity <- saved_opacity
     external <- spatial_background_preset(
-      options, "Atlas", "sliceA",
+      options,
+      "Atlas",
+      "sliceA",
       list(source = "external", key = "H&E", label = "H&E")
     )
     embedded <- spatial_background_preset(
-      options, "Atlas", "sliceA",
-      list(source = "embedded", key = "H&E", label = "H&E",
-           alignment = list(rotation = 35))
+      options,
+      "Atlas",
+      "sliceA",
+      list(
+        source = "embedded",
+        key = "H&E",
+        label = "H&E",
+        alignment = list(rotation = 35)
+      )
     )
     expect_equal(external$opacity, saved_opacity)
     expect_equal(embedded$opacity, saved_opacity)
@@ -466,18 +474,30 @@ test_that("configured image opacity sets the initial opacity of every image", {
   ## An embedded image's saved alignment can carry its own opacity, like its
   ## geometry; out-of-range values fall back.
   embedded <- spatial_background_preset(
-    NULL, NULL, NULL,
-    list(source = "embedded", key = "H&E", label = "H&E",
-         alignment = list(image_opacity = 0.9))
+    NULL,
+    NULL,
+    NULL,
+    list(
+      source = "embedded",
+      key = "H&E",
+      label = "H&E",
+      alignment = list(image_opacity = 0.9)
+    )
   )
   expect_equal(embedded$opacity, 0.9)
   embedded <- spatial_background_preset(
-    NULL, NULL, NULL,
-    list(source = "embedded", key = "H&E", label = "H&E",
-         alignment = list(image_opacity = 1.5))
+    NULL,
+    NULL,
+    NULL,
+    list(
+      source = "embedded",
+      key = "H&E",
+      label = "H&E",
+      alignment = list(image_opacity = 1.5)
+    )
   )
-  expect_equal(embedded$opacity, 0.5)
+  expect_equal(embedded$opacity, 1)
   options <- spatial_options
   options$spatial_image_settings$Atlas$sliceA$`H&E`$image_opacity <- 1.5
-  expect_equal(spatialImagePreset(options, "Atlas", "sliceA", "H&E")$opacity, 0.5)
+  expect_equal(spatialImagePreset(options, "Atlas", "sliceA", "H&E")$opacity, 1)
 })

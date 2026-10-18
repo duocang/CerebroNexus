@@ -318,7 +318,7 @@ test_that("Spatial image controls seed and reset presets, synchronize values and
       scale_y = 2,
       rotate = 90,
       ## This preset sets no image_opacity, so the Viewer default applies.
-      opacity = 0.5
+      opacity = 1
     )
     for (field in names(expected)) {
       control <- xml2::xml_find_first(
@@ -397,7 +397,10 @@ test_that("Spatial controls binding their defaults do not repeat the first frame
     expect_identical(scope$frames, 1L)
     ## A bound, cleared selector is an explicit request to hide the image.
     session$setInputs(spatial_projection_background_image = NULL)
-    expect_identical(spatial_projection_parameters_plot()$background_image, "none")
+    expect_identical(
+      spatial_projection_parameters_plot()$background_image,
+      "none"
+    )
     expect_identical(scope$frames, 2L)
   })
 })

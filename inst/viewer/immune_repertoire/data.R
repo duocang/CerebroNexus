@@ -281,19 +281,13 @@ ir_discover_sharing_units <- function(data, metadata = NULL) {
 
 ## Discovery scans the whole repertoire and metadata (seconds for large data)
 ## and depends only on the loaded dataset, not on the visit to this tab.
-ir_sharing_unit_memo <- new.env(parent = emptyenv())
+ir_sharing_unit_memo <- viewerMemoOne()
 ir_sharing_unit_choices <- reactive({
   req(identical(input[["ir_tabs"]], "Clone Sharing"))
   # Discovery is independent of ir_data_annotated and the selected sharing unit.
-  dataset <- data_set()
-  if (!identical(ir_sharing_unit_memo$dataset, dataset)) {
-    ir_sharing_unit_memo$value <- ir_discover_sharing_units(
-      ir_data_raw(),
-      getMetaData()
-    )
-    ir_sharing_unit_memo$dataset <- dataset
-  }
-  ir_sharing_unit_memo$value
+  ir_sharing_unit_memo(data_set(), function() {
+    ir_discover_sharing_units(ir_data_raw(), getMetaData())
+  })
 })
 
 ## ---- Reactive: parameters --------------------------------------------- ##
@@ -1455,7 +1449,8 @@ ir_sharing_classify <- function(seg, unit_col, group_col = NULL) {
     value_levels <- unique(vals[ok])
     value_codes <- match(vals[ok], value_levels)
     pair_codes <- (as.double(clone_codes[ok]) - 1) *
-      (length(value_levels) + 1) + value_codes
+      (length(value_levels) + 1) +
+      value_codes
     pairs <- !duplicated(pair_codes)
     tabulate(clone_codes[ok][pairs], nbins = nlevels(clones))
   }

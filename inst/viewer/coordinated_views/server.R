@@ -17,11 +17,8 @@
 ## reactive below. Kept in a separate file so the builders can be unit-tested
 ## without a running session (tests/testthat/test-coordinated-views.R).
 ## Both pages resolve ROI membership, image scope and coordinate pivots through
-## the same pure Spatial helpers, even when Spatial has not been opened yet.
-source(
-  file.path(Cerebro.options[["cerebro_root"]], "viewer/spatial/func_spatial_helpers.R"),
-  local = TRUE
-)
+## the same pure Spatial helpers, which shiny_server.R sources once per session
+## so they are available even when Spatial has not been opened yet.
 source(
   paste0(
     Cerebro.options[["cerebro_root"]],
@@ -1806,7 +1803,7 @@ output[["coordviews_image_ui"]] <- renderUI({
     div(
       class = "cv-img-ctl",
       tags$label(`for` = "cv-img-opacity-number", "Opacity"),
-      rng("cv-img-opacity", "Opacity", 0, 1, pr$opacity %||% 0.5, "any")
+      rng("cv-img-opacity", "Opacity", 0, 1, pr$opacity %||% 1, "any")
     ),
     div(
       class = "cv-img-ctl",

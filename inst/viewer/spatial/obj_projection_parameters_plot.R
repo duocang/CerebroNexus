@@ -63,13 +63,17 @@ spatial_projection_scene_defaults <- function() {
       spatial_metadata_facet(
         metadata,
         rownames(record[["coordinates"]]) %||% character(),
-        c("sample", "sample_id", "orig.ident")
+        spatial_sample_fields
       )$values
     })
     samples <- unique(unlist(facets, use.names = FALSE))
     sample <- if (length(samples) > 1L) samples[[1L]] else ""
     shown <- if (length(samples)) {
-      spatial_names[vapply(facets, function(values) samples[[1L]] %in% values, logical(1))]
+      spatial_names[vapply(
+        facets,
+        function(values) samples[[1L]] %in% values,
+        logical(1)
+      )]
     } else {
       spatial_names
     }
@@ -139,7 +143,8 @@ observe(
       plot_type = as.character(plot_type[[1L]]),
       color_variable = as.character(color_variable[[1L]]),
       ## Gene selectors bind as "" when empty; treat not-yet-bound the same.
-      feature_to_display = input[["spatial_projection_feature_to_display"]] %||% "",
+      feature_to_display = input[["spatial_projection_feature_to_display"]] %||%
+        "",
       coexpr_r = input[["spatial_projection_coexpr_r"]] %||% "",
       coexpr_g = input[["spatial_projection_coexpr_g"]] %||% "",
       coexpr_b = input[["spatial_projection_coexpr_b"]] %||% "",
@@ -156,9 +161,7 @@ observe(
         defaults$percentage_cells_to_show
       ))
     )
-    if (!identical(isolate(spatial_projection_controls()), controls)) {
-      spatial_projection_controls(controls)
-    }
+    viewerPublishChanged(spatial_projection_controls, controls)
   },
   priority = 1000
 )
@@ -187,21 +190,44 @@ spatial_send_appearance <- function(values) {
 
 ## Point styling is a renderer patch, not a new coordinate/sample request.
 spatial_point_patch_values <- new.env(parent = emptyenv())
-observeEvent(list(input[["spatial_projection_point_size"]],
-                  input[["spatial_projection_point_opacity"]]), {
-  values <- list(point_size = input[["spatial_projection_point_size"]],
-                 point_opacity = input[["spatial_projection_point_opacity"]])
-  values <- Filter(function(x) is.numeric(x) && length(x) == 1L && is.finite(x), values)
-  key <- as.character(jsonlite::toJSON(list(viewer_loaded_dataset_context(),
-    input[["spatial_projection_to_display"]], input[["spatial_projection_roi"]]), auto_unbox = TRUE))
-  previous <- spatial_point_patch_values[[key]] %||%
-    spatial_projection_controls()[c("point_size", "point_opacity")]
-  spatial_point_patch_values[[key]] <- utils::modifyList(previous, values)
-  changed <- values[!vapply(names(values), function(name) {
-    isTRUE(all.equal(values[[name]], previous[[name]]))
-  }, logical(1))]
-  if (length(changed)) spatial_send_appearance(changed)
-}, ignoreInit = TRUE)
+observeEvent(
+  list(
+    input[["spatial_projection_point_size"]],
+    input[["spatial_projection_point_opacity"]]
+  ),
+  {
+    values <- list(
+      point_size = input[["spatial_projection_point_size"]],
+      point_opacity = input[["spatial_projection_point_opacity"]]
+    )
+    values <- Filter(
+      function(x) is.numeric(x) && length(x) == 1L && is.finite(x),
+      values
+    )
+    key <- as.character(jsonlite::toJSON(
+      list(
+        viewer_loaded_dataset_context(),
+        input[["spatial_projection_to_display"]],
+        input[["spatial_projection_roi"]]
+      ),
+      auto_unbox = TRUE
+    ))
+    previous <- spatial_point_patch_values[[key]] %||%
+      spatial_projection_controls()[c("point_size", "point_opacity")]
+    spatial_point_patch_values[[key]] <- utils::modifyList(previous, values)
+    changed <- values[
+      !vapply(
+        names(values),
+        function(name) {
+          isTRUE(all.equal(values[[name]], previous[[name]]))
+        },
+        logical(1)
+      )
+    ]
+    if (length(changed)) spatial_send_appearance(changed)
+  },
+  ignoreInit = TRUE
+)
 
 observeEvent(
   input[["spatial_projection_group_labels"]],
@@ -313,7 +339,7 @@ spatial_projection_parameters_plot_current <- reactive({
         sample_facet <- spatial_metadata_facet(
           getMetaData(),
           spatial_cells,
-          c("sample", "sample_id", "orig.ident")
+          spatial_sample_fields
         )
         spatial_cells <- names(sample_facet$by_cell)[
           !is.na(sample_facet$by_cell) &
@@ -323,7 +349,7 @@ spatial_projection_parameters_plot_current <- reactive({
       spatial_metadata_facet(
         getMetaData(),
         spatial_cells,
-        c("sample_roi", "roi", "roi_id", "region_of_interest")
+        spatial_roi_fields
       )
     }
   )
@@ -393,9 +419,13 @@ spatial_projection_parameters_plot_current <- reactive({
         !spatial_input_bound("spatial_projection_roi_background_images")
     ) {
       ## The picker starts with each ROI's first image.
-      selected_tokens <- unname(vapply(groups, function(group) {
-        unname(group$tokens[[1L]])
-      }, character(1)))
+      selected_tokens <- unname(vapply(
+        groups,
+        function(group) {
+          unname(group$tokens[[1L]])
+        },
+        character(1)
+      ))
     }
     selections <- spatial_roi_background_selections(groups, selected_tokens)
     roi_backgrounds <- Map(
@@ -540,15 +570,16 @@ spatial_projection_parameters_plot_current <- reactive({
 ## parameters above already used. Recomputing would still rebuild the
 ## million-cell frame downstream, so publish the parameters on change only.
 spatial_projection_parameters_state <- reactiveVal(NULL)
-observe({
-  value <- tryCatch(
-    spatial_projection_parameters_plot_current(),
-    error = function(error) NULL
-  )
-  if (!identical(isolate(spatial_projection_parameters_state()), value)) {
-    spatial_projection_parameters_state(value)
-  }
-}, priority = 900)
+observe(
+  {
+    value <- tryCatch(
+      spatial_projection_parameters_plot_current(),
+      error = function(error) NULL
+    )
+    viewerPublishChanged(spatial_projection_parameters_state, value)
+  },
+  priority = 900
+)
 spatial_projection_parameters_plot <- reactive({
   value <- spatial_projection_parameters_state()
   req(value)

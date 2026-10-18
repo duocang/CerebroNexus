@@ -3,14 +3,15 @@
 ##----------------------------------------------------------------------------##
 ## A change in colour/point appearance must not draw a new random sample.
 spatial_projection_sampling <- reactiveVal(NULL)
-observe({
-  controls <- spatial_projection_controls()
-  req(controls)
-  sampling <- controls[c("projection", "percentage_cells_to_show")]
-  if (!identical(isolate(spatial_projection_sampling()), sampling)) {
-    spatial_projection_sampling(sampling)
-  }
-}, priority = 950)
+observe(
+  {
+    controls <- spatial_projection_controls()
+    req(controls)
+    sampling <- controls[c("projection", "percentage_cells_to_show")]
+    viewerPublishChanged(spatial_projection_sampling, sampling)
+  },
+  priority = 950
+)
 
 spatial_projection_cell_index <- reactive({
   controls <- spatial_projection_sampling()
@@ -69,11 +70,11 @@ spatial_projection_cells_to_show_current <- reactive({
   for (scope in list(
     list(
       value = spatial_projection_selected_sample(),
-      fields = c("sample", "sample_id", "orig.ident")
+      fields = spatial_sample_fields
     ),
     list(
       value = spatial_roi_value(input[["spatial_projection_roi"]] %||% ""),
-      fields = c("sample_roi", "roi", "roi_id", "region_of_interest")
+      fields = spatial_roi_fields
     )
   )) {
     selected <- scope$value %||% ""
@@ -120,22 +121,24 @@ spatial_projection_cells_to_show_current <- reactive({
 ## every cell. Publish the cells on change only, so binding does not rebuild
 ## the million-cell frame downstream.
 spatial_projection_cells_state <- reactiveVal(NULL)
-observe({
-  ## Off the Spatial page, keep the last cells; returning re-evaluates.
-  if (
-    "sidebar" %in% isolate(names(input)) &&
-      !identical(input[["sidebar"]], "spatial")
-  ) {
-    return()
-  }
-  value <- tryCatch(
-    spatial_projection_cells_to_show_current(),
-    error = function(error) NULL
-  )
-  if (!identical(isolate(spatial_projection_cells_state()), value)) {
-    spatial_projection_cells_state(value)
-  }
-}, priority = 900)
+observe(
+  {
+    ## Off the Spatial page, keep the last cells; returning re-evaluates.
+    if (
+      "sidebar" %in%
+        isolate(names(input)) &&
+        !identical(input[["sidebar"]], "spatial")
+    ) {
+      return()
+    }
+    value <- tryCatch(
+      spatial_projection_cells_to_show_current(),
+      error = function(error) NULL
+    )
+    viewerPublishChanged(spatial_projection_cells_state, value)
+  },
+  priority = 900
+)
 spatial_projection_cells_to_show <- reactive({
   value <- spatial_projection_cells_state()
   req(!is.null(value))

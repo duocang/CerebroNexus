@@ -797,8 +797,6 @@ output$ir_plot_clonalUMAP_static <- renderImage(
     req(nzchar(group_by))
     clone_call <- "gene"
     show_all <- isTRUE(ir_param("ir_p_umap_show_all", TRUE))
-    ## Do not read ir_display_params() here: it follows the active tab, and
-    ## this image does not use it, so returning to the tab would redraw it.
     cells <- ir_umap_cells_to_show()
     df <- ir_clonal_umap_data(
       projection,

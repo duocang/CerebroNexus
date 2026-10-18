@@ -1,3 +1,23 @@
+# CerebroNexus 5.1.1
+
+- Background images now open at full opacity (1.0) instead of 50% in Spatial,
+  Linked views and Trekker. A configured or saved `image_opacity` still applies.
+- Fixes background images drifting away from their cells in a rotated scene,
+  such as the MERFISH demo. The image rotates in data space about the origin,
+  the same way `spatial_plot_rotation` rotates the cell coordinates.
+- Fixes embedded background images above about 750 KB being cut short, which
+  left their last rows transparent.
+- Fixes Spatial sessions ending when a gene was chosen before Gene expression
+  had been opened, or when a dataset switch left a gene the new dataset lacks;
+  a session that ends can no longer stop the whole app.
+- Declares only the packages the code uses: `httr` is now a Suggests entry,
+  and the unused `formattable` and `reshape2` are no longer listed. The Nix
+  environment (`create_env.R`, `default.nix`) drops `data.table`, `formattable`
+  and `shinyvalidate`, and `create_env.R` groups its packages by role.
+- Internal clean-up with no change in behaviour: shared helpers replace
+  duplicated code in Spatial, Linked views, Trekker and `cell_views.js`, and
+  unused reactives, outputs and CSS rules are removed.
+
 # CerebroNexus 5.1.0
 
 - Adds Viewer Packs: `buildViewerPack()` writes a sidecar directory next to a
@@ -26,11 +46,6 @@
 - Fixes the page loader staying on "Preparing the current view…" after a dataset
   switch rebuilt a page's result once its value had already arrived, which left
   Extra material tables rendered but unreachable until another page was opened.
-- Fixes Spatial backgrounds: embedded images above about 750 KB are no longer
-  cut short, and a configured image rotation again matches a rotated plot.
-- Fixes Spatial sessions ending when a gene was chosen before Gene expression
-  had been opened, or when a dataset switch left a gene the new dataset lacks;
-  a session that ends can no longer stop the whole app.
 - Fixes an uncaught client error for an output that fails without a bound
   element. It aborted the rest of Shiny's message frame, so a page that became
   unavailable for a dataset announced the return to Data info without

@@ -1,38 +1,3 @@
-test_that("spatial scene choices show only FOV identifiers", {
-  metadata <- data.frame(
-    cell_barcode = paste0("cell-", 1:4),
-    sample = c("S1", "S1", "S2", "S2"),
-    sample_roi = c("S1_lesion", "S1_border", "S2_normal", "S2_normal"),
-    stringsAsFactors = FALSE
-  )
-  rownames(metadata) <- metadata$cell_barcode
-  spatial_data <- list(
-    `fov-a` = list(
-      coordinates = matrix(
-        1:4,
-        ncol = 2L,
-        dimnames = list(c("cell-1", "cell-2"), c("x", "y"))
-      )
-    ),
-    `fov-b` = list(
-      coordinates = matrix(
-        5:8,
-        ncol = 2L,
-        dimnames = list(c("cell-3", "cell-4"), c("x", "y"))
-      )
-    )
-  )
-
-  choices <- spatial_scene_choices(
-    c("fov-a", "fov-b"),
-    spatial_data,
-    metadata
-  )
-
-  expect_identical(unname(choices), c("fov-a", "fov-b"))
-  expect_identical(names(choices), c("fov-a", "fov-b"))
-})
-
 test_that("Viewer defaults to the exact single ROI or separate multi-ROI layout", {
   expect_identical(
     spatial_default_roi_selection(c("ROI1", "ROI2")),
@@ -128,7 +93,10 @@ test_that("Viewer keeps split-by on the shared interactive Canvas", {
 test_that("Separate ROI panels carry their saved point appearance", {
   renderer <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = renderer)
-  sys.source(viewer_test_path("spatial", "func_spatial_helpers.R"), envir = renderer)
+  sys.source(
+    viewer_test_path("spatial", "func_spatial_helpers.R"),
+    envir = renderer
+  )
   sys.source(
     viewer_test_path("spatial", "func_projection_update_plot.R"),
     envir = renderer
@@ -229,7 +197,10 @@ test_that("Separate ROI panels use full extents for camera and background", {
 
   renderer <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = renderer)
-  sys.source(viewer_test_path("spatial", "func_spatial_helpers.R"), envir = renderer)
+  sys.source(
+    viewer_test_path("spatial", "func_spatial_helpers.R"),
+    envir = renderer
+  )
   sys.source(
     viewer_test_path("spatial", "func_projection_update_plot.R"),
     envir = renderer

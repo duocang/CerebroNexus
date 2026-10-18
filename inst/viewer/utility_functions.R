@@ -45,29 +45,51 @@ viewerLinkedViewsAvailable <- function(info = NULL, object = NULL) {
   if (!is.null(object)) {
     read <- function(value) tryCatch(force(value), error = function(e) NULL)
     projections <- as.character(read(object$availableProjections()))
-    projections <- unique(projections[!is.na(projections) & nzchar(projections)])
-    if (length(projections) > 1L) return(TRUE)
-    if (length(read(object$availableSpatial())) > 0L) return(TRUE)
-    if (any(vapply(
-      as.character(read(object$getMethodsForTrajectories())),
-      function(method) length(read(object$getNamesOfTrajectories(method))) > 0L,
-      logical(1)
-    ))) return(TRUE)
-    if (length(read(object$getTrekker())) > 0L) return(TRUE)
+    projections <- unique(projections[
+      !is.na(projections) & nzchar(projections)
+    ])
+    if (length(projections) > 1L) {
+      return(TRUE)
+    }
+    if (length(read(object$availableSpatial())) > 0L) {
+      return(TRUE)
+    }
+    if (
+      any(vapply(
+        as.character(read(object$getMethodsForTrajectories())),
+        function(method) {
+          length(read(object$getNamesOfTrajectories(method))) > 0L
+        },
+        logical(1)
+      ))
+    ) {
+      return(TRUE)
+    }
+    if (length(read(object$getTrekker())) > 0L) {
+      return(TRUE)
+    }
     return(isTRUE(read(viewerImmuneRepertoireSummary(object))$available))
   }
-  if (!is.list(info)) return(NULL)
+  if (!is.list(info)) {
+    return(NULL)
+  }
   extra <- list(
     spatial = info$capabilities$spatial,
     trajectory = info$capabilities$trajectory,
     trekker = info$capabilities$trekker,
     immune_repertoire = info$immune_repertoire
   )
-  if (any(vapply(extra, isTRUE, logical(1)))) return(TRUE)
+  if (any(vapply(extra, isTRUE, logical(1)))) {
+    return(TRUE)
+  }
   projections <- info$projection_names
-  if (!is.character(projections)) return(NULL)
+  if (!is.character(projections)) {
+    return(NULL)
+  }
   projections <- unique(projections[!is.na(projections) & nzchar(projections)])
-  if (length(projections) > 1L) return(TRUE)
+  if (length(projections) > 1L) {
+    return(TRUE)
+  }
   if (!all(vapply(extra, function(x) identical(x, FALSE), logical(1)))) {
     return(NULL)
   }
@@ -199,7 +221,9 @@ viewerDatasetLabel <- function(files, selected, display_labels = NULL) {
   }
   choices <- viewerDatasetChoices(files, display_labels)
   index <- match(selected, unname(choices))
-  if (is.na(index)) return("Dataset")
+  if (is.na(index)) {
+    return("Dataset")
+  }
   label <- names(choices)[[index]]
   if (is.na(label) || !nzchar(trimws(label))) "Dataset" else label
 }
@@ -354,11 +378,18 @@ viewerScatterDefaults <- function(options, dataset = NULL, page = NULL) {
   )
   # Ordinary projection views share one author configuration. Legacy page
   # overrides (e.g. expression_point_size) must not shadow it.
-  if (!identical(page, "spatial")) return(defaults)
+  if (!identical(page, "spatial")) {
+    return(defaults)
+  }
   list(
     point_size = resolve("spatial_point_size", 5, 1, 20),
     point_opacity = resolve("spatial_point_opacity", 1, 0.1, 1),
-    percentage_cells_to_show = resolve("spatial_percentage_cells_to_show", 100, 10, 100)
+    percentage_cells_to_show = resolve(
+      "spatial_percentage_cells_to_show",
+      100,
+      10,
+      100
+    )
   )
 }
 
@@ -371,7 +402,7 @@ spatialImagePreset <- function(options, dataset, spatial_name, image_label) {
     flipX = FALSE,
     flipY = FALSE,
     rotation = 0,
-    opacity = 0.5
+    opacity = 1
   )
   keys <- list(dataset, spatial_name, image_label)
   if (
@@ -703,6 +734,33 @@ viewerMemoOne <- function() {
   }
 }
 
+## Write a reactiveVal only when its value changes, so dependants do not re-run
+## for an identical value.
+viewerPublishChanged <- function(state, value) {
+  if (!identical(shiny::isolate(state()), value)) {
+    state(value)
+  }
+  invisible(value)
+}
+
+## A slider bounded by one preference's min/max/step limits.
+viewerLimitedSlider <- function(
+  inputId,
+  label,
+  limits,
+  value,
+  min = limits[["min"]]
+) {
+  sliderInput(
+    inputId,
+    label = label,
+    min = min,
+    max = limits[["max"]],
+    step = limits[["step"]],
+    value = value
+  )
+}
+
 viewerOutputTab <- function(ids) {
   prefixes <- c(
     overview_ = "overview",
@@ -890,7 +948,9 @@ viewerProjectionCellIndices <- function(
         } else {
           getGroupLevels(group)
         }
-      } else value
+      } else {
+        value
+      }
     }),
     groups
   )
@@ -1607,18 +1667,30 @@ cerebroCellViewAuxRequest <- function(request) {
 ## feedback cannot add a dependency to an existing preparation path.
 ## Pure display toggles patch the mounted renderer, without fetching geometry.
 cerebroObserveLocalAppearance <- function(id, input, session) {
-  ids <- c(group_labels = paste0(id, "_group_labels"),
-           draw_border = paste0(id, "_point_border"),
-           keep_square = paste0(id, "_keep_square"))
-  shiny::observeEvent(lapply(ids, function(key) input[[key]]), {
-    values <- lapply(ids, function(key) input[[key]])
-    values <- values[!vapply(values, is.null, logical(1))]
-    identity <- viewerDatasetIdentity()
-    shiny::req(identity$fingerprint, length(values))
-    session$sendCustomMessage("cell_view_appearance", list(
-      id = id, dataset_context = viewer_loaded_dataset_context(),
-      dataset_fingerprint = identity$fingerprint, values = values))
-  }, ignoreInit = TRUE)
+  ids <- c(
+    group_labels = paste0(id, "_group_labels"),
+    draw_border = paste0(id, "_point_border"),
+    keep_square = paste0(id, "_keep_square")
+  )
+  shiny::observeEvent(
+    lapply(ids, function(key) input[[key]]),
+    {
+      values <- lapply(ids, function(key) input[[key]])
+      values <- values[!vapply(values, is.null, logical(1))]
+      identity <- viewerDatasetIdentity()
+      shiny::req(identity$fingerprint, length(values))
+      session$sendCustomMessage(
+        "cell_view_appearance",
+        list(
+          id = id,
+          dataset_context = viewer_loaded_dataset_context(),
+          dataset_fingerprint = identity$fingerprint,
+          values = values
+        )
+      )
+    },
+    ignoreInit = TRUE
+  )
 }
 
 cerebroFeedbackControls <- function(id, input, overrides = list()) {
@@ -5984,6 +6056,21 @@ viewerEmbeddedImageUrl <- function(data_uri, session = NULL) {
   url
 }
 
+## Size and modification time of one regular file, or NULL. A registered image
+## is served only while both still match the version that was hashed.
+viewerFileVersion <- function(path) {
+  info <- suppressWarnings(file.info(path))
+  if (nrow(info) != 1L || isTRUE(info$isdir[[1L]])) {
+    return(NULL)
+  }
+  bytes <- unname(as.numeric(info$size[[1L]]))
+  modified <- unname(as.numeric(info$mtime[[1L]]))
+  if (!is.finite(bytes) || !is.finite(modified)) {
+    return(NULL)
+  }
+  list(bytes = bytes, modified = modified)
+}
+
 viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
   if (is.null(session)) {
     session <- get0("session", envir = parent.frame(), inherits = TRUE)
@@ -5999,20 +6086,12 @@ viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
   if (is.null(path) || is.null(mime)) {
     return(NULL)
   }
-  info <- suppressWarnings(file.info(path))
-  bytes <- if (nrow(info) == 1L) {
-    unname(as.numeric(info$size[[1L]]))
-  } else {
-    NA_real_
-  }
-  modified <- if (nrow(info) == 1L) {
-    unname(as.numeric(info$mtime[[1L]]))
-  } else {
-    NA_real_
-  }
-  if (!is.finite(bytes) || !is.finite(modified) || isTRUE(info$isdir[[1L]])) {
+  version <- viewerFileVersion(path)
+  if (is.null(version)) {
     return(NULL)
   }
+  bytes <- version$bytes
+  modified <- version$modified
   ## Background frames resend this descriptor; hash a file version once.
   if (is.null(session$userData$cerebro_private_image_md5)) {
     session$userData$cerebro_private_image_md5 <- new.env(parent = emptyenv())
@@ -6052,21 +6131,11 @@ viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
     paste0("cerebro-image-", md5),
     data,
     function(data, request) {
-      current <- suppressWarnings(file.info(data$path))
-      current_bytes <- if (nrow(current) == 1L) {
-        unname(as.numeric(current$size[[1L]]))
-      } else {
-        NA_real_
-      }
-      current_modified <- if (nrow(current) == 1L) {
-        unname(as.numeric(current$mtime[[1L]]))
-      } else {
-        NA_real_
-      }
+      current <- viewerFileVersion(data$path)
       if (
-        !identical(current_bytes, data$bytes) ||
-          !identical(current_modified, data$modified) ||
-          isTRUE(current$isdir[[1L]])
+        is.null(current) ||
+          !identical(current$bytes, data$bytes) ||
+          !identical(current$modified, data$modified)
       ) {
         return(shiny::httpResponse(404L, "text/plain", "Not found"))
       }
@@ -6139,6 +6208,17 @@ viewerTrekkerExternalImage <- function() {
     },
     preset = spatialImagePreset(options, dataset, "trekker", label),
     label = if (is.list(descriptor)) descriptor$label %||% label else label
+  )
+}
+
+## The Trekker background shared by the Trekker page and Linked views: a
+## configured external image wins over the image embedded in the Trekker slot.
+viewerTrekkerBackground <- function(tk) {
+  external <- viewerTrekkerExternalImage()
+  list(
+    external = external,
+    uri = external$uri %||% tk[["histology_image", exact = TRUE]],
+    bounds = external$bounds %||% tk[["histology_image_bounds", exact = TRUE]]
   )
 }
 

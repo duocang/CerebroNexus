@@ -624,59 +624,6 @@ output$ir_cell_view_options_UI <- renderUI({
   )
 })
 
-## ---- Reactive: current display parameter values ----------------------- ##
-## Collects the live display-control values for the current tab, falling back
-## to each param's declared default when the input is absent (e.g. a control
-## not rendered on the current tab).
-ir_display_params <- reactive({
-  tab <- input$ir_tabs
-  spec <- if (exists("ir_display_params_for")) {
-    ir_display_params_for(tab)
-  } else {
-    list()
-  }
-  display <- current_page_display_defaults("ir")
-  spec <- lapply(spec, function(p) {
-    if (identical(p$id, "ir_d_point_size")) {
-      p$value <- display$scatter_point_size
-    }
-    if (identical(p$id, "ir_d_alpha")) {
-      p$value <- display$scatter_opacity
-    }
-    p
-  })
-  if (identical(tab, "Clonal UMAP")) {
-    appearance <- current_scatter_defaults()
-    spec <- lapply(spec, function(p) {
-      if (identical(p$id, "ir_d_point_size")) {
-        p$value <- appearance$point_size
-        p$max <- 20
-        p$step <- 1
-      }
-      if (identical(p$id, "ir_d_alpha")) {
-        p$value <- appearance$point_opacity
-        p$step <- 0.1
-      }
-      if (identical(p$id, "ir_d_percentage_cells_to_show")) {
-        p$value <- appearance$percentage_cells_to_show
-      }
-      p
-    })
-  }
-  vals <- list()
-  for (p in spec) {
-    v <- input[[p$id]]
-    vals[[p$id]] <- if (
-      is.null(v) || (is.character(v) && !nzchar(v) && p$type != "text")
-    ) {
-      p$value
-    } else {
-      v
-    }
-  }
-  vals
-})
-
 ## ---- Group filters (settings drawer) ---------------------------------- ##
 ## Shared group-filter chips for the Clonal UMAP. Other tabs show a short note.
 output$ir_group_filters_UI <- renderUI({
