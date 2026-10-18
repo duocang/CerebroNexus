@@ -1061,6 +1061,17 @@ test_that("the writer warm-up compiles the write path and fills the cache", {
   expect_true(compiled("builder_project_build_manifest"))
   expect_gt(length(ls(cache, all.names = TRUE)), 0L)
 
+  ## Compiled once per loaded runtime.
+  runtime$builder_project_write <- function(...) NULL
+  runtime$builder_project_writer_warmup_task(function(full) runtime, list(root = root))
+  expect_false(compiled("builder_project_write"))
+  ## Before the Project exists the warm-up only loads and compiles.
+  fresh <- builder_responsiveness_runtime()
+  expect_false(fresh$builder_project_writer_warmup_task(
+    function(full) fresh,
+    list(root = NULL)
+  ))
+  expect_true(isTRUE(fresh$.builder_project_compiled))
   ## A folder without a Project is left for the Save to report.
   expect_false(runtime$builder_project_writer_warmup_task(
     function(full) runtime,
@@ -1068,7 +1079,7 @@ test_that("the writer warm-up compiles the write path and fills the cache", {
   ))
 })
 
-test_that("each newly active Project readies the writer once", {
+test_that("the writer is readied before the first Save and per Project", {
   skip_if_not_installed("shiny")
   app_env <- builder_responsiveness_app()
 
@@ -1078,14 +1089,23 @@ test_that("each newly active Project readies the writer once", {
     calls <- new.env(parent = emptyenv())
     calls$warmups <- list()
     server_env$builder_project_worker_task_call <- function(worker, task, args) {
-      if (!is.null(args$root)) {
-        calls$warmups[[length(calls$warmups) + 1L]] <- args$root
+      if ("root" %in% names(args)) {
+        calls$warmups[[length(calls$warmups) + 1L]] <- args$root %||% "<none>"
       }
       list(is_alive = function() FALSE)
     }
     project <- function(root, id) {
       list(root = root, manifest = list(project = list(id = id)))
     }
+
+    ## Nothing to save yet: no worker is started.
+    builder_project_prewarm_workers(NULL, has_datasets = FALSE)
+    expect_length(calls$warmups, 0L)
+    ## Datasets but no Project: ready the writer for the Save that creates it.
+    builder_project_prewarm_workers(NULL, has_datasets = TRUE)
+    builder_project_prewarm_workers(NULL, has_datasets = TRUE)
+    expect_identical(calls$warmups, list("<none>"))
+    calls$warmups <- list()
 
     builder_project_prewarm_workers(project("C:/p1", "a"))
     builder_project_prewarm_workers(project("C:/p1", "a"))
@@ -1096,7 +1116,7 @@ test_that("each newly active Project readies the writer once", {
     builder_project_prewarm_workers(project("C:/p1", "a"))
     builder_project_prewarm_workers(project("C:/p2", "b"))
     expect_identical(calls$warmups, list("C:/p1", "C:/p1", "C:/p2"))
-    builder_project_prewarm_workers(NULL)
+    builder_project_prewarm_workers(NULL, has_datasets = FALSE)
     expect_length(calls$warmups, 3L)
   })
 })
@@ -1121,4 +1141,63 @@ test_that("a manual Save queues CRBs only after its result is shown", {
   )[[1L]]
   expect_gt(deferred, 0L)
   expect_gt(queued, deferred)
+})
+
+test_that("a new configuration is verified once, not again after its rename", {
+  runtime <- builder_responsiveness_runtime()
+  root <- withr::local_tempdir()
+  cache <- new.env(parent = emptyenv())
+  reads <- new.env(parent = emptyenv())
+  reads$n <- 0L
+  read_configuration <- runtime$builder_project_read_configuration_file
+  runtime$builder_project_read_configuration_file <- function(...) {
+    reads$n <- reads$n + 1L
+    read_configuration(...)
+  }
+  manifest <- runtime$builder_project_new_manifest(root, "First Save")
+  manifest$datasets <- lapply(c("ds1", "ds2"), function(id) {
+    runtime$builder_project_dataset_record(
+      list(
+        id = id,
+        revision = 1L,
+        settings = list(name = id),
+        acknowledgements = character(),
+        spatial_drafts = list()
+      ),
+      source = list(kind = "missing", path = NULL),
+      root = root,
+      verification_cache = cache
+    )
+  })
+  ## One read per sidecar: its staged part file.
+  expect_identical(reads$n, 2L)
+
+  reads$n <- 0L
+  written <- runtime$builder_project_write(manifest, root, verification_cache = cache)
+  expect_identical(reads$n, 0L)
+  expect_true(runtime$builder_project_manifest_integrity(written$manifest, root)$valid)
+
+  ## A sidecar changed after it was written is read again and rejected.
+  config <- file.path(root, written$manifest$datasets[[1L]]$configuration$path)
+  text <- rawToChar(readBin(config, "raw", file.size(config)))
+  writeBin(charToRaw(sub("\"ds1\"", "\"dsX\"", text, fixed = TRUE)), config)
+  reads$n <- 0L
+  status <- runtime$builder_project_manifest_integrity(
+    written$manifest,
+    root,
+    verification_cache = cache
+  )
+  expect_false(status$valid)
+  expect_gt(reads$n, 0L)
+
+  ## No carry when the target is not the verified file.
+  staged <- list(md5 = strrep("a", 32L), file_id = "elsewhere", bytes = 1, modified_at = "x")
+  expect_false(runtime$builder_project_carry_configuration_verification(
+    config,
+    list(config = list(), digest = "d", contract_version = 3L),
+    staged,
+    list(id = "ds1", revision = 1L),
+    "d",
+    cache
+  ))
 })

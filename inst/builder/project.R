@@ -3279,6 +3279,36 @@ builder_project_legacy_configuration_identity_fallback <- function(
     )
 }
 
+## Key of a verified configuration sidecar: its stat identity plus what it was
+## verified to contain. NULL when the file has no trusted stat identity.
+.builder_project_configuration_verify_key <- function(
+  path,
+  metadata,
+  dataset_id,
+  revision,
+  digest,
+  contract_version,
+  verification_cache
+) {
+  stat_key <- builder_project_verification_cache_key(
+    path,
+    metadata,
+    verification_cache
+  )
+  if (!.builder_project_text(stat_key)) {
+    return(NULL)
+  }
+  paste(
+    "configuration-verify",
+    stat_key,
+    as.character(dataset_id),
+    .builder_project_stored_integer(revision %||% 0L, 0L),
+    as.character(digest %||% ""),
+    as.character(contract_version),
+    sep = "::"
+  )
+}
+
 builder_project_verify_configuration <- function(
   path,
   dataset_id,
@@ -3290,21 +3320,16 @@ builder_project_verify_configuration <- function(
 ) {
   cache_key <- NULL
   if (is.environment(verification_cache)) {
-    stat_key <- builder_project_verification_cache_key(
+    cache_key <- .builder_project_configuration_verify_key(
       path,
       builder_project_file_metadata(path),
+      dataset_id,
+      revision,
+      digest,
+      contract_version,
       verification_cache
     )
-    if (.builder_project_text(stat_key)) {
-      cache_key <- paste(
-        "configuration-verify",
-        stat_key,
-        as.character(dataset_id),
-        .builder_project_stored_integer(revision %||% 0L, 0L),
-        as.character(digest %||% ""),
-        as.character(contract_version),
-        sep = "::"
-      )
+    if (.builder_project_text(cache_key)) {
       cached <- get0(cache_key, envir = verification_cache, inherits = FALSE)
       if (
         is.list(cached) &&
@@ -3382,6 +3407,50 @@ builder_project_verify_configuration <- function(
     assign(cache_key, verified, envir = verification_cache)
   }
   verified
+}
+
+## A configuration sidecar is verified as its staged part file, then renamed
+## into place. When the target is still that file (same file id, size and
+## modification time) its bytes were verified a moment ago; record the result
+## under the target's identity so the commit check and the integrity passes of
+## the same Save do not read and parse it again. Anything else is checked from
+## disk as before.
+builder_project_carry_configuration_verification <- function(
+  target,
+  verified,
+  staged_fingerprint,
+  config,
+  digest,
+  verification_cache
+) {
+  if (!is.environment(verification_cache) || !is.list(verified)) {
+    return(invisible(FALSE))
+  }
+  metadata <- builder_project_file_metadata(target)
+  same_file <- is.list(metadata) &&
+    .builder_project_text(metadata$file_id %||% NULL) &&
+    identical(metadata$file_id, staged_fingerprint$file_id %||% NULL) &&
+    builder_project_fingerprint_metadata_matches(staged_fingerprint, metadata)
+  if (!isTRUE(same_file)) {
+    return(invisible(FALSE))
+  }
+  key <- .builder_project_configuration_verify_key(
+    target,
+    metadata,
+    config$id,
+    config$revision,
+    digest,
+    verified$contract_version %||%
+      .builder_project_configuration_contract_version,
+    verification_cache
+  )
+  if (!.builder_project_text(key)) {
+    return(invisible(FALSE))
+  }
+  metadata$md5 <- staged_fingerprint$md5
+  verified$fingerprint <- metadata
+  assign(key, verified, envir = verification_cache)
+  invisible(TRUE)
 }
 
 builder_project_write_dataset_config <- function(
@@ -3473,7 +3542,7 @@ builder_project_write_dataset_config <- function(
   if (!identical(staged_fingerprint$md5, payload_md5)) {
     stop("A Project configuration could not be written safely.", call. = FALSE)
   }
-  builder_project_verify_configuration(
+  staged_verification <- builder_project_verify_configuration(
     temporary,
     config$id,
     config$revision,
@@ -3490,6 +3559,15 @@ builder_project_write_dataset_config <- function(
     }
   } else if (!isTRUE(.move(temporary, target))) {
     stop("A Project configuration could not be committed.", call. = FALSE)
+  } else {
+    builder_project_carry_configuration_verification(
+      target,
+      staged_verification,
+      staged_fingerprint,
+      config,
+      expected_digest,
+      verification_cache
+    )
   }
   committed <- builder_project_verify_configuration(
     target,
@@ -3755,10 +3833,39 @@ builder_project_configuration_integrity <- function(
       }
     }
   }
+  # A sidecar this writer verified (written or checked earlier, same stat
+  # identity, same expected id, revision and identity) is not read again.
+  verified <- if (isTRUE(exists) && .builder_project_text(cache_key)) {
+    verify_key <- .builder_project_configuration_verify_key(
+      resolved,
+      metadata,
+      record$id %||% "",
+      configuration$revision %||% 0L,
+      configuration$digest %||% "",
+      tryCatch(
+        .builder_project_contract_version(
+          configuration$contract_version %||% 1L,
+          1L
+        ),
+        error = function(error) NA_integer_
+      ),
+      verification_cache
+    )
+    hit <- if (.builder_project_text(verify_key)) {
+      get0(verify_key, envir = verification_cache, inherits = FALSE)
+    } else {
+      NULL
+    }
+    if (is.list(hit) && !isTRUE(hit$legacy_runtime_fallback)) hit else NULL
+  } else {
+    NULL
+  }
   # Windows ACL/readability checks via file.access() are not reliable for files
   # created in the current process. The binary read below is the authority.
   readable <- exists
-  loaded <- if (exists) {
+  loaded <- if (is.list(verified)) {
+    list(config = verified$config, fingerprint = verified$fingerprint)
+  } else if (exists) {
     tryCatch(
       builder_project_read_configuration_file(resolved, fingerprint = TRUE),
       error = identity
@@ -3781,7 +3888,9 @@ builder_project_configuration_integrity <- function(
     ),
     error = function(error) NA_integer_
   )
-  actual_digest <- if (json_parseable) {
+  actual_digest <- if (is.list(verified)) {
+    as.character(verified$digest)
+  } else if (json_parseable) {
     tryCatch(
       builder_project_configuration_digest_for_contract(
         parsed,
@@ -7615,25 +7724,40 @@ builder_project_write_task <- function(runtime_for, args) {
   written
 }
 
-## Readies a warm Project writer for the Project just opened or created: loads
-## the full runtime and runs the integrity pass every Save repeats. The first
-## Save then finds the code compiled and the unchanged sidecars already in the
-## stat-keyed verification cache, instead of paying for both while the
-## workspace is locked. Read-only; any failure is left for the Save to report.
+## Readies a warm Project writer before the first Save (`root = NULL`, the
+## Project does not exist yet) or for the Project just opened: loads the full
+## runtime, compiles it and, with a Project, runs the integrity pass every Save
+## repeats. The first Save then finds the code compiled and the unchanged
+## sidecars already in the stat-keyed verification cache, instead of paying
+## for both while the workspace is locked. Read-only; any failure is left for
+## the Save to report.
 builder_project_writer_warmup_task <- function(runtime_for, args) {
   runtime <- runtime_for(TRUE)
   # A freshly sourced function is byte-compiled the first time it runs, which
   # was about half a second of the first Save. Compile the Project functions
   # now (about two seconds, all of the write path) instead.
-  names <- ls(runtime, pattern = "^[.]?builder_project", all.names = TRUE)
-  for (name in names) {
-    value <- get(name, envir = runtime, inherits = FALSE)
-    if (is.function(value) && !is.primitive(value)) {
-      compiled <- tryCatch(compiler::cmpfun(value), error = function(error) NULL)
-      if (is.function(compiled)) {
-        assign(name, compiled, envir = runtime)
+  # Once per loaded runtime: a Project opened after the pre-Save warm-up only
+  # needs the integrity pass.
+  if (!isTRUE(get0(".builder_project_compiled", envir = runtime, inherits = FALSE))) {
+    names <- ls(runtime, pattern = "^[.]?builder_project", all.names = TRUE)
+    for (name in names) {
+      value <- get(name, envir = runtime, inherits = FALSE)
+      if (is.function(value) && !is.primitive(value)) {
+        compiled <- tryCatch(compiler::cmpfun(value), error = function(error) NULL)
+        if (is.function(compiled)) {
+          assign(name, compiled, envir = runtime)
+        }
       }
     }
+    assign(".builder_project_compiled", TRUE, envir = runtime)
+  }
+  if (
+    !is.character(args$root) ||
+      length(args$root) != 1L ||
+      is.na(args$root) ||
+      !nzchar(args$root)
+  ) {
+    return(FALSE)
   }
   manifest <- tryCatch(
     runtime$builder_project_read(

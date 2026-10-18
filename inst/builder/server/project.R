@@ -713,12 +713,15 @@ builder_project_worker_task_call <- function(worker, task, args) {
   )
 }
 
-## Load the worker runtimes as soon as a Project is active, so the first Save
-## does not wait for an R session to start and source the Builder. The writer
-## also checks each newly active Project once (see
-## builder_project_writer_warmup_task), keyed by Project and worker start so a
-## restarted worker is readied again.
-builder_project_prewarm_workers <- function(project = isolate(builder_project())) {
+## Load the worker runtimes as soon as there is something to save, so the
+## first Save (which also creates the Project) does not wait for an R session
+## to start, source and compile the Builder. The writer also checks each newly
+## active Project once (see builder_project_writer_warmup_task), keyed by
+## Project and worker start so a restarted worker is readied again.
+builder_project_prewarm_workers <- function(
+  project = isolate(builder_project()),
+  has_datasets = isTRUE(isolate(workflow_has_datasets()))
+) {
   if (
     builder_session_closed() ||
       !isTRUE(getOption("CerebroNexus.builder.project_worker_prewarm", TRUE))
@@ -726,8 +729,15 @@ builder_project_prewarm_workers <- function(project = isolate(builder_project())
     return(invisible(FALSE))
   }
   writer <- builder_project_writer
-  warm_key <- if (is.list(project) && builder_has_text(project$root %||% "")) {
-    paste(project$root, project$manifest$project$id %||% "", sep = "::")
+  warm_root <- if (is.list(project) && builder_has_text(project$root %||% "")) {
+    project$root
+  } else {
+    NULL
+  }
+  warm_key <- if (!is.null(warm_root)) {
+    paste(warm_root, project$manifest$project$id %||% "", sep = "::")
+  } else if (isTRUE(has_datasets)) {
+    "no-project"
   } else {
     NULL
   }
@@ -740,7 +750,7 @@ builder_project_prewarm_workers <- function(project = isolate(builder_project())
       builder_project_worker_task_call(
         writer,
         builder_project_writer_warmup_task,
-        list(root = project$root)
+        list(root = warm_root)
       ),
       silent = TRUE
     )
@@ -755,6 +765,9 @@ builder_project_prewarm_workers <- function(project = isolate(builder_project())
       }
       later::later(poll, delay = 0.1)
     }
+  }
+  if (is.null(warm_key)) {
+    return(invisible(FALSE))
   }
   for (worker in list(writer, builder_project_copier)) {
     if (is.null(worker$session) && !builder_project_worker_busy(worker)) {
@@ -775,7 +788,7 @@ builder_project_prewarm_workers <- function(project = isolate(builder_project())
 }
 
 observe({
-  if (is.null(builder_project())) {
+  if (is.null(builder_project()) && !isTRUE(workflow_has_datasets())) {
     return()
   }
   later::later(
