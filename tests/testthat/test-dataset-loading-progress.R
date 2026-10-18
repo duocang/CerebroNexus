@@ -277,3 +277,34 @@ test_that("cell fingerprints are computed once per CRB file version", {
   expect_identical(cached(path, compute)$fingerprint, 2L)
   expect_identical(cached(NULL, compute)$fingerprint, 3L)
 })
+
+
+test_that("loading labels match selector labels without changing dataset identity", {
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  files <- c(ds1 = "/private/one.crb", ds2 = "/private/two.crb")
+  labels <- c(ds2 = "Tissue atlas", ds1 = "All nuclei")
+  expect_identical(runtime$viewerDatasetLabel(files, "ds1", labels), "All nuclei")
+  expect_identical(runtime$viewerDatasetLabel(files, "ds2", labels), "Tissue atlas")
+  expect_identical(runtime$viewerDatasetLabel(files, "ds2", c("First", "Second")), "Second")
+  repeated <- c(ds1 = "Repeated", ds2 = "Repeated")
+  expect_identical(runtime$viewerDatasetLabel(files, "ds2", repeated), "Repeated")
+  expect_identical(unname(runtime$viewerDatasetChoices(files, repeated)), c("ds1", "ds2"))
+  expect_identical(runtime$viewerDatasetPath(files, "ds2"), "/private/two.crb")
+  expect_identical(runtime$viewerDatasetLabel(c(Atlas="/private/data.crb"), "Atlas"), "Atlas")
+  for(selected in list(NULL, NA_character_, "missing", "__upload_1__")) {
+    expect_identical(runtime$viewerDatasetLabel(files, selected, labels), "Dataset")
+  }
+  expect_identical(runtime$viewerDatasetLabel(NULL, "__single__"), "Dataset")
+  expect_identical(runtime$viewerDatasetLabel(unname(files), files[[1]]), "Dataset")
+  expect_identical(runtime$viewerDatasetLabel(files, "ds1", c(" ", "Second")), "Dataset")
+})
+
+
+test_that("loading transitions avoid flashes and survive consecutive switches", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  expect_identical(system2("node", c(
+    shQuote(testthat::test_path("fixtures", "dataset-loading-transition.js")),
+    shQuote(viewer_test_path("www", "viewer-shell.js"))
+  )), 0L)
+})

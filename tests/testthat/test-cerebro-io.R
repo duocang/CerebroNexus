@@ -111,6 +111,11 @@ test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
   expect_true(dir.exists(file.path(root, "spatial.spatial")))
 
   restored <- readCerebro(path)
+  expect_true("root" %in% names(restored$spatial_molecule_backend))
+  expect_false(
+    "root" %in%
+      names(.thinCerebroPayload(restored, path)$spatial_molecule_backend)
+  )
   expect_s3_class(
     restored$spatial$fov1$molecules,
     "CerebroSpatialMoleculeRef"
@@ -207,6 +212,9 @@ test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
   saveCerebro(fixture$object, rds, codec = "rds")
   saveCerebro(fixture$object, qs)
 
+  expect_identical(.cerebroPayloadCodec(rds), "rds")
+  expect_identical(.cerebroPayloadCodec(qs), "qs2")
+
   payload <- .readCerebroPayload(rds)
   expect_null(payload$expression)
   expect_false("cell_barcode" %in% names(payload$meta_data))
@@ -288,6 +296,11 @@ test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
   duplicated <- .currentCerebroCopy(payload)
   duplicated_path <- file.path(root, "duplicated-index.crb")
   names_file <- file.path(fixture$sidecar, "col_names")
+  original_names <- readBin(
+    names_file,
+    "raw",
+    n = file.info(names_file)$size
+  )
   writeLines(
     c(fixture$cells[[1L]], fixture$cells[[1L]], fixture$cells[3:4]),
     names_file,
@@ -305,7 +318,7 @@ test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
     duplicated_runtime$meta_data,
     "incompatible cell metadata"
   )
-  writeLines(fixture$cells, names_file, useBytes = TRUE)
+  writeBin(original_names, names_file)
 
   missing_root <- file.path(root, "missing-sidecar")
   dir.create(missing_root)
