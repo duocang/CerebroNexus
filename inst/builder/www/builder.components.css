@@ -637,6 +637,10 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   font-weight: 600;
 }
 #shiny-modal .modal-body .form-control { font-size: var(--builder-type-body); }
+/* Shiny gives textInput a fixed 300px container; dialog fields span the body. */
+#shiny-modal .modal-body .shiny-input-container:not(.shiny-input-container-inline) {
+  width: 100%;
+}
 #shiny-modal .modal-body .builder-project-dialog-note,
 #shiny-modal .modal-body .hint,
 #shiny-modal .modal-body .help-block,
