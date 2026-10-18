@@ -1117,11 +1117,13 @@ builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
   handle,
   expected = handle$expected_payload_targets,
   exact = FALSE,
-  .digest_cache = NULL
+  .digest_cache = NULL,
+  .on_file = NULL
 ) {
   identity <- builder_release_identity(
     handle$stage,
-    .digest_cache = .digest_cache
+    .digest_cache = .digest_cache,
+    .on_file = .on_file
   )
   if (!isTRUE(identity$exists)) {
     stop("The coordinator-assigned stage is missing.", call. = FALSE)
@@ -1483,6 +1485,40 @@ builder_coordinator_prepare <- function(plan, build_id, prior_state = NULL) {
   handle
 }
 
+## Sub-steps of "Verifying output" for the Build progress card, sent as the
+## verify phase's detail. Only callbacks that take a detail receive them.
+## Identity passes visit every staged file, so repeats of one step are
+## throttled; the last item of a count is always reported.
+.builder_coordinator_verify_reporter <- function(
+  on_progress,
+  interval = 0.25,
+  .now = function() as.numeric(Sys.time())
+) {
+  arguments <- names(formals(on_progress))
+  if (length(arguments) < 2L && !"..." %in% arguments) {
+    return(function(label, index = NULL, count = NULL) invisible(FALSE))
+  }
+  last_label <- NULL
+  last_at <- -Inf
+  function(label, index = NULL, count = NULL) {
+    now <- .now()
+    last_item <- !is.null(index) && identical(index, count)
+    if (
+      identical(label, last_label) &&
+        !last_item &&
+        now - last_at < interval
+    ) {
+      return(invisible(FALSE))
+    }
+    last_label <<- label
+    last_at <<- now
+    detail <- list(step_label = label, step_index = index, step_count = count)
+    # Progress is cosmetic; a failed write never stops verification.
+    try(on_progress("verify", Filter(Negate(is.null), detail)), silent = TRUE)
+    invisible(TRUE)
+  }
+}
+
 builder_coordinator_publish <- function(
   handle,
   build_result,
@@ -1494,6 +1530,14 @@ builder_coordinator_publish <- function(
 ) {
   handle <- .builder_coordinator_handle(handle)
   .on_progress("verify")
+  step <- .builder_coordinator_verify_reporter(.on_progress)
+  # Name each file pass before it starts: listing the stage takes longer than
+  # hashing files whose digests are already cached.
+  file_step <- function(label) {
+    step(label)
+    function(index, count) step(label, as.integer(index), as.integer(count))
+  }
+  step("Checking build result")
   digest_cache <- new.env(parent = emptyenv())
   if (
     !is.list(build_result) ||
@@ -1586,7 +1630,10 @@ builder_coordinator_publish <- function(
       builder_app_bundle_request(
         handle$app_plan,
         built,
-        handle$app_expectation$labels
+        handle$app_expectation$labels,
+        .on_progress = function(label, index, count) {
+          step(label, as.integer(index), as.integer(count))
+        }
       ),
       error = function(error) error
     )
@@ -1602,8 +1649,14 @@ builder_coordinator_publish <- function(
         call. = FALSE
       )
     }
+    # Test doubles may not take the progress callback.
+    verify_app <- if (".on_progress" %in% names(formals(.verify_app))) {
+      function(...) .verify_app(..., .on_progress = function(label) step(label))
+    } else {
+      .verify_app
+    }
     parent_verification <- tryCatch(
-      .verify_app(
+      verify_app(
         build_result$app_dir,
         parent_request,
         auth_env_file = if (isTRUE(handle$app_expectation$auth$enabled)) {
@@ -1670,10 +1723,12 @@ builder_coordinator_publish <- function(
   }
   parent_env_identity <- NULL
   if (app_expected) {
+    on_file <- file_step("Checking files")
     payload_identity <- .builder_coordinator_stage_identity(
       handle,
       expected = handle$expected_build_targets,
-      .digest_cache = digest_cache
+      .digest_cache = digest_cache,
+      .on_file = on_file
     )
     parent_env_identity <- .builder_coordinator_auth_env_identity(handle)
     .builder_coordinator_assert_input_closure(
@@ -1693,6 +1748,7 @@ builder_coordinator_publish <- function(
       )
     }
   }
+  step("Writing build report")
   report_result <- build_result
   if (app_expected) {
     report_result$app_verification <- parent_verification
@@ -1744,11 +1800,13 @@ builder_coordinator_publish <- function(
     )),
     method = "radix"
   )
+  on_file <- file_step("Checking final files")
   payload_identity <- .builder_coordinator_stage_identity(
     handle,
     expected = final_payload_targets,
     exact = TRUE,
-    .digest_cache = digest_cache
+    .digest_cache = digest_cache,
+    .on_file = on_file
   )
   if (
     app_expected &&
@@ -1784,12 +1842,14 @@ builder_coordinator_publish <- function(
     }
   }
   handle$expected_payload_targets <- final_payload_targets
+  on_file <- file_step("Recording release")
   ownership <- .builder_release_write_record(
     handle$stage,
     payload_identity,
     handle$token,
     .move = .record_move,
-    .digest_cache = digest_cache
+    .digest_cache = digest_cache,
+    .on_file = on_file
   )
   if (app_expected) {
     if (

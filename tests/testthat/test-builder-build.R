@@ -655,6 +655,28 @@ test_that("build progress names the dataset and step in progress", {
   # Settlement still writes bare phases, which read back without detail.
   expect_true(builder_build_progress_write(path, "publish"))
   expect_identical(builder_build_progress_detail(path), list(phase = "publish"))
+
+  # Settlement names the verification sub-step with a detail record.
+  saveRDS(
+    list(
+      schema_version = 1L,
+      phase = "verify",
+      step_label = "Checking files",
+      step_index = 12L,
+      step_count = 230L
+    ),
+    path
+  )
+  expect_identical(
+    builder_build_progress_detail(path),
+    list(
+      schema_version = 1L,
+      phase = "verify",
+      step_label = "Checking files",
+      step_index = 12L,
+      step_count = 230L
+    )
+  )
 })
 
 test_that("terminal progress preserves a missed Viewer phase", {

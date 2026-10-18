@@ -2236,6 +2236,114 @@ test_that("Windows App publication accepts canonical slash variants", {
   })
 })
 
+test_that("App verification reports its sub-steps to the Build card", {
+  local({
+    builder_task9_source()
+    root <- withr::local_tempdir()
+    target <- file.path(root, "release")
+    plan <- builder_app_coordinator_plan_fixture(target)
+    plan$app_auth <- list(
+      enabled = FALSE,
+      account_count = 0L,
+      timeout_minutes = 15L
+    )
+    fixture <- builder_app_coordinator_fixture(
+      root = root,
+      target = target,
+      plan = plan,
+      .local_envir = environment(),
+      coordinator_prepare = builder_coordinator_prepare,
+      bundle_request = builder_app_bundle_request,
+      verify_app = builder_verify_app
+    )
+    reported <- list()
+    published <- builder_coordinator_publish(
+      fixture$handle,
+      fixture$result,
+      .on_progress = function(phase, detail = NULL) {
+        reported[[length(reported) + 1L]] <<- c(list(phase = phase), detail)
+      }
+    )
+
+    expect_true(published$published)
+    phases <- vapply(reported, `[[`, character(1), "phase")
+    expect_identical(unique(phases), c("verify", "publish"))
+    labels <- unique(unlist(lapply(reported, `[[`, "step_label")))
+    expect_identical(
+      labels,
+      c(
+        "Checking build result",
+        "Checking datasets",
+        "Checking spatial data",
+        "Checking Viewer files",
+        "Checking Viewer runtime",
+        "Checking Viewer content",
+        "Checking files",
+        "Writing build report",
+        "Checking final files",
+        "Recording release"
+      )
+    )
+    datasets <- Filter(
+      function(value) identical(value$step_label, "Checking datasets"),
+      reported
+    )
+    indexes <- vapply(datasets, function(value) value$step_index, integer(1))
+    expect_identical(indexes[[1L]], 0L)
+    expect_identical(indexes[[length(indexes)]], 2L)
+    expect_true(all(vapply(datasets, `[[`, integer(1), "step_count") == 2L))
+    # Every file pass ends on its last file, even when throttled.
+    for (label in c("Checking files", "Checking final files", "Recording release")) {
+      pass <- Filter(function(value) identical(value$step_label, label), reported)
+      last <- pass[[length(pass)]]
+      expect_gt(last$step_count, 0L)
+      expect_identical(last$step_index, last$step_count, info = label)
+    }
+  })
+})
+
+test_that("verification sub-steps are throttled and need a detail callback", {
+  local({
+    builder_task9_source()
+    clock <- 0
+    seen <- list()
+    step <- .builder_coordinator_verify_reporter(
+      function(phase, detail) seen[[length(seen) + 1L]] <<- detail,
+      interval = 0.25,
+      .now = function() clock
+    )
+    step("Checking files", 0L, 3L)
+    step("Checking files", 1L, 3L)
+    step("Checking files", 2L, 3L)
+    clock <- 0.3
+    step("Checking files", 2L, 3L)
+    step("Checking files", 3L, 3L)
+    step("Writing build report")
+    expect_identical(
+      vapply(seen, function(value) {
+        paste(value$step_label, value$step_index %||% "-", sep = "|")
+      }, character(1)),
+      c(
+        "Checking files|0",
+        "Checking files|2",
+        "Checking files|3",
+        "Writing build report|-"
+      )
+    )
+
+    phases <- character()
+    quiet <- .builder_coordinator_verify_reporter(
+      function(phase) phases <<- c(phases, phase)
+    )
+    expect_false(quiet("Checking files", 1L, 3L))
+    expect_length(phases, 0L)
+    broken <- .builder_coordinator_verify_reporter(
+      function(phase, detail) stop("disk full")
+    )
+    expect_true(broken("Checking files", 1L, 3L))
+  })
+})
+
 test_that("coordinator requires exact scalar authentication evidence", {
   local({
     builder_task9_source()
