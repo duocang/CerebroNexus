@@ -10,8 +10,8 @@ bash tests/benchmarks/expression-backends/run.sh quick
 
 # Independent size comparison, including both full-dataset endpoints.
 bash tests/benchmarks/expression-backends/run.sh scale
-# No argument (or run) also runs Scale only. Optional separate Full study:
-# bash tests/benchmarks/expression-backends/run.sh full
+# No argument (or run) also runs Scale only. Scale already measures both full-size endpoints;
+# a separate Full study (`run.sh full`) repeats exactly those cells and is optional.
 
 # Check progress.
 bash tests/benchmarks/expression-backends/run.sh status
@@ -33,7 +33,7 @@ bash tests/benchmarks/expression-backends/run.sh resume /path/to/cerebro-bench.X
 | Study | Data | Backends |
 |---|---|---|
 | Full datasets | 10x mouse brain: 1,306,127 cells; PsychAD human PFC: 1,486,324 cells | H5 (compressed), H5 (uncompressed) and BPCells |
-| Size comparison | The same sources at 1k, 10k, 50k, 100k, 300k, 500k, 1m, then each exact full-dataset size | Both H5 variants and BPCells at every size; embedded attempted through 500k |
+| Size comparison | The same sources at 1k, 10k, 50k, 100k, 300k, 500k, then each exact full-dataset size (no 1M tier) | Both H5 variants and BPCells at every size; embedded attempted through 500k |
 
 The complete matrices exceed the sparse-index limit of embedded storage, so full-dataset embedded results are unavailable. They are not replaced with smaller samples.
 
@@ -49,7 +49,7 @@ Scale snapshots Linux `MemAvailable` at launch, capped by the remaining memory a
 
 Scale checks embedded separately because it loads the matrix into memory. Its estimate is 1 GiB plus 58 bytes per nonzero (`BENCH_EMBEDDED_BYTES_PER_NNZ`; measured peaks were 52.6-57 bytes per nonzero from 50k cells up, so at least 10% headroom; runs before this change used 64), checked against that budget and the R vector limit. The launch preflight uses the source-wide density; the frozen query plan then supplies the tier's exact nonzeros, which decide memory and the sparse-index limit (the density can overstate a prefix: Human 500k is 112 GiB by density but 108 GiB exact). A preflight failure for any other reason, such as disk, still skips. Exceeding the budget or 32-bit sparse-index limit records `SKIPPED(resource)` while H5 and BPCells continue; an embedded build that the kernel kills at the cap is also recorded as `SKIPPED(resource)`, but only when the scope's cgroup `oom_kill` count rose during that build (any other death remains a crash that blocks publication); increasing the budget does not guarantee a formerly skipped tier will pass the estimator. No automatic cell-count reduction occurs. Historical runs retain their original policies (including the old 70%-of-total-RAM preflight); they are not retroactively labelled as 99% runs.
 
-Scale now measures its own full endpoints and does not read Full results. The optional `full` command remains available, but default `run` does not run both studies or measure the endpoints twice.
+Scale now measures its own full endpoints and does not read Full results. It has no 1M tier: 1M sits next to the 1.31M and 1.49M endpoints on the log axis, added little and was the costliest tier. The full-size comparison figure is drawn from the Scale endpoints (`paper/figure-drafts/expression-backends/rebuild-figures.R`), which are the same cells, builds and reads a Full study measures, so the optional `full` command is not needed; default `run` does not measure the endpoints twice.
 
 ## Reruns and saved files
 

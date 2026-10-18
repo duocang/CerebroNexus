@@ -273,7 +273,12 @@ bench_scale_schedule <- function(specs) {
     if (length(full) != 1L || !is.finite(full) || full < 1) {
       stop("scale requires a valid full_cells for ", source, call. = FALSE)
     }
-    tiers <- sort(unique(c(specs[[source]]$comparison_tiers, full)))
+    # Shared tiers up to 500k plus each source's exact full size. A 1M tier sits
+    # next to the 1.31M/1.49M endpoints on the log axis, adds little, and was the
+    # costliest tier, so Scale does not measure it. The endpoints also serve the
+    # Full figure, so a separate Full study is not needed.
+    shared <- specs[[source]]$comparison_tiers
+    tiers <- sort(unique(c(shared[shared <= 500e3], full)))
     embedded_specs[[source]]$tiers <-
       embedded_specs[[source]]$comparison_tiers <-
         tiers[tiers <= 500e3]

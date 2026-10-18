@@ -1,10 +1,12 @@
 # Draft re-render of the expression-backend benchmark figures in one shared
 # style (Genome Biology submission target).
 #
-# Data inputs (read-only): {10_export,20_access}.csv of the run each study's
-# CURRENT points to under tests/benchmarks/results/expression-backends/, or the
-# directories given with --scale=DIR / --full=DIR. Both single runs and the
-# assembled Scale collection (with tier_type and source_run_id) are accepted.
+# Data inputs (read-only): {10_export,20_access}.csv of the run Scale's CURRENT
+# points to under tests/benchmarks/results/expression-backends/, or --scale=DIR.
+# The Full figure is drawn from that run's exact full-size endpoints, which are
+# the same cells, builds and reads a separate Full study measures; --full=DIR
+# draws it from a separate Full run instead. Both single runs and assembled
+# Scale collections (with tier_type and source_run_id) are accepted.
 # Backends: H5 (compressed, the package default), H5 (uncompressed reference),
 # BPCells and Embedded; older runs simply have fewer of them.
 #
@@ -36,9 +38,10 @@ current_run <- function(study) {
   file.path(study_root, "runs", run_id)
 }
 scale_dir <- if (is.null(opts$scale)) current_run("scale") else opts$scale
-full_dir <- if (is.null(opts$full)) current_run("full") else opts$full
+full_dir <- opts$full  # NULL: use the Scale run's full endpoints
 out_dir <- if (is.null(opts$out)) file.path(root, "paper/figure-drafts/expression-backends") else opts$out
-cat(sprintf("scale input: %s\nfull input:  %s\n", scale_dir, full_dir))
+cat(sprintf("scale input: %s\nfull input:  %s\n", scale_dir,
+            if (is.null(full_dir)) "full endpoints of the Scale input" else full_dir))
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 suppressPackageStartupMessages({
@@ -140,8 +143,8 @@ read_ok <- function(dir, name) {
 
 scale_access  <- read_ok(scale_dir, "20_access.csv")
 scale_exports <- read_ok(scale_dir, "10_export.csv")
-full_access   <- read_ok(full_dir,  "20_access.csv")
-full_exports  <- read_ok(full_dir,  "10_export.csv")
+full_access   <- if (!is.null(full_dir)) read_ok(full_dir, "20_access.csv")
+full_exports  <- if (!is.null(full_dir)) read_ok(full_dir, "10_export.csv")
 present_backends <- function(...) {
   intersect(backend_order, unique(unlist(lapply(list(...), `[[`, "backend"))))
 }
@@ -194,8 +197,10 @@ if (nrow(short)) {
 }
 
 # --- full figure data -------------------------------------------------------
-full_acc <- full_access
-full_exp <- full_exports
+# By default the Full figure uses the Scale run's exact full-size endpoints.
+endpoint_rows <- function(d) d[is_full_endpoint(d) & d$backend != "embedded", , drop = FALSE]
+full_acc <- if (is.null(full_dir)) endpoint_rows(scale_access) else full_access
+full_exp <- if (is.null(full_dir)) endpoint_rows(scale_exports) else full_exports
 full_backends <- present_backends(full_acc, full_exp)
 stopifnot(all(table(full_acc$source, full_acc$backend) == 10L)) # 5 builds x 2 reads
 cat(sprintf("scale backends: %s\nfull backends:  %s\n",

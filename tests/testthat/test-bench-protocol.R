@@ -149,9 +149,10 @@ test_that("scale profile runs embedded through 500k", {
   source(bench_protocol, local = TRUE)
 
   schedule <- bench_scale_schedule(BENCH_SOURCES)
-  expected_tiers <- c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6, 1306127, 1486324)
+  # No 1M tier: shared tiers stop at 500k, then each source's full endpoint.
+  expected_tiers <- c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1306127, 1486324)
 
-  expect_equal(nrow(schedule), 2L * (6L * 4L + 2L * 3L) * 5L)
+  expect_equal(nrow(schedule), 2L * (6L * 4L + 1L * 3L) * 5L)
   for (src in c("mouse_brain_e18", "human_pfc_hbcc")) {
     full <- schedule[schedule$source == src & schedule$n_cells == BENCH_SOURCES[[src]]$full_cells, ]
     expect_equal(nrow(full), 15L)
@@ -171,15 +172,13 @@ test_that("scale profile runs embedded through 500k", {
   expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5", "h5_uncompressed"))
   expect_identical(sort(unique(schedule$n_cells)), expected_tiers)
   expect_true(all(schedule$n_cells[schedule$backend == "embedded"] <= 500e3))
-  expect_false(any(
-    schedule$n_cells == 1e6 & schedule$backend == "embedded"
-  ))
+  expect_false(any(schedule$n_cells == 1e6))
   expect_setequal(
     unique(schedule$backend[schedule$n_cells <= 500e3]),
     c("embedded", "bpcells", "h5", "h5_uncompressed")
   )
   expect_setequal(
-    unique(schedule$backend[schedule$n_cells == 1e6]),
+    unique(schedule$backend[schedule$n_cells > 500e3]),
     c("bpcells", "h5", "h5_uncompressed")
   )
   expect_true(all(schedule$export_repeat %in% seq_len(5L)))

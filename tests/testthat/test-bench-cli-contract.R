@@ -120,7 +120,7 @@ test_that("schedule CLI includes embedded through 500k", {
   schedule <- utils::read.csv(csv, stringsAsFactors = FALSE)
   expect_setequal(
     unique(schedule$n_cells),
-    c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6, 1306127, 1486324)
+    c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1306127, 1486324)
   )
   expect_setequal(
     unique(schedule$n_cells[schedule$backend == "embedded"]),
