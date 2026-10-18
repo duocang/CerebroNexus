@@ -1,6 +1,6 @@
 Package: CerebroNexus
 Title: Interactive visualization of single cell transcriptomics
-Version: 5.1.2
+Version: 5.2.0
 Authors@R: c(
   person("Michael", "Heming", email = "mihem@mailbox.org", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-9568-2790")),
   person("Roman", "Hillje", email = "roman.hillje@googlemail.com", role = c("aut")),
@@ -27,7 +27,12 @@ biocViews:
   Transcriptomics,
   Visualization
 Imports:
+  callr,
+  digest,
   htmltools,
+  processx,
+  ps,
+  readxl,
   base64enc,
   biomaRt (>= 2.38.0),
   colourpicker (>= 1.0),
@@ -69,8 +74,10 @@ Imports:
   utils,
   visNetwork
 Suggests:
+  codetools,
+  jpeg,
+  writexl,
   BPCells,
-  callr,
   chromote,
   DelayedArray,
   ggdendro,
@@ -81,7 +88,6 @@ Suggests:
   monocle,
   patchwork,
   png,
-  readxl,
   rhdf5,
   rmarkdown,
   Seurat (>= 3.0.0),
@@ -93,6 +99,8 @@ Suggests:
   shinytest2 (>= 0.2.0),
   withr,
   xml2
+Enhances:
+  qs
 Remotes:
   bnprks/BPCells/r
 VignetteBuilder: knitr

@@ -22,7 +22,7 @@ hand-driven smoke tests; it does not run under `R CMD check`.
 
 ## Prerequisites
 
-R `>= 3.5.1` and the package's runtime deps installed. For the full test suite you also need:
+Use the R version in `default.nix` for the CI environment, with the package's runtime dependencies installed. `DESCRIPTION` declares R `>= 3.6.0`; individual current dependency releases can require a newer R. For the full test suite you also need:
 
 | Package | Why |
 |---|---|
@@ -150,8 +150,8 @@ Rscript -e 'Sys.setenv(NOT_CRAN="true"); devtools::test(filter="app-inst", repor
 # Whole suite, default reporter
 Rscript -e 'devtools::test()'
 
-# What R CMD check effectively runs (uses installed package, not dev source)
-Rscript -e 'testthat::test_dir("tests/testthat")'
+# Run against an installed package explicitly
+Rscript -e 'library(CerebroNexus); testthat::test_dir("tests/testthat")'
 ```
 
 Why the extra bits in that first shell one-liner:
@@ -174,10 +174,11 @@ test_check("CerebroNexus")
 |---|---|---|---|
 | `devtools::test()` | no | dev source (via `pkgload::load_all`) | local `inst/` (`system.file()` is redirected by `load_all`) |
 | `Rscript tests/testthat.R` | yes (`library(CerebroNexus)` aborts otherwise) | installed package | installed package |
-| `testthat::test_dir("tests/testthat")` | yes (same reason) | installed package | installed package |
-| `R CMD check` / CI | self-installs into a temp library | that temp install | that temp install |
+| `testthat::test_dir("tests/testthat")` | depends on prior loading | use `devtools::load_all()` or `library(CerebroNexus)` explicitly | follows the loaded package |
+| `R CMD check` | self-installs into a temp library | that temp install | that temp install |
+| R-tests CI | no separate install | `devtools::load_all()` in the Nix shell | local `inst/` |
 
-While iterating on the package, use `devtools::test()` — it picks up edits to both `R/` and `inst/` immediately, no reinstall needed. Run `R CMD check` (or `testthat::test_dir()` after `devtools::install()`) before opening a PR to verify what CI will see.
+While iterating on the package, use `devtools::test()` — it picks up edits to both `R/` and `inst/` immediately, no reinstall needed. Use `R CMD check` to verify the installed-package layout as well; the separate R-tests CI job checks the development sources.
 
 ## Pitfalls and FAQ
 
@@ -187,6 +188,8 @@ While iterating on the package, use `devtools::test()` — it picks up edits to 
 file-type errors, and the exact POSIX `0600` requirement. POSIX checks are
 explicitly skipped on Windows; fault-injected read failures are not presented
 as cross-UID integration coverage.
+
+`test-viewer-linux-launcher.R` covers permission preparation, repeated setup, linked-file rejection and failed or ineffective chmod for the Linux deployment entry point. It runs as a non-root Linux user and does not replace testing a real service account on the deployment host.
 
 See the [authentication guide](../vignettes/control_access_to_cerebro_with_a_login_page.Rmd)
 for deployment and Windows-to-Linux transfer limitations. Generated Apps retain
@@ -205,14 +208,14 @@ if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
 In practice `system.file(package = "CerebroNexus")` always resolves to something with `app.R` at its root:
 
 - Under `devtools::test()`, `pkgload::load_all()` redirects `system.file()` to `<project>/inst/` (the source tree itself acts as the "installed root").
-- Under `Rscript tests/testthat.R` or `testthat::test_dir()`, `library(CerebroNexus)` has already loaded the installed package, so `system.file()` returns its install location.
+- `Rscript tests/testthat.R` explicitly loads the installed package. For direct `testthat::test_dir()` calls, choose the source or installed package explicitly before starting; the function alone does not make that choice for you.
 
-The fallback to `testthat::test_path("../../inst")` is effectively dead code — none of the supported entry points reach it. (`library(CerebroNexus)` aborts before the test file is sourced when the package is not installed; under `devtools::test()` the first branch already succeeds.)
+The fallback handles a missing package resource; do not rely on it to select between a stale installation and the current checkout.
 
 If you edit `inst/` and want the change reflected:
 
 - Under `devtools::test()` — nothing to do, it reads `inst/` directly.
-- Under `testthat::test_dir()` / `R CMD check` — reinstall:
+- When testing an installed copy — reinstall first:
   ```r
   devtools::install(".", quick = TRUE, upgrade = "never")
   ```
@@ -234,17 +237,14 @@ Whenever you add or rename methods on `Cerebro`, regenerate the example fixture 
 `tests/testthat/setup.R` sets this so shinytest2 tests are not skipped by `skip_on_cran()`. When running tests outside `devtools::test()` (e.g. directly via `Rscript`), make sure the env var is set:
 
 ```bash
-NOT_CRAN=true Rscript -e 'testthat::test_dir("tests/testthat", filter = "app-inst")'
+NOT_CRAN=true Rscript -e 'library(CerebroNexus); testthat::test_dir("tests/testthat", filter = "app-inst")'
 ```
 
 ### chromote leaves zombie processes after Ctrl-C
 
 If you interrupt a shinytest2 run mid-flight, the headless Chrome and the spawned Shiny process can survive:
 
-```bash
-pkill -f chromote
-pkill -f 'shiny::runApp'
-```
+Stop only the browser and R processes belonging to the interrupted test, using their recorded PIDs. Avoid name-wide process kills: they can stop unrelated Viewer or Builder sessions.
 
 ### Snapshot tests under `_snaps/`
 

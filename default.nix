@@ -74,11 +74,16 @@ let
       biomaRt
       callr
       chromote
+      digest
       ggdendro
       patchwork
       fs
       jsonlite
       htmltools
+      processx
+      ps
+      jpeg
+      writexl
       colourpicker
       devtools
       dplyr
@@ -139,7 +144,9 @@ let
       src = "${BPCells-src}/r";
       postPatch = "patchShebangs configure";
       nativeBuildInputs = [ pkgs.pkg-config ];
-      buildInputs = [ pkgs.hdf5 ];
+      # Match rhdf5's HDF5 (including ROS3); mixing the same SONAME with
+      # different features makes HDF5Array fail after BPCells is loaded.
+      buildInputs = [ pkgs.rPackages.Rhdf5lib.hdf5 ];
       propagatedBuildInputs = builtins.attrValues {
         inherit (pkgs.rPackages) 
           magrittr
@@ -183,7 +190,7 @@ let
     LC_PAPER = "en_US.UTF-8";
     LC_MEASUREMENT = "en_US.UTF-8";
     
-    buildInputs = [ BPCells rpkgs system_packages ];
+    buildInputs = [ BPCells ] ++ rpkgs ++ system_packages;
     
   }; 
 in

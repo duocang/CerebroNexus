@@ -55,6 +55,13 @@ rix(
     "chromote",
     "xml2",
     "callr",
+    "digest",
+    "processx",
+    "ps",
+    "jpeg",
+    # Legacy qs interoperability is optional (Enhances); qs is incompatible
+    # with the current R 4.6 runtime. Keep qs2 in the default environment.
+    "writexl",
     "withr",
     "png",
     "httr",
@@ -163,7 +170,8 @@ if (length(bp_start) == 1 && !is.na(bp_end)) {
     "      src = \"${BPCells-src}/r\";",
     "      postPatch = \"patchShebangs configure\";",
     "      nativeBuildInputs = [ pkgs.pkg-config ];",
-    "      buildInputs = [ pkgs.hdf5 ];"
+    "      # Share the HDF5 runtime used by rhdf5, including ROS3 support.",
+    "      buildInputs = [ pkgs.rPackages.Rhdf5lib.hdf5 ];"
   )
 
   propagatedBuildInputs <- grep(
