@@ -26,6 +26,11 @@
 - Fixes the page loader staying on "Preparing the current view…" after a dataset
   switch rebuilt a page's result once its value had already arrived, which left
   Extra material tables rendered but unreachable until another page was opened.
+- Fixes Spatial backgrounds: embedded images above about 750 KB are no longer
+  cut short, and a configured image rotation again matches a rotated plot.
+- Fixes Spatial sessions ending when a gene was chosen before Gene expression
+  had been opened, or when a dataset switch left a gene the new dataset lacks;
+  a session that ends can no longer stop the whole app.
 - Fixes an uncaught client error for an output that fails without a bound
   element. It aborted the rest of Shiny's message frame, so a page that became
   unavailable for a dataset announced the return to Data info without
