@@ -721,10 +721,22 @@ show_builder_build_server_path <- function(detail = NULL) {
     label = "Parent folder",
     action_label = "Build here",
     detail = detail,
-    kicker = "Build output"
+    kicker = "Build output",
+    cancel_id = "cancel_builder_build_server_folder"
   ))
   invisible(TRUE)
 }
+
+## Cancelling the typed-path fallback ends the folder choice, so the Build
+## card returns to "Ready to build" instead of staying "in progress".
+observeEvent(input$cancel_builder_build_server_folder, {
+  shiny::removeModal()
+  session$sendCustomMessage("builder_build_dialog", list(action = "close"))
+  if (!identical(isolate(build_flow())$stage %||% "idle", "building")) {
+    build_flow(list(stage = "idle", plan = NULL))
+  }
+  busy_note(NULL)
+})
 
 choose_build_folder <- function() {
   build_flow(list(stage = "choosing_folder", plan = NULL))
