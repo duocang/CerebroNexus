@@ -3180,6 +3180,9 @@ request_builder_project_folder <- function() {
   if (!builder_operation_allowed("create_project")) {
     return(invisible(FALSE))
   }
+  # The picker overlay (Enter path · Cancel) sits below Shiny modals; a dialog
+  # left open here would hide the manual-path fallback.
+  shiny::removeModal()
   builder_project_operation_phase("choosing")
   builder_schedule_native_picker(
     "project_directory",
@@ -3421,6 +3424,8 @@ request_builder_project_open <- function(confirmed = FALSE) {
   }
   builder_project_open_discard_confirmed(isTRUE(confirmed))
   previous_phase <- isolate(builder_project_operation_phase())
+  # Keep the picker overlay and its manual-path fallback visible.
+  shiny::removeModal()
   builder_project_operation_phase("choosing")
   builder_schedule_native_picker(
     "project_manifest",
