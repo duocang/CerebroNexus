@@ -84,21 +84,62 @@ test_that("Data page names readers disabled by missing packages", {
   expect_false(grepl(">RDS, QS<", html, fixed = TRUE))
 })
 
-test_that("Data page keeps the workspace informative while imports run", {
+test_that("Data page stays usable while imports run", {
   withr::local_package("shiny")
   runtime <- builder_data_page_runtime()
-  html <- htmltools::renderTags(
-    runtime$builder_importing_workbench_ui(2L)
-  )$html
+  html <- htmltools::renderTags(runtime$builder_empty_workbench_ui(
+    dataset_count = 1L,
+    formats = c("rds", "qs2"),
+    examples = list(),
+    loading_count = 2L
+  ))$html
+  idle <- htmltools::renderTags(runtime$builder_empty_workbench_ui(
+    formats = c("rds", "qs2"),
+    examples = list()
+  ))$html
 
-  expect_match(html, "builder-loading-state", fixed = TRUE)
-  expect_match(html, "Preparing your workspace", fixed = TRUE)
-  expect_match(html, "2 datasets are loading", fixed = TRUE)
-  expect_match(html, "builder-loading-skeleton", fixed = TRUE)
-  expect_match(html, 'aria-busy="true"', fixed = TRUE)
+  expect_match(html, "builder-dataset-dropzone", fixed = TRUE)
+  expect_match(html, "Configure Datasets", fixed = TRUE)
+  expect_match(html, "builder-import-loading-note", fixed = TRUE)
+  expect_match(
+    html,
+    "Loading in the background. Track each dataset in the dataset list.",
+    fixed = TRUE
+  )
   expect_match(html, 'role="status"', fixed = TRUE)
   expect_match(html, 'aria-live="polite"', fixed = TRUE)
-  expect_false(grepl('class="spinner"', html, fixed = TRUE))
+  expect_false(grepl('aria-busy="true"', html, fixed = TRUE))
+  expect_false(grepl("Preparing your workspace", html, fixed = TRUE))
+  expect_false(grepl("builder-loading-skeleton", html, fixed = TRUE))
+  expect_false(grepl("builder-import-loading-note", idle, fixed = TRUE))
+  expect_false(exists("builder_importing_workbench_ui", envir = runtime))
+})
+
+test_that("opening a dataset from the Data step goes to Configure", {
+  js <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  pick <- regmatches(
+    js,
+    regexpr(
+      'var pick = target.closest\\(".builder-pick"\\);[\\s\\S]*?return;',
+      js,
+      perl = TRUE
+    )
+  )
+
+  expect_length(pick, 1L)
+  expect_match(
+    pick,
+    "#workbench [data-workflow-stage=\"upload\"]",
+    fixed = TRUE
+  )
+  expect_match(pick, 'activityCapability("navigate_workflow")', fixed = TRUE)
+  expect_match(pick, 'send("workflow_stage_configure"', fixed = TRUE)
 })
 
 test_that("Data page replaces loading copy when every import failed", {
@@ -148,7 +189,7 @@ test_that("Dataset rail presents one concise readiness status", {
   expect_match(html, 'aria-atomic="true"', fixed = TRUE)
 })
 
-test_that("Dataset rail distinguishes saved CRBs from loaded sources", {
+test_that("Dataset rail distinguishes cached datasets from loaded sources", {
   withr::local_package("shiny")
   runtime <- builder_data_page_runtime()
   model <- list(
@@ -175,9 +216,12 @@ test_that("Dataset rail distinguishes saved CRBs from loaded sources", {
   )$html
 
   expect_match(crb_html, ">Checked<", fixed = TRUE)
-  expect_match(crb_html, "CRB ready", fixed = TRUE)
+  expect_match(crb_html, "Cached · opens fast", fixed = TRUE)
+  ## The readiness key stays internal; the visible text says "cache".
+  expect_false(grepl("CRB", gsub("<[^>]*>", "", crb_html), fixed = TRUE))
   expect_match(source_html, ">Checked<", fixed = TRUE)
-  expect_match(source_html, "No CRB", fixed = TRUE)
+  expect_match(source_html, "Not cached", fixed = TRUE)
+  expect_false(grepl("CRB", gsub("<[^>]*>", "", source_html), fixed = TRUE))
 })
 
 test_that("Data page shows its footer only after a dataset exists", {
@@ -335,8 +379,8 @@ test_that("Precision Scientific is the final Builder presentation layer", {
   expect_match(theme, "--c-text-3: #68706b", fixed = TRUE)
   expect_match(theme, "touch-action: manipulation", fixed = TRUE)
   expect_match(theme, "-webkit-tap-highlight-color", fixed = TRUE)
-  expect_match(theme, ".builder-loading-state", fixed = TRUE)
-  expect_match(theme, ".builder-loading-skeleton", fixed = TRUE)
+  expect_match(theme, ".builder-import-loading-note", fixed = TRUE)
+  expect_false(grepl(".builder-loading-skeleton", theme, fixed = TRUE))
   expect_match(
     theme,
     paste(
@@ -368,7 +412,7 @@ test_that("Precision Scientific is the final Builder presentation layer", {
     paste0(
       ".ds[data-load-state=\"ready\"] .ds-actions {\n",
       "  display: grid;\n",
-      "  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;"
+      "  grid-template-columns: auto auto minmax(0, 1fr);"
     ),
     fixed = TRUE
   )

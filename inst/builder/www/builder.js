@@ -1957,26 +1957,93 @@
     picker.click();
   }
 
-  function setupDatasetDropzones(roots) {
-    matchingDynamicElements(roots, ".builder-dataset-dropzone").forEach(function (dropzone) {
-      if (dropzone.dataset.dropzoneBound === "true") return;
-      dropzone.dataset.dropzoneBound = "true";
-      dropzone.addEventListener("dragover", function (event) {
-        event.preventDefault();
-        if (!activityCapability("add_dataset")) return;
-        dropzone.classList.add("is-drag-over");
-      });
-      dropzone.addEventListener("dragleave", function (event) {
-        if (event.relatedTarget && dropzone.contains(event.relatedTarget)) return;
-        dropzone.classList.remove("is-drag-over");
-      });
-      dropzone.addEventListener("drop", function (event) {
-        event.preventDefault();
-        dropzone.classList.remove("is-drag-over");
-        if (!activityCapability("add_dataset")) return;
-        enqueueClientFiles(event.dataTransfer && event.dataTransfer.files);
-      });
+  // Files dropped anywhere in the window are added as datasets. Drags that
+  // carry no files (text, links, rail rows) are left alone, and a Shiny
+  // file input keeps its own drops (tables, images).
+  var windowFileDrag = { active: false, timer: null, overlay: null };
+
+  function dragCarriesFiles(event) {
+    var types = event.dataTransfer && event.dataTransfer.types;
+    return Boolean(types) && Array.prototype.indexOf.call(types, "Files") >= 0;
+  }
+
+  function fileInputOwnsDrop(target) {
+    var container = target && target.closest
+      ? target.closest(".shiny-input-container")
+      : null;
+    return Boolean(container && container.querySelector("input[type=file]"));
+  }
+
+  function windowFileDropAllowed() {
+    return activityCapability("add_dataset") && !datasetMutationsLocked &&
+      !document.querySelector(".modal.show");
+  }
+
+  function windowFileDropOverlay() {
+    if (windowFileDrag.overlay && windowFileDrag.overlay.isConnected) {
+      return windowFileDrag.overlay;
+    }
+    var overlay = document.createElement("div");
+    overlay.className = "builder-window-drop";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.hidden = true;
+    var label = document.createElement("div");
+    label.className = "builder-window-drop-label";
+    label.textContent = "Drop files to add datasets";
+    overlay.appendChild(label);
+    document.body.appendChild(overlay);
+    windowFileDrag.overlay = overlay;
+    return overlay;
+  }
+
+  function setWindowFileDragActive(active) {
+    window.clearTimeout(windowFileDrag.timer);
+    windowFileDrag.timer = null;
+    if (windowFileDrag.active === active) return;
+    windowFileDrag.active = active;
+    windowFileDropOverlay().hidden = !active;
+    document.documentElement.classList.toggle("builder-file-drag-active", active);
+    document.querySelectorAll(".builder-dataset-dropzone").forEach(function (zone) {
+      zone.classList.toggle("is-drag-over", active);
     });
+  }
+
+  function handleWindowFileDrag(event) {
+    if (!dragCarriesFiles(event)) return;
+    if (fileInputOwnsDrop(event.target)) {
+      setWindowFileDragActive(false);
+      return;
+    }
+    // Always claim a file drag so the browser never opens the file in place
+    // of the Builder; refuse it visibly when datasets cannot be added.
+    event.preventDefault();
+    var allowed = windowFileDropAllowed();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = allowed ? "copy" : "none";
+    setWindowFileDragActive(allowed);
+    // dragover repeats while the pointer is over the page; when it stops the
+    // drag has left the window or been cancelled.
+    if (allowed) {
+      windowFileDrag.timer = window.setTimeout(function () {
+        setWindowFileDragActive(false);
+      }, 400);
+    }
+  }
+
+  function handleWindowFileDrop(event) {
+    if (!dragCarriesFiles(event)) return;
+    setWindowFileDragActive(false);
+    if (fileInputOwnsDrop(event.target)) return;
+    event.preventDefault();
+    if (!windowFileDropAllowed()) return;
+    enqueueClientFiles(event.dataTransfer && event.dataTransfer.files);
+  }
+
+  function setupWindowFileDrop() {
+    if (windowFileDrag.bound) return;
+    windowFileDrag.bound = true;
+    document.addEventListener("dragenter", handleWindowFileDrag);
+    document.addEventListener("dragover", handleWindowFileDrag);
+    document.addEventListener("drop", handleWindowFileDrop);
   }
 
   function clientQueueStatus(entry, index) {
@@ -2052,65 +2119,98 @@
     });
   }
 
+  function clientQueueRow(entry, index) {
+    var row = document.createElement("div");
+    row.className = "ds ds--import ds--client-upload";
+    row.dataset.clientImportId = entry.clientId;
+    row.dataset.loadState = entry.state;
+    var ordinal = document.createElement("span");
+    ordinal.className = "ds-idx";
+    var body = document.createElement("span");
+    body.className = "ds-body";
+    var name = document.createElement("span");
+    name.className = "nm";
+    name.textContent = entry.name;
+    var status = document.createElement("span");
+    status.className = "builder-import-status";
+    status.textContent = clientQueueStatus(entry, index);
+    body.appendChild(name);
+    body.appendChild(status);
+    row.appendChild(ordinal);
+    row.appendChild(body);
+    var dot = document.createElement("span");
+    dot.className = "ds-state-dot";
+    dot.setAttribute("aria-hidden", "true");
+    row.appendChild(dot);
+    var actions = "none";
+    if (
+      entry !== activeClientImport &&
+      !entry.serverId &&
+      !["error", "rejected"].includes(entry.state)
+    ) {
+      actions = "cancel";
+      var cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "btn btn-remove-soft builder-cancel-client-import";
+      cancel.dataset.clientImportId = entry.clientId;
+      cancel.setAttribute("aria-label", "Cancel queued import " + entry.name);
+      cancel.textContent = "Cancel";
+      row.appendChild(cancel);
+    } else if (clientImportFailures.includes(entry)) {
+      actions = "remove";
+      if (entry.outcome === "error") {
+        actions = "retry-remove";
+        var retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "btn builder-retry-client-import";
+        retry.dataset.clientImportId = entry.clientId;
+        retry.textContent = "Retry";
+        row.appendChild(retry);
+      }
+      var remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn-remove-soft builder-remove-client-failure";
+      remove.dataset.clientImportId = entry.clientId;
+      remove.textContent = "Remove";
+      row.appendChild(remove);
+    }
+    // Everything but the status line and its state; see patchRailRowInPlace.
+    row.dataset.clientStructure = JSON.stringify([entry.name, actions]);
+    return row;
+  }
+
+  var clientQueueRowContract = {
+    structure: "clientStructure",
+    live: [{ selector: ".builder-import-status", text: true }],
+  };
+
   function renderClientImportQueue() {
     reportClientImportQueueState();
     applyBuilderActivityState();
     var container = document.getElementById("ds_client_import_queue");
     if (!container) return;
-    container.replaceChildren();
+    var existing = new Map();
+    container.querySelectorAll(":scope > .ds--client-upload").forEach(function (row) {
+      existing.set(row.dataset.clientImportId, row);
+    });
+    var rows = [];
     clientImportQueue.concat(clientImportFailures).forEach(function (entry, index) {
       if (entry.serverId && entry === activeClientImport) return;
-      var row = document.createElement("div");
-      row.className = "ds ds--import ds--client-upload";
-      row.dataset.clientImportId = entry.clientId;
-      row.dataset.loadState = entry.state;
-      var ordinal = document.createElement("span");
-      ordinal.className = "ds-idx";
-      var body = document.createElement("span");
-      body.className = "ds-body";
-      var name = document.createElement("span");
-      name.className = "nm";
-      name.textContent = entry.name;
-      var status = document.createElement("span");
-      status.className = "builder-import-status";
-      status.textContent = clientQueueStatus(entry, index);
-      body.appendChild(name);
-      body.appendChild(status);
-      row.appendChild(ordinal);
-      row.appendChild(body);
-      var dot = document.createElement("span");
-      dot.className = "ds-state-dot";
-      dot.setAttribute("aria-hidden", "true");
-      row.appendChild(dot);
-      if (
-        entry !== activeClientImport &&
-        !entry.serverId &&
-        !["error", "rejected"].includes(entry.state)
-      ) {
-        var cancel = document.createElement("button");
-        cancel.type = "button";
-        cancel.className = "btn btn-remove-soft builder-cancel-client-import";
-        cancel.dataset.clientImportId = entry.clientId;
-        cancel.setAttribute("aria-label", "Cancel queued import " + entry.name);
-        cancel.textContent = "Cancel";
-        row.appendChild(cancel);
-      } else if (clientImportFailures.includes(entry)) {
-        if (entry.outcome === "error") {
-          var retry = document.createElement("button");
-          retry.type = "button";
-          retry.className = "btn builder-retry-client-import";
-          retry.dataset.clientImportId = entry.clientId;
-          retry.textContent = "Retry";
-          row.appendChild(retry);
-        }
-        var remove = document.createElement("button");
-        remove.type = "button";
-        remove.className = "btn btn-remove-soft builder-remove-client-failure";
-        remove.dataset.clientImportId = entry.clientId;
-        remove.textContent = "Remove";
-        row.appendChild(remove);
+      var fresh = clientQueueRow(entry, index);
+      var row = existing.get(entry.clientId);
+      if (!row || !patchRailRowInPlace(row, fresh, clientQueueRowContract)) {
+        if (row) row.replaceWith(fresh);
+        row = fresh;
       }
-      container.appendChild(row);
+      existing.delete(entry.clientId);
+      rows.push(row);
+    });
+    existing.forEach(function (row) { row.remove(); });
+    Array.from(container.children).forEach(function (child) {
+      if (!rows.includes(child)) child.remove();
+    });
+    rows.forEach(function (row, position) {
+      placeRailRow(container, row, position);
     });
     renumberClientImportQueue();
     applyClientImportQueueLock();
@@ -2853,12 +2953,70 @@
     row: ".ds.ds--import[data-import-id]",
     id: "importId",
     fingerprint: "importFingerprint",
+    structure: "importStructure",
+    // Parts that change while an import runs. Their attributes (and text,
+    // where `text` is set) are copied onto the live row; the timer text is
+    // left to updateDatasetLoadTimes so it does not jump back to 0.0s.
+    live: [
+      { selector: ":scope > .ds-pick" },
+      { selector: ".ds-idx", text: true },
+      { selector: ".builder-import-status", text: true },
+      { selector: ".builder-load-time" },
+    ],
     actions: {
       pick: ".builder-pick-import",
       retry: ".builder-retry-import",
       remove: ".builder-remove-import",
     },
   };
+
+  function syncElementAttributes(target, source) {
+    Array.from(target.attributes).forEach(function (attribute) {
+      if (!source.hasAttribute(attribute.name)) {
+        target.removeAttribute(attribute.name);
+      }
+    });
+    Array.from(source.attributes).forEach(function (attribute) {
+      if (target.getAttribute(attribute.name) !== attribute.value) {
+        target.setAttribute(attribute.name, attribute.value);
+      }
+    });
+  }
+
+  // Bring an existing row up to date from freshly rendered markup without
+  // replacing it, so hover, focus and a click in progress stay on the same
+  // buttons. Returns false when the row's elements differ and it must be
+  // replaced instead.
+  function patchRailRowInPlace(row, fresh, contract) {
+    if (!contract.structure || !contract.live) return false;
+    var structure = row.dataset[contract.structure];
+    if (!structure || structure !== fresh.dataset[contract.structure]) {
+      return false;
+    }
+    var pairs = [];
+    for (var index = 0; index < contract.live.length; index++) {
+      var part = contract.live[index];
+      var current = row.querySelector(part.selector);
+      var next = fresh.querySelector(part.selector);
+      if (!current !== !next) return false;
+      if (current) pairs.push({ current: current, next: next, text: part.text });
+    }
+    syncElementAttributes(row, fresh);
+    pairs.forEach(function (pair) {
+      syncElementAttributes(pair.current, pair.next);
+      if (pair.text && pair.current.textContent !== pair.next.textContent) {
+        pair.current.textContent = pair.next.textContent;
+      }
+    });
+    return true;
+  }
+
+  // Put `row` at `position` in `parent`, moving it only when it is out of
+  // place: moving a focused or pressed button drops focus and the click.
+  function placeRailRow(parent, row, position) {
+    var occupant = parent.children[position] || null;
+    if (occupant !== row) parent.insertBefore(row, occupant);
+  }
 
   function railFocusIdentity(element, contract) {
     if (!element || !element.closest) return null;
@@ -2988,16 +3146,19 @@
       rail.querySelectorAll(":scope > .rail-empty").forEach(function (node) {
         node.remove();
       });
-      target.forEach(function (item) {
+      existing.forEach(function (row, id) {
+        if (!target.some(function (item) { return item.record.id === id; })) {
+          row.remove();
+        }
+      });
+      target.forEach(function (item, position) {
         var row = existing.get(item.record.id);
         if (!row || row.dataset.railFingerprint !== item.record.fingerprint) {
           if (row) row.replaceWith(item.parsed);
           row = item.parsed;
         }
-        rail.appendChild(row);
-        existing.delete(item.record.id);
+        placeRailRow(rail, row, position);
       });
-      existing.forEach(function (row) { row.remove(); });
     }
 
     removeReadyImportOverlap();
@@ -3066,22 +3227,32 @@
       list.setAttribute("aria-label", "Datasets being added");
       host.replaceChildren(list);
     }
-    target.forEach(function (item) {
+    existing.forEach(function (row, id) {
+      if (!target.some(function (item) { return item.record.id === id; })) {
+        row.remove();
+      }
+    });
+    target.forEach(function (item, position) {
       var row = existing.get(item.record.id);
-      if (!row || row.dataset.importFingerprint !== item.record.fingerprint) {
-        if (row) row.replaceWith(item.parsed);
+      if (
+        row &&
+        row.dataset.importFingerprint !== item.record.fingerprint &&
+        !patchRailRowInPlace(row, item.parsed, importRailContract)
+      ) {
+        row.replaceWith(item.parsed);
         row = item.parsed;
       }
-      list.appendChild(row);
-      existing.delete(item.record.id);
+      if (!row) row = item.parsed;
+      placeRailRow(list, row, position);
     });
-    existing.forEach(function (row) { row.remove(); });
     removeReadyImportOverlap();
     renumberClientImportQueue();
     var nextFocus = railFocusTarget(list, focusIdentity, importRailContract);
     if (nextFocus && nextFocus !== focused) nextFocus.focus();
     if (window.BuilderIcons) window.BuilderIcons.decorate(host);
     applyDatasetMutationLock([host]);
+    updateDatasetLoadTimes([host]);
+    scheduleDatasetLoadTimeUpdates();
     updateRailSummary();
   }
 
@@ -4285,7 +4456,6 @@
 
   function enhanceDynamicContent(roots) {
     syncWorkflowProgressHeight();
-    setupDatasetDropzones(roots);
     syncSpatialAlignmentScrollbars(roots);
     updateOptionalAnalysisCount(roots);
     updateExtraMaterialCount(roots);
@@ -4939,6 +5109,13 @@
           id: pick.dataset.ds,
           switch_token: datasetSwitchState.generation,
         });
+      }
+      // On the Data step, opening a loaded dataset means configuring it.
+      if (
+        document.querySelector('#workbench [data-workflow-stage="upload"]') &&
+        activityCapability("navigate_workflow")
+      ) {
+        send("workflow_stage_configure", Date.now());
       }
       if (narrowManager.matches) closeDatasetManager();
       return;
@@ -5686,6 +5863,7 @@
     registerBuildDialogHandler();
     registerClientImportHandlers();
     observeClientUploadProgress();
+    setupWindowFileDrop();
     registerViewerGroupHandler();
     registerViewerContentHandlers();
 

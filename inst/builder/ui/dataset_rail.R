@@ -426,7 +426,8 @@ builder_empty_workbench_ui <- function(
   project_active = FALSE,
   dataset_count = 0L,
   formats = get0("builder_formats", inherits = TRUE),
-  examples = builder_example_directory()
+  examples = builder_example_directory(),
+  loading_count = 0L
 ) {
   format_records <- if (
     is.list(formats) &&
@@ -492,6 +493,9 @@ builder_empty_workbench_ui <- function(
         )
       )
     ),
+    if (isTRUE(loading_count > 0L)) {
+      builder_import_loading_note_ui()
+    },
     shiny::tags$div(
       class = "builder-data-sources",
       shiny::tags$p(
@@ -556,44 +560,20 @@ builder_format_unavailable_ui <- function(formats) {
   )
 }
 
-builder_importing_workbench_ui <- function(import_count) {
-  import_count <- as.integer(import_count)
-  stopifnot(length(import_count) == 1L, !is.na(import_count), import_count > 0L)
-  noun <- if (identical(import_count, 1L)) "dataset is" else "datasets are"
-  shiny::tags$section(
-    class = "builder-stage builder-loading-state builder-stage-upload",
-    `data-workflow-stage` = "upload",
+## A small status line on the Data page while datasets load. Loading is
+## tracked on each rail row; the page itself stays usable.
+builder_import_loading_note_ui <- function() {
+  shiny::tags$p(
+    class = "builder-import-loading-note",
     role = "status",
     `aria-live` = "polite",
-    `aria-busy` = "true",
-    `aria-labelledby` = "builder-loading-title",
-    shiny::tags$div(
-      class = "builder-loading-copy",
-      shiny::tags$h2(id = "builder-loading-title", "Preparing your workspace"),
-      shiny::tags$p(
-        paste(
-          import_count,
-          noun,
-          "loading. Track each file in the dataset list."
-        )
-      )
+    shiny::tags$span(
+      class = "builder-import-loading-dot",
+      `aria-hidden` = "true"
     ),
-    shiny::tags$div(
-      class = "builder-loading-skeleton",
-      `aria-hidden` = "true",
-      shiny::tags$span(class = "builder-loading-line is-title"),
-      shiny::tags$div(
-        class = "builder-loading-summary-placeholder",
-        shiny::tags$span(),
-        shiny::tags$span()
-      ),
-      shiny::tags$div(
-        class = "builder-loading-fields-placeholder",
-        lapply(seq_len(4L), function(index) {
-          shiny::tags$span(`data-field` = index)
-        })
-      )
-    )
+    ## Browser uploads still waiting are not counted on the server, so the
+    ## note does not give a number that could disagree with the rail.
+    "Loading in the background. Track each dataset in the dataset list."
   )
 }
 
@@ -700,6 +680,36 @@ builder_import_rail_row_fingerprint <- function(model) {
   ))
 }
 
+## What decides the row's elements and buttons. Fields left out (position,
+## selection, progress text, timer values) are patched in place by
+## builder.js, so a progress tick never replaces the row under the pointer.
+builder_import_rail_row_structure <- function(model) {
+  finite <- function(value) {
+    length(value) == 1L && is.finite(value)
+  }
+  phase <- if (identical(model$load_state, "error")) {
+    "failed"
+  } else if (identical(model$load_state, "queued")) {
+    "queued"
+  } else {
+    "running"
+  }
+  as.character(jsonlite::toJSON(
+    list(
+      model$id,
+      model$label,
+      model$detail,
+      phase,
+      isTRUE(model$cancelling),
+      model$error,
+      finite(model$import_elapsed_ms) || finite(model$started_at_ms)
+    ),
+    auto_unbox = TRUE,
+    null = "null",
+    na = "null"
+  ))
+}
+
 .builder_rail_load_time <- function(elapsed_ms, started_at_ms = NA_real_) {
   if (length(elapsed_ms) == 1L && is.finite(elapsed_ms)) {
     return(shiny::span(
@@ -759,6 +769,7 @@ builder_import_rail_row_ui <- function(model) {
     `data-import-id` = model$id,
     `data-load-state` = model$load_state,
     `data-import-fingerprint` = builder_import_rail_row_fingerprint(model),
+    `data-import-structure` = builder_import_rail_row_structure(model),
     shiny::tags$button(
       type = "button",
       class = "ds-pick builder-pick-import",
@@ -925,7 +936,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "Generating CRB…",
+      crb_label = "Generating cache…",
       crb_status = "generating"
     ))
   }
@@ -933,7 +944,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "CRB ready",
+      crb_label = "Cached · opens fast",
       crb_status = "ready"
     ))
   }
@@ -941,7 +952,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "No CRB",
+      crb_label = "Not cached",
       crb_status = "no-crb"
     ))
   }
@@ -952,7 +963,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "CRB ready",
+      crb_label = "Cached · opens fast",
       crb_status = "ready"
     ))
   }
@@ -963,7 +974,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "No CRB",
+      crb_label = "Not cached",
       crb_status = "no-crb"
     ))
   }
@@ -1034,23 +1045,21 @@ builder_dataset_rail_row_ui <- function(model) {
       class = "ds-actions",
       shiny::tags$button(
         class = "ds-move builder-reorder",
-        title = "Move dataset up",
+        title = "Move up",
         `aria-label` = paste0("Move ", model$label, " up"),
         `data-ds` = model$id,
         `data-direction` = "up",
         `data-icon` = "up",
-        disabled = if (!model$can_up) "disabled" else NULL,
-        shiny::span(class = "ds-action-label", "Move up")
+        disabled = if (!model$can_up) "disabled" else NULL
       ),
       shiny::tags$button(
         class = "ds-move builder-reorder",
-        title = "Move dataset down",
+        title = "Move down",
         `aria-label` = paste0("Move ", model$label, " down"),
         `data-ds` = model$id,
         `data-direction` = "down",
         `data-icon` = "down",
-        disabled = if (!model$can_down) "disabled" else NULL,
-        shiny::span(class = "ds-action-label", "Move down")
+        disabled = if (!model$can_down) "disabled" else NULL
       ),
       shiny::tags$button(
         class = "ds-del btn-remove-soft builder-drop",
