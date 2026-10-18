@@ -387,8 +387,9 @@ test_that("Precision Scientific is the final Builder presentation layer", {
     theme,
     paste(
       ".builder-detected-content .builder-content-tag {",
-      "  border: 0;",
-      "  background: transparent;",
+      "  padding: .15rem var(--space-2);",
+      "  border: 1px solid var(--c-border);",
+      "  border-radius: var(--r-pill);",
       sep = "\n"
     ),
     fixed = TRUE

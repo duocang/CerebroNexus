@@ -153,7 +153,20 @@ builder_inspect_stage_ui <- function(id, model) {
       div(
         class = "facts builder-dataset-summary-facts",
         lapply(as.character(model$summary %||% character()), function(value) {
-          div(class = "fact", value)
+          # "5,020 cells" reads as a stat figure: the number over its unit.
+          parts <- regmatches(
+            value,
+            regexec("^([0-9][0-9,.]*) (.+)$", value)
+          )[[1L]]
+          if (length(parts) == 3L) {
+            div(
+              class = "fact builder-stat",
+              span(class = "builder-stat-value", parts[[2L]]),
+              span(class = "builder-stat-label", parts[[3L]])
+            )
+          } else {
+            div(class = "fact", value)
+          }
         })
       ),
       if (length(model$content_tags %||% list())) {

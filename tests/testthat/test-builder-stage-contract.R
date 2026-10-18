@@ -314,6 +314,17 @@ test_that("Inspect uses actionable issue labels and removes duplicate content", 
   expect_match(html, "Choose an organism in Essentials.", fixed = TRUE)
   expect_false(grepl("settings_organism", html, fixed = TRUE))
   expect_match(html, "1 content type", fixed = TRUE)
+  ## Cell and gene counts render as stat figures: the number over its unit.
+  expect_match(
+    html,
+    '<span class="builder-stat-value">12</span>',
+    fixed = TRUE
+  )
+  expect_match(
+    html,
+    '<span class="builder-stat-label">genes</span>',
+    fixed = TRUE
+  )
 })
 
 test_that("group catalog lists eligible columns before ineligible columns", {

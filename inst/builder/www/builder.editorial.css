@@ -620,10 +620,16 @@ label,
   font-variant-numeric: tabular-nums;
 }
 
+/* Detected content: quiet pills, left-aligned and wrapping. */
 .builder-detected-content .builder-content-tag {
-  border: 0;
-  background: transparent;
+  padding: .15rem var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  background: var(--c-surface-2);
   color: var(--c-text-2);
+  font-size: var(--builder-type-caption);
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .builder-configure-metadata-chips > span:not(:last-child)::after {
@@ -728,9 +734,11 @@ label,
   box-shadow: none;
 }
 
+/* No ruled box: the stats and pills sit on the page, so there is no empty
+   divider band between the summary and Essentials. */
 .builder-dataset-summary {
-  padding-inline: 0;
-  border-width: 1px 0;
+  padding: var(--space-1) 0 0;
+  border: 0;
   border-radius: 0;
   background: transparent;
 }
