@@ -1419,6 +1419,16 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   grid-column: auto;
   grid-row: auto;
 }
+/* "Finish Checking" stays reachable while the form scrolls: the footer's
+   output wrapper sticks to the bottom of the document scrollport. */
+.builder-stage-configure > #configure_actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+}
+.builder-stage-configure > #configure_actions > .builder-stage-footer {
+  box-shadow: 0 -.5rem 1rem -.75rem rgb(0 0 0 / .22);
+}
 .builder-configure-inspect {
   margin-bottom: var(--space-4);
   border-bottom: 1px solid var(--c-border);

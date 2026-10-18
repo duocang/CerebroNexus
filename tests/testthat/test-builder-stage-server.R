@@ -108,6 +108,52 @@ test_that("clickable workflow steps keep the same horizontal layout", {
   )
 })
 
+test_that("the Configure footer sticks to the bottom of the viewport", {
+  components <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.components.css"),
+      warn = FALSE
+    ),
+    collapse = "
+"
+  )
+  review_server <- paste(
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
+    collapse = "
+"
+  )
+
+  expect_match(
+    components,
+    paste0(
+      ".builder-stage-configure > #configure_actions {
+",
+      "  position: sticky;
+",
+      "  bottom: 0;"
+    ),
+    fixed = TRUE
+  )
+  ## The sticky wrapper must be a direct child of the Configure stage, after
+  ## the form, or it has no room to stick in.
+  expect_match(
+    review_server,
+    paste0(
+      "builder_spatial_stage_ui(\"enhance\", enhance_model)
+",
+      "    ),
+",
+      "    uiOutput(\"configure_actions\")
+",
+      "  )"
+    ),
+    fixed = TRUE
+  )
+})
+
 test_that("Build footer actions have matching desktop widths", {
   components <- paste(
     readLines(
