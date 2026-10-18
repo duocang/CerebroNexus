@@ -1,3 +1,37 @@
+#' Entries "Apply to all unchecked datasets" changes, with the organism set.
+#'
+#' Only loaded datasets that are not checked yet are touched; checked ones and
+#' saved CRB artifacts keep their organism. Like an edit in Essentials, an
+#' organism without built-in gene lists drops the mito/ribo analysis.
+builder_core_organism_targets <- function(entries, organism, checked) {
+  updated <- lapply(entries, function(entry) {
+    if (
+      !is.list(entry) ||
+        entry$id %in% checked ||
+        !identical(entry$load_state %||% "loaded", "loaded")
+    ) {
+      return(NULL)
+    }
+    settings <- entry$settings %||% list()
+    settings$organism <- organism
+    if (
+      !organism %in% c("hg", "mm") &&
+        "percent_mt_ribo" %in% settings$analyses
+    ) {
+      settings$analyses <- setdiff(
+        settings$analyses %||% character(),
+        "percent_mt_ribo"
+      )
+    }
+    if (identical(settings, entry$settings)) {
+      return(NULL)
+    }
+    entry$settings <- settings
+    entry
+  })
+  Filter(Negate(is.null), updated)
+}
+
 builder_core_stage_ui <- function(id, model) {
   ns <- NS(id)
   organism_choices <- model$organism_choices %||% character()
@@ -62,7 +96,13 @@ builder_core_stage_ui <- function(id, model) {
             class = "builder-organism-detected",
             "Detected from gene names"
           )
-        }
+        },
+        tags$button(
+          id = ns("organism_apply_all"),
+          type = "button",
+          class = "btn btn-link action-button builder-organism-apply-all",
+          "Apply to all unchecked datasets"
+        )
       ),
       div(
         class = "builder-field builder-field--assay",

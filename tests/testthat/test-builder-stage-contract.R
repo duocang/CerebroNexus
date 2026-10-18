@@ -673,3 +673,29 @@ test_that("Open App uses its default r_bg launcher without parent helpers", {
     builder_auth_read_env_file(fixture$env_file)
   )
 })
+
+test_that("Apply to all targets loaded unchecked datasets", {
+  entries <- list(
+    list(id = "a", settings = list(organism = NULL)),
+    list(
+      id = "b",
+      settings = list(organism = "hg", analyses = c("percent_mt_ribo", "x"))
+    ),
+    list(id = "c", settings = list(organism = NULL)),
+    list(id = "d", load_state = "artifact_ready", settings = list()),
+    list(id = "e", settings = list(organism = "zebrafish"))
+  )
+
+  targets <- builder_core_organism_targets(entries, "zebrafish", checked = "c")
+
+  expect_identical(vapply(targets, `[[`, character(1), "id"), c("a", "b"))
+  expect_identical(targets[[2L]]$settings$analyses, "x")
+  expect_identical(
+    builder_core_organism_targets(entries, "hg", checked = "c")[[2L]]$id,
+    "e"
+  )
+  expect_identical(
+    builder_core_organism_targets(entries, "hg", checked = "c")[[1L]]$settings,
+    list(organism = "hg")
+  )
+})

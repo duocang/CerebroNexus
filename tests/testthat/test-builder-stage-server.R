@@ -1830,6 +1830,64 @@ test_that("incomplete datasets focus their first unresolved setting", {
   })
 })
 
+test_that("Apply to all sets the organism on unchecked datasets only", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("plotly")
+  app_env <- new.env(parent = globalenv())
+  withr::local_dir(builder_profile_inst_path("builder"))
+  sys.source("app.R", envir = app_env)
+  app_env$builder_session_start <- function(...) {
+    list(error = "Worker startup is disabled in this state-only test.")
+  }
+  shiny::testServer(app_env$server, {
+    entry <- function(id, load_state = "loaded") {
+      list(
+        id = id,
+        revision = 0L,
+        load_state = load_state,
+        snapshot = list(
+          path = paste0("/private/", id),
+          owner_token = paste0("owner-", id),
+          object_md5 = strrep(substr(id, nchar(id), nchar(id)), 32L)
+        ),
+        profile = list(marker = id, extras = list()),
+        settings = list(name = id, organism = NULL)
+      )
+    }
+    use_state_only_fixture(list(
+      entry("dataset-a"),
+      entry("dataset-b"),
+      entry("dataset-c"),
+      entry("dataset-d", "artifact_ready")
+    ))
+    checked <- isolate(sets())[[3L]]
+    dataset_check_marks(stats::setNames(
+      app_env$builder_project_check_identity(checked),
+      checked$id
+    ))
+    session$flushReact()
+    expect_identical(current(), "dataset-a")
+
+    session$setInputs(
+      `core-rendered_for` = "dataset-a",
+      `core-organism` = "mm"
+    )
+    session$setInputs(`core-organism_apply_all` = 1)
+    session$flushReact()
+
+    organisms <- vapply(
+      isolate(sets()),
+      function(entry) entry$settings$organism %||% "",
+      character(1)
+    )
+    expect_identical(
+      organisms,
+      c("", "mm", "", "")
+    )
+    expect_identical(checked_dataset_ids(), "dataset-c")
+  })
+})
+
 test_that("Next from a checked CRB opens the next unchecked dataset", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("plotly")
