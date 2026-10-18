@@ -133,6 +133,14 @@ builder_project_status_ui <- function(
   )
 }
 
+# Every Builder dialog title is a small kicker over the question itself.
+builder_dialog_title <- function(title, kicker = "Builder project") {
+  tagList(
+    tags$span(class = "builder-project-modal-kicker", kicker),
+    tags$span(title)
+  )
+}
+
 builder_project_dialog_content <- function(primary, secondary, icon) {
   tags$div(
     class = "builder-project-dialog",
@@ -220,13 +228,7 @@ builder_legacy_qs_notice_content <- function(datasets, origin = "add") {
 builder_legacy_qs_notice_dialog <- function(datasets, origin = "add") {
   project_notice <- identical(origin, "project")
   modalDialog(
-    title = tagList(
-      tags$span(
-        class = "builder-project-modal-kicker",
-        "Compatibility warning"
-      ),
-      tags$span("Legacy QS files")
-    ),
+    title = builder_dialog_title("Legacy QS files", "Compatibility warning"),
     tags$div(
       class = "builder-project-dialog builder-legacy-qs-dialog",
       builder_legacy_qs_notice_content(datasets, origin = origin)
@@ -260,10 +262,7 @@ builder_legacy_qs_notice_dialog <- function(datasets, origin = "add") {
 
 builder_project_opening_dialog <- function() {
   modalDialog(
-    title = tagList(
-      tags$span(class = "builder-project-modal-kicker", "Builder project"),
-      tags$span("Checking project")
-    ),
+    title = builder_dialog_title("Checking project"),
     tags$div(
       class = "builder-project-dialog builder-project-opening-dialog",
       tags$div(
@@ -302,10 +301,7 @@ builder_project_opening_dialog <- function() {
 
 builder_project_open_wait_dialog <- function(message) {
   modalDialog(
-    title = tagList(
-      tags$span(class = "builder-project-modal-kicker", "Builder project"),
-      tags$span("Opening project")
-    ),
+    title = builder_dialog_title("Opening project"),
     tags$div(
       class = "builder-project-dialog builder-project-opening-dialog",
       role = "status",
@@ -342,7 +338,7 @@ builder_project_open_wait_dialog <- function(message) {
 
 builder_project_backup_recovery_dialog <- function(offer) {
   modalDialog(
-    title = "Recover Builder project?",
+    title = builder_dialog_title("Recover Builder project?", "Open project"),
     tags$p(
       "The project file is damaged. A verified backup is available."
     ),
@@ -382,7 +378,7 @@ builder_project_save_location_note <- function() {
 
 builder_project_existing_folder_dialog <- function(path) {
   modalDialog(
-    title = "Update existing project?",
+    title = builder_dialog_title("Update existing project?", "Save project"),
     builder_project_dialog_content(
       "This folder already contains a Builder project.",
       paste(
@@ -415,7 +411,7 @@ builder_project_existing_folder_dialog <- function(path) {
 
 builder_project_nonempty_folder_dialog <- function(path) {
   modalDialog(
-    title = "Folder already contains files",
+    title = builder_dialog_title("Folder already contains files", "Save project"),
     builder_project_dialog_content(
       "Create the Builder project in this folder?",
       paste(
@@ -676,10 +672,7 @@ builder_project_restore_dialog <- function(manifest) {
   sourced <- sum(actions %in% c("resume", "reload"))
   selected <- total - skipped
   modalDialog(
-    title = tagList(
-      tags$span(class = "builder-project-modal-kicker", "Builder project"),
-      tags$span("Choose Datasets to Open")
-    ),
+    title = builder_dialog_title("Choose Datasets to Open"),
     tags$div(
       class = "builder-project-restore-dialog",
       tags$section(

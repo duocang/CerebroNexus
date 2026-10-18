@@ -254,11 +254,12 @@ builder_server_path_dialog <- function(
   action_label,
   detail = NULL,
   roots = tryCatch(builder_server_path_roots(), error = function(e) NULL),
-  note = NULL
+  note = NULL,
+  kicker = "Builder project"
 ) {
   roots_id <- paste0(input_id, "_roots")
   modalDialog(
-    title = title,
+    title = builder_dialog_title(title, kicker),
     tags$p(
       "Enter an absolute path on this server."
     ),

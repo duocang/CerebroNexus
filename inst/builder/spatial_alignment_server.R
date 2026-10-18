@@ -2417,7 +2417,13 @@ builder_spatial_alignment_server <- function(
         awaiting_label = TRUE
       ))
       shiny::showModal(shiny::modalDialog(
-        title = "Name this image",
+        title = shiny::tagList(
+          shiny::tags$span(
+            class = "builder-project-modal-kicker",
+            "Spatial image"
+          ),
+          shiny::tags$span("Name this image")
+        ),
         shiny::textInput(
           "enhance-new_image_label",
           "Image label",
@@ -3526,7 +3532,13 @@ builder_spatial_alignment_server <- function(
     display_label <- collection_for(entry)[[section]][[label]]$image_label %||%
       label
     shiny::showModal(shiny::modalDialog(
-      title = "Remove image?",
+      title = shiny::tagList(
+        shiny::tags$span(
+          class = "builder-project-modal-kicker",
+          "Spatial image"
+        ),
+        shiny::tags$span("Remove image?")
+      ),
       shiny::p(paste0(
         "Remove “",
         display_label,
@@ -3646,7 +3658,13 @@ builder_spatial_alignment_server <- function(
     display_label <- collection_for(entry)[[section]][[label]]$image_label %||%
       label
     shiny::showModal(shiny::modalDialog(
-      title = "Rename image",
+      title = shiny::tagList(
+        shiny::tags$span(
+          class = "builder-project-modal-kicker",
+          "Spatial image"
+        ),
+        shiny::tags$span("Rename image")
+      ),
       shiny::textInput(
         "enhance-renamed_image_label",
         "Image label",

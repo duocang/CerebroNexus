@@ -525,7 +525,8 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-project-dialog-lead {
   margin: 0;
   color: var(--c-text);
-  font-size: var(--builder-type-subtitle);
+  font-size: var(--builder-type-body);
+  font-weight: 600;
   line-height: 1.55;
 }
 .builder-project-dialog-summary {
@@ -556,74 +557,129 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-project-dialog-icon .fa { font-size: var(--builder-type-body); }
 .builder-project-dialog-note { color: var(--c-text-muted); }
 
-#shiny-modal.modal:has(:is(
-  .builder-legacy-qs-dialog,
-  .builder-project-opening-dialog,
-  .builder-project-first-save-dialog,
-  .builder-project-restore-dialog
-)) {
+/* ---- Builder dialogs ----------------------------------------------------
+   Every Shiny modal in the Builder shares one frame: the picker overlay's
+   backdrop, a vertically centred card, kicker + semibold title, body text at
+   the body token, help text at the caption token and a tinted footer. */
+.modal-backdrop {
+  background: rgb(15 23 42 / .38);
+  backdrop-filter: blur(2px);
+}
+.modal-backdrop.in,
+.modal-backdrop.show { opacity: 1; }
+#shiny-modal.modal {
   display: flex !important;
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
 }
-#shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-dialog,
-#shiny-modal.modal:has(.builder-project-opening-dialog) .modal-dialog {
-  width: min(30rem, 100%);
+#shiny-modal .modal-dialog {
+  width: min(34rem, 100%);
   margin: 0;
 }
-#shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-content,
-#shiny-modal.modal:has(.builder-project-opening-dialog) .modal-content,
-#shiny-modal.modal:has(.builder-project-first-save-dialog) .modal-content,
-#shiny-modal.modal:has(.builder-project-restore-dialog) .modal-content {
+#shiny-modal .modal-dialog.modal-sm { width: min(30rem, 100%); }
+#shiny-modal .modal-dialog.modal-lg { width: min(56rem, 100%); }
+#shiny-modal .modal-content {
   overflow: hidden;
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
+  background: var(--c-surface);
   box-shadow: var(--shadow-4);
 }
-#shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-content {
-  border-top: .3rem solid var(--c-warning);
-}
-#shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-header,
-#shiny-modal.modal:has(.builder-project-opening-dialog) .modal-header,
-#shiny-modal.modal:has(.builder-project-first-save-dialog) .modal-header {
+#shiny-modal .modal-header {
   padding: var(--space-6) var(--space-6) 0;
   border: 0;
 }
-#shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-title,
-#shiny-modal.modal:has(.builder-project-opening-dialog) .modal-title {
+#shiny-modal .modal-header::before,
+#shiny-modal .modal-header::after,
+#shiny-modal .modal-footer::before,
+#shiny-modal .modal-footer::after { display: none; }
+#shiny-modal .modal-title {
   display: grid;
   gap: var(--space-1);
   color: var(--c-text);
   font-size: var(--builder-type-title);
-  font-weight: 750;
-  line-height: 1.2;
+  font-weight: 650;
+  line-height: 1.25;
   text-wrap: balance;
 }
-#shiny-modal.modal:has(.builder-legacy-qs-dialog) .builder-project-modal-kicker {
-  color: var(--c-warning-700);
-}
-#shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-body,
-#shiny-modal.modal:has(.builder-project-opening-dialog) .modal-body {
+#shiny-modal .modal-body {
   padding: var(--space-4) var(--space-6) var(--space-6);
+  color: var(--c-text);
+  font-size: var(--builder-type-body);
+  line-height: 1.55;
   overscroll-behavior: contain;
 }
-#shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-footer,
-#shiny-modal.modal:has(.builder-project-opening-dialog) .modal-footer,
-#shiny-modal.modal:has(.builder-project-first-save-dialog) .modal-footer {
+#shiny-modal .modal-body > p,
+#shiny-modal .modal-body > dl { margin: 0 0 var(--space-3); }
+#shiny-modal .modal-body > :last-child { margin-bottom: 0; }
+#shiny-modal .modal-body label {
+  margin-bottom: var(--space-1);
+  color: var(--c-text);
+  font-size: var(--builder-type-caption);
+  font-weight: 600;
+}
+#shiny-modal .modal-body .form-control { font-size: var(--builder-type-body); }
+#shiny-modal .modal-body .builder-project-dialog-note,
+#shiny-modal .modal-body .hint,
+#shiny-modal .modal-body .help-block,
+#shiny-modal .modal-body details > summary {
+  color: var(--c-text-muted);
+  font-size: var(--builder-type-caption);
+  line-height: 1.45;
+}
+#shiny-modal .modal-body .builder-server-path-roots {
+  margin: var(--space-2) 0 0;
+  overflow-wrap: anywhere;
+}
+#shiny-modal .modal-body dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+}
+#shiny-modal .modal-body dt {
+  color: var(--c-text-muted);
+  font-size: var(--builder-type-caption);
+  font-weight: 600;
+  line-height: 1.55;
+}
+#shiny-modal .modal-body dd { margin: 0; overflow-wrap: anywhere; }
+#shiny-modal .modal-footer {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--c-border);
   background: var(--c-surface-2);
 }
-#shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-footer .btn,
-#shiny-modal.modal:has(.builder-project-opening-dialog) .modal-footer .btn,
-#shiny-modal.modal:has(.builder-project-first-save-dialog) .modal-footer .btn {
+#shiny-modal .modal-footer .btn {
   min-height: 2.5rem;
   margin: 0;
   border-radius: var(--r-sm);
+}
+#shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-content {
+  border-top: .3rem solid var(--c-warning);
+}
+#shiny-modal.modal:has(.builder-legacy-qs-dialog) .builder-project-modal-kicker {
+  color: var(--c-warning-700);
+}
+@media (max-width: 36rem) {
+  #shiny-modal.modal {
+    align-items: flex-end;
+    padding: var(--space-2);
+  }
+  #shiny-modal .modal-header { padding: var(--space-5) var(--space-4) 0; }
+  #shiny-modal .modal-body { padding: var(--space-4); }
+  #shiny-modal .modal-footer {
+    padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
+  }
+  #shiny-modal .modal-footer .btn { flex: 1 1 0; }
 }
 .builder-legacy-qs-notice {
   display: grid;
@@ -682,24 +738,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   color: var(--c-text-muted);
   overflow-wrap: anywhere;
 }
-@media (max-width: 36rem) {
-  #shiny-modal.modal:has(.builder-legacy-qs-dialog) {
-    align-items: flex-end;
-    padding: var(--space-2);
-  }
-  #shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-header {
-    padding: var(--space-5) var(--space-4) 0;
-  }
-  #shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-body {
-    padding: var(--space-4);
-  }
-  #shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-footer {
-    padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
-  }
-  #shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-footer .btn {
-    flex: 1 1 0;
-  }
-}
 .builder-project-opening-progress {
   display: grid;
   gap: var(--space-2);
@@ -730,23 +768,6 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   to { background-position: -100% 0; }
 }
 
-#shiny-modal.modal:has(.builder-project-first-save-dialog) .modal-dialog {
-  width: min(27rem, 100%);
-  margin: 0;
-  transform: translateY(.5rem) scale(.99);
-  transition: transform var(--duration-normal) var(--ease-standard);
-}
-#shiny-modal.modal.in:has(.builder-project-first-save-dialog) .modal-dialog {
-  transform: none;
-}
-#shiny-modal.modal:has(.builder-project-first-save-dialog) .modal-title {
-  display: grid;
-  gap: var(--space-1);
-  color: var(--c-text);
-  font-size: var(--builder-type-title);
-  font-weight: 700;
-  line-height: 1.25;
-}
 .builder-project-modal-kicker {
   color: var(--builder-action);
   font-size: var(--builder-type-micro);
@@ -754,43 +775,17 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   letter-spacing: .09em;
   text-transform: uppercase;
 }
-#shiny-modal.modal:has(.builder-project-first-save-dialog) .modal-body {
-  padding: var(--space-3) var(--space-6) var(--space-6);
-}
-.builder-project-first-save-dialog { gap: var(--space-4); }
-.builder-project-first-save-dialog .builder-project-dialog-lead {
-  color: var(--c-text-muted);
-  font-size: var(--builder-type-body);
-  line-height: 1.55;
-}
-.builder-project-first-save-dialog .builder-project-dialog-note {
-  display: grid;
-  grid-template-columns: 1.5rem minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: start;
-}
-.builder-project-first-save-dialog .builder-project-dialog-note p {
-  margin: 0;
-  font-size: var(--builder-type-small);
-  line-height: 1.45;
-}
-.builder-project-first-save-dialog .builder-project-dialog-icon {
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: var(--r-xs);
-}
-@media (max-width: 32rem) {
-  #shiny-modal.modal:has(.builder-project-first-save-dialog) .modal-footer {
-    flex-direction: column-reverse;
-  }
-  #shiny-modal.modal:has(.builder-project-first-save-dialog) .modal-footer .btn {
-    width: 100%;
-  }
-}
 
+#shiny-modal .modal-body .builder-project-dialog-path { margin-top: var(--space-3); }
 .builder-project-dialog-path code {
   display: block;
   max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+  color: var(--c-text-muted);
+  font-size: var(--builder-type-caption);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -807,39 +802,22 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 }
 #shiny-modal.modal:has(.builder-project-restore-dialog) .modal-header {
   flex: 0 0 auto;
-  padding: var(--space-4) var(--space-6) var(--space-2);
-  border: 0;
-}
-#shiny-modal.modal:has(.builder-project-restore-dialog) .modal-title {
-  display: grid;
-  gap: var(--space-1);
-  color: var(--c-text);
-  font-size: var(--builder-type-title);
-  font-weight: 700;
-  line-height: 1.25;
-  text-wrap: balance;
+  padding-bottom: var(--space-2);
 }
 #shiny-modal.modal:has(.builder-project-restore-dialog) .modal-body {
   display: flex;
   min-height: 0;
   overflow: hidden;
   flex: 1 1 auto;
-  padding: 0 var(--space-6) var(--space-3);
+  padding: var(--space-2) var(--space-6) var(--space-4);
 }
 #shiny-modal.modal:has(.builder-project-restore-dialog) .modal-footer {
-  display: flex;
   flex: 0 0 auto;
-  align-items: center;
+  flex-wrap: nowrap;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-2) var(--space-6);
-  border-top: 1px solid var(--c-border);
-  background: var(--c-surface-2);
 }
 #shiny-modal.modal:has(.builder-project-restore-dialog) .modal-footer .btn {
-  min-height: 2.5rem;
-  margin: 0;
-  border-radius: var(--r-sm);
   white-space: nowrap;
 }
 .builder-project-restore-dialog {

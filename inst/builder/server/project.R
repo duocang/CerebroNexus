@@ -1417,7 +1417,10 @@ builder_project_open_needs_confirmation <- function() {
 
 builder_project_open_discard_dialog <- function() {
   shiny::modalDialog(
-    title = "Discard unsaved workspace changes?",
+    title = builder_dialog_title(
+      "Discard unsaved workspace changes?",
+      "Open project"
+    ),
     shiny::tags$p(
       paste(
         "Opening a project will replace the datasets and settings in the",

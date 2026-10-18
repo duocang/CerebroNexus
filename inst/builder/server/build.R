@@ -731,7 +731,8 @@ show_builder_build_server_path <- function(detail = NULL) {
     action_id = "use_builder_build_server_folder",
     label = "Parent folder",
     action_label = "Build here",
-    detail = detail
+    detail = detail,
+    kicker = "Build output"
   ))
   invisible(TRUE)
 }
