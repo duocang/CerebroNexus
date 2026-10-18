@@ -700,6 +700,36 @@ builder_import_rail_row_fingerprint <- function(model) {
   ))
 }
 
+## What decides the row's elements and buttons. Fields left out (position,
+## selection, progress text, timer values) are patched in place by
+## builder.js, so a progress tick never replaces the row under the pointer.
+builder_import_rail_row_structure <- function(model) {
+  finite <- function(value) {
+    length(value) == 1L && is.finite(value)
+  }
+  phase <- if (identical(model$load_state, "error")) {
+    "failed"
+  } else if (identical(model$load_state, "queued")) {
+    "queued"
+  } else {
+    "running"
+  }
+  as.character(jsonlite::toJSON(
+    list(
+      model$id,
+      model$label,
+      model$detail,
+      phase,
+      isTRUE(model$cancelling),
+      model$error,
+      finite(model$import_elapsed_ms) || finite(model$started_at_ms)
+    ),
+    auto_unbox = TRUE,
+    null = "null",
+    na = "null"
+  ))
+}
+
 .builder_rail_load_time <- function(elapsed_ms, started_at_ms = NA_real_) {
   if (length(elapsed_ms) == 1L && is.finite(elapsed_ms)) {
     return(shiny::span(
@@ -759,6 +789,7 @@ builder_import_rail_row_ui <- function(model) {
     `data-import-id` = model$id,
     `data-load-state` = model$load_state,
     `data-import-fingerprint` = builder_import_rail_row_fingerprint(model),
+    `data-import-structure` = builder_import_rail_row_structure(model),
     shiny::tags$button(
       type = "button",
       class = "ds-pick builder-pick-import",
