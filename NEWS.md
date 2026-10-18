@@ -1,3 +1,16 @@
+# CerebroNexus 5.1.1
+
+- Background images now open at full opacity (1.0) instead of 50% in Spatial,
+  Linked views and Trekker. A configured or saved `image_opacity` still applies.
+- Fixes background images drifting away from their cells in a rotated scene,
+  such as the MERFISH demo. The image rotates in data space about the origin,
+  the same way `spatial_plot_rotation` rotates the cell coordinates.
+- Declares only the packages the code uses: `httr` is now a Suggests entry,
+  and the unused `formattable` and `reshape2` are no longer listed.
+- Internal clean-up with no change in behaviour: shared helpers replace
+  duplicated code in Spatial, Linked views, Trekker and `cell_views.js`, and
+  unused reactives, outputs and CSS rules are removed.
+
 # CerebroNexus 5.1.0
 
 - Adds Viewer Packs: `buildViewerPack()` writes a sidecar directory next to a
@@ -8,7 +21,7 @@
   allowed to see instead of a data URI or a filesystem path. The Background
   image picker holds one removable chip and is hidden for data sets that
   configure no image.
-- Background images open at full opacity unless `image_opacity` is set in
+- Background images open at 50% opacity unless `image_opacity` is set in
   `spatial_image_settings` or saved with an embedded image's alignment; the
   setting applies in Spatial, Linked views and Trekker.
 - Linked views selects the section whose background is adjusted from a picker
