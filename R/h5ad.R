@@ -26,6 +26,9 @@
 #' @keywords internal
 #' @noRd
 .h5adContext <- function(file, root = NULL) {
+  if (.zarrIsStore(file)) {
+    return(.zarrContext(file, root))
+  }
   listing <- rhdf5::h5ls(file, recursive = TRUE, datasetinfo = FALSE)
   parent <- ifelse(listing$group == "/", "", listing$group)
   path <- paste0(parent, "/", listing$name)
@@ -47,6 +50,9 @@
 #' @keywords internal
 #' @noRd
 .h5adRead <- function(ctx, path, ...) {
+  if (identical(ctx$kind, "zarr")) {
+    return(.zarrRead(ctx, path, ...))
+  }
   rhdf5::h5read(ctx$file, paste0(ctx$prefix, path), ...)
 }
 
@@ -75,6 +81,9 @@
 #' @keywords internal
 #' @noRd
 .h5adAttrs <- function(ctx, path) {
+  if (identical(ctx$kind, "zarr")) {
+    return(.zarrAttrs(ctx, path))
+  }
   tryCatch(
     rhdf5::h5readAttributes(ctx$file, paste0(ctx$prefix, path)),
     error = function(e) list()
@@ -670,7 +679,8 @@ readH5adAsSCE <- function(
   airr_sample = NULL,
   spatial_images = "auto",
   extra_modalities = NULL,
-  verbose = FALSE
+  verbose = FALSE,
+  .root = NULL
 ) {
   .h5adRequire()
   if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) {
@@ -683,7 +693,7 @@ readH5adAsSCE <- function(
     stop("h5ad file not found: ", paste(file, collapse = ", "), call. = FALSE)
   }
   ctx <- tryCatch(
-    .h5adContext(file),
+    .h5adContext(file, root = .root),
     error = function(e) {
       stop("`", file, "` is not a readable HDF5/h5ad file: ", conditionMessage(e), call. = FALSE)
     }

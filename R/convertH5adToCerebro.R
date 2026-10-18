@@ -139,9 +139,18 @@ convertH5adToCerebro <- function(
   if (!is.character(h5ad_file) || length(h5ad_file) != 1L) {
     stop("`h5ad_file` must be one file path.", call. = FALSE)
   }
-  if (!tolower(tools::file_ext(h5ad_file)) %in% c("h5ad", "h5mu")) {
+  if (.zarrIsStore(h5ad_file) && length(.sdTables(h5ad_file))) {
     stop(
-      "`h5ad_file` must be a .h5ad (or MuData .h5mu) file: ",
+      "`", h5ad_file, "` is a SpatialData store; use convertSpatialDataToCerebro().",
+      call. = FALSE
+    )
+  }
+  if (
+    !tolower(tools::file_ext(h5ad_file)) %in% c("h5ad", "h5mu") &&
+      !.zarrIsStore(h5ad_file)
+  ) {
+    stop(
+      "`h5ad_file` must be a .h5ad (or MuData .h5mu) file, or an AnnData .zarr store: ",
       h5ad_file,
       call. = FALSE
     )

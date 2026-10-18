@@ -30,6 +30,7 @@ reference:
     contents:
       - starts_with("convert")
       - readH5adAsSCE
+      - readSpatialDataAsSCE
   - title: "Pre-processing"
     contents:
       - addPercentMtRibo

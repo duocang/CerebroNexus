@@ -75,6 +75,23 @@ crb <- convertSCEToCerebro(
 )
 ```
 
+# From a SpatialData store
+
+```{r spatialdata}
+crb <- convertSpatialDataToCerebro(
+  "visium.zarr",
+  result_dir = "cerebro",
+  groups = c("region", "in_tissue"),
+  organism = "Mouse"
+)
+```
+
+The cell table, the coordinates and the tissue pictures are read from the
+`.zarr` directory, with one spatial section per region. Coordinates come from
+`obsm["spatial"]` when the table has them (Visium) and from the shapes the
+table annotates otherwise (MERFISH, Xenium). Stores written with Blosc
+compression are not supported; re-save them with zstd.
+
 # Back to scanpy
 
 ```{r back}

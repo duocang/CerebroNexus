@@ -4,6 +4,9 @@
   if (!file.exists(sce_file)) {
     stop("sce_file not found: ", sce_file, call. = FALSE)
   }
+  if (.zarrIsStore(sce_file)) {
+    return(if (length(.sdTables(sce_file))) readSpatialDataAsSCE(sce_file) else readH5adAsSCE(sce_file))
+  }
   ext <- tolower(tools::file_ext(sce_file))
   switch(
     ext,

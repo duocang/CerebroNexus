@@ -12,6 +12,12 @@
   scanpy / scVelo trajectories. `exportToH5ad()` writes spatial coordinates and
   tissue images back so scanpy and squidpy can draw them, the immune repertoire
   as scirpy's `obsm["airr"]` and each trajectory's pseudotime as an `obs` column.
+- SpatialData (`.zarr`) stores are read natively too: `readSpatialDataAsSCE()` and
+  `convertSpatialDataToCerebro()` take the cell table, its coordinates (from
+  `obsm["spatial"]` or from the annotated shapes) and the tissue pictures placed
+  in each section, one spatial section per region. Plain AnnData `.zarr` stores
+  (Zarr v2 and v3, with zstd or gzip) open in `convertH5adToCerebro()`; Blosc
+  compression is not supported.
 - CITE-seq data: `extra_modalities =` (MuData, e.g. `"prot"`) and `extra_features =`
   (SingleCellExperiment `altExp`, e.g. `"ADT"`) add the antibody features to the
   expression data as `<experiment>:<feature>`.
