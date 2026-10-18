@@ -7,6 +7,25 @@ builder_publish_source <- function(local = parent.frame()) {
   source(file.path(root, "publish.R"), local = local)
 }
 
+## Crash tests start a fresh R process that sources the Builder and then
+## exits mid-publish. On a busy machine that can take well over ten seconds;
+## wait for the exit itself (bounded), and never leave the process behind.
+builder_publish_await_exit <- function(
+  process,
+  timeout = 120,
+  envir = parent.frame()
+) {
+  withr::defer(
+    if (process$is_alive()) try(process$kill(), silent = TRUE),
+    envir = envir
+  )
+  deadline <- Sys.time() + timeout
+  while (process$is_alive() && Sys.time() < deadline) {
+    process$wait(timeout = 1000)
+  }
+  invisible(process)
+}
+
 write_builder_release_record_fixture <- function(root, members) {
   lines <- c(
     "CEREBRO_BUILDER_RELEASE_V1",
@@ -1442,7 +1461,7 @@ test_that("process death between renames leaves exact recoverable evidence", {
       },
       list(root_path, target)
     )
-    crash$wait(timeout = 10000)
+    builder_publish_await_exit(crash)
     expect_identical(crash$get_exit_status(), 17L)
 
     builder_publish_source()
@@ -1616,7 +1635,7 @@ test_that("process death after protecting the prior release keeps recovery inten
       },
       list(root_path, target)
     )
-    crash$wait(timeout = 10000)
+    builder_publish_await_exit(crash)
     expect_identical(crash$get_exit_status(), 21L)
 
     builder_publish_source()
@@ -1658,7 +1677,7 @@ test_that("process death after the new release can still restore the prior one",
       },
       list(root_path, target)
     )
-    crash$wait(timeout = 10000)
+    builder_publish_await_exit(crash)
     expect_identical(crash$get_exit_status(), 18L)
 
     builder_publish_source()
@@ -1767,7 +1786,7 @@ test_that("a dead completed owner cannot strand the release lock", {
       },
       list(root_path, target)
     )
-    crash$wait(timeout = 10000)
+    builder_publish_await_exit(crash)
     expect_identical(crash$get_exit_status(), 19L)
 
     builder_publish_source()
@@ -1893,7 +1912,7 @@ test_that("a crash after the stage rename but before journaling is recoverable",
       },
       list(root_path, target)
     )
-    crash$wait(timeout = 10000)
+    builder_publish_await_exit(crash)
     expect_identical(crash$get_exit_status(), 20L)
 
     builder_publish_source()
