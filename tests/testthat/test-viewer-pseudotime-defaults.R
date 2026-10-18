@@ -1,6 +1,9 @@
 test_that("pseudotime controls consume author defaults and hiding the trend still renders", {
   skip_if_not_installed("plotly")
-  sys.source(viewer_test_path("core", "viewer_content_contract.R"), environment())
+  sys.source(
+    viewer_test_path("core", "viewer_content_contract.R"),
+    environment()
+  )
   defaults <- builderViewerDisplayDefaults(list(
     gene_show_trend_line = FALSE,
     gene_trend_line_width = 4,
