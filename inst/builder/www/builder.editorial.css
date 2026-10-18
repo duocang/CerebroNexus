@@ -89,8 +89,12 @@ body {
 }
 
 /* Application chrome */
+/* Fixed minimums: builder.js writes the measured heights back into
+   --builder-topbar-height / --builder-workflow-progress-height, so using those
+   variables here locked in the tallest height ever seen (a narrow window
+   that wrapped the toolbar kept the header tall after widening). */
 .topbar {
-  min-height: var(--builder-topbar-height);
+  min-height: 3.25rem;
   margin-top: var(--space-3);
   padding: var(--space-2) var(--space-4);
   border-color: var(--c-border-2);
@@ -111,7 +115,7 @@ body {
 }
 
 #workflow_progress .builder-workflow-progress {
-  min-height: var(--builder-workflow-progress-height);
+  min-height: 3.6rem;
   padding-inline: clamp(1rem, 3vw, 2.25rem);
   border-color: var(--c-border-2);
   background: var(--c-surface);
