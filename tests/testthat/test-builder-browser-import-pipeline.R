@@ -777,6 +777,67 @@ test_that("Build actions say why they wait for a Project write", {
   expect_match(js, "build_reason: typeof message.build_reason", fixed = TRUE)
 })
 
+test_that("Build actions stay disabled while the workspace stays editable", {
+  js <- builder_browser_pipeline_text("www", "builder.js")
+  lock <- builder_browser_pipeline_js_function(js, "setActivityDisabled")
+  locked <- builder_browser_pipeline_js_function(js, "workspaceControlLocked")
+  out <- builder_browser_pipeline_run_node(
+    c(builder_browser_pipeline_fake_dom, lock, locked),
+    c(
+      "const assert = require('assert');",
+      "function control(id) {",
+      "  const node = withId(new El('button'), id);",
+      "  node.disabled = false;",
+      "  node.hasAttribute = name => name in node.attributes;",
+      "  node.getAttribute = name => node.attributes[name] ?? null;",
+      "  node.removeAttribute = name => { delete node.attributes[name]; };",
+      "  return node;",
+      "}",
+      "const build = control('build');",
+      "const again = control('build_same_folder');",
+      "const field = control('core-name');",
+      "// One activity pass during dataset-cache registration: edit_dataset is",
+      "// still allowed, build is not.",
+      "function apply(capabilities) {",
+      "  const projectControls = {",
+      "    build: capabilities.build, build_same_folder: capabilities.build",
+      "  };",
+      "  [build, again].forEach(c => setActivityDisabled(c, !projectControls[c.id]));",
+      "  const workspaceLocked = !capabilities.edit_dataset;",
+      "  [build, again, field].forEach(c => setActivityDisabled(",
+      "    c, workspaceControlLocked(c, projectControls, workspaceLocked)",
+      "  ));",
+      "}",
+      "apply({ build: false, edit_dataset: true });",
+      "for (const c of [build, again]) {",
+      "  assert.strictEqual(c.disabled, true, c.id);",
+      "  assert.strictEqual(c.attributes['aria-disabled'], 'true', c.id);",
+      "}",
+      "assert.strictEqual(field.disabled, false);",
+      "// Registration ended: both Build actions come back.",
+      "apply({ build: true, edit_dataset: true });",
+      "for (const c of [build, again]) {",
+      "  assert.strictEqual(c.disabled, false, c.id);",
+      "  assert.strictEqual(c.attributes['aria-disabled'], 'false', c.id);",
+      "}",
+      "// A locked workspace still locks everything.",
+      "apply({ build: true, edit_dataset: false });",
+      "assert.strictEqual(build.disabled, true);",
+      "assert.strictEqual(field.disabled, true);",
+      "console.log('ok');"
+    )
+  )
+
+  expect_equal(attr(out, "status"), NULL)
+  expect_identical(out, "ok")
+  apply <- builder_browser_pipeline_js_function(js, "applyBuilderActivityState")
+  expect_match(
+    apply,
+    "workspaceControlLocked(control, projectControls, workspaceLocked)",
+    fixed = TRUE
+  )
+})
+
 test_that("the Build card hides the previous step's dataset line", {
   js <- builder_browser_pipeline_text("www", "builder.js")
   render <- builder_browser_pipeline_js_function(js, "renderBuildProgressDetail")
