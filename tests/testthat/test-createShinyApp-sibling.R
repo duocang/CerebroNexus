@@ -178,6 +178,130 @@ test_that("CRB preflight preserves an inspection error when release also fails",
   expect_identical(events, c("backend", "release"))
 })
 
+test_that("CRB preflight consumes matching Builder verification once", {
+  path <- tempfile(fileext = ".crb")
+  on.exit(unlink(path), add = TRUE)
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
+  writeBin(as.raw(1:8), path)
+  data <- c(First = path)
+  cached <- list(
+    backends = list(
+      First = list(
+        type = "embedded",
+        location = NULL,
+        legacy = FALSE
+      )
+    ),
+    spatial_backends = list(First = NULL),
+    spatial_catalogs = list(First = list(section = "H&E")),
+    dataset_catalog = list(First = NULL)
+  )
+  fingerprints <- list(First = .bundlePreflightFingerprint(path))
+
+  expect_true(.cacheBundlePreflightData(data, cached, fingerprints))
+  observed <- .preflightBundleData(
+    data,
+    read_object = function(path) stop("cached CRB was read again")
+  )
+
+  expect_identical(observed, cached)
+  reads <- 0L
+  .preflightBundleData(
+    data,
+    read_object = function(path) {
+      reads <<- reads + 1L
+      list(path = path)
+    },
+    inspect_backend = function(path, object) cached$backends$First,
+    inspect_spatial = function(object, dataset) cached$spatial_catalogs$First
+  )
+  expect_identical(reads, 1L)
+})
+
+test_that("CRB preflight rejects a same-size cache substitution", {
+  path <- tempfile(fileext = ".crb")
+  on.exit(unlink(path), add = TRUE)
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
+  writeBin(as.raw(1:8), path)
+  data <- c(First = path)
+  cached <- list(
+    backends = list(
+      First = list(
+        type = "embedded",
+        location = NULL,
+        legacy = FALSE
+      )
+    ),
+    spatial_backends = list(First = NULL),
+    spatial_catalogs = list(First = list()),
+    dataset_catalog = list(First = NULL)
+  )
+  fingerprints <- list(First = .bundlePreflightFingerprint(path))
+  expect_true(.cacheBundlePreflightData(data, cached, fingerprints))
+
+  old_time <- file.info(path)$mtime
+  Sys.sleep(0.01)
+  writeBin(as.raw(9:16), path)
+  Sys.setFileTime(path, old_time)
+  reads <- 0L
+  observed <- .preflightBundleData(
+    data,
+    read_object = function(path) {
+      reads <<- reads + 1L
+      list(path = path)
+    },
+    inspect_backend = function(path, object) cached$backends$First,
+    inspect_spatial = function(object, dataset) cached$spatial_catalogs$First
+  )
+
+  expect_identical(reads, 1L)
+  expect_identical(observed, cached)
+})
+
+test_that("cached CRB preflight preserves spatial molecule sidecars", {
+  root <- withr::local_tempdir()
+  crb <- file.path(root, "dataset.crb")
+  object <- Cerebro$new()
+  object$expression <- matrix(
+    1:4,
+    nrow = 2L,
+    dimnames = list(c("gene-1", "gene-2"), c("cell-1", "cell-2"))
+  )
+  object$spatial <- list(
+    fov1 = list(
+      coordinates = data.frame(
+        x = c(0, 1),
+        y = c(0, 1),
+        row.names = c("cell-1", "cell-2")
+      ),
+      expression = object$expression,
+      molecules = data.frame(x = 1, y = 2, gene = "A")
+    )
+  )
+  saveCerebro(object, crb, codec = "rds")
+  data <- c(Dataset = crb)
+  preflight <- .preflightBundleData(data)
+  fingerprints <- list(Dataset = .bundlePreflightFingerprint(crb))
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
+
+  expect_true(.cacheBundlePreflightData(data, preflight, fingerprints))
+  app <- file.path(root, "app")
+  createShinyApp(
+    cerebro_data = data,
+    result_dir = app,
+    launch_browser = FALSE,
+    verbose = FALSE
+  )
+
+  expect_true(dir.exists(file.path(app, "private-data", "dataset.spatial")))
+  expect_true(file.exists(file.path(
+    app,
+    "private-data",
+    "dataset.spatial",
+    "0001.rds"
+  )))
+})
+
 write_spatial_bundle_crb <- function(
   directory,
   name = "dataset.crb",
@@ -2501,7 +2625,7 @@ test_that("one global override cannot serve multiple Cerebro data files", {
   )
 })
 
-test_that("one CRB cannot be reused under two labels", {
+test_that("one CRB can be reused under two stable identities", {
   root <- withr::local_tempdir()
   override <- file.path(root, "host-matrix.h5")
   writeLines("HOST", override)
@@ -2516,43 +2640,24 @@ test_that("one CRB cannot be reused under two labels", {
 
   for (case_name in names(duplicate_paths)) {
     app <- file.path(root, paste0("app-", case_name))
-    dir.create(app)
-    marker <- file.path(app, "marker.txt")
-    writeLines("KEEP", marker)
-
-    expect_error(
-      build_test_app(
-        c(
-          "First label" = crb,
-          "Second label" = duplicate_paths[[case_name]]
-        ),
-        app,
-        cerebro_options = list(expression_matrix_h5 = override)
+    build_test_app(
+      c(
+        "First identity" = crb,
+        "Second identity" = duplicate_paths[[case_name]]
       ),
-      "resolve to the same Cerebro data file"
+      app,
+      cerebro_options = list(expression_matrix_h5 = override)
     )
-
+    config <- readRDS(file.path(app, "cerebro_config.rds"))
     expect_identical(
-      list.files(app, all.files = TRUE, no.. = TRUE),
-      "marker.txt"
+      names(config$crb_file_to_load),
+      c("First identity", "Second identity")
     )
-    marker_exists <- file.exists(marker)
-    expect_true(marker_exists)
-    if (marker_exists) {
-      expect_identical(readLines(marker), "KEEP")
-    }
-    expect_length(
-      list.files(
-        root,
-        all.files = TRUE,
-        no.. = TRUE,
-        pattern = paste0(
-          "^\\.",
-          basename(app),
-          "-(build\\.lock|stage-)"
-        )
-      ),
-      0L
+    bundled <- file.path(app, unname(config$crb_file_to_load))
+    expect_true(all(file.exists(bundled)))
+    expect_identical(
+      unname(tools::md5sum(bundled)),
+      rep(unname(tools::md5sum(crb)), 2L)
     )
   }
 })
@@ -2783,7 +2888,7 @@ test_that("spatial images and settings preserve dataset spatial image nesting", 
   )))
 })
 
-test_that("spatial image bundle targets use encoded portable components", {
+test_that("spatial image bundle targets use one bounded opaque path", {
   target <- .spatialImageBundleTarget(
     "Dataset",
     "section",
@@ -2791,10 +2896,19 @@ test_that("spatial image bundle targets use encoded portable components", {
     "image.png"
   )
 
+  expect_match(
+    target,
+    "^spatial-assets/u[0-9a-f]{32}\\.png$"
+  )
   expect_identical(
     target,
-    "spatial-assets/u44617461736574/u73656374696f6e/u496d616765/u696d6167652e706e67.png"
+    .spatialImageBundleTarget("Dataset", "section", "Image", "image.png")
   )
+  expect_false(identical(
+    target,
+    .spatialImageBundleTarget("Dataset", "section", "Other", "image.png")
+  ))
+  expect_lte(nchar(target, type = "bytes"), 64L)
   expect_false(grepl("\\\\", target))
 })
 
@@ -3184,7 +3298,6 @@ test_that("one spatial image can be shared by multiple data sets", {
 })
 
 test_that("external spatial images render from disk without an HTTP mapping", {
-  skip_if_not_installed("base64enc")
   root <- withr::local_tempdir()
   crb <- write_spatial_bundle_crb(file.path(root, "source"))
   image <- file.path(root, "histology.png")
@@ -3551,7 +3664,7 @@ test_that("named lists of scalar paths are accepted", {
   expect_true(file.exists(file.path(app, "private-data", "dataset.crb")))
 })
 
-test_that("Cerebro data labels cannot be missing", {
+test_that("Cerebro data identities cannot be missing", {
   root <- withr::local_tempdir()
   crb <- write_bundle_crb(file.path(root, "source"))
   app <- file.path(root, "app")
@@ -3563,7 +3676,7 @@ test_that("Cerebro data labels cannot be missing", {
   expect_false(dir.exists(app))
 })
 
-test_that("Cerebro data labels must be unique", {
+test_that("Cerebro data identities must be unique", {
   root <- withr::local_tempdir()
   first <- write_bundle_crb(file.path(root, "first"), "first.crb")
   second <- write_bundle_crb(file.path(root, "second"), "second.crb")
@@ -3669,10 +3782,7 @@ test_that("process cache clones keep thin BPCells expression lazy", {
 test_that("the runtime rejects an H5 backend that is a directory", {
   skip_if_not_installed("HDF5Array")
   runtime <- new.env(parent = globalenv())
-  source_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
+  source_path <- builder_test_inst_path(
     "viewer",
     "utility_functions.R"
   )

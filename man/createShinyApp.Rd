@@ -48,7 +48,8 @@ createShinyApp(
 \arguments{
 \item{cerebro_data}{Non-empty named character vector or list of \code{.crb}
 (or \code{.rds}) file paths. Names must be non-missing and unique and are
-used as stable dataset identities. Paths must resolve to distinct files.}
+used as stable dataset identities. One file may be reused under several
+identities.}
 
 \item{dataset_labels}{Optional named character vector mapping every dataset
 identity in \code{cerebro_data} to its display label. Values must be non-empty
@@ -228,8 +229,9 @@ not reused: a still-running older generated app may retain its former
 \code{.crb}, H5, and BPCells artifacts are not registered as HTTP resources.
 Spatial background images are the deliberate exception: files explicitly
 supplied through \code{spatial_images} are copied verbatim under
-\code{spatial-assets/}. The server-side renderer reads these files and embeds
-them as data URIs; the directory is not registered as an HTTP resource.
+\code{spatial-assets/}. The server exposes each selected file through a
+private, session-scoped URL; image bytes are not Base64-encoded and the
+directory is not registered as a public HTTP resource.
 Callers must provide trusted image files. Preflight requires a minimum
 stable runtime API and reads the ordinary \code{expression_backend} field
 without invoking serialized methods or its getter. The generated
@@ -239,8 +241,8 @@ runtime. Direct launches and uploads also read and validate the ordinary
 field without invoking the getter. A historical CRB may omit both field and
 getter; an object containing only one is rejected as an unsupported mixed
 format.
-Dataset labels and canonical CRB sources are both unique: two labels cannot
-select the same resolved input file.
+Dataset identities are unique, but one resolved input file may be reused
+under several identities (for example for Builder entries).
 Generated bundles follow the standard deployment model of one app per R
 process; process-global \code{Cerebro.options} does not provide same-process
 isolation between separately sourced apps.

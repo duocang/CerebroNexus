@@ -86,6 +86,24 @@ wait_for_input <- function(app, id, timeout = 20000) {
   )
 }
 
+wait_for_dataset <- function(app, label, timeout = 30000) {
+  app$wait_for_js(
+    sprintf(
+      "document.getElementById('crb_file_selector')?.value === %s",
+      jsonlite::toJSON(label, auto_unbox = TRUE)
+    ),
+    timeout = timeout
+  )
+}
+
+select_dataset <- function(app, label, timeout = 30000) {
+  app$run_js(sprintf(
+    "document.getElementById('crb_file_selector').selectize.setValue(%s);",
+    jsonlite::toJSON(label, auto_unbox = TRUE)
+  ))
+  wait_for_dataset(app, label, timeout = timeout)
+}
+
 ## Activate a conditionally shown sidebar tab. Wait for the menu link to be
 ## available, then click it so the tab's outputs render reliably on slow CI.
 activate_tab <- function(app, tab_name, timeout = 20000) {
@@ -156,6 +174,53 @@ test_that("Projection switches categorical spatial datasets coherently", {
     paste0(
       "document.querySelector(",
       "'#overview_projection_cell_view_host canvas:not(.cv-mini)') !== null"
+    ),
+    timeout = 30000
+  )
+
+  expect_false(any(grepl(
+    "color_assignments are required for categorical cell views",
+    app$get_logs()$message,
+    fixed = TRUE
+  )))
+})
+
+test_that("Spatial canvas is replaced after switching datasets from Data info", {
+  local_app_support(inst_dir)
+  app <- AppDriver$new(
+    inst_dir,
+    name = "spatial_dataset_switch_canvas",
+    height = 950,
+    width = 1619
+  )
+  withr::defer(app$stop())
+  app$wait_for_idle(timeout = 30000)
+
+  select_dataset(app, "Mouse ileum (MERFISH)")
+  activate_tab(app, "spatial", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_point_color')?.value ",
+      "=== 'cell_type' && ",
+      "document.getElementById('spatial_projection_cell_view_host')?.",
+      "textContent.includes('Enterocyte (Bottom Villus)')"
+    ),
+    timeout = 30000
+  )
+
+  ## Reproduce the user path: leave Spatial, switch the object on Data info,
+  ## then return. The control UI and Canvas must belong to the same dataset.
+  activate_tab(app, "loadData", timeout = 30000)
+  select_dataset(app, "Mouse brain (Xenium)")
+  activate_tab(app, "spatial", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_point_color')?.value ",
+      "=== 'cluster' && ",
+      "document.getElementById('spatial_projection_cell_view_host')?.",
+      "textContent.includes('C14') && ",
+      "!document.getElementById('spatial_projection_cell_view_host').",
+      "textContent.includes('Enterocyte (Bottom Villus)')"
     ),
     timeout = 30000
   )
