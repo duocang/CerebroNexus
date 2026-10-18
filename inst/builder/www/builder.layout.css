@@ -73,7 +73,7 @@
   border-color: var(--c-border-strong);
   border-top-color: transparent;
   background: var(--c-surface);
-  box-shadow: 0 3px 10px rgb(17 24 39 / .08);
+  box-shadow: var(--shadow-2);
 }
 #workflow_progress.is-workflow-compact .builder-workflow-progress li > button,
 #workflow_progress.is-workflow-compact .builder-workflow-progress li > span {

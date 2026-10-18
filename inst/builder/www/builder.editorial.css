@@ -121,7 +121,7 @@ body {
   border-color: var(--c-border-2);
   border-top-color: transparent;
   background: rgb(255 255 255 / .96);
-  box-shadow: 0 6px 18px rgb(24 29 26 / .055);
+  box-shadow: var(--shadow-2);
   backdrop-filter: blur(12px);
 }
 
@@ -876,8 +876,8 @@ label,
   color: #244c3a;
   background: #f1f8f3;
   border: 1px solid #a6c5b2;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px #00000012;
+  border-radius: var(--r-xs);
+  box-shadow: var(--shadow-2);
   pointer-events: none;
 }
 .builder-project-pending-feedback {

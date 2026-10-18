@@ -146,7 +146,7 @@
   margin: 0 0 0 .1rem;
   padding: .05rem var(--space-2);
   border: 1px solid var(--c-border-strong);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--c-text-muted);
   font: inherit;
@@ -489,7 +489,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   margin: min(30vh, 12rem) auto 0;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--r-md);
   background: var(--c-surface);
   box-shadow: var(--shadow-2);
   color: var(--c-text-muted);
@@ -535,7 +535,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   align-items: center;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--r-md);
   background: var(--c-surface-muted);
 }
 .builder-project-dialog-summary p {
@@ -549,7 +549,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   width: 2rem;
   height: 2rem;
   place-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   background: var(--c-amber-50);
   color: var(--builder-action);
 }
@@ -579,7 +579,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   overflow: hidden;
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-dialog);
+  box-shadow: var(--shadow-4);
 }
 #shiny-modal.modal:has(.builder-legacy-qs-dialog) .modal-content {
   border-top: .3rem solid var(--c-warning);
@@ -1005,7 +1005,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   align-items: center;
   padding: .1rem var(--space-2);
   border: 1px solid var(--c-border);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--c-surface-2);
   color: var(--c-text-subtle);
   font-size: var(--builder-type-micro);
@@ -1120,7 +1120,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-4);
-  border-radius: var(--radius-md);
+  border-radius: var(--r-md);
   background: var(--c-surface-muted);
 }
 .builder-project-artifact-card p {
@@ -1134,7 +1134,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   height: 2.7rem;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   background: var(--builder-action);
   color: white;
   font-size: var(--builder-type-caption);
@@ -1153,7 +1153,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   padding: var(--space-3) var(--space-3);
   border: 1px solid var(--c-border-strong);
   border-left: 3px solid var(--builder-action);
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   background: var(--c-amber-50);
   color: var(--c-text);
   opacity: 1;
@@ -1350,7 +1350,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   min-width: 0;
   padding: var(--space-4);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   background: var(--c-surface);
 }
 .builder-stage-footer {
@@ -1629,10 +1629,10 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   border: 1px solid var(--builder-action);
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   background: var(--builder-action);
   color: var(--c-white);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-1);
   font-size: var(--builder-type-body);
   font-weight: 700;
   line-height: 1.2;
@@ -1652,14 +1652,14 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-file-picker:hover .builder-file-trigger {
   background: var(--builder-action-hover);
   border-color: var(--builder-action-hover);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-2);
 }
 .builder-file-picker:hover .builder-file-trigger--secondary,
 .builder-file-trigger--secondary:hover {
   border-color: var(--builder-action);
   background: var(--c-surface);
   color: var(--builder-action);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-1);
 }
 .builder-file-picker:active .builder-file-trigger {
   background: var(--builder-action-active);
@@ -1704,7 +1704,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   min-width: 0;
   padding: var(--space-3);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   background: var(--c-surface-muted);
 }
 .enhance-tissue-file-meta {
@@ -1748,7 +1748,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   overflow: hidden;
   padding: 0;
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--r-md);
   background: var(--c-surface);
   box-shadow: var(--shadow-1);
 }
@@ -1789,7 +1789,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   flex: 0 0 1.55rem;
   place-items: center;
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-xs);
+  border-radius: var(--r-xs);
   background: var(--c-surface);
   color: var(--c-text-muted);
 }
@@ -1835,7 +1835,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   min-height: 2.75rem;
   padding: var(--space-1) var(--space-2);
   border: 1px solid transparent;
-  border-radius: var(--radius-xs);
+  border-radius: var(--r-xs);
   font: inherit;
   font-size: var(--builder-type-small);
   font-weight: 650;
@@ -2230,7 +2230,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   background: var(--c-surface);
   color: var(--c-text);
   font-weight: 650;
-  box-shadow: 0 8px 24px rgb(0 0 0 / .12);
+  box-shadow: var(--shadow-3);
 }
 .builder-dataset-dropzone-icon {
   display: grid;
@@ -2330,7 +2330,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   justify-content: center;
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--c-amber-300);
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   background: var(--c-amber-50);
   color: var(--c-amber-600);
   font-size: var(--builder-type-body);
@@ -2414,7 +2414,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   width: .45rem;
   height: .45rem;
   flex: 0 0 auto;
-  border-radius: var(--radius-pill);
+  border-radius: var(--r-pill);
   background: currentColor;
   content: "";
 }
@@ -3128,7 +3128,7 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   color: var(--builder-action);
 }
 .builder-workflow-progress .builder-workflow-stage-link:focus-visible {
-  border-radius: .2rem;
+  border-radius: var(--r-xs);
   outline: 2px solid var(--builder-action);
   outline-offset: 2px;
 }
