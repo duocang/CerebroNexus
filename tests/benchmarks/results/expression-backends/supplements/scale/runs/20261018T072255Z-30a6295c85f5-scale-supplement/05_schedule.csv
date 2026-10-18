@@ -1,0 +1,6 @@
+"profile","source","n_cells","comparison","export_repeat","order_position","backend","access_repeats"
+"scale","human_pfc_hbcc",5e+05,TRUE,1,1,"embedded",2
+"scale","human_pfc_hbcc",5e+05,TRUE,2,4,"embedded",2
+"scale","human_pfc_hbcc",5e+05,TRUE,3,3,"embedded",2
+"scale","human_pfc_hbcc",5e+05,TRUE,4,2,"embedded",2
+"scale","human_pfc_hbcc",5e+05,TRUE,5,1,"embedded",2

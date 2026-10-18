@@ -1,0 +1,2 @@
+"source","n_cells","estimated_nnz","estimated_peak_mb","memory_budget_mb","source_bytes","disk_budget_bytes","memory_ok","index_ok","disk_ok","safe","reason","embedded_peak_mb","embedded_safe","embedded_reason"
+"human_pfc_hbcc",5e+05,2055989383.20312,4142,113175,14150526668,320549702860.8,TRUE,TRUE,TRUE,TRUE,"safe out-of-core plan",114748,FALSE,"estimated memory exceeds safe budget"

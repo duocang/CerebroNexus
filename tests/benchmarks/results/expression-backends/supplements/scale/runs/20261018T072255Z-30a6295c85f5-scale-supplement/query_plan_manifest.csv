@@ -1,0 +1,2 @@
+"run_id","profile","source","n_cells","n_genes","nnz","source_prepare_secs","query_plan_secs","peak_rss_mb","subset_n_cells","subset_cells_fingerprint","query_plan_fingerprint","status"
+"20261018T072255Z-30a6295c85f5-scale-supplement","scale","human_pfc_hbcc",5e+05,34176,1982146320,4.1081926333718,207.440220161807,1118.48828125,100000,"acd42d1bc55bc82462acad02da7d0d97","47fca3dda5ed5d1c8b7ddeb57c94d078","OK"
