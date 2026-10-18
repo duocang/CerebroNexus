@@ -1101,3 +1101,27 @@ test_that("embedded Spatial images are served once per session by URL", {
   expect_identical(env$viewerEmbeddedImageUrl(png, session = NULL), png)
   expect_length(ended, 1L)
 })
+
+test_that("embedded images larger than a million base64 characters stay whole", {
+  skip_if_not_installed("base64enc")
+  env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), env)
+  served <- NULL
+  mock <- list(
+    userData = new.env(),
+    registerDataObj = function(name, data, filter) {
+      served <<- data$path
+      paste0("session/", name)
+    },
+    onSessionEnded = function(callback) NULL
+  )
+  set.seed(1)
+  bytes <- c(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    as.raw(sample.int(256L, 900000L, replace = TRUE) - 1L)
+  )
+  uri <- paste0("data:image/png;base64,", base64enc::base64encode(bytes))
+  expect_gt(nchar(uri), 1000000L)
+  expect_match(env$viewerEmbeddedImageUrl(uri, session = mock), "^session/")
+  expect_identical(readBin(served, "raw", file.size(served)), bytes)
+})
