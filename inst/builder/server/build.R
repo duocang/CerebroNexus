@@ -422,11 +422,7 @@ builder_build_recovery_needs_fresh_review <- function(message) {
     "builder_build_dialog",
     list(action = "close")
   )
-  showNotification(
-    message,
-    type = "warning",
-    duration = 6
-  )
+  builder_notify("warning", message, target = "build")
   invisible(FALSE)
 }
 
@@ -446,9 +442,10 @@ builder_build_accounts_missing <- function() {
 
 builder_build_request_accounts <- function() {
   session$sendCustomMessage("builder_open_auth_dialog", list(open = TRUE))
-  showNotification(
+  builder_notify(
+    "info",
     "Enter the login accounts for this build, then build again.",
-    type = "message",
+    target = list(selector = "#builder-auth-dialog"),
     duration = 6
   )
   invisible(FALSE)
@@ -503,11 +500,7 @@ builder_build_attempt_failed <- function(message) {
     "builder_build_dialog",
     list(action = "close")
   )
-  showNotification(
-    message,
-    type = "warning",
-    duration = 6
-  )
+  builder_notify("warning", message, target = "build")
   invisible(FALSE)
 }
 
@@ -610,19 +603,15 @@ prepare_selected_output <- function(path) {
     )
     if (inherits(target_exists, "condition")) {
       build_flow(list(stage = "idle", plan = NULL))
-      showNotification(
-        conditionMessage(target_exists),
-        type = "error",
-        duration = 6
-      )
+      builder_notify("error", conditionMessage(target_exists), target = "build")
       return(invisible(FALSE))
     }
     if (isTRUE(target_exists)) {
       build_flow(list(stage = "idle", plan = NULL))
-      showNotification(
+      builder_notify(
+        "warning",
         "The new release directory is no longer available. Choose the parent folder again.",
-        type = "warning",
-        duration = 8
+        target = "build"
       )
       return(invisible(FALSE))
     }
@@ -765,13 +754,13 @@ choose_build_folder <- function() {
         },
         error = function(error) {
           build_flow(list(stage = "idle", plan = NULL))
-          showNotification(
+          builder_notify(
+            "error",
             paste0(
               "The selected folder could not be checked: ",
               conditionMessage(error)
             ),
-            type = "error",
-            duration = 10
+            target = "build"
           )
         }
       )
@@ -796,20 +785,24 @@ observeEvent(input$use_builder_build_server_folder, {
     error = identity
   )
   if (inherits(path, "condition")) {
-    showNotification(conditionMessage(path), type = "error", duration = 7)
+    builder_notify(
+      "error",
+      conditionMessage(path),
+      target = list(field = "builder_build_server_folder")
+    )
     return()
   }
   accepted <- tryCatch(
     start_builder_new_release(path),
     error = function(error) {
       build_flow(list(stage = "idle", plan = NULL))
-      showNotification(
+      builder_notify(
+        "error",
         paste0(
           "The selected folder could not be checked: ",
           conditionMessage(error)
         ),
-        type = "error",
-        duration = 10
+        target = list(field = "builder_build_server_folder")
       )
       FALSE
     }
@@ -890,14 +883,14 @@ observeEvent(input$build_same_folder, {
     start_builder_new_release(parent),
     error = function(error) {
       build_flow(list(stage = "idle", plan = NULL))
-      showNotification(
+      builder_notify(
+        "error",
         paste0(
           "The previous output folder could not be used: ",
           conditionMessage(error),
           " Choose a folder instead."
         ),
-        type = "error",
-        duration = 10
+        target = "build"
       )
     }
   )
@@ -933,7 +926,7 @@ observeEvent(input$recover_builder_release, {
       "manual inspection is required."
     )
     result(builder_result_recovery_followup(current, message, recovery))
-    showNotification(message, type = "error", duration = 10)
+    builder_notify("error", message, target = "build")
     return()
   }
   current_worker <- isolate(worker())
@@ -953,7 +946,7 @@ observeEvent(input$recover_builder_release, {
         "Restart this Builder session and try recovery again."
       )
       result(builder_result_recovery_followup(current, message, recovery))
-      showNotification(message, type = "error", duration = 10)
+      builder_notify("error", message, target = "build")
       return()
     }
   }
@@ -990,19 +983,20 @@ observeEvent(input$recover_builder_release, {
       "The interrupted release could not be recovered."
     }
     result(builder_result_recovery_followup(current, message, refreshed))
-    showNotification(message, type = "error", duration = 10)
+    builder_notify("error", message, target = "build")
     return()
   }
   result(NULL)
   build_flow(list(stage = "idle", plan = NULL))
   busy_note(NULL)
-  showNotification(
+  builder_notify(
+    "success",
     if (identical(action, "restore")) {
       "The previous release was restored. You can build again."
     } else {
       "The interrupted release was cleared. You can build again."
     },
-    type = "message",
+    target = "build",
     duration = 6
   )
 })
@@ -1050,12 +1044,12 @@ remove_dataset <- function(
     }
   }
   result(NULL)
-  showNotification(
+  builder_notify(
+    "info",
     tagList(
       paste0("Removed ", entry$settings$name, ". "),
       actionLink("undo_remove_notice", "Undo")
     ),
-    type = "message",
     duration = 10
   )
 }
