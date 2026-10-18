@@ -6,7 +6,9 @@
   such as the MERFISH demo. The image rotates in data space about the origin,
   the same way `spatial_plot_rotation` rotates the cell coordinates.
 - Declares only the packages the code uses: `httr` is now a Suggests entry,
-  and the unused `formattable` and `reshape2` are no longer listed.
+  and the unused `formattable` and `reshape2` are no longer listed. The Nix
+  environment (`create_env.R`, `default.nix`) drops `data.table`, `formattable`
+  and `shinyvalidate`, and `create_env.R` groups its packages by role.
 - Internal clean-up with no change in behaviour: shared helpers replace
   duplicated code in Spatial, Linked views, Trekker and `cell_views.js`, and
   unused reactives, outputs and CSS rules are removed.
