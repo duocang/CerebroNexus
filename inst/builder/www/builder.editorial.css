@@ -525,9 +525,6 @@ body {
   font-size: var(--builder-type-subtitle);
 }
 
-.builder-configure-inspect {
-  border-bottom-color: var(--c-border);
-}
 
 /* Forms */
 label,
@@ -566,8 +563,11 @@ label,
   box-shadow: var(--shadow-3);
 }
 
+/* Closes the dataset summary, above Essentials. */
 .builder-configure-metadata {
-  margin-top: var(--space-3);
+  margin: 0 0 var(--space-5);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .builder-configure-metadata > summary {

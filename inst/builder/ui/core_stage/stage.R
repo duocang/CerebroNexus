@@ -50,6 +50,24 @@ builder_core_stage_ui <- function(id, model) {
   div(
     id = ns("stage"),
     class = "builder-stage-section builder-stage-core",
+    ## Sits directly under the dataset summary it describes.
+    tags$details(
+      class = "builder-configure-metadata",
+      `data-disclosure-key` = "available-metadata",
+      tags$summary(
+        "Available metadata",
+        span(
+          class = "builder-detected-content-count",
+          paste(length(group_catalog$items), "columns")
+        )
+      ),
+      div(
+        class = "builder-configure-metadata-chips",
+        lapply(group_catalog$items, function(item) {
+          span(item$label)
+        })
+      )
+    ),
     h3("Essentials"),
     tags$input(
       id = ns("rendered_for"),
@@ -91,17 +109,23 @@ builder_core_stage_ui <- function(id, model) {
             placeholder = "Select organism"
           )
         ),
-        if (builder_stage_has_text(model$organism_detected)) {
-          p(
-            class = "builder-organism-detected",
-            "Detected from gene names"
+        ## One caption line in the space every field reserves, so the
+        ## Assay/Layer row is not pushed down under this field alone.
+        div(
+          class = "builder-field-help",
+          if (builder_stage_has_text(model$organism_detected)) {
+            span(
+              class = "builder-organism-detected",
+              "Detected from gene names"
+            )
+          },
+          tags$button(
+            id = ns("organism_apply_all"),
+            type = "button",
+            class = "btn btn-link action-button builder-organism-apply-all",
+            title = "Use this organism for every dataset not checked yet",
+            "Apply to all unchecked"
           )
-        },
-        tags$button(
-          id = ns("organism_apply_all"),
-          type = "button",
-          class = "btn btn-link action-button builder-organism-apply-all",
-          "Apply to all unchecked datasets"
         )
       ),
       div(
@@ -121,23 +145,6 @@ builder_core_stage_ui <- function(id, model) {
           choices = model$layer_choices,
           selected = model$layer
         )
-      )
-    ),
-    tags$details(
-      class = "builder-configure-metadata",
-      `data-disclosure-key` = "available-metadata",
-      tags$summary(
-        "Available metadata",
-        span(
-          class = "builder-detected-content-count",
-          paste(length(group_catalog$items), "columns")
-        )
-      ),
-      div(
-        class = "builder-configure-metadata-chips",
-        lapply(group_catalog$items, function(item) {
-          span(item$label)
-        })
       )
     ),
     tags$section(

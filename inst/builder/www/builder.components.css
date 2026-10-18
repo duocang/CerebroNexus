@@ -1470,17 +1470,19 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 .builder-stage-configure > #configure_actions > .builder-stage-footer {
   box-shadow: 0 -.5rem 1rem -.75rem rgb(0 0 0 / .22);
 }
+/* The summary flows straight into "Available metadata"; the one divider
+   sits under that line, above Essentials. */
 .builder-configure-inspect {
-  margin-bottom: var(--space-4);
-  border-bottom: 1px solid var(--c-border);
+  margin-bottom: var(--space-3);
 }
+.builder-stage-configure .builder-stage-core { margin-top: 0; }
 .builder-configure-inspect > summary {
   width: 100%;
   padding: var(--space-3) 0;
   color: var(--c-text-muted);
   font-size: var(--builder-type-small);
 }
-.builder-configure-inspect .builder-stage-inspect { margin-bottom: var(--space-4); }
+.builder-configure-inspect .builder-stage-inspect { margin-bottom: 0; }
 .builder-configure-metadata-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1989,25 +1991,69 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 }
 /* The note follows the live selection: it hides once the user picks another
    organism than the one guessed from gene names. */
+/* Every Essentials field reserves one caption line below its control, so
+   the organism helper never makes its row taller than its neighbours. */
+.builder-stage-configure .builder-form-grid > .builder-field {
+  position: relative;
+  padding-bottom: var(--space-6);
+}
+.builder-stage-configure .builder-form-grid > .builder-field > .form-group {
+  margin-bottom: 0;
+}
+.builder-field-help {
+  position: absolute;
+  bottom: var(--space-1);
+  left: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--c-text-muted);
+  font-size: var(--builder-type-caption);
+  line-height: 1.35;
+  white-space: nowrap;
+}
 .builder-organism-detected {
   display: none;
-  margin: calc(-1 * var(--space-2)) 0 var(--space-2);
   color: var(--c-text-muted);
   font-size: var(--builder-type-caption);
 }
 .builder-field--organism[data-builder-detected-organism="hg"]:has(.selectize-input .item[data-value="hg"]) .builder-organism-detected,
 .builder-field--organism[data-builder-detected-organism="mm"]:has(.selectize-input .item[data-value="mm"]) .builder-organism-detected {
-  display: block;
+  display: inline;
 }
-.builder-organism-apply-all {
+.builder-organism-detected::after {
+  margin-left: var(--space-2);
+  color: var(--c-text-subtle);
+  content: "·";
+}
+/* A text action, not a bordered button. */
+.btn.builder-organism-apply-all {
   min-height: 0;
-  margin: calc(-1 * var(--space-2)) 0 var(--space-2);
+  margin: 0;
   padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--builder-action);
   font-size: var(--builder-type-caption);
+  font-weight: 600;
+  line-height: 1.35;
   text-align: left;
+  white-space: nowrap;
+}
+.btn.builder-organism-apply-all:hover,
+.btn.builder-organism-apply-all:focus-visible {
+  background: transparent;
+  color: var(--builder-action-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .builder-field--organism:has(.selectize-input:not(.has-items)) .builder-organism-apply-all {
   display: none;
+}
+/* Single column: no neighbour to spill into, so the line may wrap. */
+@media (max-width: 40rem) {
+  .builder-field-help { position: static; flex-wrap: wrap; white-space: normal; }
+  .builder-stage-configure .builder-form-grid > .builder-field { padding-bottom: var(--space-3); }
 }
 .builder-field[data-builder-creatable-select="true"] select.selectized {
   display: none !important;
