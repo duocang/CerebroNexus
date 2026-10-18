@@ -397,6 +397,12 @@ test_that("the Project status shows CRB progress with a Cancel action", {
   expect_match(html, "Building dataset cache · 2 of 3 · Kidney atlas", fixed = TRUE)
   expect_match(html, "cancel_builder_project_crbs", fixed = TRUE)
   expect_match(html, "is-busy", fixed = TRUE)
+  # The Cancel action is styled by the status stylesheet, not as a
+  # Bootstrap link with inline overrides.
+  expect_match(html, "action-button builder-project-status-cancel", fixed = TRUE)
+  expect_match(html, "builder-project-status-label", fixed = TRUE)
+  expect_false(grepl("btn-link", html, fixed = TRUE))
+  expect_false(grepl("style=", html, fixed = TRUE))
 
   syncing <- as.character(runtime$builder_project_status_ui(
     list(name = "P"),

@@ -117,19 +117,13 @@ builder_project_status_ui <- function(
         tagList(
           # The label is not the last child here, so it carries the
           # truncation the stylesheet gives the last status span.
-          tags$span(
-            style = paste(
-              "min-width: 0; overflow: hidden;",
-              "text-overflow: ellipsis; white-space: nowrap;"
-            ),
-            label
-          ),
-          actionButton(
-            "cancel_builder_project_crbs",
-            "Cancel",
-            class = "btn btn-link builder-project-status-cancel",
-            style = "flex: 0 0 auto; padding: 0; font-size: inherit;",
-            `aria-label` = "Cancel dataset cache builds"
+          tags$span(class = "builder-project-status-label", label),
+          tags$button(
+            id = "cancel_builder_project_crbs",
+            type = "button",
+            class = "action-button builder-project-status-cancel",
+            `aria-label` = "Cancel dataset cache builds",
+            "Cancel"
           )
         )
       } else {

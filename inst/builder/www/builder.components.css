@@ -133,10 +133,39 @@
   align-items: center;
   gap: .38rem;
 }
-.builder-project-status-detail > span:last-child {
+.builder-project-status-detail > span:last-child,
+.builder-project-status-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* A quiet inline action beside the status text, not a Bootstrap link. */
+.builder-project-status-cancel {
+  flex: 0 0 auto;
+  margin: 0 0 0 .1rem;
+  padding: .05rem .4rem;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--c-text-muted);
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.builder-project-status-cancel:hover {
+  border-color: var(--builder-action);
+  color: var(--builder-action);
+}
+.builder-project-status-cancel:focus-visible {
+  outline: 2px solid var(--builder-action);
+  outline-offset: 1px;
+}
+.builder-project-status-cancel:disabled {
+  opacity: .55;
+  cursor: default;
 }
 .builder-project-status-dot {
   width: .58rem;
