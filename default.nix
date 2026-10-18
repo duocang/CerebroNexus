@@ -11,9 +11,7 @@
 #  > "callr",
 #  > "png",
 #  > "withr",
-#  > "formattable",
 #  > "stringr",
-#  > "shinyvalidate",
 #  > "Seurat",
 #  > "SeuratObject",
 #  > "base64enc",
@@ -76,7 +74,6 @@ let
       biomaRt
       callr
       chromote
-      data_table
       ggdendro
       patchwork
       fs
@@ -86,7 +83,6 @@ let
       devtools
       dplyr
       DT
-      formattable
       future_apply
       ggplot2
       glue
@@ -119,7 +115,6 @@ let
       shinyjs
       shinymanager
       shinytest2
-      shinyvalidate
       shinyWidgets
       stringdist
       stringr
