@@ -3032,6 +3032,10 @@
     backdrop.className = "builder-confirm-backdrop";
     var dialog = document.createElement("div");
     dialog.className = "builder-dialog builder-confirm-dialog";
+    var kicker = document.createElement("span");
+    kicker.className = "builder-project-modal-kicker";
+    kicker.textContent = "Dataset";
+    dialog.appendChild(kicker);
     var title = document.createElement("h2");
     title.id = "builder-remove-title";
     title.textContent = "Remove dataset setup?";
@@ -3041,11 +3045,11 @@
     actions.className = "builder-dialog-actions builder-confirm-actions";
     var cancel = document.createElement("button");
     cancel.type = "button";
-    cancel.className = "btn";
+    cancel.className = "btn btn-default";
     cancel.textContent = "Keep dataset";
     var confirm = document.createElement("button");
     confirm.type = "button";
-    confirm.className = "btn btn-remove-soft";
+    confirm.className = "btn btn-danger";
     confirm.textContent = "Remove dataset";
     actions.appendChild(cancel);
     actions.appendChild(confirm);

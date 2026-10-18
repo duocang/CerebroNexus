@@ -2736,15 +2736,17 @@ input.is-invalid {
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: rgba(17, 17, 26, .42);
+  /* Same backdrop as the Shiny dialogs and the picker overlay. */
+  background: rgb(15 23 42 / .38);
+  backdrop-filter: blur(2px);
   opacity: 0;
   transition: opacity var(--duration-normal) var(--ease-standard);
 }
 .builder-confirm-backdrop[hidden] { display: none; }
 .builder-dialog,
 .builder-confirm-dialog {
-  width: min(28rem, 100%);
-  padding: var(--space-5);
+  width: min(30rem, 100%);
+  padding: var(--space-6);
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
   background: var(--c-surface);
@@ -2760,8 +2762,28 @@ input.is-invalid {
 .builder-confirm-backdrop.is-visible,
 .builder-analysis-info-backdrop.is-visible { opacity: 1; }
 .builder-dialog.is-visible { opacity: 1; transform: none; }
-.builder-confirm-dialog h2 { margin: 0 0 var(--space-2); font-size: var(--builder-type-subtitle); }
-.builder-confirm-dialog p { margin: 0 0 var(--space-4); color: var(--c-text-muted); }
+/* Client-side dialogs share the Builder dialog frame: kicker, semibold
+   title at the title token, body text at the body token. */
+.builder-dialog > .builder-project-modal-kicker {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+.builder-dialog h2,
+.builder-confirm-dialog h2 {
+  margin: 0 0 var(--space-3);
+  color: var(--c-text);
+  font-size: var(--builder-type-title);
+  font-weight: 650;
+  line-height: 1.25;
+}
+.builder-confirm-dialog p {
+  margin: 0 0 var(--space-5);
+  color: var(--c-text);
+  font-size: var(--builder-type-body);
+  line-height: 1.55;
+}
+.builder-dialog-actions .btn,
+.builder-confirm-actions .btn { min-height: 2.5rem; }
 
 .builder-build-dialog {
   width: min(31rem, calc(100vw - 2rem));

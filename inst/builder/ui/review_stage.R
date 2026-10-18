@@ -117,6 +117,7 @@ builder_auth_dialog_ui <- function() {
       div(
         class = "builder-auth-header",
         div(
+          tags$span(class = "builder-project-modal-kicker", "Build"),
           h2(id = "builder-auth-title", "Login accounts"),
           p(
             id = "builder-auth-description",

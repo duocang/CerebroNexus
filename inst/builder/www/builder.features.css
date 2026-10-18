@@ -1960,7 +1960,9 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: rgb(20 24 37 / 58%);
+  /* Same backdrop and frame as the other Builder dialogs. */
+  background: rgb(15 23 42 / .38);
+  backdrop-filter: blur(2px);
   opacity: 0;
   transition: opacity var(--duration-base) var(--ease);
 }
@@ -1970,10 +1972,10 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
   width: min(44rem, 100%);
   max-height: calc(100dvh - 2rem);
   overflow: auto;
-  border: 1px solid var(--c-border-2);
-  border-radius: calc(var(--r-md) + .2rem);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
   background: var(--c-surface);
-  box-shadow: var(--shadow-3);
+  box-shadow: var(--shadow-4);
   transform: translateY(.35rem);
   transition: transform var(--duration-base) var(--ease);
   overscroll-behavior: contain;
@@ -1984,10 +1986,20 @@ details > summary:focus-visible { outline: 2px solid var(--builder-action); outl
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-5) var(--space-6) var(--space-4);
+  padding: var(--space-6) var(--space-6) var(--space-4);
   border-bottom: 1px solid var(--c-border);
 }
-.builder-auth-header h2 { margin: 0; font-size: var(--builder-type-title); }
+.builder-auth-header .builder-project-modal-kicker {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+.builder-auth-header h2 {
+  margin: 0;
+  color: var(--c-text);
+  font-size: var(--builder-type-title);
+  font-weight: 650;
+  line-height: 1.25;
+}
 .builder-auth-header p {
   margin: var(--space-1) 0 0;
   color: var(--c-text-muted);
