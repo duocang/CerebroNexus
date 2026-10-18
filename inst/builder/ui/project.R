@@ -564,8 +564,8 @@ builder_project_restore_row_ui <- function(record) {
   status_icon <- switch(
     status_tone,
     ready = "check",
-    warning = "exclamation-triangle",
-    "info-circle"
+    warning = "exclamation",
+    "info"
   )
   source_size <- builder_project_restore_source_size(record)
   artifact_size <- builder_project_restore_artifact_size(record)
@@ -622,7 +622,11 @@ builder_project_restore_row_ui <- function(record) {
           tags$span(
             class = "builder-project-restore-size",
             title = "Stored dataset cache size",
-            paste("Cache", artifact_size %||% "none")
+            if (is.null(artifact_size)) {
+              "Not cached"
+            } else {
+              paste("Cache", artifact_size)
+            }
           )
         )
       )
@@ -671,6 +675,15 @@ builder_project_restore_dialog <- function(manifest) {
   reused <- sum(actions == "reuse")
   sourced <- sum(actions %in% c("resume", "reload"))
   selected <- total - skipped
+  notice_tone <- if (skipped > 0L) {
+    "warning"
+  } else if (reloaded > 0L) {
+    "caution"
+  } else if (reused > 0L) {
+    "ready"
+  } else {
+    "neutral"
+  }
   modalDialog(
     title = builder_dialog_title("Choose Datasets to Open"),
     tags$div(
@@ -722,24 +735,20 @@ builder_project_restore_dialog <- function(manifest) {
       ),
       tags$div(
         class = "builder-project-restore-notice",
-        `data-tone` = if (skipped > 0L) {
-          "warning"
-        } else if (reloaded > 0L) {
-          "caution"
-        } else {
-          "ready"
-        },
+        # Success only when something actually opens from the cache.
+        `data-tone` = notice_tone,
         role = "status",
         `aria-live` = "polite",
         tags$span(
           class = "builder-project-restore-notice-icon",
           `aria-hidden` = "true",
           shiny::icon(
-            if (skipped > 0L || reloaded > 0L) {
-              "exclamation-triangle"
-            } else {
-              "check"
-            }
+            switch(
+              notice_tone,
+              ready = "check",
+              neutral = "info",
+              "exclamation"
+            )
           )
         ),
         tags$p(

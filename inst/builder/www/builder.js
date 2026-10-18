@@ -2812,14 +2812,17 @@
         : "This project does not contain saved datasets.");
     }
     noticeText.textContent = messages.join(" ");
+    // Success only when something actually opens from the cache.
     notice.dataset.tone = counts.skipped > 0
       ? "warning"
-      : (counts.reloaded > 0 ? "caution" : "ready");
+      : (counts.reloaded > 0 ? "caution" : (counts.reused > 0 ? "ready" : "neutral"));
     var icon = notice.querySelector(".builder-project-restore-notice-icon i");
     if (icon) {
       icon.className = notice.dataset.tone === "ready"
         ? "fas fa-check"
-        : "fas fa-triangle-exclamation";
+        : (notice.dataset.tone === "neutral"
+          ? "fas fa-info"
+          : "fas fa-exclamation");
     }
   }
 

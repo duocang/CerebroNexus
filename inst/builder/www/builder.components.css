@@ -892,20 +892,28 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   color: var(--c-text);
 }
 .builder-project-restore-notice[data-tone="ready"] {
-  border-color: color-mix(in srgb, #176b35 30%, var(--c-border));
-  background: #eaf6ee;
-  color: #145c2e;
+  border-color: color-mix(in srgb, var(--c-success-700) 30%, var(--c-border));
+  background: var(--c-success-50);
+  color: var(--c-success-700);
 }
+/* Same circled glyph as the rail's "Checked" stamp. */
 .builder-project-restore-notice-icon {
   display: grid;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
   place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
   color: var(--builder-action);
+  font-size: .6rem;
 }
 .builder-project-restore-notice[data-tone="ready"]
   .builder-project-restore-notice-icon {
-  color: #176b35;
+  color: var(--c-success-700);
+}
+.builder-project-restore-notice[data-tone="neutral"]
+  .builder-project-restore-notice-icon {
+  color: var(--c-text-muted);
 }
 .builder-project-restore-notice p {
   margin: 0;
@@ -1003,9 +1011,9 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   white-space: nowrap;
 }
 .builder-project-restore-crb-tag[data-tone="ready"] {
-  border-color: color-mix(in srgb, #176b35 35%, var(--c-border));
-  background: #eaf6ee;
-  color: #145c2e;
+  border-color: color-mix(in srgb, var(--c-success-700) 35%, var(--c-border));
+  background: var(--c-success-50);
+  color: var(--c-success-700);
 }
 .builder-project-restore-crb-tag[data-tone="none"] {
   border-color: var(--c-border-strong);
@@ -1026,8 +1034,10 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   height: 1rem;
   flex: 0 0 auto;
   place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
   color: var(--c-text-muted);
-  font-size: var(--builder-type-micro);
+  font-size: .5rem;
 }
 .builder-project-restore-row[data-status-tone="warning"]
   .builder-project-restore-status-icon {
@@ -1035,7 +1045,12 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
 }
 .builder-project-restore-row[data-status-tone="ready"]
   .builder-project-restore-status-icon {
-  color: #176b35;
+  color: var(--builder-rail-ready-fg);
+}
+.builder-project-restore-row[data-status-tone="ready"]
+  .builder-project-restore-status {
+  color: var(--c-success-700);
+  font-weight: 600;
 }
 .builder-project-restore-sizes {
   display: inline-flex;
@@ -1060,36 +1075,44 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   min-width: 0;
   margin: 0;
 }
-.builder-project-restore-row select {
+/* Open mode: the Builder's field look with its own chevron instead of the
+   bare native control. The row's Cached tag carries the state, not a fill. */
+#shiny-modal .builder-project-restore-row select {
   width: 100%;
-  min-height: 2.4rem;
+  min-height: 2.5rem;
   max-width: none;
-  border-color: var(--c-border-strong);
-  background-color: var(--c-surface);
-  color: var(--c-text);
-  font-size: var(--builder-type-small);
+  padding: var(--space-2) 2.25rem var(--space-2) var(--space-3);
+  border: 1px solid var(--c-border-2) !important;
+  border-radius: var(--r-sm) !important;
+  background: var(--c-surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%236b6b70' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right var(--space-3) center / .75rem !important;
+  color: var(--c-text) !important;
+  font-size: var(--builder-type-small) !important;
+  font-weight: 600;
+  line-height: 1.35;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-standard);
 }
-.builder-project-restore-row select:focus-visible {
-  outline: 2px solid var(--builder-action);
-  outline-offset: 2px;
+#shiny-modal .builder-project-restore-row select:hover {
+  border-color: var(--c-text-3) !important;
 }
-.builder-project-restore-row[data-current-action="reuse"] select {
-  border-color: color-mix(in srgb, #176b35 45%, var(--c-border));
-  background-color: #eaf6ee;
-  color: #145c2e;
-  font-weight: 650;
+#shiny-modal .builder-project-restore-row select:focus,
+#shiny-modal .builder-project-restore-row select:focus-visible {
+  border-color: var(--builder-action) !important;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgb(150 71 34 / .12) !important;
 }
-.builder-project-restore-row[data-current-action="reuse"] select:hover {
-  border-color: #176b35;
-  background-color: #e1f2e7;
+#shiny-modal .builder-project-restore-row[data-current-action="skip"] select {
+  color: var(--c-text-muted) !important;
+  font-weight: 500;
 }
-.builder-project-restore-row[data-current-action="reuse"] select:focus-visible {
-  outline-color: #176b35;
-}
-.builder-project-restore-row select:disabled {
-  border-color: var(--c-border);
-  background: var(--c-surface-2);
-  color: var(--c-text-muted);
+#shiny-modal .builder-project-restore-row select:disabled {
+  border-color: var(--c-border) !important;
+  background-color: var(--c-surface-2) !important;
+  color: var(--c-text-muted) !important;
   cursor: progress;
   opacity: 1;
 }
