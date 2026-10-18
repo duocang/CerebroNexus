@@ -1071,7 +1071,11 @@ observeEvent(
       error = identity
     )
     if (inherits(display, "condition")) {
-      showNotification(conditionMessage(display), type = "error")
+      builder_notify(
+        "error",
+        conditionMessage(display),
+        target = list(selector = ".builder-viewer-display")
+      )
       return()
     }
     entry <- isolate(entry_of(action$id))

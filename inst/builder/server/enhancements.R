@@ -182,9 +182,10 @@ observeEvent(input[["enhance-marker_import_files"]], {
     entry$settings$groups %||%
     names(entry$levels %||% list())
   if (!nzchar(method) || !group %in% groups) {
-    showNotification(
+    builder_notify(
+      "error",
       "Enter a method name and choose Groups before adding files.",
-      type = "error"
+      target = list(field = "enhance-marker_import_method")
     )
     return()
   }
@@ -275,9 +276,10 @@ observeEvent(input[["enhance-marker_source_confirm"]], {
     silent = TRUE
   )
   if (inherits(got, "try-error")) {
-    showNotification(
+    builder_notify(
+      "error",
       "This source mapping could not be confirmed.",
-      type = "error"
+      target = list(field = "enhance-marker_source_confirm")
     )
     return()
   }
@@ -301,9 +303,10 @@ observeEvent(input[["enhance-marker_import_save"]], {
     builder_marker_existing_methods(entry)
   )
   if (!isTRUE(validation$ready)) {
-    showNotification(
+    builder_notify(
+      "error",
       "Resolve every Marker import source before saving.",
-      type = "error"
+      target = list(field = "enhance-marker_import_save")
     )
     return()
   }
@@ -346,10 +349,12 @@ add_enhance_table_files <- function(
     records <- inventories[[index]] %||%
       list(error = "Could not read this workbook.")
     if (!length(records) || !is.null(records$error)) {
-      showNotification(
+      builder_notify(
+        "error",
         records$error %||% paste0(filename, ": No worksheets were found."),
-        type = "error",
-        duration = 8
+        target = list(
+          selector = ".builder-viewer-extra-material .builder-viewer-card-body"
+        )
       )
       next
     }
@@ -466,14 +471,18 @@ schedule_enhance_table_files <- function(
     }
     return(invisible(FALSE))
   }
-  notification_id <- showNotification(
+  notification_id <- builder_notify(
+    "info",
     "Reading workbook sheets…",
-    duration = NULL,
+    target = list(
+      selector = ".builder-viewer-extra-material .builder-viewer-card-body"
+    ),
+    duration = Inf,
     session = session
   )
   task <- tryCatch(start_enhance_table_inventory(uploads), error = identity)
   finish <- function(inventories = NULL, failed = FALSE) {
-    removeNotification(notification_id, session = session)
+    builder_notify_clear(notification_id, session = session)
     if (is.function(on_complete)) {
       try(on_complete(), silent = TRUE)
     }
@@ -490,10 +499,12 @@ schedule_enhance_table_files <- function(
       return(invisible(FALSE))
     }
     if (isTRUE(failed)) {
-      showNotification(
+      builder_notify(
+        "error",
         "Workbook sheets could not be read.",
-        type = "error",
-        duration = 7,
+        target = list(
+          selector = ".builder-viewer-extra-material .builder-viewer-card-body"
+        ),
         session = session
       )
       return(invisible(FALSE))
@@ -587,10 +598,12 @@ observeEvent(
       if (
         !any(workbook_rows) || !nzchar(new_name) || new_name %in% other_names
       ) {
-        showNotification(
+        builder_notify(
+          "error",
           "Workbook names must be non-empty and unique.",
-          type = "error",
-          duration = 5
+          target = list(
+            selector = ".builder-viewer-extra-material .builder-viewer-card-body"
+          )
         )
         return()
       }
@@ -615,10 +628,12 @@ observeEvent(
       }
       new_name <- trimws(action$name)
       if (!nzchar(new_name)) {
-        showNotification(
+        builder_notify(
+          "error",
           "Table names must be non-empty.",
-          type = "error",
-          duration = 5
+          target = list(
+            selector = ".builder-viewer-extra-material .builder-viewer-card-body"
+          )
         )
         return()
       }
@@ -704,7 +719,7 @@ run_result_action <- function(action) {
     } else {
       "The requested result action could not be completed."
     }
-    showNotification(message, type = "error")
+    builder_notify("error", message, target = "build")
   }
 }
 copy_result_value <- function(value) {
@@ -740,9 +755,10 @@ observeEvent(
     current_result <- isolate(result())
     dataset_id <- current_result$failed_dataset_id %||% NULL
     if (!builder_stage_has_text(dataset_id %||% "")) {
-      showNotification(
+      builder_notify(
+        "error",
         "The failed optional work could not be removed.",
-        type = "error"
+        target = "build"
       )
       return()
     }
@@ -754,18 +770,20 @@ observeEvent(
       intersect(entry$settings$analyses %||% character(), failed)
     }
     if (!length(removable)) {
-      showNotification(
+      builder_notify(
+        "error",
         "The failed optional work could not be removed.",
-        type = "error"
+        target = "build"
       )
       return()
     }
     entry$settings$analyses <- setdiff(entry$settings$analyses, removable)
     changed <- try(replace_entry(entry), silent = TRUE)
     if (inherits(changed, "try-error") || !isTRUE(changed)) {
-      showNotification(
+      builder_notify(
+        "error",
         "The failed optional work could not be removed.",
-        type = "error"
+        target = "build"
       )
       return()
     }
@@ -793,9 +811,9 @@ observeEvent(
       silent = TRUE
     )
     if (inherits(restarted, "try-error") || !isTRUE(restarted)) {
-      showNotification(
-        "The background worker could not restart. Try again or restart this Builder session.",
-        type = "error"
+      builder_notify(
+        "error",
+        "The background worker could not restart. Try again or restart this Builder session."
       )
       return()
     }
