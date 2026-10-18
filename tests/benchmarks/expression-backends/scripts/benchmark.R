@@ -1940,6 +1940,87 @@ bench_compare_environments <- function(
   )
 }
 
+# Combine a full study run with supplement runs from the same host. A
+# supplement build may only take the place of a study build that was skipped for
+# resources; successful study measurements are never replaced. Every row keeps
+# its acquisition run_id and gains source_run_id/collection_id; replaced skip
+# rows are returned separately so they stay on record. No values are altered.
+bench_assemble_supplement <- function(study_dir, supplement_dirs, collection_id) {
+  read <- function(dir, name) {
+    utils::read.csv(file.path(dir, name), stringsAsFactors = FALSE, check.names = FALSE)
+  }
+  manifest_of <- function(dir) bench_manifest_values(read(dir, "run_manifest.csv"))
+  value <- function(values, key) {
+    v <- unname(values[key])
+    if (length(v) != 1L || is.na(v)) "" else v
+  }
+  cell <- function(d) {
+    paste(d$source, sprintf("%.0f", as.numeric(d$n_cells)), d$backend, d$export_repeat, sep = "\r")
+  }
+  tag <- function(d, run_id) {
+    d$source_run_id <- rep(run_id, nrow(d))
+    d
+  }
+  append <- function(base, extra, what) {
+    if (!setequal(names(base), names(extra))) {
+      stop("supplement ", what, " columns differ from the study", call. = FALSE)
+    }
+    rbind(base, extra[names(base)])
+  }
+
+  study <- manifest_of(study_dir)
+  if (nzchar(value(study, "result_kind")) || nzchar(value(study, "schedule_filter"))) {
+    stop("the study must be a single complete run, not a collection or supplement", call. = FALSE)
+  }
+  study_id <- value(study, "run_id")
+  exports <- tag(read(study_dir, "10_export.csv"), study_id)
+  access <- tag(read(study_dir, "20_access.csv"), study_id)
+  timings <- tag(read(study_dir, "21_access_timings.csv"), study_id)
+  skips <- exports[0L, , drop = FALSE]
+  same_keys <- c("profile", "timing_contract", "elapsed_clock", "h5_gzip_level", "h5_uncompressed_gzip_level")
+
+  for (dir in supplement_dirs) {
+    supplement <- manifest_of(dir)
+    run_id <- value(supplement, "run_id")
+    if (!nzchar(value(supplement, "schedule_filter"))) {
+      stop(run_id, " is not a filtered supplement", call. = FALSE)
+    }
+    differing <- same_keys[vapply(same_keys, function(k) value(study, k) != value(supplement, k), logical(1))]
+    environment <- bench_compare_environments(study, supplement)
+    if (length(differing) || !environment$comparable) {
+      stop(
+        run_id, " was not measured like the study: ",
+        paste(c(differing, environment$missing, environment$different), collapse = ", "),
+        call. = FALSE
+      )
+    }
+    extra <- read(dir, "10_export.csv")
+    if (!nrow(extra) || any(extra$status != "OK")) {
+      stop(run_id, " must contain only successful builds", call. = FALSE)
+    }
+    target <- match(cell(extra), cell(exports))
+    if (anyNA(target) || anyDuplicated(target)) {
+      stop(run_id, " has builds outside the study schedule", call. = FALSE)
+    }
+    if (
+      !all(startsWith(exports$status[target], "SKIPPED(resource)")) ||
+        any(cell(access) %in% cell(extra))
+    ) {
+      stop(run_id, " may only replace builds the study skipped for resources", call. = FALSE)
+    }
+    skips <- rbind(skips, exports[target, , drop = FALSE])
+    exports <- append(exports[-target, , drop = FALSE], tag(extra, run_id), "export")
+    access <- append(access, tag(read(dir, "20_access.csv"), run_id), "access")
+    timings <- append(timings, tag(read(dir, "21_access_timings.csv"), run_id), "timing")
+  }
+
+  exports$collection_id <- collection_id
+  access$collection_id <- collection_id
+  timings$collection_id <- collection_id
+  skips$collection_id <- rep(collection_id, nrow(skips))
+  list(exports = exports, access = access, timings = timings, resource_skips = skips)
+}
+
 bench_backend_ratios <- function(summary, metric, reference) {
   required <- c("source", "n_cells", "backend", metric)
   missing <- setdiff(required, names(summary))

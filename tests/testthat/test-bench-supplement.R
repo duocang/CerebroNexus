@@ -62,3 +62,71 @@ test_that("a full study must still fetch exactly its scheduled sources", {
   expect_identical(attr(output, "status"), 1L)
   expect_match(paste(output, collapse = "\n"), "source manifest does not cover the scheduled sources")
 })
+
+published_supplement <- normalizePath(file.path(
+  "..", "benchmarks", "results", "expression-backends", "supplements", "scale", "runs",
+  "20261018T072255Z-30a6295c85f5-scale-supplement"
+), mustWork = FALSE)
+
+skip_unless_published_pair <- function() {
+  testthat::skip_if_not(
+    dir.exists(published_scale) && dir.exists(published_supplement),
+    "published Scale study and supplement not present"
+  )
+}
+
+copy_run <- function(from, root) {
+  dir.create(root, recursive = TRUE)
+  file.copy(from, root, recursive = TRUE)
+  file.path(root, basename(from))
+}
+
+test_that("assembly fills only resource skips and keeps them on record", {
+  skip_unless_published_pair()
+  source(file.path(bench_root_supplement, "benchmark.R"), local = TRUE)
+  got <- bench_assemble_supplement(published_scale, published_supplement, "fixture-collection")
+
+  supplement_id <- "20261018T072255Z-30a6295c85f5-scale-supplement"
+  filled <- got$exports$source == "human_pfc_hbcc" & got$exports$n_cells == 500000 &
+    got$exports$backend == "embedded"
+  expect_equal(nrow(got$exports), 300L)
+  expect_true(all(got$exports$status == "OK"))
+  expect_equal(sum(filled), 5L)
+  expect_true(all(got$exports$source_run_id[filled] == supplement_id))
+  expect_true(all(got$exports$run_id[filled] == supplement_id))
+  expect_true(all(got$exports$source_run_id[!filled] == "20261016T224351Z-63d5337c3647-scale"))
+  expect_equal(nrow(got$access), 600L)
+  expect_equal(nrow(got$resource_skips), 5L)
+  expect_true(all(startsWith(got$resource_skips$status, "SKIPPED(resource)")))
+  expect_true(all(got$exports$collection_id == "fixture-collection"))
+  # Assembly only relabels: every numerical value is the acquisition's own.
+  supplement_rows <- utils::read.csv(file.path(published_supplement, "10_export.csv"))
+  expect_equal(sort(got$exports$r_peak_mb[filled]), sort(supplement_rows$r_peak_mb))
+})
+
+test_that("assembly refuses to replace successful builds or mix hosts", {
+  skip_unless_published_pair()
+  source(file.path(bench_root_supplement, "benchmark.R"), local = TRUE)
+  root <- tempfile("assembly-")
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+
+  # Point the supplement at a tier the study measured successfully.
+  moved <- copy_run(published_supplement, file.path(root, "moved"))
+  rows <- utils::read.csv(file.path(moved, "10_export.csv"), stringsAsFactors = FALSE)
+  rows$n_cells <- 300000
+  utils::write.csv(rows, file.path(moved, "10_export.csv"), row.names = FALSE)
+  expect_error(
+    bench_assemble_supplement(published_scale, moved, "x"),
+    "may only replace builds the study skipped"
+  )
+
+  # A supplement measured on another CPU cannot fill this study.
+  other <- copy_run(published_supplement, file.path(root, "other"))
+  manifest <- utils::read.csv(file.path(other, "run_manifest.csv"), stringsAsFactors = FALSE)
+  manifest$value[manifest$key == "cpu"] <- "another host"
+  utils::write.csv(manifest, file.path(other, "run_manifest.csv"), row.names = FALSE)
+  expect_error(
+    bench_assemble_supplement(published_scale, other, "x"),
+    "not measured like the study: cpu"
+  )
+})

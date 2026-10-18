@@ -2111,6 +2111,117 @@ if (identical(command, "inspect")) {
     stop("need <result_root>", call. = FALSE)
   }
   bench_recover_activation(command_args[[1L]])
+} else if (identical(command, "assemble")) {
+  # Fill a study's resource skips with same-host supplement builds and publish
+  # the result as an assembled collection; no new measurements are taken.
+  #
+  # Usage: Rscript benchmark_cli.R assemble <study_run_dir> <supplement_run_dir>...
+
+  args <- command_args
+  if (length(args) < 2L) {
+    stop("need <study_run_dir> <supplement_run_dir>...", call. = FALSE)
+  }
+  study_dir <- normalizePath(args[1L], mustWork = TRUE)
+  supplement_dirs <- normalizePath(args[-1L], mustWork = TRUE)
+  result_root <- dirname(dirname(study_dir))
+  read <- function(dir, name) {
+    utils::read.csv(file.path(dir, name), stringsAsFactors = FALSE, check.names = FALSE)
+  }
+  study <- bench_manifest_values(read(study_dir, "run_manifest.csv"))
+  if (!identical(study[["profile"]], "scale")) {
+    stop("assembly is implemented for Scale studies", call. = FALSE)
+  }
+  repo <- normalizePath(file.path(here, "..", "..", "..", ".."))
+  git <- function(...) {
+    out <- tryCatch(system2("git", c("-C", repo, ...), stdout = TRUE, stderr = FALSE), error = function(e) "")
+    if (length(out)) out[[1L]] else ""
+  }
+  head_sha <- git("rev-parse", "HEAD")
+  collection_id <- sprintf(
+    "%s-%s-%s-assembled",
+    format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"),
+    substr(head_sha, 1L, 12L),
+    basename(result_root)
+  )
+  parts <- bench_assemble_supplement(study_dir, supplement_dirs, collection_id)
+
+  stage <- tempfile("assemble-")
+  dir.create(stage)
+  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+  write <- function(d, name) utils::write.csv(d, file.path(stage, name), row.names = FALSE)
+  write(parts$exports, "10_export.csv")
+  write(parts$access, "20_access.csv")
+  write(parts$timings, "21_access_timings.csv")
+  write(parts$resource_skips, "resource_skips.csv")
+  for (name in c("00_probe.csv", "05_schedule.csv", "crashes.csv", "query_panel.csv",
+                 "query_plan_manifest.csv", "resource_check.csv", "source_manifest.csv")) {
+    file.copy(file.path(study_dir, name), file.path(stage, name))
+  }
+  acquisitions <- do.call(rbind, lapply(c(study_dir, supplement_dirs), function(dir) {
+    values <- bench_manifest_values(read(dir, "run_manifest.csv"))
+    pick <- function(key) if (key %in% names(values) && !is.na(values[[key]])) values[[key]] else ""
+    data.frame(
+      run_id = pick("run_id"),
+      role = if (identical(dir, study_dir)) "study" else "supplement",
+      directory = substring(dir, nchar(repo) + 2L),
+      git_sha = pick("git_sha"),
+      schedule_filter = pick("schedule_filter"),
+      generated_at = pick("generated_at"),
+      memory_limit_bytes = pick("memory_limit_bytes"),
+      stringsAsFactors = FALSE
+    )
+  }))
+  write(acquisitions, "acquisitions.csv")
+
+  # The collection inherits the study's host, package and timing provenance;
+  # each acquisition's own manifest stays in its immutable run directory.
+  values <- study
+  values[c("study_id", "run_id")] <- collection_id
+  values[["generated_at"]] <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+  values[["git_sha"]] <- head_sha
+  values[["git_branch"]] <- git("branch", "--show-current")
+  values[["git_dirty"]] <- if (nzchar(git("status", "--porcelain", "--", "tests/benchmarks/expression-backends/scripts"))) "true" else "false"
+  values <- c(values,
+    result_kind = "assembled",
+    new_measurements = "0",
+    study_run_id = study[["run_id"]],
+    supplement_run_ids = paste(acquisitions$run_id[acquisitions$role == "supplement"], collapse = ";"),
+    replaced_resource_skips = as.character(nrow(parts$resource_skips))
+  )
+  utils::write.csv(
+    data.frame(key = names(values), value = unname(values), stringsAsFactors = FALSE),
+    file.path(stage, "run_manifest.csv"), row.names = FALSE
+  )
+
+  suppressPackageStartupMessages({
+    library(ggplot2)
+    library(patchwork)
+  })
+  source(file.path(here, "figure_scale.R"))
+  bench_figure_scale(parts$exports, parts$access, values, file.path(stage, "figures"))
+
+  replaced <- unique(parts$resource_skips[c("source", "n_cells", "backend")])
+  writeLines(c(
+    "# Scale: study filled with same-host supplements",
+    "",
+    sprintf("Collection `%s`. **No new measurements.**", collection_id),
+    "",
+    sprintf("- Study: `%s` (complete Scale run).", study[["run_id"]]),
+    sprintf("- Supplements: %s.", paste0("`", acquisitions$run_id[acquisitions$role == "supplement"], "`", collapse = ", ")),
+    sprintf("- %d study builds that were skipped for resources are replaced by supplement builds of the same cells:", nrow(parts$resource_skips)),
+    sprintf("  %s %s cells, %s.", replaced$source, format(replaced$n_cells, big.mark = ",", scientific = FALSE), replaced$backend),
+    "  The skipped rows remain in `resource_skips.csv`; no successful study build is replaced.",
+    sprintf("- Totals: %d builds (%d successful), %d access processes, %d raw timings.",
+            nrow(parts$exports), sum(parts$exports$status == "OK"), nrow(parts$access), nrow(parts$timings)),
+    "",
+    "Every row keeps its acquisition `run_id`; `source_run_id` and `collection_id` identify",
+    "origin and assembly. Study and supplements share host, R and package versions",
+    "(checked by `bench_assemble_supplement`); `acquisitions.csv` lists each run, its code",
+    "version and memory cap. Per-run reports, logs and manifests remain in the run",
+    "directories named there. Figures in `figures/` are drawn from the assembled rows."
+  ), file.path(stage, "summary.md"))
+
+  bench_publish_result(stage, result_root, collection_id)
 } else if (identical(command, "publish")) {
   # Publish a validated result directory without replacing prior runs.
 
