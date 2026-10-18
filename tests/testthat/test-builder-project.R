@@ -3309,7 +3309,8 @@ test_that("missing saved settings reload the source instead of forcing a skip", 
     "6 B"
   )
   expect_null(runtime$builder_project_restore_artifact_size(record))
-  expect_match(html, "Cache none", fixed = TRUE)
+  expect_match(html, "Not cached", fixed = TRUE)
+  expect_false(grepl("Cache none", html, fixed = TRUE))
 
   record$release$included <- FALSE
   record$runtime_restore_status <- runtime$builder_project_dataset_status(
@@ -3359,7 +3360,9 @@ test_that("project restore rows keep long labels inside their grid tracks", {
   expect_match(css, "overscroll-behavior: contain;", fixed = TRUE)
   expect_match(css, ".builder-project-restore-row:focus-within", fixed = TRUE)
   expect_match(css, 'data-current-action="skip"', fixed = TRUE)
-  expect_match(css, 'data-current-action="reuse"] select', fixed = TRUE)
+  # One select style for every open mode; reuse no longer paints the select.
+  expect_match(css, "#shiny-modal .builder-project-restore-row select {", fixed = TRUE)
+  expect_false(grepl('data-current-action="reuse"] select', css, fixed = TRUE))
   expect_match(css, "select:focus-visible", fixed = TRUE)
   expect_match(css, 'crb-tag[data-tone="ready"]', fixed = TRUE)
   expect_match(css, 'crb-tag[data-tone="none"]', fixed = TRUE)
