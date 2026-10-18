@@ -997,11 +997,6 @@ builder_enhance_stage_ui <- function(
         ),
         div(
           class = "builder-viewer-card-body",
-          h3("Optional enhancements"),
-          p(
-            class = "stage-intro",
-            "Optional: add analysis pages or attach supporting files. You can skip this stage."
-          ),
           div(
             class = "enhance-module-grid",
             if (isTRUE(dynamic_modules)) {

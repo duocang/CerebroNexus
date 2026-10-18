@@ -755,10 +755,17 @@ label,
   box-shadow: none;
 }
 
+/* One selected look for checkbox cards and the Marker genes button card,
+   hovered or not: amber edge (drawn 2px with the inset ring) on amber-50. */
 .enhance-module:has(input:checked),
-.enhance-module.is-selected {
+.enhance-module:has(input:checked):hover,
+.enhance-module:has(input:checked):focus-within,
+.enhance-module.is-selected,
+.enhance-module.is-selected:hover,
+.enhance-module.is-selected:focus-within {
   border-color: var(--c-amber-300);
   background: var(--c-amber-50);
+  box-shadow: inset 0 0 0 1px var(--c-amber-300);
 }
 
 .builder-dataset-summary,

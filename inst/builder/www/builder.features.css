@@ -1256,16 +1256,6 @@ div.viewer-trajectory-preview {
   border: 1px solid var(--c-border);
   background: var(--c-surface);
 }
-.builder-viewer-optional-analyses .builder-viewer-card-body > h3 {
-  margin: 0 0 var(--space-1);
-  color: var(--c-text);
-  font-size: var(--builder-type-subtitle);
-  font-weight: 700;
-  line-height: 1.4;
-}
-.builder-viewer-optional-analyses .stage-intro {
-  margin: 0 0 var(--space-4);
-}
 .enhance-group + .enhance-group {
   margin-top: var(--space-3);
 }
@@ -1274,10 +1264,14 @@ div.viewer-trajectory-preview {
 .enhance-module-grid > .shiny-html-output > div {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
+  /* Every card as tall as the tallest, across rows too. */
+  grid-auto-rows: 1fr;
   gap: var(--space-3);
 }
 .enhance-module {
   position: relative;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--c-border);
   border-radius: var(--r-md);
   background: var(--c-surface);
@@ -1300,9 +1294,10 @@ div.viewer-trajectory-preview {
 }
 .enhance-module-select {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   margin: 0;
-  padding: var(--space-5) 3.35rem var(--space-5) var(--space-5);
+  padding: var(--space-4) 2.75rem var(--space-4) var(--space-4);
   color: var(--c-text);
   cursor: pointer;
 }
@@ -1436,16 +1431,22 @@ div.viewer-trajectory-preview {
   .marker-import-source-heading { display: grid; }
   .marker-import-save { width: 100%; }
 }
+/* One title and description size for every card: the Marker genes card is
+   a <button> and the others a <label>, which inherited different sizes. */
 .enhance-module-title {
   display: block;
-  font-size: var(--builder-type-subtitle);
-  font-weight: 700;
+  color: var(--c-text);
+  font-size: var(--builder-type-body);
+  font-weight: 650;
   line-height: 1.35;
+  text-wrap: balance;
 }
 .enhance-module .consequence {
-  margin: var(--space-3) 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--c-text-muted);
-  line-height: 1.55;
+  font-size: var(--builder-type-small);
+  font-weight: 400;
+  line-height: 1.5;
 }
 .enhance-module .blocked {
   margin: var(--space-2) 0 0;
