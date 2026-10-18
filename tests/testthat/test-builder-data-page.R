@@ -189,7 +189,7 @@ test_that("Dataset rail presents one concise readiness status", {
   expect_match(html, 'aria-atomic="true"', fixed = TRUE)
 })
 
-test_that("Dataset rail distinguishes saved CRBs from loaded sources", {
+test_that("Dataset rail distinguishes cached datasets from loaded sources", {
   withr::local_package("shiny")
   runtime <- builder_data_page_runtime()
   model <- list(
@@ -216,9 +216,12 @@ test_that("Dataset rail distinguishes saved CRBs from loaded sources", {
   )$html
 
   expect_match(crb_html, ">Checked<", fixed = TRUE)
-  expect_match(crb_html, "CRB ready", fixed = TRUE)
+  expect_match(crb_html, "Cached · opens fast", fixed = TRUE)
+  ## The readiness key stays internal; the visible text says "cache".
+  expect_false(grepl("CRB", gsub("<[^>]*>", "", crb_html), fixed = TRUE))
   expect_match(source_html, ">Checked<", fixed = TRUE)
-  expect_match(source_html, "No CRB", fixed = TRUE)
+  expect_match(source_html, "Not cached", fixed = TRUE)
+  expect_false(grepl("CRB", gsub("<[^>]*>", "", source_html), fixed = TRUE))
 })
 
 test_that("Data page shows its footer only after a dataset exists", {

@@ -5058,7 +5058,7 @@ test_that("dataset rail keeps checked state independent from CRB lifecycle", {
     list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "Generating CRB…",
+      crb_label = "Generating cache…",
       crb_status = "generating"
     )
   )
@@ -5067,7 +5067,7 @@ test_that("dataset rail keeps checked state independent from CRB lifecycle", {
     list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "No CRB",
+      crb_label = "Not cached",
       crb_status = "no-crb"
     )
   )
@@ -5076,7 +5076,7 @@ test_that("dataset rail keeps checked state independent from CRB lifecycle", {
     list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "CRB ready",
+      crb_label = "Cached · opens fast",
       crb_status = "ready"
     )
   )

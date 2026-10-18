@@ -936,7 +936,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "Generating CRB…",
+      crb_label = "Generating cache…",
       crb_status = "generating"
     ))
   }
@@ -944,7 +944,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "CRB ready",
+      crb_label = "Cached · opens fast",
       crb_status = "ready"
     ))
   }
@@ -952,7 +952,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "No CRB",
+      crb_label = "Not cached",
       crb_status = "no-crb"
     ))
   }
@@ -963,7 +963,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "CRB ready",
+      crb_label = "Cached · opens fast",
       crb_status = "ready"
     ))
   }
@@ -974,7 +974,7 @@ builder_dataset_rail_status <- function(model) {
     return(list(
       label = "Checked",
       ready = TRUE,
-      crb_label = "No CRB",
+      crb_label = "Not cached",
       crb_status = "no-crb"
     ))
   }
