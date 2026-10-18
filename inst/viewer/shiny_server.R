@@ -2072,6 +2072,12 @@ server <- function(input, output, session) {
     file.path(Cerebro.options[["cerebro_root"]], "viewer/spatial/func_spatial_helpers.R"),
     local = TRUE
   )
+  ## Spatial feature plots share the expression colour scales, so they cannot
+  ## wait for the Gene expression page.
+  source(
+    file.path(Cerebro.options[["cerebro_root"]], "viewer/gene_expression/func_color_scale.R"),
+    local = TRUE
+  )
 
   source(
     file.path(Cerebro.options[["cerebro_root"]], "viewer/core/cell_inspection.R"),
