@@ -189,6 +189,15 @@ test_that("Dataset rail presents one concise readiness status", {
   expect_match(html, 'role="status"', fixed = TRUE)
   expect_match(html, 'aria-live="polite"', fixed = TRUE)
   expect_match(html, 'aria-atomic="true"', fixed = TRUE)
+  ## A loaded row drops the load-time badge; the full line and the time move
+  ## to the tooltip, and the built-in format reads "Example".
+  expect_false(grepl("builder-load-time", html, fixed = TRUE))
+  expect_match(html, ">180 cells · Example<", fixed = TRUE)
+  expect_match(
+    html,
+    'title="180 cells · Built-in example · loaded in 5.5s"',
+    fixed = TRUE
+  )
 })
 
 test_that("Dataset rail distinguishes cached datasets from loaded sources", {

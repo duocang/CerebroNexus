@@ -970,6 +970,23 @@ builder_dataset_rail_status <- function(model) {
 
 builder_dataset_rail_row_ui <- function(model) {
   status <- builder_dataset_rail_status(model)
+  # The rail is narrow: "Built-in example" was cut to "Built-in exam...".
+  format_label <- if (identical(model$format, "Built-in example")) {
+    "Example"
+  } else {
+    model$format
+  }
+  cells <- format(model$cells, big.mark = ",")
+  meta_label <- sprintf("%s cells · %s", cells, format_label)
+  # The load time is only interesting while loading; once ready it moves to
+  # the tooltip with the full, untruncated line.
+  elapsed <- model$import_elapsed_ms
+  meta_title <- paste0(
+    sprintf("%s cells · %s", cells, model$format),
+    if (length(elapsed) == 1L && is.finite(elapsed)) {
+      sprintf(" · loaded in %.1fs", elapsed / 1000)
+    }
+  )
   shiny::div(
     class = paste(
       c("ds", "ds--ready", if (model$selected) "is-active"),
@@ -994,11 +1011,8 @@ builder_dataset_rail_row_ui <- function(model) {
           } else {
             "meta"
           },
-          sprintf(
-            "%s cells \u00b7 %s",
-            format(model$cells, big.mark = ","),
-            model$format
-          )
+          title = meta_title,
+          meta_label
         ),
         shiny::span(
           class = paste(
@@ -1020,8 +1034,7 @@ builder_dataset_rail_row_ui <- function(model) {
               class = paste("ds-crb-status", paste0("is-", status$crb_status)),
               status$crb_label
             )
-          },
-          .builder_rail_load_time(model$import_elapsed_ms)
+          }
         )
       )
     ),
