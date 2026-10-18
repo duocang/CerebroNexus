@@ -198,6 +198,8 @@ if (identical(command, "inspect")) {
     # Full/scale runs without this key wrote "h5" at BPCells' gzip level 0.
     h5_gzip_level = as.character(bench_h5_gzip_level("h5")),
     h5_uncompressed_gzip_level = as.character(bench_h5_gzip_level("h5_uncompressed")),
+    # Non-empty only for supplements; resume publishes them beside the study.
+    schedule_filter = Sys.getenv("BENCH_SCHEDULE_FILTER"),
     git_sha = git_value("rev-parse", "HEAD"),
     git_branch = git_value("branch", "--show-current"),
     git_dirty = if (nzchar(status)) "true" else "false",
@@ -285,6 +287,7 @@ if (identical(command, "inspect")) {
       sources = bench_active_sources()
     )
   }
+  schedule <- bench_filter_schedule(schedule)
   dir.create(dirname(result), recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(schedule, result, row.names = FALSE)
   if (!is.null(tsv_result)) {

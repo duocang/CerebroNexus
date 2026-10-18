@@ -59,6 +59,17 @@ Publication stages the new images before switching and rolls back both the image
 
 Verified source downloads stay in the external cache. Failed runs keep their scratch directory by default; `resume` retries validation, reporting and publication only; if the run was already archived before activation failed, it skips regeneration and only re-verifies and activates the archive. It does not resume measurements or start the next study. Generated CRB/backend files are temporary and normally removed after measurement; start with `BENCH_KEEP=1 bash tests/benchmarks/expression-backends/run.sh` if you need to retain them too. Starting another run archives the previous launcher log under `runner/logs/` in the cache.
 
+### Supplements
+
+To measure only some scheduled cells, set `BENCH_SCHEDULE_FILTER` to `key=value` terms joined by `;` (keys `source`, `n_cells`, `backend`; values may be comma-separated):
+
+```bash
+BENCH_SCHEDULE_FILTER='source=human_pfc_hbcc;n_cells=500000;backend=embedded' \
+  bash tests/benchmarks/expression-backends/run.sh scale
+```
+
+The kept cells retain their repeats, order positions and access repeats, and the run is validated, reported and drawn like a full study. It is published under `results/expression-backends/supplements/<study>/` with a `-supplement` run id and the filter in its manifest (`schedule_filter`), so it never replaces the study's `CURRENT`; `resume` follows the same rule. Run it on the host of the study it supplements, after that study has finished. Combining it with the study is a separate, explicit assembly step that keeps both run ids.
+
 ## Figures
 
 Full and scale runs save `figures/expression_backend_benchmark_overview.png` (340 dpi) and an editable vector PDF on the Cairo device. Both figures share one style: white background, Okabe-Ito colours (H5 compressed `#0072B2` filled square, H5 uncompressed `#56B4E9` open square and dashed line, BPCells `#E69F00`, Embedded `#D55E00`; defined once in `bench_backend_style()`), lowercase panel letters a-h at the top-left of each panel, and no title or caption inside the file. The full comparison uses backend categories, shows every read process as a small dot plus the build median and observed min-max whiskers. The scale overview plots medians across builds against cell count on a log10 x axis. Timing and storage use logarithmic axes; loaded memory is linear (GiB). Read processes are nested within builds and ranges are descriptive min-max, not confidence intervals. Scale runs also save a 340 dpi embedded build-memory plot (legacy filename `expression_backend_benchmark_ceiling.png`): measured peak R heap in GiB against nonzero elements in millions, with no extrapolated memory ceiling. Quick runs produce measurements and a report without figures.

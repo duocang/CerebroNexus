@@ -472,3 +472,25 @@ test_that("backend ratios retain direction and matched tiers", {
     0L
   )
 })
+
+test_that("the Scale figure renders a single-tier embedded supplement", {
+  skip_unless_bench_reporting()
+  skip_if_not_installed("ggplot2")
+  skip_if_not_installed("patchwork")
+  source(bench_protocol, local = TRUE)
+  source(file.path(bench_root, "figure_scale.R"), local = TRUE)
+  grid <- expand.grid(export_repeat = 1:5, access_repeat = 1:2)
+  access <- data.frame(
+    source = "human_pfc_hbcc", n_cells = 500000, backend = "embedded", grid,
+    status = "OK", correctness = "OK", access_contract = "materialized-v2",
+    hot_p50_secs = 2, block_secs = 3, rss_mb = 14000
+  )
+  exports <- data.frame(
+    source = "human_pfc_hbcc", n_cells = 500000, backend = "embedded",
+    export_repeat = 1:5, status = "OK", total_mb = 3200, nnz = 2e9, r_peak_mb = 9e4
+  )
+  out <- tempfile("supplement-figures-")
+  on.exit(unlink(out, recursive = TRUE), add = TRUE)
+  expect_no_error(suppressWarnings(bench_figure_scale(exports, access, character(), out)))
+  expect_true(file.exists(file.path(out, "expression_backend_benchmark_overview.png")))
+})

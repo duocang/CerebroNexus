@@ -499,3 +499,28 @@ test_that("result keys canonicalize scientific and integer cell counts", {
     "fixture|100000|bpcells|1"
   )
 })
+
+test_that("a schedule filter keeps exactly the selected cells", {
+  skip_unless_bench_protocol()
+  source(bench_protocol, local = TRUE)
+  schedule <- bench_scale_schedule(BENCH_SOURCES)
+
+  expect_identical(bench_filter_schedule(schedule, ""), schedule)
+  supplement <- bench_filter_schedule(
+    schedule,
+    "source=human_pfc_hbcc;n_cells=500000;backend=embedded"
+  )
+  expect_equal(nrow(supplement), 5L)
+  expect_identical(sort(supplement$export_repeat), 1:5)
+  expect_true(all(supplement$access_repeats == 2L))
+  # Each kept row is unchanged from the full study, including its order position.
+  original <- merge(supplement, schedule)
+  expect_equal(nrow(original), 5L)
+  expect_equal(
+    nrow(bench_filter_schedule(schedule, "n_cells=500000; backend=bpcells,h5")),
+    2L * 2L * 5L
+  )
+  expect_error(bench_filter_schedule(schedule, "tier=500000"), "unknown")
+  expect_error(bench_filter_schedule(schedule, "backend"), "malformed")
+  expect_error(bench_filter_schedule(schedule, "n_cells=123"), "matches no")
+})

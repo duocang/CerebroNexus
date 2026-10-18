@@ -223,6 +223,42 @@ bench_h5_gzip_level <- function(backend) {
   }
 }
 
+# Keep only scheduled cells matching BENCH_SCHEDULE_FILTER, e.g.
+# "source=human_pfc_hbcc;n_cells=500000;backend=embedded". Each key takes
+# comma-separated values. Repeats, order positions and access repeats are kept,
+# so a supplement measures the selected cells exactly as the full study would.
+bench_filter_schedule <- function(
+  schedule,
+  filter = Sys.getenv("BENCH_SCHEDULE_FILTER")
+) {
+  if (!nzchar(filter)) {
+    return(schedule)
+  }
+  keep <- rep(TRUE, nrow(schedule))
+  for (term in strsplit(filter, ";", fixed = TRUE)[[1L]]) {
+    parts <- strsplit(trimws(term), "=", fixed = TRUE)[[1L]]
+    if (length(parts) != 2L || !nzchar(parts[2L])) {
+      stop("malformed BENCH_SCHEDULE_FILTER term: ", term, call. = FALSE)
+    }
+    key <- parts[1L]
+    if (!key %in% c("source", "n_cells", "backend")) {
+      stop("unknown BENCH_SCHEDULE_FILTER key: ", key, call. = FALSE)
+    }
+    values <- trimws(strsplit(parts[2L], ",", fixed = TRUE)[[1L]])
+    keep <- keep & if (identical(key, "n_cells")) {
+      schedule$n_cells %in% as.numeric(values)
+    } else {
+      schedule[[key]] %in% values
+    }
+  }
+  if (!any(keep)) {
+    stop("BENCH_SCHEDULE_FILTER matches no scheduled cell: ", filter, call. = FALSE)
+  }
+  out <- schedule[keep, , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
 bench_scale_schedule <- function(specs) {
   sources <- intersect(c("mouse_brain_e18", "human_pfc_hbcc"), names(specs))
   if (length(sources) != 2L) {

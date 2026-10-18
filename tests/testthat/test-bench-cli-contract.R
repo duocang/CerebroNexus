@@ -364,3 +364,39 @@ test_that("the worker hides the caller's personal R setup from nix-shell", {
     "R_PROFILE_USER=/dev/null"
   ))
 })
+
+test_that("a filtered plan is recorded and published as a supplement", {
+  skip_unless_bench_cli()
+  csv <- tempfile(fileext = ".csv")
+  tsv <- tempfile(fileext = ".tsv")
+  manifest <- tempfile(fileext = ".csv")
+  on.exit(unlink(c(csv, tsv, manifest)), add = TRUE)
+  filter <- "BENCH_SCHEDULE_FILTER=source=human_pfc_hbcc;n_cells=500000;backend=embedded"
+
+  run <- run_bench_command("plan", c(csv, tsv), env = c("BENCH_PROFILE=scale", filter))
+  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
+  schedule <- utils::read.csv(csv, stringsAsFactors = FALSE)
+  expect_equal(nrow(schedule), 5L)
+  expect_true(all(schedule$backend == "embedded" & schedule$n_cells == 500000))
+
+  run <- run_bench_command("environment", manifest, env = c("BENCH_PROFILE=scale", filter))
+  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
+  values <- with(utils::read.csv(manifest, stringsAsFactors = FALSE), stats::setNames(value, key))
+  expect_identical(values[["schedule_filter"]], sub("^BENCH_SCHEDULE_FILTER=", "", filter))
+
+  bash <- Sys.which("bash")
+  if (.Platform$OS.type == "windows") {
+    bash <- file.path(Sys.getenv("ProgramFiles"), "Git", "bin", "bash.exe")
+  }
+  testthat::skip_if_not(nzchar(bash) && file.exists(bash), "native Bash is unavailable")
+  command <- tempfile(fileext = ".sh")
+  on.exit(unlink(command), add = TRUE)
+  writeLines(c(
+    sprintf("source %s", shQuote(normalizePath(file.path(bench_root, "run.sh"), winslash = "/"))),
+    "bench_result_root scale ''",
+    "bench_result_root scale 'backend=embedded'"
+  ), command)
+  roots <- bench_test_system2(bash, gsub("\\", "/", command, fixed = TRUE), stdout = TRUE)
+  expect_match(roots[1], "/results/expression-backends/scale$")
+  expect_match(roots[2], "/results/expression-backends/supplements/scale$")
+})

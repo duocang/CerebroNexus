@@ -426,10 +426,11 @@ require_clean() {
 run_profile() {
   local profile="$1"
   local result_name="$2"
-  local head_sha study_id memory_snapshot
+  local head_sha study_id memory_snapshot result_root
   require_clean
   head_sha=$(git -C "$REPO" rev-parse HEAD)
-  study_id="$(date -u +%Y%m%dT%H%M%SZ)-${head_sha:0:12}-$result_name"
+  result_root="$(bench_result_root "$result_name" "${BENCH_SCHEDULE_FILTER:-}")"
+  study_id="$(date -u +%Y%m%dT%H%M%SZ)-${head_sha:0:12}-$result_name${BENCH_SCHEDULE_FILTER:+-supplement}"
   printf '==> running %s\n' "$result_name"
   if [ "$profile" = "scale" ]; then
     # One launch-time budget for the entire serial study. A cgroup enforces the
@@ -440,7 +441,7 @@ run_profile() {
     export BENCH_AVAILABLE_MEMORY_BYTES BENCH_MEMORY_LIMIT_BYTES
     printf '==> Scale available RAM=%s bytes; 99%% hard cap=%s bytes; swap=0\n' "$BENCH_AVAILABLE_MEMORY_BYTES" "$BENCH_MEMORY_LIMIT_BYTES"
     BENCH_PROFILE="$profile" BENCH_STUDY_ID="$study_id" BENCH_RUN_ID="$study_id" \
-      BENCH_RESULT_ROOT="$REPO/tests/benchmarks/results/expression-backends/$result_name" \
+      BENCH_RESULT_ROOT="$result_root" \
       systemd-run --user --scope --quiet \
         -p "MemoryMax=$BENCH_MEMORY_LIMIT_BYTES" -p MemorySwapMax=0 \
         bash "$SCRIPT" _profile
@@ -449,7 +450,7 @@ run_profile() {
   BENCH_PROFILE="$profile" \
     BENCH_STUDY_ID="$study_id" \
     BENCH_RUN_ID="$study_id" \
-    BENCH_RESULT_ROOT="$REPO/tests/benchmarks/results/expression-backends/$result_name" \
+    BENCH_RESULT_ROOT="$result_root" \
     "$SCRIPT" _profile
 }
 
@@ -460,6 +461,17 @@ run_all() {
     full) run_profile panel_c2 full ;;
     *) printf 'unknown benchmark mode: %s\n' "$1" >&2; return 2 ;;
   esac
+}
+
+# Results directory for a study. A filtered schedule (BENCH_SCHEDULE_FILTER) is a
+# supplement: it is published beside the study and never replaces its CURRENT.
+bench_result_root() {
+  local base="$REPO/tests/benchmarks/results/expression-backends"
+  if [ -n "${2:-}" ]; then
+    printf '%s\n' "$base/supplements/$1"
+  else
+    printf '%s\n' "$base/$1"
+  fi
 }
 
 manifest_value() {
@@ -499,11 +511,13 @@ resume_inside() {
       return 1
       ;;
   esac
+  local filter result_root
+  filter="$(manifest_value "$manifest" schedule_filter 2>/dev/null || true)"
+  result_root="$(bench_result_root "$result_name" "$filter")"
 
-  finish_profile "$stage" "$REPO/tests/benchmarks/results/expression-backends/$result_name" "$BENCH_RUN_ID"
+  finish_profile "$stage" "$result_root" "$BENCH_RUN_ID"
   printf '0\n' > "$EXIT_FILE"
-  printf 'benchmark result published: %s\n' \
-    "$REPO/tests/benchmarks/results/expression-backends/$result_name/runs/$BENCH_RUN_ID"
+  printf 'benchmark result published: %s\n' "$result_root/runs/$BENCH_RUN_ID"
 }
 
 resume_run() {
