@@ -1049,7 +1049,12 @@
     for (var index = 0; index < selectors.length; index += 1) {
       var section = document.querySelector(selectors[index]);
       if (!section) continue;
-      var header = section.querySelector(":scope > .builder-stage-header");
+      // A message inside a closed disclosure would never be seen.
+      var disclosure = section.closest("details");
+      if (disclosure && !disclosure.open) disclosure.open = true;
+      var header = section.querySelector(
+        ":scope > .builder-stage-header, :scope > [class$='-header']"
+      );
       return header
         ? { anchor: header, where: "afterend" }
         : { anchor: section, where: "afterbegin" };
