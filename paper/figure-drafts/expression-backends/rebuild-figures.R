@@ -91,7 +91,7 @@ FAM <- if (!is.null(opts$family)) opts$family else font$family
 if (opts$stdpdf) cat(sprintf("stdpdf pass: using '%s' text on the standard PDF device\n", FAM))
 
 # --- shared style -----------------------------------------------------------
-# Same identities as bench_backend_style() in the benchmark harness.
+# One identity per backend, used by both figures.
 backend_order <- c("h5", "h5_uncompressed", "bpcells", "embedded")
 palette   <- c(h5 = "#0072B2", h5_uncompressed = "#56B4E9", bpcells = "#E69F00", embedded = "#D55E00")
 shapes    <- c(h5 = 15,        h5_uncompressed = 0,         bpcells = 16,        embedded = 17)

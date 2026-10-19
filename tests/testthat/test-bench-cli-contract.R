@@ -62,7 +62,6 @@ test_that("runner keeps isolated processes and safe cleanup", {
     " access ",
     " validate ",
     " report ",
-    " figure ",
     " evidence ",
     " check ",
     " publish "
@@ -89,20 +88,7 @@ test_that("one public launcher runs Scale independently in the background", {
   expect_match(launcher, 'nohup "$SCRIPT" _worker', fixed = TRUE)
   expect_match(launcher, '"$SCRIPT" _profile', fixed = TRUE)
   expect_match(launcher, "resume)", fixed = TRUE)
-  full <- regexpr(
-    "run_profile panel_c2 full",
-    launcher,
-    fixed = TRUE
-  )[1L]
-  scale <- regexpr(
-    "run_profile scale scale",
-    launcher,
-    fixed = TRUE
-  )[1L]
-  expect_gt(full, 0L)
-  expect_gt(scale, 0L)
   expect_match(launcher, "run|scale) run_profile scale scale ;;", fixed = TRUE)
-  expect_match(launcher, "full) run_profile panel_c2 full ;;", fixed = TRUE)
 })
 
 test_that("schedule CLI includes embedded through 500k", {
@@ -140,21 +126,6 @@ test_that("schedule CLI includes embedded through 500k", {
   tiers <- unique(schedule[c("source", "n_cells")])
   expect_equal(nrow(builds), nrow(tiers) * 3L)
   expect_true(all(builds$export_repeat == 5L))
-})
-
-test_that("full-source study compares BPCells with both H5 variants", {
-  skip_unless_bench_cli()
-  csv <- tempfile(fileext = ".csv")
-  tsv <- tempfile(fileext = ".tsv")
-  on.exit(unlink(c(csv, tsv)), add = TRUE)
-
-  run <- run_bench_command("plan", c(csv, tsv), env = "BENCH_PROFILE=panel_c2")
-  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
-  schedule <- utils::read.csv(csv, stringsAsFactors = FALSE)
-  expect_setequal(unique(schedule$backend), c("bpcells", "h5", "h5_uncompressed"))
-  # Rotation lets each backend lead some builds instead of always running first.
-  first <- schedule$backend[schedule$order_position == 1L]
-  expect_setequal(unique(first), c("bpcells", "h5", "h5_uncompressed"))
 })
 
 test_that("manifest CLI records the run identity", {
@@ -288,7 +259,7 @@ test_that("finalization retries only re-verify an already archived run", {
 
   expect_identical(
     finish(),
-    c("validate", "report", "figure", "evidence", "check", "publish")
+    c("validate", "report", "evidence", "check", "publish")
   )
   dir.create(file.path(root, "result", "runs", "run-1"), recursive = TRUE)
   expect_identical(finish(), "publish")
@@ -363,40 +334,4 @@ test_that("the worker hides the caller's personal R setup from nix-shell", {
     "R_ENVIRON_USER=/dev/null",
     "R_PROFILE_USER=/dev/null"
   ))
-})
-
-test_that("a filtered plan is recorded and published as a supplement", {
-  skip_unless_bench_cli()
-  csv <- tempfile(fileext = ".csv")
-  tsv <- tempfile(fileext = ".tsv")
-  manifest <- tempfile(fileext = ".csv")
-  on.exit(unlink(c(csv, tsv, manifest)), add = TRUE)
-  filter <- "BENCH_SCHEDULE_FILTER=source=human_pfc_hbcc;n_cells=500000;backend=embedded"
-
-  run <- run_bench_command("plan", c(csv, tsv), env = c("BENCH_PROFILE=scale", filter))
-  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
-  schedule <- utils::read.csv(csv, stringsAsFactors = FALSE)
-  expect_equal(nrow(schedule), 5L)
-  expect_true(all(schedule$backend == "embedded" & schedule$n_cells == 500000))
-
-  run <- run_bench_command("environment", manifest, env = c("BENCH_PROFILE=scale", filter))
-  expect_equal(run$status, 0L, info = paste(run$stderr, collapse = "\n"))
-  values <- with(utils::read.csv(manifest, stringsAsFactors = FALSE), stats::setNames(value, key))
-  expect_identical(values[["schedule_filter"]], sub("^BENCH_SCHEDULE_FILTER=", "", filter))
-
-  bash <- Sys.which("bash")
-  if (.Platform$OS.type == "windows") {
-    bash <- file.path(Sys.getenv("ProgramFiles"), "Git", "bin", "bash.exe")
-  }
-  testthat::skip_if_not(nzchar(bash) && file.exists(bash), "native Bash is unavailable")
-  command <- tempfile(fileext = ".sh")
-  on.exit(unlink(command), add = TRUE)
-  writeLines(c(
-    sprintf("source %s", shQuote(normalizePath(file.path(bench_root, "run.sh"), winslash = "/"))),
-    "bench_result_root scale ''",
-    "bench_result_root scale 'backend=embedded'"
-  ), command)
-  roots <- bench_test_system2(bash, gsub("\\", "/", command, fixed = TRUE), stdout = TRUE)
-  expect_match(roots[1], "/results/expression-backends/scale$")
-  expect_match(roots[2], "/results/expression-backends/supplements/scale$")
 })

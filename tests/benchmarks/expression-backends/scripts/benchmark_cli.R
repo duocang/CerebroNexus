@@ -12,19 +12,6 @@ if (!nzchar(here)) {
 }
 source(file.path(here, "benchmark.R"))
 
-# Assembled collections are one-off, self-validating deliveries; the repo-side
-# CLI no longer carries their validator. Each collection ships its own archived
-# validate.R and code copies, so it is validated in place.
-if (command %in% c("validate", "check", "publish", "report", "figure") && length(command_args)) {
-  manifest_file <- file.path(command_args[1], "run_manifest.csv")
-  if (file.exists(manifest_file)) {
-    values <- bench_manifest_values(read.csv(manifest_file, stringsAsFactors=FALSE))
-    if ("result_kind" %in% names(values) && identical(values[["result_kind"]], "assembled")) {
-      stop("Assembled collection: run Rscript validate.R inside its directory; the repo-side assembled validator is retired", call.=FALSE)
-    }
-  }
-}
-
 if (identical(command, "inspect")) {
   # Inspect every configured source over ROS3 and record what it contains.
   #
@@ -198,8 +185,6 @@ if (identical(command, "inspect")) {
     # Full/scale runs without this key wrote "h5" at BPCells' gzip level 0.
     h5_gzip_level = as.character(bench_h5_gzip_level("h5")),
     h5_uncompressed_gzip_level = as.character(bench_h5_gzip_level("h5_uncompressed")),
-    # Non-empty only for supplements; resume publishes them beside the study.
-    schedule_filter = Sys.getenv("BENCH_SCHEDULE_FILTER"),
     git_sha = git_value("rev-parse", "HEAD"),
     git_branch = git_value("branch", "--show-current"),
     git_dirty = if (nzchar(status)) "true" else "false",
@@ -278,8 +263,6 @@ if (identical(command, "inspect")) {
   profile <- bench_profile(Sys.getenv("BENCH_PROFILE", "quick"))
   schedule <- if (identical(profile$name, "scale")) {
     bench_scale_schedule(BENCH_SOURCES)
-  } else if (profile$name %in% c("panel_c1", "panel_c2")) {
-    bench_panel_c_schedule(BENCH_SOURCES, sub("panel_c", "c", profile$name))
   } else {
     bench_schedule(
       BENCH_SOURCES,
@@ -287,7 +270,6 @@ if (identical(command, "inspect")) {
       sources = bench_active_sources()
     )
   }
-  schedule <- bench_filter_schedule(schedule)
   dir.create(dirname(result), recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(schedule, result, row.names = FALSE)
   if (!is.null(tsv_result)) {
@@ -558,7 +540,7 @@ if (identical(command, "inspect")) {
   profile <- Sys.getenv("BENCH_PROFILE")
   row$source_prepare_secs <- tryCatch(
     bench_time({
-      source_matrix <- if (profile %in% c("scale", "panel_c2")) {
+      source_matrix <- if (identical(profile, "scale")) {
         bench_open_source_tier(spec, source_path, n_cells)
       } else {
         spec$local_path <- source_path
@@ -577,7 +559,7 @@ if (identical(command, "inspect")) {
   plan <- NULL
   row$query_plan_secs <- tryCatch(
     bench_time({
-      plan <- if (profile %in% c("scale", "panel_c2")) {
+      plan <- if (identical(profile, "scale")) {
         bench_build_lazy_query_plan(
           source_matrix,
           bench_profile(profile)$query_genes
@@ -930,7 +912,7 @@ if (identical(command, "inspect")) {
 
   row <- data.frame(
     run_id = Sys.getenv("BENCH_RUN_ID"),
-    profile = Sys.getenv("BENCH_PROFILE", "panel_c2"),
+    profile = Sys.getenv("BENCH_PROFILE", "scale"),
     source = src_name,
     label = spec$label,
     n_cells = n_cells,
@@ -1339,17 +1321,7 @@ if (identical(command, "inspect")) {
   if (!all(required_source_columns %in% names(source_manifest))) {
     stop("source manifest is missing required columns", call. = FALSE)
   }
-  # A supplement's filtered schedule may use fewer sources than the runner
-  # fetched and verified; it must still cover every scheduled one. A full study
-  # must match exactly.
-  schedule_filter <- manifest_values["schedule_filter"]
-  supplement <- !is.na(schedule_filter) && nzchar(schedule_filter)
-  scheduled_sources <- unique(schedule$source)
-  fetched_sources <- unique(source_manifest$source)
-  if (
-    !all(scheduled_sources %in% fetched_sources) ||
-      (!supplement && !setequal(scheduled_sources, fetched_sources))
-  ) {
+  if (!setequal(unique(schedule$source), unique(source_manifest$source))) {
     stop("source manifest does not cover the scheduled sources", call. = FALSE)
   }
   if (
@@ -1398,9 +1370,6 @@ if (identical(command, "inspect")) {
     "reference_subset_row_fingerprint",
     "reference_subset_block_fingerprint"
   )
-  if (identical(profile$name, "panel_c2")) {
-    required_panel_columns <- c(required_panel_columns, subset_panel_columns)
-  }
   if (!all(required_panel_columns %in% names(query_panel))) {
     stop("query panel is missing required columns", call. = FALSE)
   }
@@ -1801,11 +1770,7 @@ if (identical(command, "inspect")) {
     )
   }
 
-  if (
-    !identical(profile$name, "panel_c2") &&
-      !is.null(exports) &&
-      nrow(exports)
-  ) {
+  if (!is.null(exports) && nrow(exports)) {
     usable <- exports[
       exports$backend == "embedded" &
         exports$status == "OK" &
@@ -1909,76 +1874,6 @@ if (identical(command, "inspect")) {
   writeLines(out, path, useBytes = TRUE)
   cat(paste(out, collapse = "\n"), "\n")
   message("\nwrote ", path)
-} else if (identical(command, "figure")) {
-  # Generate uncertainty-aware figures from the current benchmark run.
-  #
-  # Usage: Rscript benchmark_cli.R figure <result_dir> <out_dir>
-
-  args <- command_args
-  here <- Sys.getenv("BENCH_ROOT", "")
-  if (!nzchar(here)) {
-    here <- normalizePath("tests/benchmarks/expression-backends/scripts")
-  }
-
-  result_dir <- if (length(args) >= 1L) {
-    normalizePath(args[1], mustWork = TRUE)
-  } else {
-    bench_current_result_dir(file.path(
-      here,
-      "..",
-      "..",
-      "results",
-      "expression-backends",
-      "full"
-    ))
-  }
-  out_dir <- if (length(args) >= 2L) args[2] else "vignettes/img"
-
-  suppressPackageStartupMessages({
-    library(ggplot2)
-    library(patchwork)
-  })
-
-  manifest <- utils::read.csv(
-    file.path(result_dir, "run_manifest.csv"),
-    stringsAsFactors = FALSE
-  )
-  manifest_values <- stats::setNames(as.character(manifest$value), manifest$key)
-  profile <- bench_profile(manifest_values[["profile"]])
-  bench_require_article_profile(profile)
-
-  exports <- utils::read.csv(
-    file.path(result_dir, "10_export.csv"),
-    stringsAsFactors = FALSE
-  )
-  access <- utils::read.csv(
-    file.path(result_dir, "20_access.csv"),
-    stringsAsFactors = FALSE
-  )
-  if (
-    !nrow(access) ||
-      !all(c("access_contract", "correctness", "status") %in% names(access)) ||
-      !all(access$access_contract %in% "materialized-v2") ||
-      !all(access$correctness %in% "OK") ||
-      !all(access$status %in% "OK")
-  ) {
-    stop(
-      "figures require correct, freshly measured materialized-v2 access results",
-      call. = FALSE
-    )
-  }
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-
-  if (identical(profile$name, "panel_c2")) {
-    source(file.path(here, "figure_full.R"))
-    bench_figure_full(exports, access, out_dir)
-  } else if (identical(profile$name, "scale")) {
-    source(file.path(here, "figure_scale.R"))
-    bench_figure_scale(exports, access, manifest_values, out_dir)
-  } else {
-    stop("figures require the full or scale profile", call. = FALSE)
-  }
-  message("wrote benchmark figures from ", manifest_values[["run_id"]])
 } else if (identical(command, "evidence")) {
   # Write a deterministic checksum inventory for a completed evidence package.
 
@@ -2029,13 +1924,6 @@ if (identical(command, "inspect")) {
     stop("need <stage_dir>", call. = FALSE)
   }
   stage <- normalizePath(args[1], mustWork = TRUE)
-  manifest_path <- file.path(stage, "run_manifest.csv")
-  if (!file.exists(manifest_path)) {
-    stop("missing staged output: run_manifest.csv", call. = FALSE)
-  }
-  manifest <- utils::read.csv(manifest_path, stringsAsFactors = FALSE)
-  values <- stats::setNames(as.character(manifest$value), manifest$key)
-  profile <- values[["profile"]]
   required <- c(
     "00_probe.csv",
     "05_schedule.csv",
@@ -2050,19 +1938,6 @@ if (identical(command, "inspect")) {
     "summary.md",
     "evidence_manifest.csv"
   )
-  if (identical(profile, "scale")) {
-    required <- c(
-      required,
-      file.path("figures", "expression_backend_benchmark_overview.png"),
-      file.path("figures", "expression_backend_benchmark_ceiling.png")
-    )
-  }
-  if (identical(profile, "panel_c2")) {
-    required <- c(
-      required,
-      file.path("figures", "expression_backend_benchmark_overview.png")
-    )
-  }
   paths <- file.path(stage, required)
   missing <- !file.exists(paths) |
     is.na(file.info(paths)$size) |
@@ -2106,122 +1981,6 @@ if (identical(command, "inspect")) {
     )
   }
   message("validated complete staged benchmark outputs")
-} else if (identical(command, "recover-publication")) {
-  if (length(command_args) != 1L) {
-    stop("need <result_root>", call. = FALSE)
-  }
-  bench_recover_activation(command_args[[1L]])
-} else if (identical(command, "assemble")) {
-  # Fill a study's resource skips with same-host supplement builds and publish
-  # the result as an assembled collection; no new measurements are taken.
-  #
-  # Usage: Rscript benchmark_cli.R assemble <study_run_dir> <supplement_run_dir>...
-
-  args <- command_args
-  if (length(args) < 2L) {
-    stop("need <study_run_dir> <supplement_run_dir>...", call. = FALSE)
-  }
-  study_dir <- normalizePath(args[1L], mustWork = TRUE)
-  supplement_dirs <- normalizePath(args[-1L], mustWork = TRUE)
-  result_root <- dirname(dirname(study_dir))
-  read <- function(dir, name) {
-    utils::read.csv(file.path(dir, name), stringsAsFactors = FALSE, check.names = FALSE)
-  }
-  study <- bench_manifest_values(read(study_dir, "run_manifest.csv"))
-  if (!identical(study[["profile"]], "scale")) {
-    stop("assembly is implemented for Scale studies", call. = FALSE)
-  }
-  repo <- normalizePath(file.path(here, "..", "..", "..", ".."))
-  git <- function(...) {
-    out <- tryCatch(system2("git", c("-C", repo, ...), stdout = TRUE, stderr = FALSE), error = function(e) "")
-    if (length(out)) out[[1L]] else ""
-  }
-  head_sha <- git("rev-parse", "HEAD")
-  collection_id <- sprintf(
-    "%s-%s-%s-assembled",
-    format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"),
-    substr(head_sha, 1L, 12L),
-    basename(result_root)
-  )
-  parts <- bench_assemble_supplement(study_dir, supplement_dirs, collection_id)
-
-  stage <- tempfile("assemble-")
-  dir.create(stage)
-  on.exit(unlink(stage, recursive = TRUE), add = TRUE)
-  write <- function(d, name) utils::write.csv(d, file.path(stage, name), row.names = FALSE)
-  write(parts$exports, "10_export.csv")
-  write(parts$access, "20_access.csv")
-  write(parts$timings, "21_access_timings.csv")
-  write(parts$resource_skips, "resource_skips.csv")
-  for (name in c("00_probe.csv", "05_schedule.csv", "crashes.csv", "query_panel.csv",
-                 "query_plan_manifest.csv", "resource_check.csv", "source_manifest.csv")) {
-    file.copy(file.path(study_dir, name), file.path(stage, name))
-  }
-  acquisitions <- do.call(rbind, lapply(c(study_dir, supplement_dirs), function(dir) {
-    values <- bench_manifest_values(read(dir, "run_manifest.csv"))
-    pick <- function(key) if (key %in% names(values) && !is.na(values[[key]])) values[[key]] else ""
-    data.frame(
-      run_id = pick("run_id"),
-      role = if (identical(dir, study_dir)) "study" else "supplement",
-      directory = substring(dir, nchar(repo) + 2L),
-      git_sha = pick("git_sha"),
-      schedule_filter = pick("schedule_filter"),
-      generated_at = pick("generated_at"),
-      memory_limit_bytes = pick("memory_limit_bytes"),
-      stringsAsFactors = FALSE
-    )
-  }))
-  write(acquisitions, "acquisitions.csv")
-
-  # The collection inherits the study's host, package and timing provenance;
-  # each acquisition's own manifest stays in its immutable run directory.
-  values <- study
-  values[c("study_id", "run_id")] <- collection_id
-  values[["generated_at"]] <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
-  values[["git_sha"]] <- head_sha
-  values[["git_branch"]] <- git("branch", "--show-current")
-  values[["git_dirty"]] <- if (nzchar(git("status", "--porcelain", "--", "tests/benchmarks/expression-backends/scripts"))) "true" else "false"
-  values <- c(values,
-    result_kind = "assembled",
-    new_measurements = "0",
-    study_run_id = study[["run_id"]],
-    supplement_run_ids = paste(acquisitions$run_id[acquisitions$role == "supplement"], collapse = ";"),
-    replaced_resource_skips = as.character(nrow(parts$resource_skips))
-  )
-  utils::write.csv(
-    data.frame(key = names(values), value = unname(values), stringsAsFactors = FALSE),
-    file.path(stage, "run_manifest.csv"), row.names = FALSE
-  )
-
-  suppressPackageStartupMessages({
-    library(ggplot2)
-    library(patchwork)
-  })
-  source(file.path(here, "figure_scale.R"))
-  bench_figure_scale(parts$exports, parts$access, values, file.path(stage, "figures"))
-
-  replaced <- unique(parts$resource_skips[c("source", "n_cells", "backend")])
-  writeLines(c(
-    "# Scale: study filled with same-host supplements",
-    "",
-    sprintf("Collection `%s`. **No new measurements.**", collection_id),
-    "",
-    sprintf("- Study: `%s` (complete Scale run).", study[["run_id"]]),
-    sprintf("- Supplements: %s.", paste0("`", acquisitions$run_id[acquisitions$role == "supplement"], "`", collapse = ", ")),
-    sprintf("- %d study builds that were skipped for resources are replaced by supplement builds of the same cells:", nrow(parts$resource_skips)),
-    sprintf("  %s %s cells, %s.", replaced$source, format(replaced$n_cells, big.mark = ",", scientific = FALSE), replaced$backend),
-    "  The skipped rows remain in `resource_skips.csv`; no successful study build is replaced.",
-    sprintf("- Totals: %d builds (%d successful), %d access processes, %d raw timings.",
-            nrow(parts$exports), sum(parts$exports$status == "OK"), nrow(parts$access), nrow(parts$timings)),
-    "",
-    "Every row keeps its acquisition `run_id`; `source_run_id` and `collection_id` identify",
-    "origin and assembly. Study and supplements share host, R and package versions",
-    "(checked by `bench_assemble_supplement`); `acquisitions.csv` lists each run, its code",
-    "version and memory cap. Per-run reports, logs and manifests remain in the run",
-    "directories named there. Figures in `figures/` are drawn from the assembled rows."
-  ), file.path(stage, "summary.md"))
-
-  bench_publish_result(stage, result_root, collection_id)
 } else if (identical(command, "publish")) {
   # Publish a validated result directory without replacing prior runs.
 
