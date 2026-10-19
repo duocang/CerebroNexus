@@ -1,3 +1,22 @@
+# CerebroNexus 5.3.1
+
+## Fixes
+
+- Fixes `exportFromSCE()` failing on an object whose only reduction is PCA,
+  and ignoring `use_delayed_array = TRUE`.
+- Fixes `createShinyApp()` dropping the spatial molecule sidecars of every
+  data set when one data set before them had none.
+- Fixes `convertSeuratToCerebro()` failing when `most_expressed_genes` holds a
+  non-table element, `getMarkerGenes()` failing with the default
+  `organism = NULL`, and the gene lists of `performGeneSetEnrichmentAnalysis()`
+  results carrying a stray space after every gene.
+
+## Internal
+
+- Internal clean-up with no change in behaviour: `exportFromSCE()` and
+  `exportFromSeurat()` share their builders, and repeated code in the analysis
+  helpers, `createShinyApp()` and the `Cerebro` class is merged.
+
 # CerebroNexus 5.3.0
 
 This release removes the remaining compatibility code for files, arguments and
