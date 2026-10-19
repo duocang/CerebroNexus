@@ -4,6 +4,9 @@
   separate full-source and scale studies comparing embedded, BPCells and H5
   storage. The viewer diagnostics move from `tests/bench/` to
   `tests/benchmarks/viewer/`. Run results are kept outside the repository.
+- The "Large-dataset benchmarks" article now reports the 2026-10-18 Scale run:
+  setup, full-size medians and both figures, read from a small summary table in
+  `inst/extdata/benchmarks/`.
 - `exportFromSeurat()` writes the H5 expression file without gzip compression,
   because export and read speed matter more than disk size.
 - BPCells is no longer installed by default: `DESCRIPTION` drops the BPCells
