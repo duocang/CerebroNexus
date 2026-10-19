@@ -539,7 +539,7 @@ resume_run() {
   export BENCH_RECOVERY_SCRATCH="$scratch"
   printf -v command 'bash %q _resume' "$SCRIPT"
   bench_isolate_r
-  nix-shell "$REPO/default.nix" -A shell --run "$command"
+  nix-shell "$REPO/default.nix" -A shell --arg withBPCells true --run "$command"
 }
 
 # Every benchmark R process, including the Scale memory snapshot taken before
@@ -558,7 +558,7 @@ worker() {
   printf -v command 'bash %q _inside %q' "$SCRIPT" "${1:-run}"
   bench_isolate_r
   set +e
-  nix-shell "$REPO/default.nix" -A shell --run "$command"
+  nix-shell "$REPO/default.nix" -A shell --arg withBPCells true --run "$command"
   code=$?
   set -e
   tmp_exit="$EXIT_FILE.$$"

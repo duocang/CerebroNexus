@@ -67,6 +67,8 @@
 # compatibility with older R versions and R packages for Linux/WSL and
 # Apple Silicon computers.
 # Report any issues to https://github.com/ropensci/rix
+# BPCells is opt-in: nix-shell default.nix --arg withBPCells true
+{ withBPCells ? false }:
 let
  pkgs = import (fetchTarball "https://github.com/rstats-on-nix/nixpkgs/archive/2026-10-13.tar.gz") {};
 
@@ -196,7 +198,7 @@ let
     
     # Keep dependencies flat. Recent Nixpkgs no longer reliably propagates
     # nested lists in buildInputs (and warns that support will be removed).
-    buildInputs = [ BPCells hdf5Ros3 ] ++ rpkgs ++ system_packages;
+    buildInputs = (if withBPCells then [ BPCells ] else [ ]) ++ [ hdf5Ros3 ] ++ rpkgs ++ system_packages;
 
     shellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
       export LD_LIBRARY_PATH="${hdf5Ros3}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

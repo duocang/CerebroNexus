@@ -93,6 +93,4 @@ Suggests:
   shinytest2 (>= 0.2.0),
   withr,
   xml2
-Remotes:
-  bnprks/BPCells/r
 VignetteBuilder: knitr

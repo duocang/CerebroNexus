@@ -34,11 +34,11 @@ jobs:
         run: bash .github/scripts/setup-osmzhlab-cache.sh
 
       - name: Install R package dependencies
-        run: nix-shell default.nix --run "echo 'R package dependencies installed'"
+        run: nix-shell default.nix --arg withBPCells true --run "echo 'R package dependencies installed'"
 
       - name: Install CerebroNexus
         run: |
-          nix-shell default.nix --run "Rscript -e \"
+          nix-shell default.nix --arg withBPCells true --run "Rscript -e \"
             lib <- Sys.getenv('R_LIBS_USER')
             dir.create(lib, recursive = TRUE, showWarnings = FALSE)
             install.packages('.', repos = NULL, type = 'source', lib = lib)
@@ -46,7 +46,7 @@ jobs:
 
       - name: Build pkgdown site
         run: |
-          nix-shell default.nix --run "Rscript -e \"
+          nix-shell default.nix --arg withBPCells true --run "Rscript -e \"
             pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
           \""
 
