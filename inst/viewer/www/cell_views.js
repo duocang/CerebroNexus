@@ -7086,12 +7086,10 @@
         return response.arrayBuffer();
       }).then(function (buffer) {
         var downloadedAt = performance.now();
-        var value = decode(buffer);
-        return {
-          value: value,
+        return Object.assign(decode(buffer), {
           downloadMs: downloadedAt - downloadStarted,
           decodeMs: performance.now() - downloadedAt
-        };
+        });
       });
       cache.set(key, pending);
       pending.catch(function () {
@@ -7100,14 +7098,11 @@
       });
     }
     var started = performance.now();
+    // The decoded entry is shared by every caller; timings are per call.
     return pending.then(function (entry) {
-      return {
-        value: entry.value,
-        downloadMs: entry.downloadMs,
-        decodeMs: entry.decodeMs,
-        fetchMs: performance.now() - started,
-        cacheHit: cacheHit
-      };
+      return Object.assign({}, entry, {
+        fetchMs: performance.now() - started, cacheHit: cacheHit
+      });
     });
   }
   var projectionResourceCache = new Map();
@@ -7145,22 +7140,14 @@
           }
           if (z) z[i] = interleaved[offset + 2];
         }
-        return {
+        return {coordinates: {
           x: x, y: y, z: z,
           xRange: !z && isFinite(x0) && x1 > x0 ? [x0, x1] : null,
           yRange: !z && isFinite(y0) && y1 > y0 ? [y0, y1] : null,
           bytes: buffer.byteLength
-        };
+        }};
       }
-    ).then(function (loaded) {
-      return {
-        coordinates: loaded.value,
-        fetchMs: loaded.fetchMs,
-        downloadMs: loaded.downloadMs,
-        decodeMs: loaded.decodeMs,
-        cacheHit: loaded.cacheHit
-      };
-    });
+    );
   }
   var projectionSubsetResourceCache = new Map();
   function canonicalResourceIdentityMatches(resource, identity) {
@@ -7386,14 +7373,7 @@
         }
         return {kind: kind, indices: indices, bytes: buffer.byteLength};
       }
-    ).then(function (loaded) {
-      var result = loaded.value;
-      return {
-        kind: result.kind, indices: result.indices, bytes: result.bytes,
-        downloadMs: loaded.downloadMs, decodeMs: loaded.decodeMs,
-        fetchMs: loaded.fetchMs, cacheHit: loaded.cacheHit
-      };
-    });
+    );
   }
   function materializeProjectionSubset(coordinates, subset, expectedCells) {
     var started = performance.now();
@@ -7707,11 +7687,7 @@
         }
         return { values: values, bytes: buffer.byteLength };
       }
-    ).then(function (loaded) {
-      var result = loaded.value;
-      return { values: result.values, bytes: result.bytes,
-        fetchMs: loaded.fetchMs };
-    });
+    );
   }
   function fetchMetadataCodesResource(resource, expectedCells) {
     var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
@@ -7747,11 +7723,7 @@
         }
         return { values: values, bytes: buffer.byteLength };
       }
-    ).then(function (loaded) {
-      var result = loaded.value;
-      return { values: result.values, bytes: result.bytes,
-        fetchMs: loaded.fetchMs };
-    });
+    );
   }
   function fetchValidatedMetadataCodesResource(resource, expectedCells, identity) {
     if (resource && resource.protocol === 'canonical-metadata-codes-v1' &&
@@ -7783,15 +7755,7 @@
       hydrateLinkedProjectionResource(bundle),
       hydrateLinkedMetadataResource(bundle)
     ]).then(function (results) {
-      return {
-        bundle: bundle,
-        projectionFetchMs: results[0].projectionFetchMs,
-        projectionBytes: results[0].projectionBytes,
-        projectionDownloadMs: results[0].projectionDownloadMs,
-        projectionDecodeMs: results[0].projectionDecodeMs,
-        metadataFetchMs: results[1].metadataFetchMs,
-        metadataBytes: results[1].metadataBytes
-      };
+      return Object.assign({}, results[0], results[1]);
     });
   }
   function canonicalGroupedValues(grouped, groups, fallback) {
@@ -7824,6 +7788,12 @@
         };
       }
     }
+    var traces = nested && Array.isArray(data.meta.traces) ? data.meta.traces : [];
+    var levels = traces.map(String);
+    var colors = traces.map(function (name, group) {
+      var colour = data.data.color && data.data.color[group];
+      return String(Array.isArray(colour) ? colour[0] : colour || '#7b8794');
+    });
     if (nested) {
       var directGroups = data.data.canonical_group;
       var directCanonicalX = data.data.x, directCanonicalY = data.data.y;
@@ -7831,23 +7801,14 @@
       if (ArrayBuffer.isView(directGroups) && directGroups.length === n &&
         ArrayBuffer.isView(directCanonicalX) && directCanonicalX.length === n &&
         ArrayBuffer.isView(directCanonicalY) && directCanonicalY.length === n) {
-        var directTraces = Array.isArray(data.meta.traces)
-          ? data.meta.traces : [];
-        var directLevels = [], directColors = [];
-        directTraces.forEach(function (name, group) {
-          directLevels.push(String(name));
-          var colour = data.data.color && data.data.color[group];
-          directColors.push(String(Array.isArray(colour) ? colour[0] :
-            colour || '#7b8794'));
-        });
         return {
           x: directCanonicalX,
           y: directCanonicalY,
           z: ArrayBuffer.isView(directCanonicalZ) &&
             directCanonicalZ.length === n ? directCanonicalZ : null,
           groups: directGroups,
-          levels: directLevels,
-          colors: directColors,
+          levels: levels,
+          colors: colors,
           hover: [],
           hoverEnabled: new Uint8Array(0),
           hoverColumns: []
@@ -7862,7 +7823,7 @@
     if (z) z.fill(NaN);
     var groups = nested ? new Int32Array(n) : null;
     if (groups) groups.fill(-1);
-    var levels = [], colors = [], hover = new Array(n);
+    var hover = new Array(n);
     var hoverEnabled = new Uint8Array(n);
     var hoverColumns = sourceHoverColumns.map(function (column) {
       return {
@@ -7874,7 +7835,6 @@
       };
     });
     if (nested) {
-      var traces = Array.isArray(data.meta.traces) ? data.meta.traces : [];
       var hoverModes = data.hover && data.hover.hoverinfo;
       var canonicalGroups = data.data.canonical_group;
       if (ArrayBuffer.isView(canonicalGroups) && canonicalGroups.length === n) {
@@ -7888,11 +7848,6 @@
           if (z) z[canonicalIndex] = Number(canonicalZ[canonicalIndex]);
           groups[canonicalIndex] = Number(canonicalGroups[canonicalIndex]);
         }
-        traces.forEach(function (name, group) {
-          levels.push(String(name));
-          var colour = data.data.color && data.data.color[group];
-          colors.push(String(Array.isArray(colour) ? colour[0] : colour || '#7b8794'));
-        });
         return {
           x: x, y: y, z: z, groups: groups, levels: levels, colors: colors,
           hover: [], hoverEnabled: hoverEnabled, hoverColumns: []
@@ -7900,9 +7855,6 @@
       }
       var offset = 0;
       traces.forEach(function (name, group) {
-        levels.push(String(name));
-        var colour = data.data.color && data.data.color[group];
-        colors.push(String(Array.isArray(colour) ? colour[0] : colour || '#7b8794'));
         var gx = data.data.x[group] || [], gy = data.data.y[group] || [];
         var gz = data.data.z && data.data.z[group] || [];
         var gh = data.hover && data.hover.text && data.hover.text[group] || [];
@@ -7926,16 +7878,6 @@
       var hx = data.data.x || [], hy = data.data.y || [], hz = data.data.z || [];
       var hh = data.hover && Array.isArray(data.hover.text) ? data.hover.text : [];
       var enabled = !(data.hover && data.hover.hoverinfo === 'skip');
-      var direct = !data.data.selection_key && ArrayBuffer.isView(hx) &&
-        ArrayBuffer.isView(hy) && hx.length === n && hy.length === n;
-      if (direct && !enabled && !sourceHoverColumns.length) {
-        return {
-          x: hx, y: hy,
-          z: ArrayBuffer.isView(hz) && hz.length === n ? hz : null,
-          groups: groups, levels: levels, colors: colors,
-          hover: [], hoverEnabled: hoverEnabled, hoverColumns: []
-        };
-      }
       for (var k = 0; k < Math.min(hx.length, n); k++) {
         x[k] = hx[k] == null ? NaN : Number(hx[k]);
         y[k] = hy[k] == null ? NaN : Number(hy[k]);
