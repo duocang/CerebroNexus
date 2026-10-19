@@ -40,7 +40,7 @@ test_that("the 1M demo is opt-in and validates its sidecar", {
 })
 
 test_that("the 1M preparation keeps unique gene symbols", {
-  script <- testthat::test_path("..", "bench", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path("..", "benchmarks", "viewer", "scripts", "prepare_viewer_1m_data.R")
   skip_if_not(
     file.exists(script),
     "benchmark tree not present (expected when checking a built package)"
@@ -124,7 +124,7 @@ test_that("the 1M preparation keeps unique gene symbols", {
 })
 
 test_that("the 1M demo replaces the illustrative path with marker guidance", {
-  script <- testthat::test_path("..", "bench", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path("..", "benchmarks", "viewer", "scripts", "prepare_viewer_1m_data.R")
   skip_if_not(
     file.exists(script),
     "benchmark tree not present (expected when checking a built package)"
@@ -504,7 +504,7 @@ test_that("telemetry snapshots normalize shared transport phases", {
 test_that("trajectory benchmark contract follows the selected trajectory", {
   protocol_file <- testthat::test_path(
     "..",
-    "bench",
+    "benchmarks", "viewer", "scripts",
     "viewer_1m_page_protocol.R"
   )
   skip_if_not(file.exists(protocol_file), "benchmark tree not present")
@@ -541,7 +541,7 @@ test_that("trajectory benchmark contract follows the selected trajectory", {
 test_that("Spatial benchmark contract follows finite coordinate rows", {
   protocol_file <- testthat::test_path(
     "..",
-    "bench",
+    "benchmarks", "viewer", "scripts",
     "viewer_1m_page_protocol.R"
   )
   skip_if_not(file.exists(protocol_file), "benchmark tree not present")
@@ -568,7 +568,7 @@ test_that("Mouse 1M marker-guided trajectory keeps its neural-lineage contract",
   skip_if(!nzchar(artifact) || !file.exists(artifact))
   protocol_file <- testthat::test_path(
     "..",
-    "bench",
+    "benchmarks", "viewer", "scripts",
     "viewer_1m_page_protocol.R"
   )
   protocol <- new.env(parent = baseenv())
@@ -591,7 +591,7 @@ test_that("Mouse 1M marker-guided trajectory keeps its neural-lineage contract",
 test_that("benchmark TSV output escapes controls and validates columns", {
   protocol_file <- testthat::test_path(
     "..",
-    "bench",
+    "benchmarks", "viewer", "scripts",
     "viewer_1m_page_protocol.R"
   )
   skip_if_not(file.exists(protocol_file), "benchmark tree not present")
@@ -633,7 +633,7 @@ test_that("benchmark TSV output escapes controls and validates columns", {
 test_that("benchmark provenance identifies sidecars and Viewer Packs", {
   protocol_file <- testthat::test_path(
     "..",
-    "bench",
+    "benchmarks", "viewer", "scripts",
     "viewer_1m_page_protocol.R"
   )
   skip_if_not(file.exists(protocol_file), "benchmark tree not present")
@@ -670,7 +670,7 @@ test_that("benchmark provenance identifies sidecars and Viewer Packs", {
 test_that("the page benchmark schedule and budgets are balanced", {
   protocol_file <- testthat::test_path(
     "..",
-    "bench",
+    "benchmarks", "viewer", "scripts",
     "viewer_1m_page_protocol.R"
   )
   skip_if_not(

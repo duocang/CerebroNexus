@@ -101,8 +101,9 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
   \code{HDF5Array::TENxMatrix} seed and transposes it lazily to Cerebro's
   internal genes x cells layout via \code{DelayedArray::t()} (free). The
   in-memory \code{dgCMatrix} is never materialised on attach, so RAM stays
-  close to the \code{.crb} metadata size. Requires the \pkg{HDF5Array}
-  package.
+  close to the \code{.crb} metadata size. The file is written without
+  gzip compression: it is several times larger than a compressed file but
+  builds and reads faster. Requires the \pkg{HDF5Array} package.
 }
 The CRB and any sidecar are built and validated in a private sibling stage.
 On POSIX systems, new stages and external matrices are owner-only; replacing

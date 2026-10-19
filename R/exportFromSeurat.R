@@ -571,8 +571,9 @@
 #'   \code{HDF5Array::TENxMatrix} seed and transposes it lazily to Cerebro's
 #'   internal genes x cells layout via \code{DelayedArray::t()} (free). The
 #'   in-memory \code{dgCMatrix} is never materialised on attach, so RAM stays
-#'   close to the \code{.crb} metadata size. Requires the \pkg{HDF5Array}
-#'   package.
+#'   close to the \code{.crb} metadata size. The file is written without
+#'   gzip compression: it is several times larger than a compressed file but
+#'   builds and reads faster. Requires the \pkg{HDF5Array} package.
 #' }
 #' The CRB and any sidecar are built and validated in a private sibling stage.
 #' On POSIX systems, new stages and external matrices are owner-only; replacing
@@ -1136,7 +1137,15 @@ exportFromSeurat <- function(
     if (file.exists(h5_abs)) {
       file.remove(h5_abs)
     }
-    HDF5Array::writeTENxMatrix(m_disk, h5_abs, group = "expression")
+    ## Uncompressed (gzip level 0): export and read speed matter more than
+    ## disk size. On 1.3-1.5M-cell sources this reads single genes ~30% faster
+    ## than HDF5Array's default level, at roughly 7x the file size.
+    HDF5Array::writeTENxMatrix(
+      m_disk,
+      h5_abs,
+      group = "expression",
+      level = 0L
+    )
 
     ## self$expression stays NULL — saveRDS therefore does not embed the
     ## matrix inside the .crb. The runtime attach reads the sibling back

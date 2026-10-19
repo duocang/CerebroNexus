@@ -185,6 +185,23 @@ if (length(bp_start) == 1 && !is.na(bp_end)) {
   writeLines(nix_lines, nix_file)
 }
 
+# BPCells is built from source and hard to install, so the default shell
+# leaves it out; CI passes `--arg withBPCells true`.
+patch_bpcells_opt_in <- function(lines) {
+  marker <- grep("^let$", lines)
+  inputs <- grep("buildInputs = \\[ BPCells rpkgs system_packages \\];", lines)
+  if (length(marker) != 1L || length(inputs) != 1L) {
+    stop("Unexpected rix output; cannot make BPCells optional")
+  }
+  lines[inputs] <- "    buildInputs = (if withBPCells then [ BPCells ] else [ ]) ++ rpkgs ++ system_packages;"
+  append(lines, c(
+    "# BPCells is opt-in: nix-shell default.nix --arg withBPCells true",
+    "{ withBPCells ? false }:"
+  ), after = marker - 1L)
+}
+nix_lines <- patch_bpcells_opt_in(nix_lines)
+writeLines(nix_lines, nix_file)
+
 cat(
   "###################################################################################################\n"
 )

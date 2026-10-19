@@ -41,10 +41,10 @@ jobs:
 
       # Install R package dependencies via nix-shell, using the default.nix file in the repository
       - name: Install R package dependencies
-        run: nix-shell default.nix --run "echo 'R package dependencies installed'"
+        run: nix-shell default.nix --arg withBPCells true --run "echo 'R package dependencies installed'"
 
       - name: Build source tarball
-        run: nix-shell default.nix --run "R CMD build ."
+        run: nix-shell default.nix --arg withBPCells true --run "R CMD build ."
 
       # Check the distributable outside the checkout, without development tools.
       - name: Run R-CMD-check
@@ -52,7 +52,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/cerebro-cran-check"
           cp CerebroNexus_*.tar.gz "$RUNNER_TEMP/cerebro-cran-check/"
           cd "$RUNNER_TEMP/cerebro-cran-check"
-          nix-shell "$GITHUB_WORKSPACE/default.nix" --run '
+          nix-shell "$GITHUB_WORKSPACE/default.nix" --arg withBPCells true --run '
             set -eu
             unset CI NOT_CRAN NODE_PATH
             export NODE_OPTIONS=--no-global-search-paths

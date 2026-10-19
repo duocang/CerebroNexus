@@ -13,12 +13,16 @@ tests/
 │   ├── test-exportFromSeurat.R
 │   ├── test-r-functions.R
 │   └── _snaps/            # testthat snapshot fixtures
-└── smoke/                 # local dev scratch (gitignored, see its own README)
+├── smoke/                 # local dev scratch (gitignored, see its own README)
+└── benchmarks/            # Viewer measurements, separate from regression tests
+    └── viewer/
 ```
 
 The testthat suite is included in package builds. Benchmark scripts, Node modules
 and local browser artifacts are excluded. `tests/smoke/` is a local sandbox for
-hand-driven smoke tests; it does not run under `R CMD check`.
+hand-driven smoke tests; it does not run under `R CMD check`. See
+[benchmark commands](benchmarks/README.md) for the Viewer measurements. `_snaps/` contains expected test output
+and must not be treated as disposable logs.
 
 ## Prerequisites
 
