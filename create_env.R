@@ -191,11 +191,18 @@ patch_benchmark_nix <- function(lines) {
     stop("Unexpected rix output; cannot apply benchmark environment settings")
   }
   lines[inputs] <- paste(
-    "    buildInputs = [ BPCells hdf5Ros3 ] ++ rpkgs ++ system_packages;",
+    "    buildInputs = (if withBPCells then [ BPCells ] else [ ]) ++ [ hdf5Ros3 ] ++ rpkgs ++ system_packages;",
     "    shellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''",
     "      export LD_LIBRARY_PATH=\"${hdf5Ros3}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"",
     "    '';", sep = "\n"
   )
+  # BPCells is built from source and hard to install, so the default shell
+  # leaves it out; CI and the benchmarks pass `--arg withBPCells true`.
+  lines <- append(lines, c(
+    "# BPCells is opt-in: nix-shell default.nix --arg withBPCells true",
+    "{ withBPCells ? false }:"
+  ), after = marker - 1L)
+  marker <- marker + 2L
   append(lines, c(
     "  hdf5Ros3 = if pkgs.stdenv.hostPlatform.isLinux then",
     "    pkgs.hdf5.overrideAttrs (old: {",

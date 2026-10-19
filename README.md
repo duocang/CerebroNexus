@@ -41,6 +41,10 @@ Rscript -e "install.packages(c('remotes', 'pkgload')); remotes::install_local('.
 Rscript run-demo.R
 ```
 
+These demos use BPCells sidecars, so they also need `BPCells`, which
+CerebroNexus does not install for you:
+`Rscript -e "remotes::install_github('bnprks/BPCells/r')"`.
+
 To test Ren without also preparing the 10x dataset:
 
 ```bash
