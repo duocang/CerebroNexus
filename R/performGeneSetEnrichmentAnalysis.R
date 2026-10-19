@@ -269,8 +269,7 @@ performGeneSetEnrichmentAnalysis <- function(
           current_group,
           '`. Will skip this group and proceed ',
           'to next.'
-        ),
-        call. = FALSE
+        )
       )
       results <- NULL
 
