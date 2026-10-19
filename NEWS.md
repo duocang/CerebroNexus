@@ -1,3 +1,16 @@
+# CerebroNexus 5.1.3
+
+- Adds a real-data expression-backend benchmark in `tests/benchmarks/`, with
+  separate full-source and scale studies comparing embedded, BPCells and H5
+  storage. The viewer diagnostics move from `tests/bench/` to
+  `tests/benchmarks/viewer/`. Run results are kept outside the repository.
+- `exportFromSeurat()` writes the H5 expression file without gzip compression,
+  because export and read speed matter more than disk size.
+- BPCells is no longer installed by default: `DESCRIPTION` drops the BPCells
+  remote, and the Nix shell adds it only with
+  `nix-shell default.nix --arg withBPCells true`. Reading BPCells-backed Seurat
+  objects still needs BPCells installed.
+
 # CerebroNexus 5.1.2
 
 - Fixes embedded background images above about 750 KB being cut short, which
@@ -124,9 +137,6 @@
 
 # CerebroNexus 5.0.1
 
-- Adds a real-data backend benchmark with separate full-source and six-tier
-  scale studies, five builds and two access processes per build. Retained
-  September results describe CerebroNexus 4.6.4; they do not measure this release.
 - Reduces the nine bundled demo CRBs from 30.26 to 21.22 MiB (about 30%) through
   stronger build-time compression and a maximum of 1,500 expression genes per
   demo. Smaller panels remain whole; available demonstration markers,
