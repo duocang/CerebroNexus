@@ -353,7 +353,7 @@ memory_figure <- function(exports) {
   present <- intersect(source_levels, unique(points$source))
   points$source <- factor(points$source, levels = present)
   ggplot(points, aes(nnz, y, colour = source, shape = source)) +
-    geom_errorbar(aes(ymin = lo, ymax = hi), width = 0, linewidth = 0.5) +
+    geom_errorbar(aes(ymin = lo, ymax = hi), width = 0, linewidth = 0.5, show.legend = FALSE) +
     geom_point(size = 2.0) +
     scale_colour_manual(name = NULL, values = memory_source_colours[present],
                         labels = source_titles[present]) +
