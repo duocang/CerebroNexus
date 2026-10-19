@@ -12,6 +12,8 @@ run_specialist_state_node <- function(body) {
     "};",
     "window.CerebroDatasetContext = {",
     "  current: () => datasetContext, phase: () => datasetPhase,",
+    "  readyContext: () => datasetPhase === 'ready' ? datasetContext : null,",
+    "  readyKey: () => window.CerebroDatasetContext.key(window.CerebroDatasetContext.readyContext()),",
     "  key: value => value ? JSON.stringify([value.epoch,value.dataset_key,value.generation]) : '',",
     "  same: (left, right) => !!left && !!right && left.epoch === right.epoch &&",
     "    left.dataset_key === right.dataset_key && left.generation === right.generation",
@@ -114,7 +116,7 @@ test_that("HLA retires drawn selection geometry on a dataset request", {
     "const fs=require('fs'),assert=require('assert'),events={},docEvents={},handlers={};let cleared=0;",
     "const context={epoch:'test',dataset_key:'A',generation:1};",
     "const network={canvas:{frame:{clientWidth:800,clientHeight:600}},DOMtoCanvas:p=>p,getScale:()=>1,setOptions:()=>{},selectNodes:()=>{},unselectAll:()=>cleared++};",
-    "global.window={HTMLWidgets:{find:()=>({network})},setTimeout:()=>{},CerebroDatasetContext:{phase:()=> 'ready',current:()=>context,key:()=> 'A:1',accepts:()=>true},addEventListener:(name,fn)=>{events[name]=fn}};",
+    "global.window={HTMLWidgets:{find:()=>({network})},setTimeout:()=>{},CerebroDatasetContext:{phase:()=> 'ready',current:()=>context,readyContext:()=>context,readyKey:()=> 'A:1',key:()=> 'A:1',accepts:()=>true},addEventListener:(name,fn)=>{events[name]=fn}};",
     "global.Shiny={addCustomMessageHandler:(name,fn)=>{handlers[name]=fn},setInputValue:()=>{}};window.Shiny=Shiny;",
     "global.document={readyState:'loading',addEventListener:(name,fn)=>{docEvents[name]=fn},getElementById:()=>null,querySelectorAll:()=>[]};",
     js_eval_file(viewer_test_path("www", "hla_motifs.js")),
@@ -131,37 +133,26 @@ test_that("HLA retires drawn selection geometry on a dataset request", {
 })
 
 test_that("a late HLA selection reply keeps the Focus button on", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs=require('fs'),assert=require('assert'),docEvents={},handlers={};",
-      "const context={epoch:'test',dataset_key:'A',generation:1};",
-      "const classes=new Set(),attrs={};",
-      "const focus={classList:{toggle:(name,on)=>{on?classes.add(name):classes.delete(name)},contains:name=>classes.has(name)},setAttribute:(name,value)=>{attrs[name]=value},getAttribute:name=>attrs[name]};",
-      "global.window={HTMLWidgets:{find:()=>null},setTimeout:()=>{},CerebroDatasetContext:{phase:()=> 'ready',current:()=>context,key:()=> 'A:1',accepts:()=>true},addEventListener:()=>{},dispatchEvent:()=>{}};",
-      "global.CustomEvent=function(name,init){this.type=name;this.detail=init&&init.detail};",
-      "global.Shiny={addCustomMessageHandler:(name,fn)=>{handlers[name]=fn},setInputValue:()=>{}};window.Shiny=Shiny;",
-      "global.document={readyState:'loading',addEventListener:(name,fn)=>{docEvents[name]=fn},getElementById:id=>id==='hla_motif_network_focus_selection'?focus:null,querySelectorAll:()=>[]};",
-      sprintf(
-        "eval(fs.readFileSync(%s,'utf8'));",
-        encodeString(viewer_test_path("www", "hla_motifs.js"), quote = '"')
-      ),
-      "docEvents['shiny:connected']();",
-      # The cell view turns Focus on when it is clicked ...
-      "focus.classList.toggle('is-on',true);focus.setAttribute('aria-pressed','true');",
-      # ... and only afterwards does the server's selection reply arrive.
-      "handlers['hla_motif_selection_state']({node_keys:['k1'],cells:['cell-1']});",
-      "assert(focus.classList.contains('is-on'));",
-      "assert.strictEqual(focus.getAttribute('aria-pressed'),'true');",
-      "console.log('HLA late reply checks passed')"
-    ),
-    runner
-  )
-  result <- system2("node", runner, stdout = TRUE, stderr = TRUE)
-  expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
-  expect_true("HLA late reply checks passed" %in% result)
+  result <- run_node_script(c(
+    "const fs=require('fs'),assert=require('assert'),docEvents={},handlers={};",
+    "const context={epoch:'test',dataset_key:'A',generation:1};",
+    "const classes=new Set(),attrs={};",
+    "const focus={classList:{toggle:(name,on)=>{on?classes.add(name):classes.delete(name)},contains:name=>classes.has(name)},setAttribute:(name,value)=>{attrs[name]=value},getAttribute:name=>attrs[name]};",
+    "global.window={HTMLWidgets:{find:()=>null},setTimeout:()=>{},CerebroDatasetContext:{phase:()=> 'ready',current:()=>context,readyContext:()=>context,readyKey:()=> 'A:1',key:()=> 'A:1',accepts:()=>true},addEventListener:()=>{},dispatchEvent:()=>{}};",
+    "global.CustomEvent=function(name,init){this.type=name;this.detail=init&&init.detail};",
+    "global.Shiny={addCustomMessageHandler:(name,fn)=>{handlers[name]=fn},setInputValue:()=>{}};window.Shiny=Shiny;",
+    "global.document={readyState:'loading',addEventListener:(name,fn)=>{docEvents[name]=fn},getElementById:id=>id==='hla_motif_network_focus_selection'?focus:null,querySelectorAll:()=>[]};",
+    js_eval_file(viewer_test_path("www", "hla_motifs.js")),
+    "docEvents['shiny:connected']();",
+    # The cell view turns Focus on when it is clicked ...
+    "focus.classList.toggle('is-on',true);focus.setAttribute('aria-pressed','true');",
+    # ... and only afterwards does the server's selection reply arrive.
+    "handlers['hla_motif_selection_state']({node_keys:['k1'],cells:['cell-1']});",
+    "assert(focus.classList.contains('is-on'));",
+    "assert.strictEqual(focus.getAttribute('aria-pressed'),'true');",
+    "console.log('HLA late reply checks passed')"
+  ))
+  expect_node_output(result, "HLA late reply checks passed")
 })
 
 test_that("successful specialist restoration does not replay stale state", {
