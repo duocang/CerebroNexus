@@ -50,13 +50,27 @@ Rscript tests/benchmarks/viewer/scripts/benchmark_ren_expression_backends.R /dat
 Rscript tests/benchmarks/viewer/scripts/benchmark_bpcells_storage_order.R /data/brain-col.crb /data/brain-row.crb /tmp/storage-order.tsv 3
 ```
 
+## Narrow diagnostics
+
+These scripts answer one question each. They are run by hand when that part of the Viewer changes; none of them runs in CI.
+
+- **Server hot paths and Linked bundle, two revisions.** `scripts/run_viewer_1m_benchmark.sh BEFORE AFTER [OUTPUT_DIR]` checks out both revisions in temporary worktrees, prepares the million-cell CRB with `prepare_viewer_1m_data.R`, and runs `viewer_1m_hot_paths.R` (filtering, cell indexing and expression reads, with equality checks) and `viewer_1m_bundle.R` (Linked bundle build, JSON encoding and size). It produced `inst/extdata/benchmarks/million_cell_backend_hot_paths.tsv` and `million_cell_backend_bundle.tsv`. `REPEATS` sets the repetitions; `CEREBRO_LARGE_CACHE` reuses prepared data.
+- **Startup.** `scripts/benchmark_million_cell_startup.R LABEL=CRB [LABEL=CRB ...]` starts the app for each CRB, opens it in headless Chrome and times three steps: the server is ready, the page has loaded, and Data info reports all one million cells. `CEREBRO_STARTUP_REPEATS` sets the repetitions (default 3). It produced the `million_cell_startup_*.csv` files in [saved results](../results/viewer/).
+- **Renderer.** `scripts/benchmark_million_cell_renderer.R [points] [repeats] [output.csv]` draws synthetic points (one million by default) in the small app in `scripts/million_cell_renderer_app/` with headless Chrome and times renderer setup, building the colour buffers and drawing, on the real renderer code in `inst/`. Set `CEREBRO_RENDERER_BACKEND=webgl2` to force the WebGL2 fallback instead of WebGPU.
+
+```bash
+REPEATS=3 bash tests/benchmarks/viewer/scripts/run_viewer_1m_benchmark.sh 27303f21 HEAD
+Rscript tests/benchmarks/viewer/scripts/benchmark_million_cell_startup.R before=/data/old.crb after=/data/new.crb
+Rscript tests/benchmarks/viewer/scripts/benchmark_million_cell_renderer.R 1000000 15 /tmp/renderer.csv
+```
+
 ## Results
 
 Page comparisons write to `CerebroNexus-benchmarks/` beside the repository. Start with `page-summary.md`; `raw.tsv` contains individual observations and `run-config.tsv` records the revisions. Failed runs keep their measurements and return a nonzero exit code.
 
 Page timing starts after the dataset has loaded and ends when the correct primary result is drawn. First visits must be under 2 seconds, or 3 seconds for HLA and Trajectory; repeat visits must be under 500 ms. `settled_ms` is an additional diagnostic, not the page-speed score. Run `--mode memory` separately: memory sampling changes timing, so those times are excluded from performance comparisons.
 
-[Saved Viewer results](../results/viewer/) are historical. Check each report's revision and timing definition before comparing numbers. The detailed event checks are implemented in `scripts/viewer_1m_page_protocol.R`; other files in `scripts/` prepare fixtures or investigate specific bottlenecks.
+[Saved Viewer results](../results/viewer/) are historical. Check each report's revision and timing definition before comparing numbers. The detailed event checks are implemented in `scripts/viewer_1m_page_protocol.R`; the other scripts are listed above.
 
 `scripts/plot_latest_viewer_performance.R` reproduces the older three-launch, 11-page figure; it is not the general page-report command. It requires standalone `panel_alignment.R` and `audit_panel_alignment.py` tools, Python and the R packages listed in the script. Supply their directory explicitly and choose a new figure directory:
 

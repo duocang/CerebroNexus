@@ -1,7 +1,7 @@
 # Viewer benchmark results and acceptance boundaries
 
 This summary retains historical measurements, test provenance and evidence
-boundaries. Reusable measurement tools remain under `tests/bench/`; small data
+boundaries. Reusable measurement tools remain under `tests/benchmarks/viewer/`; small data
 used by installed articles are in `inst/extdata/benchmarks/`.
 
 ## Quantified results and limits
