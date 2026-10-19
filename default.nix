@@ -50,10 +50,12 @@
 #  > "tidyr",
 #  > "tidyselect",
 #  > "stringdist",
+#  > "systemfonts",
 #  > "visNetwork"),
 #  > system_pkgs = c("chromium",
 #  > "nodejs",
-#  > "pandoc"),
+#  > "pandoc",
+#  > "poppler-utils"),
 #  > git_pkgs = list(list(package_name = "BPCells",
 #  > repo_url = "https://github.com/bnprks/BPCells/r",
 #  > commit = bpcells_sha)),
@@ -65,8 +67,18 @@
 # compatibility with older R versions and R packages for Linux/WSL and
 # Apple Silicon computers.
 # Report any issues to https://github.com/ropensci/rix
+# BPCells is opt-in: nix-shell default.nix --arg withBPCells true
+{ withBPCells ? false }:
 let
  pkgs = import (fetchTarball "https://github.com/rstats-on-nix/nixpkgs/archive/2026-10-13.tar.gz") {};
+
+  hdf5Ros3 = if pkgs.stdenv.hostPlatform.isLinux then
+    pkgs.hdf5.overrideAttrs (old: {
+      buildInputs = (old.buildInputs or []) ++ [ pkgs.curl.dev ];
+      cmakeFlags = (old.cmakeFlags or []) ++ [ "-DHDF5_ENABLE_ROS3_VFD=ON" ];
+    })
+  else
+    pkgs.hdf5;
  
   rpkgs = builtins.attrValues {
     inherit (pkgs.rPackages) 
@@ -118,6 +130,7 @@ let
       shinyWidgets
       stringdist
       stringr
+      systemfonts
       testthat
       tibble
       tidyr
@@ -164,7 +177,7 @@ let
       };
     });
       
-  system_packages = builtins.attrValues {
+  system_packages = (builtins.attrValues {
     inherit (pkgs) 
       chromium
       glibcLocales
@@ -172,7 +185,7 @@ let
       nodejs
       pandoc
       R;
-  };
+  }) ++ [ pkgs."poppler-utils" ];
   
   shell = pkgs.mkShell {
     LOCALE_ARCHIVE = if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then "${pkgs.glibcLocales}/lib/locale/locale-archive" else "";
@@ -183,7 +196,13 @@ let
     LC_PAPER = "en_US.UTF-8";
     LC_MEASUREMENT = "en_US.UTF-8";
     
-    buildInputs = [ BPCells rpkgs system_packages ];
+    # Keep dependencies flat. Recent Nixpkgs no longer reliably propagates
+    # nested lists in buildInputs (and warns that support will be removed).
+    buildInputs = (if withBPCells then [ BPCells ] else [ ]) ++ [ hdf5Ros3 ] ++ rpkgs ++ system_packages;
+
+    shellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+      export LD_LIBRARY_PATH="${hdf5Ros3}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    '';
     
   }; 
 in

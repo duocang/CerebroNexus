@@ -1,6 +1,6 @@
-bench_protocol <- file.path("..", "bench", "lib", "protocol.R")
-bench_reporting <- file.path("..", "bench", "lib", "reporting.R")
-bench_root <- normalizePath(file.path("..", "bench"), mustWork = FALSE)
+bench_protocol <- file.path("..", "benchmarks", "expression-backends", "scripts", "benchmark.R")
+bench_reporting <- bench_protocol
+bench_root <- normalizePath(file.path("..", "benchmarks", "expression-backends", "scripts"), mustWork = FALSE)
 
 skip_unless_bench_reporting <- function() {
   testthat::skip_if_not(
@@ -75,8 +75,8 @@ test_that("evidence labels prevent quick runs from sounding definitive", {
     "Exploratory"
   )
   expect_match(
-    bench_evidence_notice(bench_profile("publication")),
-    "Publication-profile"
+    bench_evidence_notice(bench_profile("scale")),
+    "Benchmark evidence"
   )
 })
 
@@ -100,7 +100,7 @@ test_that("current result resolution is safe and backward compatible", {
   expect_error(bench_current_result_dir(root), "unsafe CURRENT")
 })
 
-test_that("report and plots consume repeated publication rows", {
+test_that("report and plots consume repeated benchmark rows", {
   skip_unless_bench_reporting()
   testthat::skip_if_not_installed("ggplot2")
   testthat::skip_if_not_installed("patchwork")
@@ -118,7 +118,7 @@ test_that("report and plots consume repeated publication rows", {
     stringsAsFactors = FALSE
   )
   exports$run_id <- "test-run"
-  exports$profile <- "publication"
+  exports$profile <- "scale"
   exports$source <- "fixture"
   exports$label <- "fixture"
   exports$n_cells <- 1000
@@ -134,6 +134,7 @@ test_that("report and plots consume repeated publication rows", {
   exports$total_mb <- rep(c(3, 1, 2), 3)
   exports$rss_mb <- 10
   exports$r_peak_mb <- 20
+  exports$peak_rss_mb <- 24
   exports$query_plan_fingerprint <- "plan"
   utils::write.csv(
     exports,
@@ -155,9 +156,11 @@ test_that("report and plots consume repeated publication rows", {
   ]
   access$access_repeat <- rep(1:2, nrow(exports))
   access$status <- "OK"
+  access$access_contract <- "materialized-v2"
   access$load_secs <- 0.1
   access$attach_secs <- 0.2
   access$rss_mb <- rep(c(30, 10, 20), 6)
+  access$peak_rss_mb <- access$rss_mb + 5
   access$first_query_secs <- 0.03
   access$hot_p50_secs <- rep(c(0.03, 0.01, 0.02), 6)
   access$hot_p95_secs <- access$hot_p50_secs * 1.2
@@ -203,7 +206,7 @@ test_that("report and plots consume repeated publication rows", {
   )
   manifest <- c(
     run_id = "test-run",
-    profile = "publication",
+    profile = "scale",
     git_sha = paste(rep("a", 40), collapse = ""),
     generated_at = "2026-08-04",
     git_branch = "test",
@@ -233,11 +236,12 @@ test_that("report and plots consume repeated publication rows", {
     row.names = FALSE
   )
 
-  env <- paste0("BENCH_ROOT=", normalizePath(file.path("..", "bench")))
-  report_status <- system2(
+  env <- paste0("BENCH_ROOT=", normalizePath(file.path("..", "benchmarks", "expression-backends", "scripts")))
+  report_status <- bench_test_system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "40_write_report.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "report",
       result_dir
     ),
     stdout = TRUE,
@@ -249,13 +253,15 @@ test_that("report and plots consume repeated publication rows", {
     info = paste(report_status, collapse = "\n")
   )
   report <- readLines(file.path(result_dir, "summary.md"), warn = FALSE)
-  expect_true(any(grepl("Publication-profile evidence", report, fixed = TRUE)))
+  expect_true(any(grepl("Benchmark evidence", report, fixed = TRUE)))
   expect_true(any(grepl("n=3", report, fixed = TRUE)))
+  expect_true(any(grepl("peak process RSS MiB", report, fixed = TRUE)))
 
-  plot_status <- system2(
+  plot_status <- bench_test_system2(
     file.path(R.home("bin"), "Rscript"),
     c(
-      file.path(bench_root, "src", "41_draw_figures.R"),
+      file.path(bench_root, "benchmark_cli.R"),
+      "figure",
       result_dir,
       out_dir
     ),
@@ -275,4 +281,216 @@ test_that("report and plots consume repeated publication rows", {
     out_dir,
     "expression_backend_benchmark_ceiling.png"
   )))
+
+  # Old timing semantics must not acquire fresh-looking figures.
+  access$access_contract <- "legacy"
+  utils::write.csv(access, file.path(result_dir, "20_access.csv"), row.names = FALSE)
+  rejected_dir <- file.path(out_dir, "rejected")
+  rejected <- suppressWarnings(bench_test_system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(file.path(bench_root, "benchmark_cli.R"), "figure", result_dir, rejected_dir),
+    stdout = TRUE, stderr = TRUE, env = env
+  ))
+  expect_false(is.null(attr(rejected, "status")))
+  expect_match(paste(rejected, collapse = "\n"), "materialized-v2")
+  expect_false(dir.exists(rejected_dir))
+})
+
+test_that("benchmark figure labels distinct expression workloads", {
+  skip_unless_bench_reporting()
+  script <- readLines(
+    file.path(bench_root, "figure_scale.R"),
+    warn = FALSE
+  )
+  source <- paste(script, collapse = "\n")
+
+  expect_match(source, "Warmed single-gene read", fixed = TRUE)
+  expect_match(source, "12-gene block read", fixed = TRUE)
+  expect_match(source, "Memory after load", fixed = TRUE)
+  expect_match(source, "Total on-disk footprint", fixed = TRUE)
+  expect_match(source, 'plot_annotation(tag_levels = "a"', fixed = TRUE)
+})
+
+test_that("full figure summarizes builds, not individual read processes", {
+  skip_unless_bench_reporting()
+  skip_if_not_installed("ggplot2")
+  source(bench_protocol, local = TRUE)
+  source(file.path(bench_root, "figure_full.R"), local = TRUE)
+
+  # Two reads per build; H5 read processes span 1-9 but every build median is 5.
+  access <- data.frame(
+    source = "fixture", n_cells = 1000,
+    backend = rep(c("h5", "bpcells"), each = 6),
+    export_repeat = rep(rep(1:3, each = 2), 2),
+    status = "OK", correctness = "OK", access_contract = "materialized-v2",
+    hot_p50_secs = c(1, 9, 4, 6, 5, 5, 2, 2, 2, 4, 10, 10),
+    block_secs = 1, rss_mb = 1024
+  )
+  exports <- data.frame(
+    source = "fixture", n_cells = 1000,
+    backend = rep(c("h5", "bpcells"), each = 3),
+    export_repeat = rep(1:3, 2), status = "OK", total_mb = 1024
+  )
+  hot <- bench_full_panels(exports, access)$plots[[1]]
+  centre <- hot$layers[[2]]$data
+  centre <- centre[order(as.character(centre$backend)), c("backend", "y", "lo", "hi")]
+
+  expect_identical(as.character(centre$backend), c("bpcells", "h5"))
+  expect_equal(centre$y, c(3, 5))
+  expect_equal(centre$lo, c(2, 5))
+  expect_equal(centre$hi, c(10, 5))
+})
+
+test_that("figures give the two H5 variants separate identities", {
+  skip_unless_bench_reporting()
+  skip_if_not_installed("ggplot2")
+  source(bench_protocol, local = TRUE)
+  source(file.path(bench_root, "figure_full.R"), local = TRUE)
+  source(file.path(bench_root, "figure_scale.R"), local = TRUE)
+  style <- bench_backend_style()
+  expect_setequal(style$order, c("h5", "h5_uncompressed", "bpcells", "embedded"))
+  for (field in c("palette", "shapes", "linetypes", "labels")) {
+    expect_setequal(names(style[[field]]), style$order)
+  }
+  expect_false(anyDuplicated(style$palette) > 0)
+  expect_false(anyDuplicated(style$labels) > 0)
+
+  backends <- c("h5", "h5_uncompressed", "bpcells", "embedded")
+  grid <- expand.grid(
+    backend = backends, export_repeat = 1:2, access_repeat = 1:2,
+    n_cells = c(1000, 10000), stringsAsFactors = FALSE
+  )
+  access <- data.frame(
+    source = "fixture", grid, status = "OK", correctness = "OK",
+    access_contract = "materialized-v2",
+    hot_p50_secs = match(grid$backend, backends), block_secs = 1, rss_mb = 1024
+  )
+  exports <- unique(access[c("source", "n_cells", "backend", "export_repeat")])
+  exports$status <- "OK"
+  exports$total_mb <- 1024
+
+  scale_hot <- bench_scale_panels(exports, access)$plots[[1]]
+  built <- ggplot2::ggplot_build(scale_hot)
+  colours <- unique(built$data[[3]][c("colour", "shape")])
+  expect_equal(nrow(colours), 4L)
+
+  full <- access[access$n_cells == 1000 & access$backend != "embedded", , drop = FALSE]
+  full_exports <- exports[exports$n_cells == 1000 & exports$backend != "embedded", , drop = FALSE]
+  full_hot <- bench_full_panels(full_exports, full)$plots[[1]]
+  centre <- full_hot$layers[[2]]$data
+  expect_setequal(as.character(centre$backend), c("h5", "h5_uncompressed", "bpcells"))
+  expect_equal(
+    centre$y[match(c("h5", "h5_uncompressed", "bpcells"), centre$backend)],
+    c(1, 2, 3)
+  )
+
+  # An unrecognised backend must fail rather than vanish from the figure.
+  full$backend[1] <- "h5_typo"
+  expect_error(bench_full_panels(full_exports, full))
+})
+
+test_that("embedded build-memory summaries use embedded exports only", {
+  skip_unless_bench_reporting()
+  source <- paste(
+    readLines(file.path(bench_root, "figure_scale.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(source, 'exports$backend == "embedded"', fixed = TRUE)
+})
+
+test_that("study environment comparison rejects incompatible phases", {
+  skip_unless_bench_reporting()
+  source(bench_reporting, local = TRUE)
+
+  baseline <- c(
+    r_version = "R 4.6.1",
+    r_platform = "x86_64-pc-linux-gnu",
+    cpu = "host-a",
+    benchmark_threads = "1",
+    package_Matrix = "1.7-4"
+  )
+  same <- baseline
+  changed <- baseline
+  changed[["cpu"]] <- "host-b"
+
+  expect_true(
+    bench_compare_environments(
+      baseline,
+      same,
+      keys = names(baseline)
+    )$comparable
+  )
+  comparison <- bench_compare_environments(
+    baseline,
+    changed,
+    keys = names(baseline)
+  )
+  expect_false(comparison$comparable)
+  expect_equal(comparison$different, "cpu")
+})
+
+test_that("frozen run paths cannot escape their result roots", {
+  skip_unless_bench_reporting()
+  source(bench_reporting, local = TRUE)
+
+  root <- tempfile("bench-frozen-root-")
+  dir.create(file.path(root, "runs", "run-1"), recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+
+  expect_equal(
+    bench_result_run_dir(root, "run-1"),
+    normalizePath(file.path(root, "runs", "run-1"))
+  )
+  expect_error(bench_result_run_dir(root, "../escape"), "unsafe run id")
+  expect_error(bench_result_run_dir(root, "missing"), "does not exist")
+})
+
+test_that("backend ratios retain direction and matched tiers", {
+  skip_unless_bench_reporting()
+  source(bench_reporting, local = TRUE)
+
+  summary <- data.frame(
+    source = rep("fixture", 3),
+    n_cells = rep(1000, 3),
+    backend = c("embedded", "bpcells", "h5"),
+    seconds_median = c(4, 2, 1),
+    stringsAsFactors = FALSE
+  )
+  got <- bench_backend_ratios(
+    summary,
+    metric = "seconds_median",
+    reference = "embedded"
+  )
+
+  expect_equal(got$ratio[got$backend == "bpcells"], 0.5)
+  expect_equal(got$ratio[got$backend == "h5"], 0.25)
+  expect_true(all(got$reference_backend == "embedded"))
+
+  summary$seconds_median[summary$backend == "embedded"] <- 0
+  expect_equal(
+    nrow(bench_backend_ratios(summary, "seconds_median", "embedded")),
+    0L
+  )
+})
+
+test_that("the Scale figure renders a single-tier embedded supplement", {
+  skip_unless_bench_reporting()
+  skip_if_not_installed("ggplot2")
+  skip_if_not_installed("patchwork")
+  source(bench_protocol, local = TRUE)
+  source(file.path(bench_root, "figure_scale.R"), local = TRUE)
+  grid <- expand.grid(export_repeat = 1:5, access_repeat = 1:2)
+  access <- data.frame(
+    source = "human_pfc_hbcc", n_cells = 500000, backend = "embedded", grid,
+    status = "OK", correctness = "OK", access_contract = "materialized-v2",
+    hot_p50_secs = 2, block_secs = 3, rss_mb = 14000
+  )
+  exports <- data.frame(
+    source = "human_pfc_hbcc", n_cells = 500000, backend = "embedded",
+    export_repeat = 1:5, status = "OK", total_mb = 3200, nnz = 2e9, r_peak_mb = 9e4
+  )
+  out <- tempfile("supplement-figures-")
+  on.exit(unlink(out, recursive = TRUE), add = TRUE)
+  expect_no_error(suppressWarnings(bench_figure_scale(exports, access, character(), out)))
+  expect_true(file.exists(file.path(out, "expression_backend_benchmark_overview.png")))
 })

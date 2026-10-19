@@ -5,7 +5,9 @@ test_that("Ren benchmark workers reject different values, shapes, and backends",
     viewer_app_test_path(),
     "..",
     "tests",
-    "bench",
+    "benchmarks",
+    "viewer",
+    "scripts",
     "benchmark_ren_expression_backends.R"
   )
   skip_if_not(

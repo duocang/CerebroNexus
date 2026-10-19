@@ -1,9 +1,9 @@
 viewer_benchmark_scope <- function() {
-  file <- test_path("..", "bench", "benchmark_viewer_1m_pages.R")
+  file <- test_path("..", "benchmarks", "viewer", "scripts", "benchmark_viewer_1m_pages.R")
   skip_if_not(file.exists(file), "benchmark tree not present")
   scope <- new.env(parent = globalenv())
-  sys.source(test_path("..", "bench", "viewer_1m_page_protocol.R"), scope)
-  sys.source(test_path("..", "bench", "lib", "viewer_launch.R"), scope)
+  sys.source(test_path("..", "benchmarks", "viewer", "scripts", "viewer_1m_page_protocol.R"), scope)
+  sys.source(test_path("..", "benchmarks", "viewer", "scripts", "lib", "viewer_launch.R"), scope)
   for (expression in parse(file)) {
     if (
       is.call(expression) &&
