@@ -16,16 +16,23 @@
 # median and the whisker is the observed min-max (descriptive range, not a
 # confidence interval). Cell counts are not biological replicates.
 #
+# Output follows Genome Biology artwork rules: 170 mm double-column width,
+# height <= 225 mm, vector PDF with embedded, editable Arial/Helvetica, 7 pt
+# text (8 pt bold panel tags), lines >= 0.25 pt, Okabe-Ito colours, legend in
+# the figure, no figure title. render-figures.sh supplies Arial and audits fonts.
+#
 # Usage: Rscript rebuild-figures.R [REPO] [--scale=DIR] [--full=DIR]
-#          [--out=DIR] [--family=NAME] [--stdpdf]
+#          [--out=DIR] [--family=NAME] [--stdpdf] [--allow-font-substitute]
 
 args <- commandArgs(TRUE)
 positional <- args[!startsWith(args, "--")]
 root <- normalizePath(if (length(positional)) positional[1] else getwd())
-opts <- list(family = NULL, stdpdf = FALSE, scale = NULL, full = NULL, out = NULL)
+opts <- list(family = NULL, stdpdf = FALSE, scale = NULL, full = NULL, out = NULL,
+             substitute = FALSE)
 for (a in args) {
   if (grepl("^--family=", a)) opts$family <- sub("^--family=", "", a)
   if (identical(a, "--stdpdf")) opts$stdpdf <- TRUE
+  if (identical(a, "--allow-font-substitute")) opts$substitute <- TRUE
   for (key in c("scale", "full", "out")) {
     prefix <- paste0("--", key, "=")
     if (startsWith(a, prefix)) opts[[key]] <- normalizePath(substring(a, nchar(prefix) + 1L))
@@ -59,7 +66,19 @@ pick_font <- function(candidates) {
   }
   list(family = candidates[1], matched = FALSE)
 }
-font <- pick_font(c("Arial", "Helvetica", "Nimbus Sans", "Liberation Sans", "DejaVu Sans"))
+# Genome Biology asks for Arial or Helvetica, embedded. Fail rather than embed a
+# look-alike under another name; render-figures.sh provides Arial from a font
+# directory. --allow-font-substitute permits a draft with the closest sans font.
+allowed_fonts <- c("Arial", "Helvetica")
+font <- pick_font(if (isTRUE(opts$substitute)) {
+  c(allowed_fonts, "Nimbus Sans", "Liberation Sans", "DejaVu Sans")
+} else {
+  allowed_fonts
+})
+if (is.null(opts$family) && !font$matched) {
+  stop("Arial or Helvetica is not available to fontconfig; run render-figures.sh ",
+       "or pass --allow-font-substitute for a draft", call. = FALSE)
+}
 cat(sprintf("cairo available: %s\n", isTRUE(capabilities("cairo"))))
 cat(sprintf("font requested: Arial/Helvetica; used: '%s' (exact name match: %s)\n",
             font$family, font$matched))
@@ -99,27 +118,36 @@ y_scale <- function(metric) {
   }
 }
 
+# Genome Biology: all text 7 pt sans-serif except 8 pt bold panel tags; lines
+# >= 0.25 pt (ggplot2 linewidth is in mm: 0.25 pt = 0.088 mm, every line below
+# is at least 0.2 mm = 0.57 pt); white background, axis lines kept, only light
+# horizontal reference lines for reading log axes.
+legend_title <- "Storage backend"
 base_theme <- function() {
-  theme_bw(base_size = 7, base_family = FAM) +
+  theme_classic(base_size = 7, base_family = FAM) +
     theme(
+      text             = element_text(family = FAM, size = 7, colour = "#202020"),
       panel.background = element_rect(fill = "white", colour = NA),
       plot.background  = element_rect(fill = "white", colour = NA),
-      panel.border     = element_blank(),
+      panel.grid.major.x = element_blank(),
       panel.grid.minor = element_blank(),
-      panel.grid.major = element_line(colour = "#EDEDED", linewidth = 0.2),
+      panel.grid.major.y = element_line(colour = "#E6E6E6", linewidth = 0.2),
       axis.line        = element_line(colour = "#202020", linewidth = 0.25),
       axis.ticks       = element_line(colour = "#202020", linewidth = 0.25),
       axis.ticks.length = unit(1.5, "pt"),
-      axis.text        = element_text(colour = "#202020", size = 6.5),
+      axis.text        = element_text(colour = "#202020", size = 7),
       axis.title       = element_text(colour = "#202020", size = 7),
-      strip.background = element_blank(),
-      strip.text       = element_text(face = "bold", size = 7),
-      legend.title     = element_blank(),
+      plot.title       = element_text(size = 7, hjust = 0.5, margin = margin(b = 1)),
+      plot.subtitle    = element_text(size = 7, hjust = 0.5, colour = "#404040",
+                                      margin = margin(b = 2)),
+      legend.title     = element_text(size = 7),
       legend.text      = element_text(size = 7),
       legend.key.height = unit(3.2, "mm"),
-      legend.key.width  = unit(4.0, "mm"),
+      legend.key.width  = unit(5.0, "mm"),
+      legend.margin    = margin(0, 0, 0, 0),
+      legend.box.margin = margin(0, 0, 0, 0),
       plot.tag         = element_text(size = 8, face = "bold"),
-      plot.margin      = margin(2, 3, 2, 2, unit = "mm")
+      plot.margin      = margin(1, 1.5, 1, 1, unit = "mm")
     )
 }
 
@@ -238,18 +266,14 @@ scale_panel <- function(metric, src) {
                   limits = if (is.finite(full_x)) c(800, full_x * 1.18),
                   labels = function(x) ifelse(x >= 1e6, paste0(x / 1e6, "M"), paste0(x / 1e3, "k"))) +
     y_scale(metric) +
-    scale_colour_manual(values = palette[scale_backends], labels = labels[scale_backends], drop = FALSE) +
-    scale_shape_manual(values = shapes[scale_backends], labels = labels[scale_backends], drop = FALSE) +
-    scale_linetype_manual(values = linetypes[scale_backends], labels = labels[scale_backends], drop = FALSE) +
+    scale_colour_manual(name = legend_title, values = palette[scale_backends], labels = labels[scale_backends], drop = FALSE) +
+    scale_shape_manual(name = legend_title, values = shapes[scale_backends], labels = labels[scale_backends], drop = FALSE) +
+    scale_linetype_manual(name = legend_title, values = linetypes[scale_backends], labels = labels[scale_backends], drop = FALSE) +
     labs(title = paste0(metric$title, " | ", source_titles[[src]]),
          subtitle = subtitle,
          x = "Cells (log10)", y = y_label(metric)) +
     base_theme() +
-    theme(plot.title = element_text(size = 7, hjust = 0.5, margin = margin(b = 1)),
-          plot.subtitle = element_text(size = 6.5, hjust = 0.5, colour = "#404040",
-                                       margin = margin(b = 2)),
-          axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
-          plot.margin = margin(2, 3, 3, 2, unit = "mm"))
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7))
   if (is.finite(full_x)) {
     p <- p + geom_vline(xintercept = full_x, linetype = "dotted",
                         colour = "#6b6b6b", linewidth = 0.3)
@@ -285,26 +309,25 @@ full_panel <- function(metric, src) {
                        labels = sub(" (", "\n(", unname(labels[full_backends]), fixed = TRUE),
                        limits = c(0.6, length(full_backends) + 0.4)) +
     y_scale(metric) +
-    scale_colour_manual(values = palette[full_backends],
+    scale_colour_manual(name = legend_title, values = palette[full_backends],
                         labels = labels[full_backends], drop = TRUE) +
-    scale_shape_manual(values = shapes[full_backends],
+    scale_shape_manual(name = legend_title, values = shapes[full_backends],
                        labels = labels[full_backends], drop = TRUE) +
     labs(title = paste0(metric$title, " | ", source_titles[[src]]),
          subtitle = sprintf("%s cells", format(cell_count, big.mark = ",", trim = TRUE)),
          x = NULL, y = y_label(metric)) +
     base_theme() +
-    theme(panel.grid.major.x = element_blank(),
-          plot.title = element_text(size = 7, hjust = 0.5, margin = margin(b = 1)),
-          plot.subtitle = element_text(size = 6.5, hjust = 0.5, colour = "#404040",
-                                       margin = margin(b = 2)))
+    theme()
 }
 
 make_figure <- function(panel_fun, tag) {
   panels <- list()
   for (m in metrics) for (src in source_levels) panels[[length(panels) + 1L]] <- panel_fun(m, src)
+  # Tight outer crop: panel margins provide the only surrounding white space.
   wrap_plots(panels, ncol = 2, guides = "collect") +
-    plot_annotation(tag_levels = "a") &
+    plot_annotation(tag_levels = "a", theme = theme(plot.margin = margin(1, 0, 0, 0, unit = "mm"))) &
     theme(legend.position = "bottom",
+          legend.title.position = "left",
           plot.tag.position = c(0, 1),
           plot.tag = element_text(size = 8, face = "bold"))
 }
@@ -313,24 +336,33 @@ scale_fig <- make_figure(scale_panel)
 full_fig  <- make_figure(full_panel)
 
 # --- export -----------------------------------------------------------------
-save_pdf_png <- function(plot, stem, height_mm) {
+# Cairo writes the PDF page in whole points and truncates fractions, so sizes
+# are set in points: 482 pt is 170.0 mm (double column); heights <= 225 mm.
+width_pt <- 482
+pt_mm <- function(pt) pt * 25.4 / 72
+save_pdf_png <- function(plot, stem, height_pt) {
+  stopifnot(pt_mm(height_pt) <= 225)
+  width_mm <- pt_mm(width_pt)
+  height_mm <- pt_mm(height_pt)
   if (opts$stdpdf) {
     # Geometry-audit pass on R's standard PDF device. The collision auditor
     # merges Cairo glyph traces into artificial boxes; this twin exists only
     # so the same layout can be audited without that artifact.
-    grDevices::pdf(paste0(stem, "-stdpdf.pdf"), width = 170 / 25.4, height = height_mm / 25.4,
+    grDevices::pdf(paste0(stem, "-stdpdf.pdf"), width = width_pt / 72, height = height_pt / 72,
                    family = "Helvetica", useDingbats = FALSE, bg = "white")
     print(plot)
     grDevices::dev.off()
-    cat(sprintf("wrote %s-stdpdf.pdf (170 x %s mm)\n", stem, height_mm))
+    cat(sprintf("wrote %s-stdpdf.pdf (%.1f x %.1f mm)\n", stem, width_mm, height_mm))
     return(invisible(NULL))
   }
+  # Vector PDF; Cairo embeds the Arial subsets as fonts, so text stays editable.
   ggsave(paste0(stem, ".pdf"), plot, device = grDevices::cairo_pdf,
-         width = 170, height = height_mm, units = "mm", scale = 1, bg = "white")
+         width = width_mm, height = height_mm, units = "mm", scale = 1, bg = "white")
+  # 300 dpi RGB preview of the same layout.
   ggsave(paste0(stem, ".png"), plot,
-         width = 170, height = height_mm, units = "mm", dpi = 340, bg = "white")
-  cat(sprintf("wrote %s.pdf / .png (170 x %s mm)\n", stem, height_mm))
+         width = width_mm, height = height_mm, units = "mm", dpi = 300, bg = "white")
+  cat(sprintf("wrote %s.pdf / .png (%.1f x %.1f mm)\n", stem, width_mm, height_mm))
 }
 
-save_pdf_png(full_fig,  file.path(out_dir, "fig-full-expression-backends"), 168)
-save_pdf_png(scale_fig, file.path(out_dir, "fig-scale-expression-backends"), 182)
+save_pdf_png(full_fig,  file.path(out_dir, "fig-full-expression-backends"), 476)   # 167.9 mm
+save_pdf_png(scale_fig, file.path(out_dir, "fig-scale-expression-backends"), 516)  # 182.0 mm
