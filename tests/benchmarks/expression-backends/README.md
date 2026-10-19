@@ -57,7 +57,7 @@ Verified source downloads stay in the external cache. Failed runs keep their scr
 
 ## Figures
 
-Runs do not draw figures. The article and paper figures are drawn from a run's `10_export.csv` and `20_access.csv` by `paper/figure-drafts/expression-backends/rebuild-figures.R` (`render-figures.sh` supplies the fonts); the full-size figure uses the Scale run's own full-size endpoints. Plotting does not rerun measurements.
+Runs do not draw figures. The article and paper figures are drawn from a run's `10_export.csv` and `20_access.csv` by `paper/figure-drafts/expression-backends/rebuild-figures.R` (`render-figures.sh` supplies the fonts): the Scale figure, the full-size figure (from the Scale run's own full-size endpoints) and the embedded build-memory figure (peak R heap against nonzero elements). Plotting does not rerun measurements.
 
 ## Read results
 

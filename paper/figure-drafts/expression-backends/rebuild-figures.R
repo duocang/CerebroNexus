@@ -9,6 +9,8 @@
 # Scale collections (with tier_type and source_run_id) are accepted.
 # Backends: H5 (compressed, the package default), H5 (uncompressed reference),
 # BPCells and Embedded; older runs simply have fewer of them.
+# A third figure plots the measured peak R heap of embedded builds against
+# nonzero elements (fig-memory-expression-backends).
 #
 # Statistical unit: one BUILD (export_repeat) per dataset/size/backend.
 # Each build is read by two nested access processes; a build value is the
@@ -335,6 +337,38 @@ make_figure <- function(panel_fun, tag) {
 scale_fig <- make_figure(scale_panel)
 full_fig  <- make_figure(full_panel)
 
+# --- embedded build memory --------------------------------------------------
+# Measured peak R heap of embedded builds against nonzero elements: median and
+# min-max across builds, no extrapolated ceiling.
+memory_source_colours <- c(mouse_brain_e18 = "#0072B2", human_pfc_hbcc = "#D55E00")
+memory_source_shapes  <- c(mouse_brain_e18 = 16, human_pfc_hbcc = 17)
+memory_figure <- function(exports) {
+  d <- exports[exports$backend == "embedded" & is.finite(exports$r_peak_mb) & !is.na(exports$nnz), , drop = FALSE]
+  if (!nrow(d)) return(NULL)
+  points <- do.call(rbind, lapply(split(d, list(d$source, d$n_cells), drop = TRUE), function(x) {
+    gib <- x$r_peak_mb / 1024
+    data.frame(source = x$source[1], nnz = x$nnz[1] / 1e6,
+               y = median(gib), lo = min(gib), hi = max(gib), stringsAsFactors = FALSE)
+  }))
+  present <- intersect(source_levels, unique(points$source))
+  points$source <- factor(points$source, levels = present)
+  ggplot(points, aes(nnz, y, colour = source, shape = source)) +
+    geom_errorbar(aes(ymin = lo, ymax = hi), width = 0, linewidth = 0.5) +
+    geom_point(size = 2.0) +
+    scale_colour_manual(name = NULL, values = memory_source_colours[present],
+                        labels = source_titles[present]) +
+    scale_shape_manual(name = NULL, values = memory_source_shapes[present],
+                       labels = source_titles[present]) +
+    scale_x_continuous(limits = c(0, NA), breaks = scales::breaks_pretty(n = 5),
+                       labels = function(x) format(x, trim = TRUE, scientific = FALSE)) +
+    scale_y_continuous(limits = c(0, NA), breaks = scales::breaks_pretty(n = 5),
+                       labels = function(x) format(x, trim = TRUE, scientific = FALSE)) +
+    labs(x = "Nonzero elements (millions)", y = "Peak R heap of embedded build (GiB)") +
+    base_theme() +
+    theme(legend.position = "bottom")
+}
+memory_fig <- memory_figure(scale_exports)
+
 # --- export -----------------------------------------------------------------
 # Cairo writes the PDF page in whole points and truncates fractions, so sizes
 # are set in points: 482 pt is 170.0 mm (double column); heights <= 225 mm.
@@ -366,3 +400,6 @@ save_pdf_png <- function(plot, stem, height_pt) {
 
 save_pdf_png(full_fig,  file.path(out_dir, "fig-full-expression-backends"), 476)   # 167.9 mm
 save_pdf_png(scale_fig, file.path(out_dir, "fig-scale-expression-backends"), 516)  # 182.0 mm
+if (!is.null(memory_fig)) {
+  save_pdf_png(memory_fig, file.path(out_dir, "fig-memory-expression-backends"), 241)  # 85.0 mm
+}
