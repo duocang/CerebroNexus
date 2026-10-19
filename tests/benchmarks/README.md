@@ -8,7 +8,7 @@ Run commands from the repository root in Linux or WSL. Use Linux paths such as `
 # Choose this for a small correctness check: 1,000 cells per source.
 bash tests/benchmarks/expression-backends/run.sh quick
 
-# OR choose this for performance measurements: full datasets, then size tiers.
+# OR choose this for performance measurements: size tiers up to each full dataset.
 bash tests/benchmarks/expression-backends/run.sh
 
 # Check whether the background run is active, finished or failed.
@@ -17,14 +17,14 @@ bash tests/benchmarks/expression-backends/run.sh status
 
 Choose one of the first two commands; do not start them together. Both enter the project Nix environment and run in the background. The first use downloads complete source files (about 18 GB total); later runs reuse verified downloads.
 
-The full run measures build time, file size, memory, startup and gene reads on mouse and human data, with five independent builds and two access processes per build. It then compares sizes from 1,000 to 1 million cells. `quick` runs each backend once to check correctness; its numbers are not sufficient for performance conclusions.
+The full run measures build time, file size, memory, startup and gene reads on mouse and human data, with five independent builds and two access processes per build. It compares sizes from 1,000 cells up to each full dataset. `quick` runs each backend once to check correctness; its numbers are not sufficient for performance conclusions.
 
 ```bash
 # Follow progress; Ctrl+C here stops viewing the log, not the benchmark.
 tail -f "${XDG_CACHE_HOME:-$HOME/.cache}/cerebronexus-benchmark/runner/benchmark.log"
 ```
 
-Results are saved under `results/expression-backends/`, separately for `quick`, `full` and `scale`. Each run has its own directory; previous results remain available. Full and scale keep each run's images in `runs/<run-id>/figures/` and copy the latest successful set directly into their top-level `figures/`, alongside `CURRENT`. See [backend instructions](expression-backends/README.md) for reading results and recovering a failed final step.
+Results are saved under `results/expression-backends/`, separately for `quick` and `scale`. Each run has its own directory; previous results remain available, and `CURRENT` names the latest successful run. See [backend instructions](expression-backends/README.md) for reading results and recovering a failed final step.
 
 ## Viewer: page speed and basic functionality
 

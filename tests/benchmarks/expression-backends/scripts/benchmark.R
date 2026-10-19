@@ -36,7 +36,6 @@ BENCH_SOURCES <- list(
       "6d0db30f285c5c977be8d6245de14044"
     ),
     full_cells = 1306127,
-    panel_c1_cells = 400e3,
     # Shared tiers; bench_scale_schedule also appends this source's full_cells.
     tiers = c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6),
     comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6)
@@ -67,7 +66,6 @@ BENCH_SOURCES <- list(
       "5f9d0de376466d65ca8198dc873f1cb16f"
     ),
     full_cells = 1486324,
-    panel_c1_cells = 300e3,
     # Shared tiers; the exact full endpoint is measured within Scale itself.
     tiers = c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6),
     comparison_tiers = c(1e3, 10e3, 50e3, 100e3, 300e3, 500e3, 1e6)
@@ -144,36 +142,6 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
       include_scale_tiers = TRUE,
       comparison_tier_mode = "all",
       article_eligible = TRUE
-    ),
-    panel_c1 = list(
-      name = "panel_c1",
-      export_repeats = 3L,
-      access_repeats = 2L,
-      query_genes = 12L,
-      hot_iterations = 3L,
-      include_scale_tiers = FALSE,
-      comparison_tier_mode = "all",
-      article_eligible = TRUE
-    ),
-    panel_c2 = list(
-      name = "panel_c2",
-      export_repeats = 5L,
-      access_repeats = 2L,
-      query_genes = 12L,
-      hot_iterations = 3L,
-      include_scale_tiers = FALSE,
-      comparison_tier_mode = "all",
-      article_eligible = TRUE
-    ),
-    stress = list(
-      name = "stress",
-      export_repeats = 1L,
-      access_repeats = 1L,
-      query_genes = 12L,
-      hot_iterations = 1L,
-      include_scale_tiers = TRUE,
-      comparison_tier_mode = "all",
-      article_eligible = FALSE
     )
   )
   profile <- profiles[[name]]
@@ -181,10 +149,7 @@ bench_profile <- function(name = Sys.getenv("BENCH_PROFILE", "quick")) {
     stop(
       "unknown benchmark profile: ",
       name,
-      paste0(
-        "; expected quick, standard, scale, ",
-        "panel_c1, panel_c2, or stress"
-      ),
+      "; expected quick, standard or scale",
       call. = FALSE
     )
   }
@@ -200,63 +165,12 @@ bench_storage_backend <- function(backend) {
   if (identical(backend, "h5_uncompressed")) "h5" else backend
 }
 
-# One plotting identity per backend, shared by figure_full.R and figure_scale.R.
-# Okabe-Ito colours; uncompressed H5 is the lighter blue with an open square.
-bench_backend_style <- function() {
-  list(
-    order = c("h5", "h5_uncompressed", "bpcells", "embedded"),
-    palette = c(h5 = "#0072B2", h5_uncompressed = "#56B4E9",
-                bpcells = "#E69F00", embedded = "#D55E00"),
-    shapes = c(h5 = 15, h5_uncompressed = 0, bpcells = 16, embedded = 17),
-    linetypes = c(h5 = "solid", h5_uncompressed = "22",
-                  bpcells = "solid", embedded = "solid"),
-    labels = c(h5 = "H5 (compressed)", h5_uncompressed = "H5 (uncompressed)",
-               bpcells = "BPCells", embedded = "Embedded")
-  )
-}
-
 bench_h5_gzip_level <- function(backend) {
   if (identical(backend, "h5_uncompressed")) {
     0L
   } else {
     HDF5Array::getHDF5DumpCompressionLevel()
   }
-}
-
-# Keep only scheduled cells matching BENCH_SCHEDULE_FILTER, e.g.
-# "source=human_pfc_hbcc;n_cells=500000;backend=embedded". Each key takes
-# comma-separated values. Repeats, order positions and access repeats are kept,
-# so a supplement measures the selected cells exactly as the full study would.
-bench_filter_schedule <- function(
-  schedule,
-  filter = Sys.getenv("BENCH_SCHEDULE_FILTER")
-) {
-  if (!nzchar(filter)) {
-    return(schedule)
-  }
-  keep <- rep(TRUE, nrow(schedule))
-  for (term in strsplit(filter, ";", fixed = TRUE)[[1L]]) {
-    parts <- strsplit(trimws(term), "=", fixed = TRUE)[[1L]]
-    if (length(parts) != 2L || !nzchar(parts[2L])) {
-      stop("malformed BENCH_SCHEDULE_FILTER term: ", term, call. = FALSE)
-    }
-    key <- parts[1L]
-    if (!key %in% c("source", "n_cells", "backend")) {
-      stop("unknown BENCH_SCHEDULE_FILTER key: ", key, call. = FALSE)
-    }
-    values <- trimws(strsplit(parts[2L], ",", fixed = TRUE)[[1L]])
-    keep <- keep & if (identical(key, "n_cells")) {
-      schedule$n_cells %in% as.numeric(values)
-    } else {
-      schedule[[key]] %in% values
-    }
-  }
-  if (!any(keep)) {
-    stop("BENCH_SCHEDULE_FILTER matches no scheduled cell: ", filter, call. = FALSE)
-  }
-  out <- schedule[keep, , drop = FALSE]
-  rownames(out) <- NULL
-  out
 }
 
 bench_scale_schedule <- function(specs) {
@@ -299,44 +213,6 @@ bench_scale_schedule <- function(specs) {
       sources = sources,
       backends = BENCH_FULL_BACKENDS
     )
-  )
-}
-
-bench_panel_c_schedule <- function(specs, part = c("c1", "c2")) {
-  if (length(part) != 1L || !part %in% c("c1", "c2")) {
-    stop("Panel C part must be c1 or c2", call. = FALSE)
-  }
-  sources <- intersect(c("mouse_brain_e18", "human_pfc_hbcc"), names(specs))
-  if (length(sources) != 2L) {
-    stop(
-      "Panel C requires the mouse and human benchmark sources",
-      call. = FALSE
-    )
-  }
-  field <- if (part == "c1") "panel_c1_cells" else "full_cells"
-  missing <- sources[vapply(
-    specs[sources],
-    function(x) is.null(x[[field]]),
-    logical(1)
-  )]
-  if (length(missing)) {
-    stop("Panel C source metadata is missing ", field, call. = FALSE)
-  }
-  panel_specs <- specs[sources]
-  for (source in sources) {
-    tier <- panel_specs[[source]][[field]]
-    panel_specs[[source]]$tiers <- tier
-    panel_specs[[source]]$comparison_tiers <- tier
-  }
-  bench_schedule(
-    panel_specs,
-    paste0("panel_c", substring(part, 2L)),
-    sources = sources,
-    backends = if (part == "c1") {
-      c("embedded", "bpcells", "h5")
-    } else {
-      BENCH_FULL_BACKENDS
-    }
   )
 }
 
@@ -709,9 +585,6 @@ bench_validate_results <- function(
     has_subset <- subset_access %in% names(access)
     if (any(has_subset) && !all(has_subset)) {
       stop("access subset results are incomplete", call. = FALSE)
-    }
-    if (identical(profile$name, "panel_c2") && !all(has_subset)) {
-      stop("full-source access results require subset metrics", call. = FALSE)
     }
     checked_access <- access
     if (
@@ -1912,140 +1785,6 @@ bench_result_run_dir <- function(result_root, run_id) {
   normalizePath(run_dir)
 }
 
-bench_manifest_values <- function(manifest) {
-  if (
-    !identical(names(manifest), c("key", "value")) ||
-      anyDuplicated(manifest$key)
-  ) {
-    stop("run manifest must contain unique key/value rows", call. = FALSE)
-  }
-  stats::setNames(as.character(manifest$value), manifest$key)
-}
-
-bench_compare_environments <- function(
-  left,
-  right,
-  keys = c(
-    "r_version",
-    "r_platform",
-    "os",
-    "cpu",
-    "memory_mb",
-    "r_vector_limit_mb",
-    "benchmark_threads",
-    "storage_description",
-    "package_version",
-    "package_Matrix",
-    "package_rhdf5",
-    "package_Seurat",
-    "package_SeuratObject",
-    "package_BPCells",
-    "package_HDF5Array"
-  )
-) {
-  left_values <- left[keys]
-  right_values <- right[keys]
-  missing <- keys[
-    is.na(left_values) |
-      !nzchar(left_values) |
-      is.na(right_values) |
-      !nzchar(right_values)
-  ]
-  different <- keys[
-    !is.na(left_values) &
-      nzchar(left_values) &
-      !is.na(right_values) &
-      nzchar(right_values) &
-      left_values != right_values
-  ]
-  list(
-    comparable = !length(missing) && !length(different),
-    missing = unname(missing),
-    different = unname(different)
-  )
-}
-
-# Combine a full study run with supplement runs from the same host. A
-# supplement build may only take the place of a study build that was skipped for
-# resources; successful study measurements are never replaced. Every row keeps
-# its acquisition run_id and gains source_run_id/collection_id; replaced skip
-# rows are returned separately so they stay on record. No values are altered.
-bench_assemble_supplement <- function(study_dir, supplement_dirs, collection_id) {
-  read <- function(dir, name) {
-    utils::read.csv(file.path(dir, name), stringsAsFactors = FALSE, check.names = FALSE)
-  }
-  manifest_of <- function(dir) bench_manifest_values(read(dir, "run_manifest.csv"))
-  value <- function(values, key) {
-    v <- unname(values[key])
-    if (length(v) != 1L || is.na(v)) "" else v
-  }
-  cell <- function(d) {
-    paste(d$source, sprintf("%.0f", as.numeric(d$n_cells)), d$backend, d$export_repeat, sep = "\r")
-  }
-  tag <- function(d, run_id) {
-    d$source_run_id <- rep(run_id, nrow(d))
-    d
-  }
-  append <- function(base, extra, what) {
-    if (!setequal(names(base), names(extra))) {
-      stop("supplement ", what, " columns differ from the study", call. = FALSE)
-    }
-    rbind(base, extra[names(base)])
-  }
-
-  study <- manifest_of(study_dir)
-  if (nzchar(value(study, "result_kind")) || nzchar(value(study, "schedule_filter"))) {
-    stop("the study must be a single complete run, not a collection or supplement", call. = FALSE)
-  }
-  study_id <- value(study, "run_id")
-  exports <- tag(read(study_dir, "10_export.csv"), study_id)
-  access <- tag(read(study_dir, "20_access.csv"), study_id)
-  timings <- tag(read(study_dir, "21_access_timings.csv"), study_id)
-  skips <- exports[0L, , drop = FALSE]
-  same_keys <- c("profile", "timing_contract", "elapsed_clock", "h5_gzip_level", "h5_uncompressed_gzip_level")
-
-  for (dir in supplement_dirs) {
-    supplement <- manifest_of(dir)
-    run_id <- value(supplement, "run_id")
-    if (!nzchar(value(supplement, "schedule_filter"))) {
-      stop(run_id, " is not a filtered supplement", call. = FALSE)
-    }
-    differing <- same_keys[vapply(same_keys, function(k) value(study, k) != value(supplement, k), logical(1))]
-    environment <- bench_compare_environments(study, supplement)
-    if (length(differing) || !environment$comparable) {
-      stop(
-        run_id, " was not measured like the study: ",
-        paste(c(differing, environment$missing, environment$different), collapse = ", "),
-        call. = FALSE
-      )
-    }
-    extra <- read(dir, "10_export.csv")
-    if (!nrow(extra) || any(extra$status != "OK")) {
-      stop(run_id, " must contain only successful builds", call. = FALSE)
-    }
-    target <- match(cell(extra), cell(exports))
-    if (anyNA(target) || anyDuplicated(target)) {
-      stop(run_id, " has builds outside the study schedule", call. = FALSE)
-    }
-    if (
-      !all(startsWith(exports$status[target], "SKIPPED(resource)")) ||
-        any(cell(access) %in% cell(extra))
-    ) {
-      stop(run_id, " may only replace builds the study skipped for resources", call. = FALSE)
-    }
-    skips <- rbind(skips, exports[target, , drop = FALSE])
-    exports <- append(exports[-target, , drop = FALSE], tag(extra, run_id), "export")
-    access <- append(access, tag(read(dir, "20_access.csv"), run_id), "access")
-    timings <- append(timings, tag(read(dir, "21_access_timings.csv"), run_id), "timing")
-  }
-
-  exports$collection_id <- collection_id
-  access$collection_id <- collection_id
-  timings$collection_id <- collection_id
-  skips$collection_id <- rep(collection_id, nrow(skips))
-  list(exports = exports, access = access, timings = timings, resource_skips = skips)
-}
-
 bench_backend_ratios <- function(summary, metric, reference) {
   required <- c("source", "n_cells", "backend", metric)
   missing <- setdiff(required, names(summary))
@@ -2273,7 +2012,7 @@ bench_require_safe_plan <- function(
   )
 }
 
-# Publish a completed run, then activate its CURRENT and latest image copy.
+# Publish a completed run, then point CURRENT at it.
 bench_publish_result <- function(stage, result_root, run_id) {
   if (!grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", run_id)) {
     stop("unsafe run id: ", run_id, call. = FALSE)
@@ -2288,8 +2027,6 @@ bench_publish_result <- function(stage, result_root, run_id) {
       evidence("21_access_timings.csv")
     )
   }
-  bench_recover_activation(result_root)
-
   tree_fingerprint <- function(path) {
     files <- list.files(
       path,
@@ -2366,193 +2103,19 @@ bench_publish_result <- function(stage, result_root, run_id) {
   message("published immutable benchmark run ", run_id)
 }
 
-# Only image exports belong in the latest figures directory. Historical run
-# contents are kept intact; QA, reports and nested directories are not copied.
-bench_figure_files <- function(directory) {
-  files <- list.files(
-    directory,
-    full.names = TRUE,
-    all.files = TRUE,
-    no.. = TRUE
-  )
-  files[
-    !dir.exists(files) &
-      grepl("\\.(png|pdf|svg|tiff?|jpe?g|webp)$", files, ignore.case = TRUE)
-  ]
-}
-
-bench_copy_figure_directory <- function(source, destination, replace = FALSE) {
-  dir.create(destination, recursive = TRUE, showWarnings = FALSE)
-  if (replace) {
-    entries <- list.files(
-      destination,
-      full.names = TRUE,
-      all.files = TRUE,
-      no.. = TRUE
-    )
-    unlink(entries, recursive = TRUE)
-    if (length(list.files(destination, all.files = TRUE, no.. = TRUE))) {
-      stop("cannot replace latest figures; files may be open", call. = FALSE)
-    }
-  }
-  entries <- list.files(
-    source,
-    full.names = TRUE,
-    all.files = TRUE,
-    no.. = TRUE
-  )
-  if (
-    length(entries) && !all(file.copy(entries, destination, recursive = TRUE))
-  ) {
-    stop("cannot copy figure directory", call. = FALSE)
-  }
-  files <- list.files(source, recursive = TRUE, all.files = TRUE, no.. = TRUE)
-  copied <- list.files(
-    destination,
-    recursive = TRUE,
-    all.files = TRUE,
-    no.. = TRUE
-  )
-  if (
-    !identical(files, copied) ||
-      !identical(
-        unname(tools::md5sum(file.path(source, files))),
-        unname(tools::md5sum(file.path(destination, files)))
-      )
-  ) {
-    stop("figure directory copy differs from source", call. = FALSE)
-  }
-}
-
-# A short-lived rollback directory survives a killed publisher. The next publish
-# restores the previous pair before retrying. Nothing is left after success.
-bench_recover_activation <- function(result_root) {
-  transaction <- file.path(result_root, ".publish")
-  if (!dir.exists(transaction)) {
-    return(invisible(NULL))
-  }
-  state_path <- file.path(transaction, "state.rds")
-  if (
-    file.exists(state_path) &&
-      file.exists(file.path(transaction, "switching")) &&
-      !file.exists(file.path(transaction, "committed"))
-  ) {
-    state <- readRDS(state_path)
-    latest <- file.path(result_root, "figures")
-    backup <- file.path(transaction, "figures.previous")
-    if (state$update_figures) {
-      if (dir.exists(backup)) {
-        bench_copy_figure_directory(backup, latest, replace = TRUE)
-      } else if (!state$had_figures) {
-        unlink(latest, recursive = TRUE)
-      }
-    }
-    pointer <- file.path(result_root, "CURRENT")
-    if (state$had_pointer) {
-      if (
-        !file.copy(
-          file.path(transaction, "CURRENT.previous"),
-          pointer,
-          overwrite = TRUE
-        )
-      ) {
-        stop("cannot restore previous CURRENT", call. = FALSE)
-      }
-    } else {
-      unlink(pointer)
-    }
-  }
-  unlink(transaction, recursive = TRUE)
-  if (dir.exists(transaction)) {
-    stop("cannot clean publication transaction", call. = FALSE)
-  }
-  invisible(NULL)
-}
-
+# CURRENT names the active run. It is written beside its target and renamed
+# into place, so a failed or killed publisher leaves the previous CURRENT intact.
 bench_activate_result <- function(result_root, run_id) {
   run <- bench_result_run_dir(result_root, run_id)
-  source <- file.path(run, "figures")
-  latest <- file.path(result_root, "figures")
   pointer <- file.path(result_root, "CURRENT")
-  manifest <- file.path(run, "run_manifest.csv")
-  if (file.exists(manifest)) {
-    profile <- bench_manifest_values(utils::read.csv(manifest))[["profile"]]
-    if (profile %in% c("panel_c2", "scale") && !dir.exists(source)) {
-      stop("completed full/scale run has no figures", call. = FALSE)
-    }
+  pending <- tempfile(".CURRENT-", tmpdir = result_root)
+  on.exit(unlink(pending), add = TRUE)
+  writeLines(run_id, pending, useBytes = TRUE)
+  if (identical(Sys.getenv("BENCH_PUBLISH_FAIL_AT"), "before-pointer")) {
+    stop("injected failure before-pointer", call. = FALSE)
   }
-  update_figures <- dir.exists(source)
-  files <- bench_figure_files(source)
-  if (update_figures && (!length(files) || any(file.info(files)$size <= 0))) {
-    stop("completed run has no valid figure exports", call. = FALSE)
-  }
-  transaction <- file.path(result_root, ".publish")
-  if (!dir.create(transaction)) {
-    stop("another publication is active", call. = FALSE)
-  }
-  on.exit(bench_recover_activation(result_root), add = TRUE)
-  if (
-    file.exists(pointer) &&
-      !file.copy(pointer, file.path(transaction, "CURRENT.previous"))
-  ) {
-    stop("cannot preserve previous CURRENT", call. = FALSE)
-  }
-  if (update_figures && dir.exists(latest)) {
-    bench_copy_figure_directory(
-      latest,
-      file.path(transaction, "figures.previous")
-    )
-  }
-  saveRDS(
-    list(
-      update_figures = update_figures,
-      had_figures = dir.exists(latest),
-      had_pointer = file.exists(pointer)
-    ),
-    file.path(transaction, "state.rds")
-  )
-  pending <- file.path(transaction, "figures.next")
-  if (update_figures) {
-    dir.create(pending)
-    if (
-      !all(file.copy(files, pending)) ||
-        !identical(
-          unname(tools::md5sum(files)),
-          unname(tools::md5sum(file.path(pending, basename(files))))
-        )
-    ) {
-      stop("failed to stage latest figure copies", call. = FALSE)
-    }
-  }
-  pending_pointer <- file.path(transaction, "CURRENT.next")
-  writeLines(run_id, pending_pointer, useBytes = TRUE)
-  fail_at <- Sys.getenv("BENCH_PUBLISH_FAIL_AT")
-  checkpoint <- function(name) {
-    if (identical(fail_at, name)) stop("injected failure ", name, call. = FALSE)
-  }
-  checkpoint("before-pointer")
-  if (!file.create(file.path(transaction, "switching"))) {
-    stop("cannot start publication", call. = FALSE)
-  }
-  if (update_figures) {
-    bench_copy_figure_directory(pending, latest, replace = TRUE)
-  }
-  checkpoint("after-figures")
-  if (identical(fail_at, "interrupt-after-figures")) {
-    stop(structure(
-      list(message = "injected interrupt", call = NULL),
-      class = c("interrupt", "condition")
-    ))
-  }
-  if (identical(fail_at, "crash-after-figures")) {
-    quit(status = 99L, runLast = FALSE)
-  }
-  if (!file.rename(pending_pointer, pointer)) {
+  if (!file.rename(pending, pointer)) {
     stop("cannot atomically update CURRENT", call. = FALSE)
-  }
-  checkpoint("after-pointer")
-  if (!file.create(file.path(transaction, "committed"))) {
-    stop("cannot commit publication", call. = FALSE)
   }
   invisible(run)
 }

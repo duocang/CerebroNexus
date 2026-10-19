@@ -120,31 +120,19 @@ bench_oom_killed_since() {
 # Shared finalization for normal completion and retrying a completed measurement.
 finish_profile() {
   local stage=$1 result_root=$2 run_id=$3
-  # Once archived, the run is immutable. Regenerating reports or PDFs (which
-  # embed a creation date) would no longer match it, so a retry after a failed
-  # activation only lets the publisher re-verify the archive and activate it.
+  # Once archived, the run is immutable. Regenerated reports would no longer
+  # match it, so a retry only lets the publisher re-verify and activate it.
   if [ ! -d "$result_root/runs/$run_id" ]; then
     mkdir -p "$stage/logs"
     Rscript "$BENCH_ROOT/benchmark_cli.R" validate "$stage" || return 1
     Rscript "$BENCH_ROOT/benchmark_cli.R" report "$stage" \
       > "$stage/logs/report.log" 2>&1 || return 1
-    if [ "$BENCH_PROFILE" = "scale" ] || [ "$BENCH_PROFILE" = "panel_c2" ]; then
-      Rscript "$BENCH_ROOT/benchmark_cli.R" figure "$stage" "$stage/figures" \
-        > "$stage/logs/figures.log" 2>&1 || {
-        tail -20 "$stage/logs/figures.log"
-        return 1
-      }
-    fi
     Rscript "$BENCH_ROOT/benchmark_cli.R" evidence "$stage" || return 1
     Rscript "$BENCH_ROOT/benchmark_cli.R" check "$stage" || return 1
   fi
-  # The publisher archives this run and activates its latest images with CURRENT.
-  if ! Rscript "$BENCH_ROOT/benchmark_cli.R" publish "$stage" "$result_root" "$run_id"; then
-    # Also restore the old pair if the publisher was killed without running R's
-    # exit handlers. Leave the measurements staged for a later retry.
-    Rscript "$BENCH_ROOT/benchmark_cli.R" recover-publication "$result_root" || return 1
-    return 1
-  fi
+  # The publisher archives this run and points CURRENT at it. On failure the
+  # measurements stay staged for a later retry.
+  Rscript "$BENCH_ROOT/benchmark_cli.R" publish "$stage" "$result_root" "$run_id"
 }
 
 run_profile_engine() (
@@ -232,8 +220,7 @@ Rscript "$BENCH_ROOT/benchmark_cli.R" plan "$SCHEDULE" "$SCHEDULE_TSV" || exit 1
 
 RESOURCE_COMMAND="resources"
 BUILD_COMMAND="export"
-if [ "$BENCH_PROFILE" = "scale" ] || \
-   [ "$BENCH_PROFILE" = "panel_c2" ]; then
+if [ "$BENCH_PROFILE" = "scale" ]; then
   RESOURCE_COMMAND="full-resources"
   BUILD_COMMAND="build-full"
 fi
@@ -375,7 +362,7 @@ for src in $SOURCES; do
   fi
 done
 
-echo "==> validating, drawing and publishing results"
+echo "==> validating and publishing results"
 finish_profile "$STAGE" "$RESULT_ROOT" "$BENCH_RUN_ID" || exit 1
 
 echo "==> done: $RESULT_ROOT/runs/$BENCH_RUN_ID"
@@ -429,8 +416,8 @@ run_profile() {
   local head_sha study_id memory_snapshot result_root
   require_clean
   head_sha=$(git -C "$REPO" rev-parse HEAD)
-  result_root="$(bench_result_root "$result_name" "${BENCH_SCHEDULE_FILTER:-}")"
-  study_id="$(date -u +%Y%m%dT%H%M%SZ)-${head_sha:0:12}-$result_name${BENCH_SCHEDULE_FILTER:+-supplement}"
+  result_root="$REPO/tests/benchmarks/results/expression-backends/$result_name"
+  study_id="$(date -u +%Y%m%dT%H%M%SZ)-${head_sha:0:12}-$result_name"
   printf '==> running %s\n' "$result_name"
   if [ "$profile" = "scale" ]; then
     # One launch-time budget for the entire serial study. A cgroup enforces the
@@ -458,20 +445,8 @@ run_all() {
   case "${1:-run}" in
     quick) run_profile quick quick ;;
     run|scale) run_profile scale scale ;;
-    full) run_profile panel_c2 full ;;
     *) printf 'unknown benchmark mode: %s\n' "$1" >&2; return 2 ;;
   esac
-}
-
-# Results directory for a study. A filtered schedule (BENCH_SCHEDULE_FILTER) is a
-# supplement: it is published beside the study and never replaces its CURRENT.
-bench_result_root() {
-  local base="$REPO/tests/benchmarks/results/expression-backends"
-  if [ -n "${2:-}" ]; then
-    printf '%s\n' "$base/supplements/$1"
-  else
-    printf '%s\n' "$base/$1"
-  fi
 }
 
 manifest_value() {
@@ -504,16 +479,13 @@ resume_inside() {
   export BENCH_PROFILE="$(manifest_value "$manifest" profile)"
   case "$BENCH_PROFILE" in
     quick) result_name=quick ;;
-    panel_c2) result_name=full ;;
     scale) result_name=scale ;;
     *)
       printf 'unsupported benchmark profile: %s\n' "$BENCH_PROFILE" >&2
       return 1
       ;;
   esac
-  local filter result_root
-  filter="$(manifest_value "$manifest" schedule_filter 2>/dev/null || true)"
-  result_root="$(bench_result_root "$result_name" "$filter")"
+  local result_root="$REPO/tests/benchmarks/results/expression-backends/$result_name"
 
   finish_profile "$stage" "$result_root" "$BENCH_RUN_ID"
   printf '0\n' > "$EXIT_FILE"
@@ -595,10 +567,10 @@ case "$ACTION" in
     resume_run "${2:-}"
     exit $?
     ;;
-  run|quick|scale|full)
+  run|quick|scale)
     ;;
   *)
-    printf 'usage: %s [quick|run|scale|full|status|resume <scratch-directory>]\n' "$0" >&2
+    printf 'usage: %s [quick|run|scale|status|resume <scratch-directory>]\n' "$0" >&2
     exit 2
     ;;
 esac

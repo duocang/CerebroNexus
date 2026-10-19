@@ -16,25 +16,18 @@ test_that("benchmark profiles separate smoke, review, and article evidence", {
   expect_equal(bench_profile("quick")$comparison_tier_mode, "smallest")
   expect_equal(bench_profile("standard")$export_repeats, 3L)
   expect_true(bench_profile("standard")$include_scale_tiers)
-  expect_equal(bench_profile("panel_c2")$export_repeats, 5L)
-  expect_equal(bench_profile("panel_c2")$access_repeats, 2L)
-  expect_equal(bench_profile("panel_c2")$query_genes, 12L)
-  expect_equal(bench_profile("panel_c2")$hot_iterations, 3L)
-  expect_lte(
-    (bench_profile("panel_c2")$query_genes - 1L) *
-      bench_profile("panel_c2")$hot_iterations,
-    36L
-  )
   expect_false(bench_profile("standard")$article_eligible)
-  expect_true(bench_profile("panel_c2")$article_eligible)
   expect_equal(bench_profile("scale")$export_repeats, 5L)
   expect_equal(bench_profile("scale")$access_repeats, 2L)
   expect_true(bench_profile("scale")$include_scale_tiers)
+  expect_equal(bench_profile("scale")$query_genes, 12L)
+  expect_equal(bench_profile("scale")$hot_iterations, 3L)
+  expect_lte(
+    (bench_profile("scale")$query_genes - 1L) *
+      bench_profile("scale")$hot_iterations,
+    36L
+  )
   expect_true(bench_profile("scale")$article_eligible)
-  expect_equal(bench_profile("panel_c2")$export_repeats, 5L)
-  expect_true(bench_profile("stress")$include_scale_tiers)
-  expect_false(bench_profile("stress")$article_eligible)
-  expect_false(bench_profile("panel_c2")$include_scale_tiers)
   expect_error(bench_profile("unknown"), "unknown benchmark profile")
 })
 
@@ -99,48 +92,6 @@ test_that("default sources share the complete scale grid", {
     },
     logical(1)
   )))
-})
-
-test_that("Panel C1 is the exact three-backend scale bridge", {
-  skip_unless_bench_protocol()
-  source(bench_protocol, local = TRUE)
-  source(bench_protocol, local = TRUE)
-
-  schedule <- bench_panel_c_schedule(BENCH_SOURCES, "c1")
-
-  expect_equal(nrow(schedule), 18L)
-  expect_setequal(unique(schedule$backend), c("embedded", "bpcells", "h5"))
-  expect_equal(
-    unique(schedule$n_cells[schedule$source == "mouse_brain_e18"]),
-    400e3
-  )
-  expect_equal(
-    unique(schedule$n_cells[schedule$source == "human_pfc_hbcc"]),
-    300e3
-  )
-  expect_false(any(schedule$n_cells == 800e3))
-  expect_true(all(schedule$access_repeats == 2L))
-})
-
-test_that("Panel C2 is the exact three-backend full-source schedule", {
-  skip_unless_bench_protocol()
-  source(bench_protocol, local = TRUE)
-  source(bench_protocol, local = TRUE)
-
-  schedule <- bench_panel_c_schedule(BENCH_SOURCES, "c2")
-
-  expect_equal(nrow(schedule), 30L)
-  expect_setequal(unique(schedule$backend), c("bpcells", "h5", "h5_uncompressed"))
-  expect_equal(
-    unique(schedule$n_cells[schedule$source == "mouse_brain_e18"]),
-    1306127
-  )
-  expect_equal(
-    unique(schedule$n_cells[schedule$source == "human_pfc_hbcc"]),
-    1486324
-  )
-  expect_true(all(schedule$access_repeats == 2L))
-  expect_error(bench_panel_c_schedule(BENCH_SOURCES, "unknown"), "c1 or c2")
 })
 
 test_that("scale profile runs embedded through 500k", {
@@ -428,7 +379,7 @@ test_that("only evidence-grade profiles may back the user-facing article", {
     bench_require_article_profile(bench_profile("standard")),
     "evidence-grade benchmark profile"
   )
-  expect_true(bench_require_article_profile(bench_profile("panel_c2")))
+  expect_true(bench_require_article_profile(bench_profile("scale")))
 })
 
 test_that("access crashes do not masquerade as duplicate export outcomes", {
@@ -497,29 +448,4 @@ test_that("result keys canonicalize scientific and integer cell counts", {
     .bench_result_key(scientific),
     "fixture|100000|bpcells|1"
   )
-})
-
-test_that("a schedule filter keeps exactly the selected cells", {
-  skip_unless_bench_protocol()
-  source(bench_protocol, local = TRUE)
-  schedule <- bench_scale_schedule(BENCH_SOURCES)
-
-  expect_identical(bench_filter_schedule(schedule, ""), schedule)
-  supplement <- bench_filter_schedule(
-    schedule,
-    "source=human_pfc_hbcc;n_cells=500000;backend=embedded"
-  )
-  expect_equal(nrow(supplement), 5L)
-  expect_identical(sort(supplement$export_repeat), 1:5)
-  expect_true(all(supplement$access_repeats == 2L))
-  # Each kept row is unchanged from the full study, including its order position.
-  original <- merge(supplement, schedule)
-  expect_equal(nrow(original), 5L)
-  expect_equal(
-    nrow(bench_filter_schedule(schedule, "n_cells=500000; backend=bpcells,h5")),
-    2L * 2L * 5L
-  )
-  expect_error(bench_filter_schedule(schedule, "tier=500000"), "unknown")
-  expect_error(bench_filter_schedule(schedule, "backend"), "malformed")
-  expect_error(bench_filter_schedule(schedule, "n_cells=123"), "matches no")
 })

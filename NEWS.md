@@ -1,8 +1,8 @@
 # CerebroNexus 5.1.3
 
-- Adds a real-data expression-backend benchmark in `tests/benchmarks/`, with
-  separate full-source and scale studies comparing embedded, BPCells and H5
-  storage. The viewer diagnostics move from `tests/bench/` to
+- Adds a real-data expression-backend benchmark in `tests/benchmarks/`: a
+  Scale study that compares embedded, BPCells and H5 storage from 1k cells up
+  to each full dataset. The viewer diagnostics move from `tests/bench/` to
   `tests/benchmarks/viewer/`. Run results are kept outside the repository.
 - The "Large-dataset benchmarks" article now reports the 2026-10-18 Scale run:
   setup, full-size medians and both figures, read from a small summary table in
