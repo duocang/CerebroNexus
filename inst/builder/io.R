@@ -1157,9 +1157,27 @@ builder_formats <- list(
     label = "h5mu",
     extensions = "h5mu",
     package = "rhdf5",
-    read = function(path) readH5adAsSCE(path)
+    ## protein (CITE-seq) and other modalities come along as extra features
+    read = function(path) readH5adAsSCE(path, extra_modalities = "all")
+  ),
+  ## A SpatialData store is a folder, so it arrives as a .zip of it (how the
+  ## SpatialData sample data sets are distributed).
+  list(
+    id = "spatialdata",
+    label = "SpatialData (zip)",
+    extensions = "zip",
+    package = "arrow",
+    read = function(path) readSpatialDataAsSCE(path)
   )
 )
+
+#' Alternative experiments that hold antibody counts (CITE-seq), whose features
+#' are added to a SingleCellExperiment's own when it goes into the Builder.
+#' Spike-ins and repeat elements are not.
+builder_extra_feature_names <- function(object) {
+  names <- tryCatch(SingleCellExperiment::altExpNames(object), error = function(e) character())
+  names[grepl("^(adt|prot|protein|antibody|antibodies)$", names, ignore.case = TRUE)]
+}
 
 builder_format_capability <- function(
   format,
@@ -1416,7 +1434,10 @@ builder_read_object <- function(path) {
   if (methods::is(obj, "SingleCellExperiment")) {
     ## Everything downstream is Seurat-shaped; a SingleCellExperiment enters
     ## through this one conversion and keeps its results in @misc.
-    obj <- try(convertSCEToSeurat(obj), silent = TRUE)
+    obj <- try(
+      convertSCEToSeurat(obj, extra_features = builder_extra_feature_names(obj)),
+      silent = TRUE
+    )
     if (inherits(obj, "try-error")) {
       return(list(
         error = paste0(

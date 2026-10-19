@@ -26,7 +26,8 @@ matrix, as scanpy workflows often keep the full, unfiltered gene set
 there. \code{layers} are then not read, because their genes differ.}
 
 \item{extra_modalities}{For a MuData file: other modalities to read next to
-the expression one (for example \code{"prot"} for antibody counts). Each
+the expression one (for example \code{"prot"} for antibody counts), or
+\code{"all"} for every modality except the expression and receptor ones. Each
 becomes an alternative experiment of the result, with its own features and
 the cells of the expression modality (cells it lacks get zeros).}
 

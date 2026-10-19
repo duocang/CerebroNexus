@@ -16,7 +16,9 @@
 #' spatial image (a FOV of cell centroids) per tissue section, named after the
 #' section, so the Builder's spatial pages treat them like any other spatial
 #' data set. Sections are told apart by the `library_id` column. Without one the
-#' coordinates are kept as a single section.
+#' coordinates are kept as a single section. When the coordinates are the only
+#' embedding, they are also kept as the projection \code{spatial_xy}, so there
+#' is one to open the data set with.
 #'
 #' The tissue pictures in `metadata(object)$spatial_images` are kept per section
 #' in `@misc$cerebro_source_images` (not in `cerebro_spatial_images`, which the
@@ -26,10 +28,18 @@
 #'
 #' @param object A SingleCellExperiment.
 #' @param main_assay Name of the Seurat assay to create.
+#' @param extra_features Alternative experiments (\code{altExp}, for example
+#'   antibody counts \code{"ADT"}) whose features are added to the assay as
+#'   \code{<experiment>:<feature>}: their names, or \code{TRUE} for all.
 #' @param verbose Print what was converted.
 #' @return A Seurat object.
 #' @export
-convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
+convertSCEToSeurat <- function(
+  object,
+  main_assay = "RNA",
+  extra_features = NULL,
+  verbose = FALSE
+) {
   if (!requireNamespace("SeuratObject", quietly = TRUE)) {
     stop("The 'SeuratObject' package is needed for this conversion.", call. = FALSE)
   }
@@ -47,10 +57,28 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
     }
     x
   }
+  n_genes <- nrow(object)
+  extra_names <- if (isTRUE(extra_features)) {
+    SingleCellExperiment::altExpNames(object)
+  } else {
+    intersect(as.character(extra_features), SingleCellExperiment::altExpNames(object))
+  }
   fetch <- function(name) {
     m <- as_sparse(SummarizedExperiment::assay(object, name))
     dimnames(m) <- list(rownames(object), colnames(object))
+    if (length(extra_names)) {
+      m <- rbind(m, .sceAltExpRows(object, name, extra_names))
+    }
     m
+  }
+  feature_names <- rownames(object)
+  if (length(extra_names)) {
+    feature_names <- c(
+      feature_names,
+      unlist(lapply(extra_names, function(name) {
+        paste0(name, ":", rownames(SingleCellExperiment::altExp(object, name)))
+      }))
+    )
   }
 
   counts <- NULL
@@ -70,7 +98,7 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
       data <- m
     }
   }
-  if (anyNA(rownames(object)) || anyDuplicated(rownames(object))) {
+  if (anyNA(feature_names) || anyDuplicated(feature_names)) {
     stop("Gene names must be present and unique to convert to Seurat.", call. = FALSE)
   }
 
@@ -101,9 +129,9 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
   ## the assay exists. Put the file's own names back so a gene keeps the name it
   ## has in the source.
   seurat_features <- rownames(result)
-  if (!identical(seurat_features, rownames(object))) {
+  if (!identical(seurat_features, feature_names)) {
     restored <- result[[main_assay]]
-    rownames(restored) <- rownames(object)
+    rownames(restored) <- feature_names
     result[[main_assay]] <- restored
   }
 
@@ -111,7 +139,7 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
   ## derives them from the counts layer, which a normalised-only file lacks, so
   ## use what the file recorded (scanpy: total_counts / n_genes_by_counts), or
   ## sum the matrix that is there.
-  reference <- if (!is.null(counts)) counts else data
+  reference <- if (!is.null(counts)) counts[seq_len(n_genes), , drop = FALSE] else data[seq_len(n_genes), , drop = FALSE]
   fill <- function(target, candidates, from_matrix) {
     present <- result@meta.data[[target]]
     if (!is.null(present) && any(present > 0, na.rm = TRUE)) {
@@ -166,6 +194,18 @@ convertSCEToSeurat <- function(object, main_assay = "RNA", verbose = FALSE) {
   if (!is.null(spatial)) {
     ## the sections replace the plain coordinate reduction
     result@reductions[[spatial$reduction]] <- NULL
+    ## a data set whose only embedding is its coordinates (SpatialData, MERFISH)
+    ## still needs a projection to open with: keep them as "spatial_xy"
+    if (!length(result@reductions)) {
+      xy <- spatial$coordinates[, 1:2, drop = FALSE]
+      dimnames(xy) <- list(colnames(object), c("spatialxy_1", "spatialxy_2"))
+      storage.mode(xy) <- "double"
+      result[["spatial_xy"]] <- SeuratObject::CreateDimReducObject(
+        embeddings = xy,
+        key = "spatialxy_",
+        assay = main_assay
+      )
+    }
     sections <- list()
     for (library in names(spatial$cells)) {
       cells <- spatial$cells[[library]]

@@ -379,3 +379,64 @@ test_that("tissue pictures that come with the file become Builder images and shi
   expect_length(assets, 2L)
   expect_true(all(endsWith(assets, ".png")))
 })
+
+## ---------------------------------------------------------------------------
+## SpatialData (as a zip) and antibody features
+## ---------------------------------------------------------------------------
+
+zip_store <- function(store, zip_file) {
+  skip_if_not_installed("zip")
+  withr::with_dir(dirname(store), zip::zip(zip_file, basename(store), mode = "mirror"))
+  zip_file
+}
+
+test_that("a SpatialData store as a .zip is a Builder source and builds one section per region", {
+  skip_if_not_installed("qs2")
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("png")
+  zip_file <- zip_store(
+    normalizePath(fixture("small_sd_visium.zarr")),
+    file.path(withr::local_tempdir(), "visium.zarr.zip")
+  )
+  expect_identical(builder_match_format(zip_file)$id, "spatialdata")
+
+  adapter <- builder_seurat_file_adapter(zip_file)
+  inspected <- quiet(builder_adapter_inspect(adapter))
+  expect_s3_class(inspected$profile, "builder_dataset_profile")
+  expect_equal(inspected$profile$identity$cells$count, 54)
+  expect_identical(names(inspected$source_images), c("sec1", "sec2"))
+
+  built <- build_through_builder(zip_file, "spatialdata_visium")
+  expect_identical(names(built$crb$spatial), c("sec1", "sec2"))
+  expect_equal(nrow(built$crb$getSpatialData("sec1", FALSE)$coordinates), 30)
+})
+
+test_that("a zip that holds no SpatialData store is refused with a clear message", {
+  skip_if_not_installed("zip")
+  dir <- withr::local_tempdir()
+  writeLines("hello", file.path(dir, "note.txt"))
+  zip_file <- file.path(withr::local_tempdir(), "other.zip")
+  withr::with_dir(dir, zip::zip(zip_file, "note.txt"))
+  expect_match(builder_read_object(zip_file)$error, "no SpatialData store")
+})
+
+test_that("antibody features of an h5mu file reach the .crb through the Builder", {
+  skip_if_not_installed("qs2")
+  built <- build_through_builder(fixture("small_mudata.h5mu"), "h5mu_cite")
+  genes <- built$crb$getGeneNames()
+  expect_equal(length(genes), 60 + 4)
+  expect_identical(genes[grepl("^prot:", genes)], paste0("prot:P", 0:3))
+})
+
+test_that("a SingleCellExperiment's ADT alternative experiment is added, spike-ins are not", {
+  sce <- quiet(readH5adAsSCE(fixture("small_mudata.h5mu"), modality = "gex", extra_modalities = "prot"))
+  SingleCellExperiment::altExp(sce, "ADT") <- SingleCellExperiment::altExp(sce, "prot")
+  SingleCellExperiment::altExp(sce, "ERCC") <- SingleCellExperiment::altExp(sce, "prot")
+  SingleCellExperiment::altExp(sce, "prot") <- NULL
+  expect_identical(builder_extra_feature_names(sce), "ADT")
+  seurat <- quiet(convertSCEToSeurat(sce, extra_features = builder_extra_feature_names(sce)))
+  expect_equal(sum(grepl("^ADT:", rownames(seurat))), 4)
+  expect_equal(sum(grepl("^ERCC:", rownames(seurat))), 0)
+  ## without the argument nothing is added
+  expect_equal(nrow(quiet(convertSCEToSeurat(sce))), 60)
+})

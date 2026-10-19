@@ -4,12 +4,21 @@
 \alias{convertSCEToSeurat}
 \title{Convert a SingleCellExperiment into a Seurat object}
 \usage{
-convertSCEToSeurat(object, main_assay = "RNA", verbose = FALSE)
+convertSCEToSeurat(
+  object,
+  main_assay = "RNA",
+  extra_features = NULL,
+  verbose = FALSE
+)
 }
 \arguments{
 \item{object}{A SingleCellExperiment.}
 
 \item{main_assay}{Name of the Seurat assay to create.}
+
+\item{extra_features}{Alternative experiments (\code{altExp}, for example
+antibody counts \code{"ADT"}) whose features are added to the assay as
+\code{<experiment>:<feature>}: their names, or \code{TRUE} for all.}
 
 \item{verbose}{Print what was converted.}
 }
@@ -34,7 +43,9 @@ Spatial coordinates (\code{reducedDim(object, "spatial")}) become one Seurat
 spatial image (a FOV of cell centroids) per tissue section, named after the
 section, so the Builder's spatial pages treat them like any other spatial
 data set. Sections are told apart by the \code{library_id} column. Without one the
-coordinates are kept as a single section.
+coordinates are kept as a single section. When the coordinates are the only
+embedding, they are also kept as the projection \code{spatial_xy}, so there
+is one to open the data set with.
 
 The tissue pictures in \code{metadata(object)$spatial_images} are kept per section
 in \code{@misc$cerebro_source_images} (not in \code{cerebro_spatial_images}, which the

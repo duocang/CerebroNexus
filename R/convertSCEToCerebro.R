@@ -426,7 +426,33 @@ convertSCEToCerebro <- function(
     }
     x
   }
-  pieces <- list(as_sparse(SummarizedExperiment::assay(sce, assay)))
+  combined <- rbind(
+    as_sparse(SummarizedExperiment::assay(sce, assay)),
+    .sceAltExpRows(sce, assay, which, verbose)
+  )
+  result <- SingleCellExperiment::SingleCellExperiment(
+    assays = stats::setNames(list(combined), assay),
+    colData = SummarizedExperiment::colData(sce),
+    reducedDims = SingleCellExperiment::reducedDims(sce)
+  )
+  result@metadata <- sce@metadata
+  result
+}
+
+#' The features of alternative experiments as rows to append to the main
+#' features: named "<experiment>:<feature>", one matrix, cells in the order of
+#' `sce`. Taken from the assay of the same name as `assay` when it exists, then
+#' from X, counts or the first assay.
+#' @keywords internal
+#' @noRd
+.sceAltExpRows <- function(sce, assay, which, verbose = FALSE) {
+  as_sparse <- function(x) {
+    if (!methods::is(x, "dgCMatrix")) {
+      x <- methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+    }
+    x
+  }
+  pieces <- list()
   for (name in which) {
     alt <- SingleCellExperiment::altExp(sce, name)
     names_in_alt <- SummarizedExperiment::assayNames(alt)
@@ -439,12 +465,5 @@ convertSCEToCerebro <- function(
       message("[INFO] Added ", nrow(values), " feature(s) of `", name, "` (assay `", source, "`).")
     }
   }
-  combined <- do.call(rbind, pieces)
-  result <- SingleCellExperiment::SingleCellExperiment(
-    assays = stats::setNames(list(combined), assay),
-    colData = SummarizedExperiment::colData(sce),
-    reducedDims = SingleCellExperiment::reducedDims(sce)
-  )
-  result@metadata <- sce@metadata
-  result
+  do.call(rbind, pieces)
 }

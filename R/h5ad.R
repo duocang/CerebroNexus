@@ -630,7 +630,8 @@
 #'   matrix, as scanpy workflows often keep the full, unfiltered gene set
 #'   there. \code{layers} are then not read, because their genes differ.
 #' @param extra_modalities For a MuData file: other modalities to read next to
-#'   the expression one (for example \code{"prot"} for antibody counts). Each
+#'   the expression one (for example \code{"prot"} for antibody counts), or
+#'   \code{"all"} for every modality except the expression and receptor ones. Each
 #'   becomes an alternative experiment of the result, with its own features and
 #'   the cells of the expression modality (cells it lacks get zeros).
 #' @param modality For a MuData file (\code{.h5mu}), the modality to read, e.g.
@@ -810,6 +811,13 @@ readH5adAsSCE <- function(
     rowData = row_data,
     reducedDims = embeddings
   )
+  if (identical(extra_modalities, "all")) {
+    ## every modality but the expression one and the receptor one
+    extra_modalities <- setdiff(
+      modalities,
+      c(modality, if (identical(airr_source$kind, "modality")) airr_source$name)
+    )
+  }
   if (length(extra_modalities)) {
     sce <- .h5adAddAltModalities(sce, file, modalities, extra_modalities, modality, verbose)
   }

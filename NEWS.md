@@ -23,7 +23,10 @@
   expression data as `<experiment>:<feature>`.
 - The Builder opens `.h5ad`, `.h5mu` and SingleCellExperiment `.rds`/`.qs2`
   files like Seurat ones (`convertSCEToSeurat()` is the conversion it uses), and
-  offers PAGA, scVelo and pseudotime trajectories next to monocle2. Spatial
+  offers PAGA, scVelo and pseudotime trajectories next to monocle2. A SpatialData
+  store can be added as a `.zip` of its `.zarr` folder, and the antibody features
+  of an `.h5mu` file (or a SingleCellExperiment's `ADT` alternative experiment)
+  are added to the genes as `<experiment>:<feature>`. Spatial
   coordinates arrive as one spatial section per `library_id`, and Visium tissue
   pictures are attached to their sections as images at the position their scale
   factor gives.

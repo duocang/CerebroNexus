@@ -251,6 +251,29 @@
   result
 }
 
+#' Unpack a .zip holding a SpatialData store into a temporary directory.
+#' @return list(directory = the temporary directory, store = the .zarr inside).
+#' @keywords internal
+#' @noRd
+.sdUnzip <- function(zip) {
+  entries <- utils::unzip(zip, list = TRUE)$Name
+  if (!length(entries) || any(grepl("(^|/)\\.\\.(/|$)|^/|^[A-Za-z]:", entries))) {
+    stop("`", zip, "` is not a safe zip of a SpatialData store.", call. = FALSE)
+  }
+  directory <- tempfile("spatialdata-")
+  dir.create(directory)
+  utils::unzip(zip, exdir = directory)
+  markers <- list.files(directory, pattern = "^zarr\\.json$|^\\.zgroup$", recursive = TRUE, all.files = TRUE)
+  roots <- unique(dirname(markers[basename(markers) %in% c("zarr.json", ".zgroup")]))
+  stores <- roots[vapply(roots, function(r) dir.exists(file.path(directory, r, "tables")), logical(1))]
+  if (!length(stores)) {
+    unlink(directory, recursive = TRUE, force = TRUE)
+    stop("`", zip, "` holds no SpatialData store (no tables/ group).", call. = FALSE)
+  }
+  store <- stores[order(nchar(stores))][[1L]]
+  list(directory = directory, store = normalizePath(file.path(directory, store), winslash = "/"))
+}
+
 #' Read a SpatialData store as a SingleCellExperiment
 #'
 #' @description
@@ -276,7 +299,8 @@
 #' Zarr v2 and v3 stores are read; Blosc compression and sharding are not
 #' supported (a clear error says so).
 #'
-#' @param path A SpatialData \code{.zarr} directory.
+#' @param path A SpatialData \code{.zarr} directory, or a \code{.zip} of one (as the
+#'   SpatialData sample datasets are distributed).
 #' @param table Name of the table under \code{tables/}; by default \code{"table"}
 #'   or the only one.
 #' @param spatial_images \code{"auto"} (hires where there is one, otherwise
@@ -286,6 +310,12 @@
 #' @seealso \code{\link{convertSpatialDataToCerebro}}, \code{\link{readH5adAsSCE}}
 #' @export
 readSpatialDataAsSCE <- function(path, table = NULL, spatial_images = "auto", verbose = FALSE) {
+  if (is.character(path) && length(path) == 1L && file.exists(path) && !dir.exists(path) &&
+      identical(tolower(tools::file_ext(path)), "zip")) {
+    unpacked <- .sdUnzip(path)
+    on.exit(unlink(unpacked$directory, recursive = TRUE, force = TRUE), add = TRUE)
+    path <- unpacked$store
+  }
   if (!.zarrIsStore(path)) {
     stop("`path` must be a SpatialData .zarr directory.", call. = FALSE)
   }

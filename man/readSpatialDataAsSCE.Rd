@@ -12,7 +12,8 @@ readSpatialDataAsSCE(
 )
 }
 \arguments{
-\item{path}{A SpatialData \code{.zarr} directory.}
+\item{path}{A SpatialData \code{.zarr} directory, or a \code{.zip} of one (as the
+SpatialData sample datasets are distributed).}
 
 \item{table}{Name of the table under \code{tables/}; by default \code{"table"}
 or the only one.}
