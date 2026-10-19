@@ -32,7 +32,6 @@
   "is_cerebro_dataset",
   "read_cerebro_file",
   ".cloneCachedCrb",
-  ".runtimeDiagnostic",
   ".runtimeBackendPlanError",
   ".validateRuntimeBackendEntry",
   ".configuredRuntimeBackendPlan",

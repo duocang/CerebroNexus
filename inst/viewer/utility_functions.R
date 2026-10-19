@@ -296,12 +296,7 @@ viewerDatasetLoadRequired <- function(
   if (!isTRUE(initial_page_applied) && !is.null(initial_tab)) {
     tab <- initial_tab
   }
-  is.null(info) ||
-    (is.character(tab) &&
-      length(tab) == 1L &&
-      !is.na(tab) &&
-      nzchar(tab) &&
-      !identical(tab, "loadData"))
+  is.null(info) || viewerDatasetLoadOnTab(FALSE, tab)
 }
 
 viewerDatasetLoadOnTab <- function(current, tab) {
@@ -924,6 +919,14 @@ viewerProjectionCellIndices <- function(
   metadata = getMetaData(),
   percentage = input[[paste0(prefix, "_percentage_cells_to_show")]]
 ) {
+  ## A `percentage` random sample of the given cells.
+  sample_of <- function(indices) {
+    if (!length(indices) || percentage >= 100) {
+      return(indices)
+    }
+    size <- ceiling(length(indices) * percentage / 100)
+    indices[sample.int(length(indices), size)]
+  }
   groups <- getGroups()
   filter_ids <- paste0(prefix, "_group_filter_", groups)
   bound_inputs <- shiny::isolate(names(input))
@@ -934,15 +937,7 @@ viewerProjectionCellIndices <- function(
     groups
   )
   if (!length(groups) || !any(filter_ids %in% bound_inputs)) {
-    cell_count <- nrow(metadata)
-    if (!cell_count) {
-      return(integer())
-    }
-    if (percentage < 100) {
-      size <- ceiling(cell_count * percentage / 100)
-      return(sample.int(cell_count, size))
-    }
-    return(seq_len(cell_count))
+    return(sample_of(seq_len(nrow(metadata))))
   }
   filters <- stats::setNames(
     lapply(groups, function(group) {
@@ -983,26 +978,9 @@ viewerProjectionCellIndices <- function(
     )
   ]
   if (!length(filters)) {
-    cell_count <- nrow(metadata)
-    if (!cell_count) {
-      return(integer())
-    }
-    if (percentage < 100) {
-      size <- ceiling(cell_count * percentage / 100)
-      return(sample.int(cell_count, size))
-    }
-    return(seq_len(cell_count))
+    return(sample_of(seq_len(nrow(metadata))))
   }
-  indices <- which(cerebroGroupFilterMask(metadata, filters))
-  if (!length(indices)) {
-    return(indices)
-  }
-  size <- if (percentage < 100) {
-    ceiling(length(indices) * percentage / 100)
-  } else {
-    return(indices)
-  }
-  indices[sample.int(length(indices), size)]
+  sample_of(which(cerebroGroupFilterMask(metadata, filters)))
 }
 
 viewerProjectionMetadataColumns <- function(
@@ -1286,10 +1264,11 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
   chunks <- list()
   data_size <- 0L
   pack <- function(values, type) {
+    ## Element size, which is also the chunk's alignment.
+    size <- switch(type, i8 = 1L, i16 = 2L, i32 = 4L, f32 = 4L, f64 = 8L, 1L)
     bytes <- if (identical(type, "json")) {
       cv_wire_json_strings(values)
     } else {
-      size <- switch(type, i8 = 1L, i16 = 2L, i32 = 4L, f32 = 4L, f64 = 8L)
       writeBin(
         if (startsWith(type, "i")) as.integer(values) else as.numeric(values),
         raw(),
@@ -1297,16 +1276,7 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
         endian = "little"
       )
     }
-    alignment <- switch(
-      type,
-      i8 = 1L,
-      i16 = 2L,
-      i32 = 4L,
-      f32 = 4L,
-      f64 = 8L,
-      1L
-    )
-    offset <- data_size + ((alignment - data_size %% alignment) %% alignment)
+    offset <- data_size + ((size - data_size %% size) %% size)
     chunks[[length(chunks) + 1L]] <<- list(offset = offset, bytes = bytes)
     data_size <<- offset + length(bytes)
     list(
@@ -1445,10 +1415,6 @@ cerebroCellViewResolveDeferredAux <- function(message) {
     message[[name]] <- resolved[[name]]
   }
   message
-}
-
-.runtimeDiagnostic <- function(x) {
-  if (!isTRUE(getOption("cerebro.quiet_runtime", FALSE))) print(x)
 }
 
 cerebroCellViewRecolor <- function(
@@ -1669,28 +1635,6 @@ cerebroCellViewRender <- function(
     message$data$deferred_selection_lengths
   ))
   message$data$deferred_selection_lengths <- NULL
-  stamp_transport_profile <- function(message) {
-    request_at_ms <- tryCatch(
-      suppressWarnings(as.numeric(
-        input[[paste0(id, "_render_request")]]$nonce
-      )),
-      error = function(error) NA_real_
-    )
-    if (length(request_at_ms) != 1L || !is.finite(request_at_ms)) {
-      request_at_ms <- NA_real_
-    }
-    sent_at_ms <- as.numeric(Sys.time()) * 1000
-    message$transport_profile <- list(
-      request_at_ms = request_at_ms,
-      server_prepare_ms = if (is.finite(request_at_ms)) {
-        max(0, sent_at_ms - request_at_ms)
-      } else {
-        NA_real_
-      },
-      sent_at_ms = sent_at_ms
-    )
-    message
-  }
   if (exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
     identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
     if (
@@ -1711,10 +1655,9 @@ cerebroCellViewRender <- function(
       )
     }
   }
-  if (
-    isTRUE(input[["coordviews_wire_supported"]]) &&
-      exists("cv_wire_pack_message", mode = "function", inherits = TRUE)
-  ) {
+  wire <- isTRUE(input[["coordviews_wire_supported"]])
+  progressive <- FALSE
+  if (wire) {
     selection_keys <- message$data$selection_key
     key_groups <- if (is.list(selection_keys)) {
       selection_keys
@@ -1763,84 +1706,83 @@ cerebroCellViewRender <- function(
         is.function(deferred_aux))) &&
       is.null(message$data$panels) &&
       n_cells >= 4096L
-    if (progressive) {
-      .cerebro_cell_view_wire_serial <<-
-        .cerebro_cell_view_wire_serial + 1L
-      token <- .cerebro_cell_view_wire_serial
-      message$data$n <- n_cells
-      message$data$wire_token <- token
-      ## Same dataset and cells as the barcodes the browser already holds:
-      ## name that delivery so it can skip requesting them again.
-      served <- if (!is.null(aux_key)) .cerebro_cell_view_aux_served[[id]]
-      if (
-        is.list(served) &&
-          identical(served$key, aux_key) &&
-          viewerDatasetContextEqual(served$dataset_context, dataset_context)
-      ) {
-        message$data$aux_reuse <- served$wire_token
-      }
-      message$data$selection_key <- NULL
-      full_hover <- message$hover
-      message$hover <- list(hoverinfo = "skip")
-      message <- stamp_transport_profile(message)
-      session$sendBinaryMessage(
-        "cell_view_binary",
-        cv_wire_pack_message(message)
-      )
-      stale <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
-      stale <- stale[vapply(
-        stale,
-        function(key) {
-          pending <- .cerebro_cell_view_aux_pending[[key]]
-          is.list(pending) && identical(pending$id, id)
-        },
-        logical(1)
-      )]
-      if (length(stale)) {
-        rm(list = stale, envir = .cerebro_cell_view_aux_pending)
-      }
-      .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- if (
-        is.function(deferred_aux)
-      ) {
-        list(
-          id = id,
-          wire_token = token,
-          dataset_context = dataset_context,
-          render_token = message$render_token,
-          build = deferred_aux,
-          core_builder = core_aux,
-          aux_key = aux_key
-        )
-      } else {
-        list(
-          id = id,
-          wire_token = token,
-          dataset_context = dataset_context,
-          render_token = message$render_token,
-          selection_key = selection_keys,
-          hover = full_hover
-        )
-      }
+  }
+  if (progressive) {
+    .cerebro_cell_view_wire_serial <<-
+      .cerebro_cell_view_wire_serial + 1L
+    token <- .cerebro_cell_view_wire_serial
+    message$data$n <- n_cells
+    message$data$wire_token <- token
+    ## Same dataset and cells as the barcodes the browser already holds:
+    ## name that delivery so it can skip requesting them again.
+    served <- if (!is.null(aux_key)) .cerebro_cell_view_aux_served[[id]]
+    if (
+      is.list(served) &&
+        identical(served$key, aux_key) &&
+        viewerDatasetContextEqual(served$dataset_context, dataset_context)
+    ) {
+      message$data$aux_reuse <- served$wire_token
+    }
+    message$data$selection_key <- NULL
+    full_hover <- message$hover
+    message$hover <- list(hoverinfo = "skip")
+  } else if (is.function(deferred_aux)) {
+    auxiliary <- deferred_aux()
+    message$data$selection_key <- auxiliary$selection_key
+    message$hover <- auxiliary$hover
+  }
+
+  request_at_ms <- tryCatch(
+    suppressWarnings(as.numeric(
+      input[[paste0(id, "_render_request")]]$nonce
+    )),
+    error = function(error) NA_real_
+  )
+  if (length(request_at_ms) != 1L || !is.finite(request_at_ms)) {
+    request_at_ms <- NA_real_
+  }
+  sent_at_ms <- as.numeric(Sys.time()) * 1000
+  message$transport_profile <- list(
+    request_at_ms = request_at_ms,
+    server_prepare_ms = if (is.finite(request_at_ms)) {
+      max(0, sent_at_ms - request_at_ms)
     } else {
-      if (is.function(deferred_aux)) {
-        auxiliary <- deferred_aux()
-        message$data$selection_key <- auxiliary$selection_key
-        message$hover <- auxiliary$hover
-      }
-      message <- stamp_transport_profile(message)
-      session$sendBinaryMessage(
-        "cell_view_binary",
-        cv_wire_pack_message(message)
-      )
-    }
+      NA_real_
+    },
+    sent_at_ms = sent_at_ms
+  )
+  if (wire) {
+    session$sendBinaryMessage("cell_view_binary", cv_wire_pack_message(message))
   } else {
-    if (is.function(deferred_aux)) {
-      auxiliary <- deferred_aux()
-      message$data$selection_key <- auxiliary$selection_key
-      message$hover <- auxiliary$hover
-    }
-    message <- stamp_transport_profile(message)
     session$sendCustomMessage("cell_view_render", message)
+  }
+
+  if (progressive) {
+    stale <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
+    stale <- stale[vapply(
+      stale,
+      function(key) {
+        pending <- .cerebro_cell_view_aux_pending[[key]]
+        is.list(pending) && identical(pending$id, id)
+      },
+      logical(1)
+    )]
+    if (length(stale)) {
+      rm(list = stale, envir = .cerebro_cell_view_aux_pending)
+    }
+    .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- c(
+      list(
+        id = id,
+        wire_token = token,
+        dataset_context = dataset_context,
+        render_token = message$render_token
+      ),
+      if (is.function(deferred_aux)) {
+        list(build = deferred_aux, core_builder = core_aux, aux_key = aux_key)
+      } else {
+        list(selection_key = selection_keys, hover = full_hover)
+      }
+    )
   }
   invisible(message$render_token)
 }
@@ -4680,16 +4622,12 @@ filterSelectionByHiddenGroups <- function(
 
 viewerPersistentSelection <- function(selection, dataset_context) {
   if (
-    !is.null(selection) &&
-      (!is.list(selection) ||
-        !viewerDatasetContextEqual(
-          selection[["dataset_context"]],
-          dataset_context
-        ))
+    !is.list(selection) ||
+      !viewerDatasetContextEqual(
+        selection[["dataset_context"]],
+        dataset_context
+      )
   ) {
-    return(NULL)
-  }
-  if (is.null(selection)) {
     return(NULL)
   }
   ## Stable cell IDs identify a selection on their own. Coordinate identifiers
