@@ -83,6 +83,7 @@ test_that("Projection renders an empty filter result instead of retaining cells"
       getGroups <- function() "sample"
       reactive_group_colors <- function(...) c(A = "red", B = "blue")
       viewerProjectionAsset <- function(...) NULL
+      overview_projection_client_percentage <- function() FALSE
       overview_projection_data <- function() {
         metadata[overview_projection_cells_to_show(), , drop = FALSE]
       }
@@ -98,6 +99,7 @@ test_that("Projection renders an empty filter result instead of retaining cells"
       )
     },
     {
+      session$setInputs(sidebar = "overview")
       expect_equal(overview_projection_data_to_plot_raw()$cell_count, 2)
       session$setInputs(empty = TRUE)
       empty <- overview_projection_data_to_plot_raw()
@@ -114,7 +116,7 @@ test_that("Projection renders an empty filter result instead of retaining cells"
 test_that("Gene expression panels share one global numeric range", {
   env <- new.env(parent = globalenv())
   sys.source(
-    viewer_path("gene_expression", "func_color_scale.R"),
+    viewer_path("core", "func_color_scale.R"),
     envir = env
   )
 
@@ -130,7 +132,7 @@ test_that("Different gene colours are stable and visually distinct", {
   }
   env <- new.env(parent = globalenv())
   sys.source(
-    file.path(root, "gene_expression", "func_color_scale.R"),
+    file.path(root, "core", "func_color_scale.R"),
     envir = env
   )
 

@@ -2,3 +2,5 @@
 tests/benchmarks/**/*.sh text eol=lf
 # Preserve recorded evidence bytes and hashes on every platform.
 tests/benchmarks/results/** -text
+# The Linux deployment entry point must remain runnable after a Windows checkout.
+inst/viewer/start-linux.sh text eol=lf

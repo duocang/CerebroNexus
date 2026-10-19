@@ -37,13 +37,16 @@ trajectory_projection_main_parameters_info <- list(
 ##----------------------------------------------------------------------------##
 
 trajectory_initial_appearance <- isolate(current_scatter_defaults())
+trajectory_initial_display <- isolate(current_page_display_defaults(
+  "trajectory"
+))
 trajectory_projection_appearance <- reactiveValues(
   point_size = trajectory_initial_appearance$point_size,
   point_opacity = trajectory_initial_appearance$point_opacity,
   percentage_cells_to_show = trajectory_initial_appearance$percentage_cells_to_show,
-  group_labels = TRUE,
-  draw_border = TRUE,
-  keep_square = FALSE
+  group_labels = trajectory_initial_display$group_labels,
+  draw_border = trajectory_initial_display$draw_border,
+  keep_square = trajectory_initial_display$keep_square
 )
 
 trajectory_update_appearance <- function(name, value) {
@@ -68,20 +71,16 @@ output[["trajectory_projection_appearance_UI"]] <- renderUI({
   }
 
   tagList(
-    sliderInput(
+    viewerLimitedSlider(
       "trajectory_point_size",
       label = "Point size",
-      min = preferences[["cell_point_size"]][["min"]],
-      max = preferences[["cell_point_size"]][["max"]],
-      step = preferences[["cell_point_size"]][["step"]],
+      limits = preferences[["cell_point_size"]],
       value = isolate(trajectory_projection_appearance$point_size)
     ),
-    sliderInput(
+    viewerLimitedSlider(
       "trajectory_point_opacity",
       label = "Point opacity",
-      min = preferences[["cell_point_opacity"]][["min"]],
-      max = preferences[["cell_point_opacity"]][["max"]],
-      step = preferences[["cell_point_opacity"]][["step"]],
+      limits = preferences[["cell_point_opacity"]],
       value = isolate(trajectory_projection_appearance$point_opacity)
     ),
     if (categorical) {
@@ -108,18 +107,10 @@ output[["trajectory_projection_data_parameters_UI"]] <- renderUI({
   req(input[["trajectory_projection_more_render_request"]])
 
   tagList(
-    sliderInput(
+    viewerLimitedSlider(
       "trajectory_percentage_cells_to_show",
       label = "Show % of cells",
-      min = preferences[["cell_percentage_cells_to_show"]][[
-        "min"
-      ]],
-      max = preferences[["cell_percentage_cells_to_show"]][[
-        "max"
-      ]],
-      step = preferences[["cell_percentage_cells_to_show"]][[
-        "step"
-      ]],
+      limits = preferences[["cell_percentage_cells_to_show"]],
       value = isolate(
         trajectory_projection_appearance$percentage_cells_to_show
       )
@@ -127,33 +118,12 @@ output[["trajectory_projection_data_parameters_UI"]] <- renderUI({
   )
 })
 
-observeEvent(
-  input[["trajectory_point_size"]],
-  {
-    trajectory_update_appearance("point_size", input[["trajectory_point_size"]])
-  },
-  ignoreNULL = TRUE
-)
-observeEvent(
-  input[["trajectory_point_opacity"]],
-  {
-    trajectory_update_appearance(
-      "point_opacity",
-      input[["trajectory_point_opacity"]]
-    )
-  },
-  ignoreNULL = TRUE
-)
-observeEvent(
-  input[["trajectory_percentage_cells_to_show"]],
-  {
-    trajectory_update_appearance(
-      "percentage_cells_to_show",
-      input[["trajectory_percentage_cells_to_show"]]
-    )
-  },
-  ignoreNULL = TRUE
-)
+observe({
+  appearance <- current_scatter_defaults()
+  for (field in names(appearance)) {
+    trajectory_update_appearance(field, appearance[[field]])
+  }
+})
 observeEvent(
   input[["trajectory_projection_point_border"]],
   {

@@ -2,40 +2,34 @@
 ## UI elements to set additional parameters for the projection.
 ##----------------------------------------------------------------------------##
 output[["overview_projection_additional_parameters_UI"]] <- renderUI({
-  appearance <- current_scatter_defaults()
+  viewer_requested_dataset_context()
+  appearance <- isolate(current_scatter_defaults())
 
   tagList(
-    sliderInput(
+    viewerLimitedSlider(
       "overview_projection_point_size",
       label = "Point size",
-      min = preferences[["cell_point_size"]][["min"]],
-      max = preferences[["cell_point_size"]][["max"]],
-      step = preferences[["cell_point_size"]][["step"]],
+      limits = preferences[["cell_point_size"]],
       value = appearance$point_size
     ),
-    sliderInput(
+    viewerLimitedSlider(
       "overview_projection_point_opacity",
       label = "Point opacity",
-      min = preferences[["cell_point_opacity"]][["min"]],
-      max = preferences[["cell_point_opacity"]][["max"]],
-      step = preferences[["cell_point_opacity"]][["step"]],
+      limits = preferences[["cell_point_opacity"]],
       value = appearance$point_opacity
     )
   )
 })
 
 output[["overview_projection_data_parameters_UI"]] <- renderUI({
-  appearance <- current_scatter_defaults()
+  viewer_requested_dataset_context()
+  appearance <- isolate(current_scatter_defaults())
 
   tagList(
-    sliderInput(
+    viewerLimitedSlider(
       "overview_projection_percentage_cells_to_show",
       label = "Show % of cells",
-      min = preferences[["cell_percentage_cells_to_show"]][["min"]],
-      max = preferences[["cell_percentage_cells_to_show"]][["max"]],
-      step = preferences[["cell_percentage_cells_to_show"]][[
-        "step"
-      ]],
+      limits = preferences[["cell_percentage_cells_to_show"]],
       value = appearance$percentage_cells_to_show
     )
   )

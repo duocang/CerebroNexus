@@ -65,3 +65,7 @@ FIGURE_QA_TOOLS=/path/to/figure-qa-tools Rscript tests/benchmarks/viewer/scripts
 ```
 
 Its automatic checks do not replace visual review. Historical reports and backend recommendations remain evidence from their recorded revisions, not conclusions from the current benchmark.
+
+## Load mode
+
+The browser benchmarks (`benchmark_viewer_1m_pages.R`, `benchmark_million_cell_viewer.R`, `benchmark_ren_linked_transport.R`) share `scripts/lib/viewer_launch.R`. By default (`VIEWER_BENCH_LOAD=installed`) each candidate is installed into a temporary library with `R CMD INSTALL` and launched with `library(CerebroNexus)`, as deployments run it. `VIEWER_BENCH_LOAD=load_all` uses `devtools::load_all()` instead, which also attaches every DESCRIPTION Imports package; the much larger R heap makes each full garbage collection take seconds and shifts pauses onto whichever page step allocates next, so use it only to profile an uninstalled source tree. The page benchmark manifest records the mode as `viewer_load_mode`.

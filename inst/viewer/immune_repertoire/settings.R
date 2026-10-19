@@ -1,3 +1,13 @@
+## Keep a control's current value when the toolbar is rebuilt for another tab.
+ir_keep_selection <- function(previous, choices, default) {
+  values <- unname(as.character(unlist(choices)))
+  if (length(previous) == 1L && !is.na(previous) && previous %in% values) {
+    previous
+  } else {
+    default
+  }
+}
+
 ## ---- Main parameters (left column, box 1) ----------------------------- ##
 ## Core controls needed to select a plot: the global cloneCall / chain /
 ## group-by (shown only on tabs they apply to) plus the current tab's
@@ -69,7 +79,13 @@ output$ir_main_params_UI <- shiny::bindEvent(
           "ir_cloneCall",
           "Clone call:",
           choices = c("gene", "nt", "aa", "strict"),
-          selected = "gene",
+          ## Rebuilding the toolbar for another tab must keep the user's
+          ## choice; resetting it also recomputed the new tab twice.
+          selected = ir_keep_selection(
+            isolate(input$ir_cloneCall),
+            c("gene", "nt", "aa", "strict"),
+            "gene"
+          ),
           selectize = FALSE
         ))
       )
@@ -81,7 +97,11 @@ output$ir_main_params_UI <- shiny::bindEvent(
           "ir_chain",
           "Chain:",
           choices = chain_choices,
-          selected = "both",
+          selected = ir_keep_selection(
+            isolate(input$ir_chain),
+            chain_choices,
+            "both"
+          ),
           selectize = FALSE
         ))
       )
@@ -137,11 +157,11 @@ output$ir_main_params_UI <- shiny::bindEvent(
           "ir_sharing_unit",
           "Sharing unit:",
           choices = ir_sharing_unit_choices(),
-          selected = if ("sample" %in% ir_sharing_unit_choices()) {
-            "sample"
-          } else {
-            NULL
-          },
+          selected = ir_keep_selection(
+            isolate(input$ir_sharing_unit),
+            ir_sharing_unit_choices(),
+            if ("sample" %in% ir_sharing_unit_choices()) "sample" else NULL
+          ),
           selectize = FALSE
         )
       }
@@ -506,6 +526,16 @@ output$ir_display_panel <- renderUI({
     return(NULL)
   }
   spec <- ir_display_params_for(tab)
+  display <- current_page_display_defaults("ir")
+  spec <- lapply(spec, function(p) {
+    if (identical(p$id, "ir_d_point_size")) {
+      p$value <- display$scatter_point_size
+    }
+    if (identical(p$id, "ir_d_alpha")) {
+      p$value <- display$scatter_opacity
+    }
+    p
+  })
   if (length(spec) == 0) {
     return(NULL)
   }
@@ -578,62 +608,20 @@ output$ir_cell_view_options_UI <- renderUI({
     checkboxInput(
       "ir_clonalUMAP_group_labels",
       "Group labels",
-      value = TRUE
+      value = current_page_display_defaults("ir")$group_labels
     ),
     checkboxInput(
       "ir_clonalUMAP_point_border",
       "Draw border around cells",
-      value = FALSE
+      value = current_page_display_defaults("ir")$draw_border
     ),
     checkboxInput(
       "ir_clonalUMAP_keep_square",
       "Keep plots square",
-      value = FALSE
+      value = isolate(input[["ir_clonalUMAP_keep_square"]]) %||%
+        current_page_display_defaults("ir")$keep_square
     )
   )
-})
-
-## ---- Reactive: current display parameter values ----------------------- ##
-## Collects the live display-control values for the current tab, falling back
-## to each param's declared default when the input is absent (e.g. a control
-## not rendered on the current tab).
-ir_display_params <- reactive({
-  tab <- input$ir_tabs
-  spec <- if (exists("ir_display_params_for")) {
-    ir_display_params_for(tab)
-  } else {
-    list()
-  }
-  if (identical(tab, "Clonal UMAP")) {
-    appearance <- current_scatter_defaults()
-    spec <- lapply(spec, function(p) {
-      if (identical(p$id, "ir_d_point_size")) {
-        p$value <- appearance$point_size
-        p$max <- 20
-        p$step <- 1
-      }
-      if (identical(p$id, "ir_d_alpha")) {
-        p$value <- appearance$point_opacity
-        p$step <- 0.1
-      }
-      if (identical(p$id, "ir_d_percentage_cells_to_show")) {
-        p$value <- appearance$percentage_cells_to_show
-      }
-      p
-    })
-  }
-  vals <- list()
-  for (p in spec) {
-    v <- input[[p$id]]
-    vals[[p$id]] <- if (
-      is.null(v) || (is.character(v) && !nzchar(v) && p$type != "text")
-    ) {
-      p$value
-    } else {
-      v
-    }
-  }
-  vals
 })
 
 ## ---- Group filters (settings drawer) ---------------------------------- ##

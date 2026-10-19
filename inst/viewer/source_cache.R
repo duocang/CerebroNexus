@@ -12,6 +12,7 @@
   "viewerDatasetName",
   "viewerDatasetPath",
   "viewerScatterDefaults",
+  "viewerPublishChanged",
   "spatialImagePreset",
   "spatialPlotRotation",
   "rotateSpatialCoordinates",

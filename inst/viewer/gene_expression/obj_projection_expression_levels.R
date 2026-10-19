@@ -157,7 +157,38 @@ expressionProjectionCachedRow <- function(data, cells, gene) {
   value
 }
 
-expressionProjectionRenderKey <- function(genes, display_mode) {
+expressionProjectionGeneMeans <- function(data, genes) {
+  genes <- unique(as.character(genes))
+  dataset_key <- expressionProjectionDatasetKey()
+  rows <- stats::setNames(
+    lapply(genes, function(gene) {
+      expressionProjectionRowCacheGet(
+        if (!is.null(dataset_key)) {
+          paste(dataset_key, gene, sep = "::")
+        } else {
+          NULL
+        }
+      )
+    }),
+    genes
+  )
+  # Never densify an uncached gene set just to compute its means. The native
+  # backend reduction remains the fallback for subsets and larger gene sets.
+  if (any(vapply(rows, is.null, logical(1)))) {
+    return(data$getMeanExpressionForGenes(genes))
+  }
+  data.frame(
+    gene = names(rows),
+    expression = unname(vapply(rows, mean, numeric(1))),
+    stringsAsFactors = FALSE
+  )
+}
+
+expressionProjectionRenderKey <- function(
+  genes,
+  display_mode,
+  rgb_layout = "composite"
+) {
   present <- as.character(genes[["genes_to_display_present"]] %||% character())
   rgb <- genes[["rgb_genes"]] %||% list()
   rgb <- vapply(
@@ -168,34 +199,65 @@ expressionProjectionRenderKey <- function(genes, display_mode) {
     },
     character(1)
   )
-  paste(
+  key <- paste(
     as.character(display_mode %||% "single"),
     paste(present, collapse = "\034"),
     paste(rgb, collapse = "\034"),
     sep = "\035"
   )
+  if (identical(display_mode, "rgb")) {
+    key <- paste(
+      key,
+      if (identical(rgb_layout, "separate")) "separate" else "composite",
+      sep = "\035"
+    )
+  }
+  key
 }
 
 expression_projection_render_key <- reactive({
   expressionProjectionRenderKey(
     expression_selected_genes(),
-    input[["expression_projection_genes_in_separate_panels"]]
+    input[["expression_projection_genes_in_separate_panels"]],
+    input[["expression_rgb_layout"]]
   )
 })
 
+expressionProjectionPaintedCurrent <- function() {
+  painted <- input[["expression_projection_rendered_state"]]
+  is.list(painted) &&
+    viewerDatasetContextEqual(
+      painted$dataset_context,
+      viewer_loaded_dataset_context()
+    ) &&
+    identical(painted$render_key, expression_projection_render_key())
+}
+
+## Every paint republishes the rendered state as an event, including repaints
+## of an unchanged key. Summaries, selected-cell outputs and their million-value
+## reads must follow readiness changes only.
+expression_projection_summary_ready_state <- reactiveVal(FALSE)
+observe(
+  {
+    ## Not ready while its inputs are unavailable (e.g. before a dataset loads).
+    ready <- isTRUE(tryCatch(
+      expressionProjectionPaintedCurrent(),
+      error = function(error) FALSE
+    ))
+    viewerPublishChanged(expression_projection_summary_ready_state, ready)
+  },
+  priority = 100
+)
 expression_projection_summary_ready <- reactive({
-  identical(
-    input[["expression_projection_rendered_key"]],
-    expression_projection_render_key()
-  )
+  expression_projection_summary_ready_state()
 })
 
 observeEvent(
-  input[["expression_projection_rendered_key"]],
+  input[["expression_projection_rendered_state"]],
   {
-    expressionProjectionProgressClose(
-      input[["expression_projection_rendered_key"]]
-    )
+    if (expressionProjectionPaintedCurrent()) {
+      expressionProjectionProgressClose(expression_projection_render_key())
+    }
   },
   ignoreInit = TRUE
 )
@@ -222,8 +284,9 @@ if (
 ## backend initialization out of the user's first gene selection.
 expression_projection_backend_warmed <- reactiveVal(FALSE)
 observeEvent(
-  input[["expression_projection_rendered_key"]],
+  input[["expression_projection_rendered_state"]],
   {
+    req(expressionProjectionPaintedCurrent())
     if (isTRUE(expression_projection_backend_warmed())) {
       return()
     }
@@ -245,38 +308,24 @@ observeEvent(
   ignoreInit = TRUE
 )
 
-expression_projection_expression_levels <- reactive({
-  req(
-    expression_projection_cells_to_show(),
-    expression_selected_genes()
-  )
-
-  cells_to_show <- expression_projection_cells_to_show()
-  ## Keep the canonical numeric indices returned by the shared projection
-  ## sampler. Converting them to barcodes here only makes the backend match
-  ## the same million names back to the original column indices.
+## Read the expression values for one levels key. The caller runs this inside
+## its reactive, so every dependency below still belongs to that reactive.
+expression_projection_read_levels <- function(
+  cells_to_show,
+  genes_data,
+  genes_present,
+  display_mode
+) {
   n_cells <- length(cells_to_show)
-  genes_data <- expression_selected_genes()
-
-  ## The debounced selection can briefly retain genes from the previous data
-  ## set during a switch. Re-filter before touching the expression backend.
-  genes_present <- intersect(
-    genes_data$genes_to_display_present,
-    getGeneNames()
-  )
-  display_mode <- expressionSummaryMode(
-    input[["expression_projection_genes_in_separate_panels"]],
-    length(genes_present),
-    ncol(expression_projection_coordinates())
-  )
-  render_key <- expression_projection_render_key()
+  ## Layout only changes the projection; it must not re-read expression rows.
+  render_key <- isolate(expression_projection_render_key())
   painted_key <- isolate(input[["expression_projection_rendered_key"]])
   ## Visibility/request state controls the progress UI, not expression reads.
   ## Navigation and request acknowledgements must not invalidate these values.
   if (
     identical(isolate(input[["sidebar"]]), "geneExpression") &&
       !is.null(isolate(input[["expression_projection_render_request"]])) &&
-      !identical(painted_key, render_key) &&
+      !isTRUE(isolate(expression_projection_summary_ready())) &&
       (length(genes_present) || !is.null(painted_key))
   ) {
     expressionProjectionProgressStart(render_key)
@@ -367,6 +416,51 @@ expression_projection_expression_levels <- reactive({
   }
   success <- TRUE
   expression_levels
+}
+
+## Plot parameters (projection, order, hover) rebuild the coordinates and
+## re-run the reactive below, but the values depend only on these inputs. Keep
+## the last result so such changes do not re-read million-cell expression.
+expression_projection_levels_memo <- viewerMemoOne()
+
+expression_projection_expression_levels <- reactive({
+  req(
+    expression_projection_cells_to_show(),
+    expression_selected_genes()
+  )
+
+  cells_to_show <- expression_projection_cells_to_show()
+  ## Keep the canonical numeric indices returned by the shared projection
+  ## sampler. Converting them to barcodes here only makes the backend match
+  ## the same million names back to the original column indices.
+  genes_data <- expression_selected_genes()
+
+  ## The debounced selection can briefly retain genes from the previous data
+  ## set during a switch. Re-filter before touching the expression backend.
+  genes_present <- intersect(
+    genes_data$genes_to_display_present,
+    getGeneNames()
+  )
+  display_mode <- expressionSummaryMode(
+    input[["expression_projection_genes_in_separate_panels"]],
+    length(genes_present),
+    ncol(expression_projection_coordinates())
+  )
+  levels_key <- list(
+    data_set(),
+    cells_to_show,
+    genes_present,
+    display_mode,
+    if (identical(display_mode, "rgb")) genes_data[["rgb_genes"]]
+  )
+  expression_projection_levels_memo(levels_key, function() {
+    expression_projection_read_levels(
+      cells_to_show,
+      genes_data,
+      genes_present,
+      display_mode
+    )
+  })
 })
 
 expression_summary_data <- reactive({

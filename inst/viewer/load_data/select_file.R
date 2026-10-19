@@ -17,7 +17,10 @@ output[["load_data_select_file_UI"]] <- renderUI({
     tagList(
       div(
         class = "cerebro-welcome",
-        htmlOutput("load_data_mode_open")
+        HTML(
+          Cerebro.options[["welcome_message"]] %||%
+            "<p>Please load your data set or explore the pre-loaded data.</p>"
+        )
       ),
       fluidRow(
         column(
@@ -31,9 +34,7 @@ output[["load_data_select_file_UI"]] <- renderUI({
             width = '350px',
             buttonLabel = "Browse...",
             placeholder = "No file selected"
-          ),
-          ## dataset switcher; renders only when >1 .crb files are loaded
-          uiOutput("crb_file_selector_UI")
+          )
         )
       )
     )
@@ -41,49 +42,11 @@ output[["load_data_select_file_UI"]] <- renderUI({
     tagList(
       div(
         class = "cerebro-welcome",
-        htmlOutput("load_data_mode_closed")
-      ),
-      fluidRow(
-        column(
-          12,
-          ## dataset switcher; renders only when >1 .crb files are loaded
-          uiOutput("crb_file_selector_UI")
+        HTML(
+          Cerebro.options[["welcome_message"]] %||%
+            "<p>Explore the loaded dataset using the pages in the sidebar.</p>"
         )
       )
-    )
-  }
-})
-
-##----------------------------------------------------------------------------##
-## Text message if CerebroNexus was launched in "open" mode.
-##----------------------------------------------------------------------------##
-
-output[["load_data_mode_open"]] <- renderText({
-  if (
-    exists('Cerebro.options') &&
-      !is.null(Cerebro.options[["welcome_message"]])
-  ) {
-    HTML(Cerebro.options[["welcome_message"]])
-  } else {
-    HTML(
-      "<p>Please load your data set or explore the pre-loaded data.</p>"
-    )
-  }
-})
-
-##----------------------------------------------------------------------------##
-## Text message if CerebroNexus was launched in "closed" mode.
-##----------------------------------------------------------------------------##
-
-output[["load_data_mode_closed"]] <- renderText({
-  if (
-    exists('Cerebro.options') &&
-      !is.null(Cerebro.options[["welcome_message"]])
-  ) {
-    HTML(Cerebro.options[["welcome_message"]])
-  } else {
-    HTML(
-      "<p>This app uses pre-loaded data. Choose a data set below to begin exploring.</p>"
     )
   }
 })

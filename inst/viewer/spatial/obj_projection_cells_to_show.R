@@ -1,13 +1,23 @@
 ##----------------------------------------------------------------------------##
 ## Indices of cells to show in projection.
 ##----------------------------------------------------------------------------##
+## A change in colour/point appearance must not draw a new random sample.
+spatial_projection_sampling <- reactiveVal(NULL)
+observe(
+  {
+    controls <- spatial_projection_controls()
+    req(controls)
+    sampling <- controls[c("projection", "percentage_cells_to_show")]
+    viewerPublishChanged(spatial_projection_sampling, sampling)
+  },
+  priority = 950
+)
+
 spatial_projection_cell_index <- reactive({
-  controls <- spatial_projection_controls()
+  controls <- spatial_projection_sampling()
   req(controls)
   spatial_name <- controls$projection
   req(spatial_name %in% availableSpatial())
-  parameters <- spatial_projection_parameters_plot()
-  req(identical(parameters[["projection"]], spatial_name))
   coordinates <- viewerSpatialCoordinates(spatial_name)
   req(coordinates)
   spatial_cells <- rownames(coordinates)
@@ -44,8 +54,8 @@ spatial_projection_cell_index <- reactive({
   as.integer(index)
 })
 
-spatial_projection_cells_to_show <- reactive({
-  controls <- spatial_projection_controls()
+spatial_projection_cells_to_show_current <- reactive({
+  controls <- spatial_projection_sampling()
   req(controls, controls$percentage_cells_to_show)
   groups <- getGroups()
   filters <- stats::setNames(
@@ -56,6 +66,42 @@ spatial_projection_cells_to_show <- reactive({
   )
   filters <- filters[!vapply(filters, is.null, logical(1))]
   index <- spatial_projection_cell_index()
+  frame_metadata <- viewerProjectionFirstFrameMetadata()
+  for (scope in list(
+    list(
+      value = spatial_projection_selected_sample(),
+      fields = spatial_sample_fields
+    ),
+    list(
+      value = spatial_roi_value(input[["spatial_projection_roi"]] %||% ""),
+      fields = spatial_roi_fields
+    )
+  )) {
+    selected <- scope$value %||% ""
+    if (
+      !is.character(selected) ||
+        length(selected) != 1L ||
+        is.na(selected) ||
+        !nzchar(selected)
+    ) {
+      next
+    }
+    field_index <- match(
+      tolower(scope$fields),
+      tolower(colnames(frame_metadata)),
+      nomatch = 0L
+    )
+    field_index <- field_index[field_index > 0L]
+    if (!length(field_index)) {
+      next
+    }
+    field <- colnames(frame_metadata)[[field_index[[1L]]]]
+    values <- as.character(frame_metadata[[field]][index])
+    if (!selected %in% values) {
+      next
+    }
+    index <- index[!is.na(values) & values == selected]
+  }
   if (length(filters)) {
     metadata <- viewerProjectionSubsetRows(
       viewerProjectionFirstFrameMetadata(),
@@ -69,4 +115,32 @@ spatial_projection_cells_to_show <- reactive({
     index <- sample(index, ceiling(length(index) * percentage / 100))
   }
   index
+})
+
+## Group filter and ROI controls bind after the first frame, usually keeping
+## every cell. Publish the cells on change only, so binding does not rebuild
+## the million-cell frame downstream.
+spatial_projection_cells_state <- reactiveVal(NULL)
+observe(
+  {
+    ## Off the Spatial page, keep the last cells; returning re-evaluates.
+    if (
+      "sidebar" %in%
+        isolate(names(input)) &&
+        !identical(input[["sidebar"]], "spatial")
+    ) {
+      return()
+    }
+    value <- tryCatch(
+      spatial_projection_cells_to_show_current(),
+      error = function(error) NULL
+    )
+    viewerPublishChanged(spatial_projection_cells_state, value)
+  },
+  priority = 900
+)
+spatial_projection_cells_to_show <- reactive({
+  value <- spatial_projection_cells_state()
+  req(!is.null(value))
+  value
 })

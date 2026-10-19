@@ -1,6 +1,6 @@
 test_that("distinct gene panels retain valid colors beyond nine genes", {
   runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("gene_expression", "func_color_scale.R"), runtime)
+  sys.source(viewer_test_path("core", "func_color_scale.R"), runtime)
   genes <- paste0("gene", seq_len(20))
   scales <- runtime$expressionPanelColorScales(
     genes,
