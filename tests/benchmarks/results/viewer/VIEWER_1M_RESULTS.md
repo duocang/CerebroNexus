@@ -87,7 +87,7 @@ The PR3 startup benchmark uses the installed package, a fresh R process and brow
 | Browser navigation to Data Info | 2.105 s | 1.029 s | 51.1% faster |
 | Process start to Data Info | 3.692 s | 2.557 s | 30.7% faster |
 
-The current 2.557-second median passes the strict `<3,000 ms` gate with 443 ms of median headroom. Relative to the prior installed-runtime optimization point of 4.097 seconds, PR3 is 37.6% faster; relative to the original 9.045-second Legacy RDS path, it is 71.7% faster. Raw observations are in `tests/bench/results/million_cell_startup_sub3_4_6_0.csv`.
+The current 2.557-second median passes the strict `<3,000 ms` gate with 443 ms of median headroom. Relative to the prior installed-runtime optimization point of 4.097 seconds, PR3 is 37.6% faster; relative to the original 9.045-second Legacy RDS path, it is 71.7% faster. Raw observations are in `tests/benchmarks/results/viewer/million_cell_startup_sub3_4_6_0.csv`.
 
 ## PR4 quick comparison
 
@@ -136,7 +136,7 @@ The focused HLA/Trajectory pass then removed the HLA metadata/parsing bottleneck
 | Trajectory | 1,266 ms | fail `<500 ms` |
 | HLA & TCR Motifs | 126 ms | pass `<500 ms` |
 
-The HLA focused result waits for the shared Canvas renderer to finish drawing every node and edge instead of waiting for unrelated page-level Shiny work to become idle. It is the user-visible completed-first-frame metric; the old PR3 HLA number used the broader idle gate, so its percentage is directional rather than a publication-grade same-harness estimate. Raw exploratory observations are in `tests/bench/results/million_cell_bpcells_quick_pr4.tsv`, `tests/bench/results/million_cell_pages_quick_pr3_pr4.tsv`, and `tests/bench/results/million_cell_hla_trajectory_focused_pr4.tsv`.
+The HLA focused result waits for the shared Canvas renderer to finish drawing every node and edge instead of waiting for unrelated page-level Shiny work to become idle. It is the user-visible completed-first-frame metric; the old PR3 HLA number used the broader idle gate, so its percentage is directional rather than a publication-grade same-harness estimate. Raw exploratory observations are in `tests/benchmarks/results/viewer/million_cell_bpcells_quick_pr4.tsv`, `tests/benchmarks/results/viewer/million_cell_pages_quick_pr3_pr4.tsv`, and `tests/benchmarks/results/viewer/million_cell_hla_trajectory_focused_pr4.tsv`.
 
 ## PR5 final page comparison
 
@@ -168,7 +168,7 @@ The resource table reports medians at the first-visible-ready boundary. RSS is s
 
 The major resource gains are a 14.7% lower R peak for Immune Repertoire and a 53.4% smaller JS heap plus 9.6% less received payload for Coordinated Views. The table also preserves the measured regressions, notably Overview heap (+16.5%) and Immune Repertoire Chrome RSS (+6.2%), rather than hiding them behind the latency gains.
 
-Raw observations, the pre-generated order, and provenance are in `tests/bench/results/million_cell_pages_pr4_pr5_4_6_3.tsv`, `tests/bench/results/million_cell_pages_pr4_pr5_4_6_3_schedule.tsv`, and `tests/bench/results/million_cell_pages_pr4_pr5_4_6_3_manifest.tsv`.
+Raw observations, the pre-generated order, and provenance are in `tests/benchmarks/results/viewer/million_cell_pages_pr4_pr5_4_6_3.tsv`, `tests/benchmarks/results/viewer/million_cell_pages_pr4_pr5_4_6_3_schedule.tsv`, and `tests/benchmarks/results/viewer/million_cell_pages_pr4_pr5_4_6_3_manifest.tsv`.
 
 ## Environment
 
@@ -182,11 +182,11 @@ Raw observations, the pre-generated order, and provenance are in `tests/bench/re
 The complete workflow reuses complete artifacts when present, otherwise prepares the missing official H5, BPCells-backed Seurat, and Thin CRB artifacts before measuring the backend hot paths. Its manifest records PR #165, Thin CRB, and latest implementation SHAs:
 
 ```sh
-tests/bench/run_viewer_1m_benchmark.sh 27303f21 1ad8abc0 tests/bench/scratch/backend-4.5.1
+tests/benchmarks/viewer/scripts/run_viewer_1m_benchmark.sh 27303f21 1ad8abc0 ../CerebroNexus-benchmarks/backend-4.5.1
 ```
 
 The lower-level command accepts an already prepared CRB so measurements can be rerun without repeating conversion:
 
 ```sh
-Rscript tests/bench/viewer_1m_hot_paths.R BEFORE_ROOT AFTER_ROOT CRB 3
+Rscript tests/benchmarks/viewer/scripts/viewer_1m_hot_paths.R BEFORE_ROOT AFTER_ROOT CRB 3
 ```
