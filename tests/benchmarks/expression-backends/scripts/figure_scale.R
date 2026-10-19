@@ -100,7 +100,7 @@ bench_scale_panels <- function(exports, access) {
     summary <- bench_scale_summary(exports, access, metric)
     stopifnot(nrow(summary) > 0L)
     tiers <- sort(unique(summary$n_cells))
-    breaks <- if (length(tiers) <= 4L) tiers else c(1e3, 1e4, 5e4, 1e5, 3e5, 5e5, 1e6)
+    breaks <- if (length(tiers) <= 4L) tiers else c(1e3, 1e4, 5e4, 1e5, 3e5, 5e5)  # no 1M tier
     rotate <- length(breaks) > 4L
     for (src in sources) {
       d <- summary[summary$source == src, , drop = FALSE]

@@ -234,7 +234,7 @@ scale_panel <- function(metric, src) {
                  linetype = "dashed", linewidth = 0.4, show.legend = FALSE) +
     geom_point(data = endp, aes(n_cells, y, colour = backend), shape = 21, size = 2.0,
                stroke = 0.4, fill = "white", show.legend = FALSE) +
-    scale_x_log10(breaks = c(1e3, 1e4, 5e4, 1e5, 3e5, 5e5, 1e6),
+    scale_x_log10(breaks = c(1e3, 1e4, 5e4, 1e5, 3e5, 5e5),  # full sizes: dotted line + subtitle
                   limits = if (is.finite(full_x)) c(800, full_x * 1.18),
                   labels = function(x) ifelse(x >= 1e6, paste0(x / 1e6, "M"), paste0(x / 1e3, "k"))) +
     y_scale(metric) +
