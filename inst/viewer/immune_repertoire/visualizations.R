@@ -449,6 +449,7 @@ ir_clonal_umap_panels <- function(df, projection) {
 }
 
 ir_clonal_umap_last_request <- reactiveVal(NULL)
+ir_clonal_umap_data_memo <- viewerMemoOne()
 
 observe(
   {
@@ -588,16 +589,36 @@ observe(
       ir_clonal_umap_last_request(request_signature)
       return()
     }
-    render_data <- ir_clonal_umap_data(
-      projection,
-      receptor,
-      clone_call,
-      show_all = show_all,
-      cells = cells,
-      percentage = percentage,
-      split_output = TRUE
+    ## Appearance-only changes (labels, border, square, point size/opacity)
+    ## reuse the coordinates built for the same data request. The memo stores
+    ## only usable results: a failed req() leaves it untouched. The repertoire
+    ## table is part of the key so this observer keeps depending on it even
+    ## when the memo answers (identical() on the same object is immediate).
+    data_key <- c(
+      list(dataset_context = dataset_context, data = ir_data_annotated()),
+      request_signature[c(
+        "dataset_fingerprint",
+        "cell_order_fingerprint",
+        "receptor",
+        "projection",
+        "show_all",
+        "cells",
+        "percentage"
+      )]
     )
-    req(!is.null(render_data), length(render_data$x) > 0L)
+    render_data <- ir_clonal_umap_data_memo(data_key, function() {
+      out <- ir_clonal_umap_data(
+        projection,
+        receptor,
+        clone_call,
+        show_all = show_all,
+        cells = cells,
+        percentage = percentage,
+        split_output = TRUE
+      )
+      req(!is.null(out), length(out$x) > 0L)
+      out
+    })
     ## Grey background = cells without the selected receptor (expansion = NA);
     ## coloured foreground = receptor cells with an expansion level. One trace per
     ## expansion level, in canonical order, so each keeps its turbo colour.
