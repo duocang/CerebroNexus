@@ -3,11 +3,14 @@
 #' @keywords internal
 #' @noRd
 .spatialImageBounds <- function(bounds, coordinates, context) {
-  valid_coordinates <- is.data.frame(coordinates) &&
-    all(c("x", "y") %in% colnames(coordinates)) &&
-    is.numeric(coordinates[["x"]]) &&
-    is.numeric(coordinates[["y"]]) &&
-    nrow(coordinates) > 0L
+  ## NULL `coordinates` check explicit `bounds` on their own.
+  check_coordinates <- !is.null(coordinates) || is.null(bounds)
+  valid_coordinates <- !check_coordinates ||
+    is.data.frame(coordinates) &&
+      all(c("x", "y") %in% colnames(coordinates)) &&
+      is.numeric(coordinates[["x"]]) &&
+      is.numeric(coordinates[["y"]]) &&
+      nrow(coordinates) > 0L
   if (!valid_coordinates) {
     stop(
       context,
@@ -16,8 +19,10 @@
     )
   }
 
-  xy <- coordinates[, c("x", "y"), drop = FALSE]
-  if (any(!is.finite(as.matrix(xy)))) {
+  if (
+    check_coordinates &&
+      any(!is.finite(as.matrix(coordinates[, c("x", "y"), drop = FALSE])))
+  ) {
     stop(context, " coordinates must be finite.", call. = FALSE)
   }
 
@@ -59,7 +64,7 @@
     coordinates[["x"]] > bounds[["xmax"]] |
     coordinates[["y"]] < bounds[["ymin"]] |
     coordinates[["y"]] > bounds[["ymax"]]
-  if (any(outside)) {
+  if (check_coordinates && any(outside)) {
     stop(
       context,
       " has coordinates outside its declared bounds.",
@@ -68,6 +73,39 @@
   }
 
   bounds
+}
+
+#' Validate the image labels of one spatial entry
+#'
+#' @keywords internal
+#' @noRd
+.spatialImageLabels <- function(labels, context) {
+  if (is.null(labels) || anyNA(labels) || any(!nzchar(labels))) {
+    invalid_label <- if (is.null(labels)) {
+      "<unnamed>"
+    } else if (anyNA(labels)) {
+      "<NA>"
+    } else {
+      "<empty>"
+    }
+    stop(
+      context,
+      " image label `",
+      invalid_label,
+      "` is invalid; labels must be non-empty.",
+      call. = FALSE
+    )
+  }
+  if (anyDuplicated(labels)) {
+    stop(
+      context,
+      " has duplicate image label `",
+      unique(labels[duplicated(labels)])[[1L]],
+      "`; labels must be unique.",
+      call. = FALSE
+    )
+  }
+  labels
 }
 
 #' Normalize embedded images for one spatial entry
@@ -82,37 +120,7 @@
     return(list())
   }
 
-  image_names <- names(images)
-  if (
-    is.null(image_names) ||
-      anyNA(image_names) ||
-      any(!nzchar(image_names))
-  ) {
-    invalid_label <- if (is.null(image_names)) {
-      "<unnamed>"
-    } else if (anyNA(image_names)) {
-      "<NA>"
-    } else {
-      "<empty>"
-    }
-    stop(
-      context,
-      " image label `",
-      invalid_label,
-      "` is invalid; labels must be non-empty.",
-      call. = FALSE
-    )
-  }
-  if (anyDuplicated(image_names)) {
-    duplicate_label <- unique(image_names[duplicated(image_names)])[[1L]]
-    stop(
-      context,
-      " has duplicate image label `",
-      duplicate_label,
-      "`; labels must be unique.",
-      call. = FALSE
-    )
-  }
+  image_names <- .spatialImageLabels(names(images), context)
 
   normalized <- lapply(seq_along(images), function(i) {
     label <- image_names[[i]]
@@ -241,33 +249,7 @@
     if (length(declarations) == 0L) {
       return(list())
     }
-    labels <- names(declarations)
-    if (is.null(labels) || anyNA(labels) || any(!nzchar(labels))) {
-      invalid_label <- if (is.null(labels)) {
-        "<unnamed>"
-      } else if (anyNA(labels)) {
-        "<NA>"
-      } else {
-        "<empty>"
-      }
-      stop(
-        spatial_context,
-        " image label `",
-        invalid_label,
-        "` is invalid; labels must be non-empty.",
-        call. = FALSE
-      )
-    }
-    if (anyDuplicated(labels)) {
-      duplicate_label <- unique(labels[duplicated(labels)])[[1L]]
-      stop(
-        spatial_context,
-        " has duplicate image label `",
-        duplicate_label,
-        "`; labels must be unique.",
-        call. = FALSE
-      )
-    }
+    labels <- .spatialImageLabels(names(declarations), spatial_context)
 
     descriptors <- lapply(seq_along(declarations), function(j) {
       label <- labels[[j]]
@@ -322,25 +304,7 @@
       }
       bounds <- descriptor[["bounds"]]
       if (!is.null(bounds)) {
-        required <- c("xmin", "xmax", "ymin", "ymax")
-        valid_bounds <- is.numeric(bounds) &&
-          length(bounds) == 4L &&
-          !is.null(names(bounds)) &&
-          setequal(names(bounds), required) &&
-          !anyDuplicated(names(bounds))
-        if (!valid_bounds) {
-          stop(
-            descriptor_context,
-            " bounds must contain exactly xmin, xmax, ymin, and ymax.",
-            call. = FALSE
-          )
-        }
-        bounds <- bounds[required]
-        midpoint <- data.frame(
-          x = mean(c(bounds[["xmin"]], bounds[["xmax"]])),
-          y = mean(c(bounds[["ymin"]], bounds[["ymax"]]))
-        )
-        .spatialImageBounds(bounds, midpoint, descriptor_context)
+        bounds <- .spatialImageBounds(bounds, NULL, descriptor_context)
       }
       compact <- list(path = path)
       if (!is.null(bounds)) {
@@ -456,6 +420,35 @@
   labels
 }
 
+#' Stop when a manifest names a dataset that is not in `cerebro_data`
+#'
+#' @keywords internal
+#' @noRd
+.assertSpatialDatasets <- function(datasets, catalogs, argument) {
+  unknown <- setdiff(datasets, names(catalogs))
+  if (length(unknown) > 0L) {
+    stop(
+      "`",
+      argument,
+      "` dataset `",
+      unknown[[1L]],
+      "` is not present in `cerebro_data`.",
+      call. = FALSE
+    )
+  }
+}
+
+#' Spatial entries a manifest may name, for error messages
+#'
+#' @keywords internal
+#' @noRd
+.spatialEntryChoices <- function(spatial_names) {
+  if (length(spatial_names) == 0L) {
+    return("no available spatial entries")
+  }
+  paste0("available spatial entries: ", paste(spatial_names, collapse = ", "))
+}
+
 #' Normalize createShinyApp external spatial-image declarations
 #'
 #' @keywords internal
@@ -477,15 +470,7 @@
     stop("spatial_images names must be unique.", call. = FALSE)
   }
   datasets <- .spatialManifestNames(images, "`spatial_images`")
-  unknown_datasets <- setdiff(datasets, names(catalogs))
-  if (length(unknown_datasets) > 0L) {
-    stop(
-      "`spatial_images` dataset `",
-      unknown_datasets[[1L]],
-      "` is not present in `cerebro_data`.",
-      call. = FALSE
-    )
-  }
+  .assertSpatialDatasets(datasets, catalogs, "spatial_images")
 
   normalized <- lapply(seq_along(images), function(i) {
     dataset <- datasets[[i]]
@@ -509,21 +494,13 @@
     )
     unknown_spatials <- setdiff(declared_spatials, spatial_names)
     if (length(unknown_spatials) > 0L) {
-      choices <- if (length(spatial_names) == 0L) {
-        "no available spatial entries"
-      } else {
-        paste0(
-          "available spatial entries: ",
-          paste(spatial_names, collapse = ", ")
-        )
-      }
       stop(
         "`spatial_images` dataset `",
         dataset,
         "` spatial `",
         unknown_spatials[[1L]],
         "` is not available; ",
-        choices,
+        .spatialEntryChoices(spatial_names),
         ".",
         call. = FALSE
       )
@@ -570,15 +547,7 @@
     stop("`spatial_image_settings` must be a named list.", call. = FALSE)
   }
   datasets <- .spatialManifestNames(settings, "`spatial_image_settings`")
-  unknown_datasets <- setdiff(datasets, names(catalogs))
-  if (length(unknown_datasets) > 0L) {
-    stop(
-      "`spatial_image_settings` dataset `",
-      unknown_datasets[[1L]],
-      "` is not present in `cerebro_data`.",
-      call. = FALSE
-    )
-  }
+  .assertSpatialDatasets(datasets, catalogs, "spatial_image_settings")
   allowed <- c(
     "flip_x",
     "flip_y",
@@ -754,15 +723,7 @@
     )
   }
   datasets <- .spatialManifestNames(rotation, "`spatial_plot_rotation`")
-  unknown_datasets <- setdiff(datasets, names(catalogs))
-  if (length(unknown_datasets)) {
-    stop(
-      "`spatial_plot_rotation` dataset `",
-      unknown_datasets[[1L]],
-      "` is not present in `cerebro_data`.",
-      call. = FALSE
-    )
-  }
+  .assertSpatialDatasets(datasets, catalogs, "spatial_plot_rotation")
   normalized <- lapply(datasets, function(dataset) {
     values <- rotation[[dataset]]
     spatial_names <- .spatialManifestNames(
