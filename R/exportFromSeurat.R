@@ -975,11 +975,7 @@ exportFromSeurat <- function(
     }
 
     if (verbose) {
-      message(sprintf(
-        "[%s] Writing expression matrix to TENx HDF5 file: %s",
-        format(Sys.time(), "%H:%M:%S"),
-        h5_abs
-      ))
+      .logStep("Writing expression matrix to TENx HDF5 file: ", h5_abs)
     }
 
     if (file.exists(h5_abs)) {
