@@ -166,6 +166,8 @@ launchCerebro <- function(
     ".dataset_prototypes" = dataset_prototypes,
     "welcome_message" = welcome_message,
     "cerebro_root" = system.file(package = "CerebroNexus"),
+    ## The installed Viewer has no HLA core source; core_shim.R binds these.
+    ".hla_core" = .viewerHLACore(),
     "point_size" = point_size,
     "point_opacity" = point_opacity,
     "percentage_cells_to_show" = percentage_cells_to_show,
