@@ -13,6 +13,7 @@
   remote, and the Nix shell adds it only with
   `nix-shell default.nix --arg withBPCells true`. Reading BPCells-backed Seurat
   objects still needs BPCells installed.
+- Fixes the HLA motif network's Focus button showing as off right after a selection was focused, when the server's selection reply arrived after the click.
 
 # CerebroNexus 5.1.2
 
