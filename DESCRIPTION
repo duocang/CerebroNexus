@@ -93,3 +93,9 @@ Suggests:
   withr,
   xml2
 VignetteBuilder: knitr
+Config/testthat/edition: 3
+Config/testthat/parallel: true
+Config/testthat/start-first: app-immune_repertoire, app-inst,
+  app-parameter-layout, app-dataset-lifecycle, app-visualization-layout,
+  createShinyApp-auth, addImmuneRepertoire, gene-display-transitions,
+  smoke-production, createShinyApp-sibling
