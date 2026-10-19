@@ -297,11 +297,8 @@
         button.classList.toggle('hla-mb-btn--off', button.disabled);
       }
     });
-    var focus = document.getElementById('hla_motif_network_focus_selection');
-    if (focus) {
-      focus.classList.toggle('is-on', selectionFocused);
-      focus.setAttribute('aria-pressed', selectionFocused ? 'true' : 'false');
-    }
+    // The selection bar's Focus button belongs to the cell view
+    // (cell_views.js); syncing it here let a late selection reply undo it.
   }
   function setMode(next) {
     mode = ['box', 'lasso', 'pan'].indexOf(next) >= 0 ? next : 'lasso';
