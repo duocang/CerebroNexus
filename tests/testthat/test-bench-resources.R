@@ -7,6 +7,15 @@ skip_unless_bench_resources <- function() {
   )
 }
 
+# The benchmark CLI runs in a child Rscript that calls library(CerebroNexus),
+# so a namespace attached by devtools::load_all() is not enough.
+skip_unless_package_installed <- function() {
+  testthat::skip_if(
+    !length(find.package("CerebroNexus", lib.loc = .libPaths(), quiet = TRUE)),
+    "CerebroNexus is not installed in a library the benchmark CLI can load"
+  )
+}
+
 test_that("streaming tiers remain runnable when embedded exceeds the budget", {
   skip_unless_bench_resources()
   root <- normalizePath(dirname(bench_resources))
@@ -53,7 +62,7 @@ test_that("Scale budgets available RAM and the tightest cgroup ancestor", {
 
 test_that("embedded preflight skips before reading or materialising source data", {
   skip_unless_bench_resources()
-  skip_if_not_installed("CerebroNexus")
+  skip_unless_package_installed()
   root <- normalizePath(dirname(bench_resources))
   stage <- tempfile("embedded-skip-")
   dir.create(file.path(stage, "result"), recursive = TRUE)
@@ -86,7 +95,7 @@ test_that("embedded preflight skips before reading or materialising source data"
 
 test_that("a Scale embedded build killed at the memory cap is a resource skip", {
   skip_unless_bench_resources()
-  skip_if_not_installed("CerebroNexus")
+  skip_unless_package_installed()
   root <- normalizePath(dirname(bench_resources))
   stage <- tempfile("embedded-killed-")
   dir.create(file.path(stage, "result"), recursive = TRUE)
@@ -319,7 +328,7 @@ test_that("embedded estimate admits human 500k on a 128 GB host from exact nnz",
 
 test_that("exact plan nnz overrides a memory-only embedded preflight", {
   skip_unless_bench_resources()
-  skip_if_not_installed("CerebroNexus")
+  skip_unless_package_installed()
   root <- normalizePath(dirname(bench_resources))
   stage <- tempfile("embedded-exact-")
   dir.create(file.path(stage, "result"), recursive = TRUE)

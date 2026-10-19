@@ -1,7 +1,15 @@
 bench_root_full <- normalizePath(file.path("..", "benchmarks", "expression-backends", "scripts"), mustWork = FALSE)
 full_source_lib <- file.path(bench_root_full, "benchmark.R")
 
+skip_unless_bench_tree <- function() {
+  testthat::skip_if_not(
+    file.exists(full_source_lib),
+    "benchmark tree not present (expected when checking a built package)"
+  )
+}
+
 skip_unless_full_source_deps <- function() {
+  skip_unless_bench_tree()
   for (package in c("BPCells", "HDF5Array", "rhdf5", "CerebroNexus")) {
     testthat::skip_if_not_installed(package)
   }
@@ -139,6 +147,7 @@ test_that("full-source writers round-trip both runtime backends", {
 })
 
 test_that("full-source H5 writer stays on the lazy BPCells path", {
+  skip_unless_bench_tree()
   skip_if_not_installed("HDF5Array")
   source(full_source_lib, local = TRUE)
   body <- paste(readLines(full_source_lib, warn = FALSE), collapse = "\n")
