@@ -128,12 +128,10 @@
   }
 
   if (verbose) {
-    message(paste0(
-      "[",
-      format(Sys.time(), "%H:%M:%S"),
-      "] Found scRepertoire columns in metadata: ",
+    .logStep(
+      "Found scRepertoire columns in metadata: ",
       paste(present_core, collapse = ", ")
-    ))
+    )
   }
 
   # Additional scRepertoire columns to preserve
@@ -292,13 +290,7 @@
   }
 
   if (verbose) {
-    message(paste0(
-      "[",
-      format(Sys.time(), "%H:%M:%S"),
-      "] Loaded marker_file (",
-      nrow(markers_df),
-      " rows)."
-    ))
+    .logStep("Loaded marker_file (", nrow(markers_df), " rows).")
   }
 
   return(markers_df)
@@ -845,29 +837,19 @@ convertSeuratToCerebro <- function(
   # Calculate most expressed genes and mean expression from Seurat object ---##
   if (add_most_expressed_genes) {
     if (verbose) {
-      message(paste0(
-        "[",
-        format(Sys.time(), "%H:%M:%S"),
-        "] Calculating most expressed genes and mean expression for each group..."
-      ))
+      .logStep(
+        "Calculating most expressed genes and mean expression for each group..."
+      )
     }
 
     # Get expression matrix (a missing layer is an error, never substituted).
-    expr_resolution <- .getExpressionMatrix(
+    expr_resolution <- .getValidatedExpression(
       seurat,
-      assay = assay,
-      slot = slot,
-      join_samples = TRUE,
-      layer_argument = "slot",
-      return_resolution = TRUE
+      assay,
+      slot,
+      layer_argument = "slot"
     )
-    expr_matrix <- .validate_expression_cells(
-      expression_data = expr_resolution$data,
-      object_cells = colnames(seurat),
-      assay = assay,
-      requested_layer = expr_resolution$requested,
-      resolved_layer = expr_resolution$resolved
-    )
+    expr_matrix <- expr_resolution$data
 
     # Initialize list structures
     if (
@@ -886,12 +868,7 @@ convertSeuratToCerebro <- function(
     # Calculate for each group
     for (group_name in groups) {
       if (verbose) {
-        message(paste0(
-          "[",
-          format(Sys.time(), "%H:%M:%S"),
-          "] Processing group: ",
-          group_name
-        ))
+        .logStep("Processing group: ", group_name)
       }
 
       group_values <- unique(seurat@meta.data[[group_name]])
@@ -976,11 +953,9 @@ convertSeuratToCerebro <- function(
     }
 
     if (verbose) {
-      message(paste0(
-        "[",
-        format(Sys.time(), "%H:%M:%S"),
-        "] Most expressed genes and mean expression calculation completed."
-      ))
+      .logStep(
+        "Most expressed genes and mean expression calculation completed."
+      )
     }
   }
 
