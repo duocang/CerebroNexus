@@ -31,16 +31,10 @@ data-raw/xenium/
 Rplots.pdf
 **/Rplots.pdf
 inst/private-data/linked-view-shares.sqlite
-# Benchmark results are kept in duocang/CerebroNexus_paper_code.
-/tests/benchmarks/results/
-
 # Local test dependencies and generated browser diagnostics.
 /tests/node_modules/
 /tests/testthat/_artifacts/
 
-# Historical one-off Viewer investigations are archived outside the checkout.
-/tests/bench/viewer-followup/
-/tests/bench/viewer-final-protocol/
 node_modules/
 /tests/testthat/_problems/
 /tests/testthat/testthat-problems.rds

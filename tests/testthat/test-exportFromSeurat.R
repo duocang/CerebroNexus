@@ -209,6 +209,85 @@ test_that("exportFromSeurat: h5 mode errors clearly when HDF5Array is missing", 
   expect_error(do.call(exportFromSeurat, args), regexp = "HDF5Array")
 })
 
+## Deflate level and stored size of `expression/data`. rhdf5 does not report
+## the level, so it is read with hdf5r or h5dump when either is available.
+h5_data_filter <- function(path) {
+  fid <- rhdf5::H5Fopen(path, flags = "H5F_ACC_RDONLY")
+  on.exit(rhdf5::H5Fclose(fid), add = TRUE)
+  did <- rhdf5::H5Dopen(fid, "expression/data")
+  on.exit(rhdf5::H5Dclose(did), add = TRUE, after = FALSE)
+  plist <- rhdf5::H5Dget_create_plist(did)
+  on.exit(rhdf5::H5Pclose(plist), add = TRUE, after = FALSE)
+  filters <- vapply(
+    seq_len(rhdf5::H5Pget_nfilters(plist)),
+    function(i) rhdf5::H5Pget_filter(plist, i)[[2]],
+    character(1)
+  )
+  level <- NA_integer_
+  if (requireNamespace("hdf5r", quietly = TRUE)) {
+    file <- hdf5r::H5File$new(path, mode = "r")
+    on.exit(file$close_all(), add = TRUE)
+    create <- file[["expression/data"]]$get_create_plist()
+    for (i in seq_len(create$get_nfilters()) - 1L) {
+      filter <- create$get_filter(i)
+      if (identical(filter$name, "deflate")) level <- filter$cd_values[[1]]
+    }
+  } else if (nzchar(Sys.which("h5dump"))) {
+    dump <- system2(
+      "h5dump",
+      c("-p", "-H", "-d", "/expression/data", shQuote(path)),
+      stdout = TRUE
+    )
+    hit <- regmatches(dump, regexpr("LEVEL [0-9]+", dump))
+    if (length(hit)) level <- as.integer(sub("LEVEL ", "", hit[[1]]))
+  }
+  list(
+    filters = filters,
+    level = level,
+    stored = rhdf5::H5Dget_storage_size(did)
+  )
+}
+
+test_that("exportFromSeurat: h5 data is written at gzip level 0 by default", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("rhdf5")
+
+  out_dir <- withr::local_tempdir()
+  export_h5 <- function(name, ...) {
+    args <- valid_args
+    args$file <- file.path(out_dir, paste0(name, ".crb"))
+    args$expression_matrix_mode <- "h5"
+    do.call(exportFromSeurat, c(args, list(...)))
+    file.path(out_dir, paste0(name, ".h5"))
+  }
+  default <- h5_data_filter(export_h5("default"))
+  expect_true("deflate" %in% default$filters)
+
+  level6 <- h5_data_filter(export_h5("level6", h5_compression_level = 6))
+  expect_true("deflate" %in% level6$filters)
+  expect_lt(level6$stored, default$stored / 2)
+
+  skip_if(
+    is.na(default$level),
+    "needs hdf5r or h5dump to read the deflate level"
+  )
+  expect_identical(default$level, 0L)
+  expect_identical(level6$level, 6L)
+})
+
+test_that("exportFromSeurat: rejects an invalid h5_compression_level", {
+  for (level in list(-1L, 10L, 1.5, NA_integer_, c(0L, 1L), "6")) {
+    args <- valid_args
+    args$file <- tempfile(fileext = ".crb")
+    args$expression_matrix_mode <- "h5"
+    args$h5_compression_level <- level
+    expect_error(
+      do.call(exportFromSeurat, args),
+      "`h5_compression_level` must be one integer from 0 to 9"
+    )
+  }
+})
+
 test_that("h5 attach is lazy: .attachExternalExpression returns a DelayedMatrix
            seed, not an eagerly materialised dgCMatrix (low RAM, instant attach)", {
   skip_if_not_installed("HDF5Array")

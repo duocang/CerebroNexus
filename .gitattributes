@@ -1,4 +1,2 @@
-# Bash entry points use Unix line endings.
-tests/benchmarks/**/*.sh text eol=lf
 # The Linux deployment entry point must remain runnable after a Windows checkout.
 inst/viewer/start-linux.sh text eol=lf

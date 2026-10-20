@@ -14,14 +14,15 @@ tests/
 │   ├── test-r-functions.R
 │   └── _snaps/            # testthat snapshot fixtures
 ├── smoke/                 # local dev scratch (gitignored, see its own README)
-└── benchmarks/            # Viewer measurements, separate from regression tests
-    └── viewer/
+└── demo/                  # data preparation for run-demo.R and its tests
 ```
 
-The testthat suite is included in package builds. Benchmark scripts, Node modules
+The testthat suite is included in package builds. `tests/demo/`, Node modules
 and local browser artifacts are excluded. `tests/smoke/` is a local sandbox for
-hand-driven smoke tests; it does not run under `R CMD check`. See
-[benchmark commands](benchmarks/README.md) for the Viewer measurements. `_snaps/` contains expected test output
+hand-driven smoke tests; it does not run under `R CMD check`. `tests/demo/`
+holds only what `run-demo.R` and its tests source; benchmarks belong in
+[CerebroNexus_paper_code](https://github.com/duocang/CerebroNexus_paper_code)
+(`viewer/` and `benchmark/`), not here. `_snaps/` contains expected test output
 and must not be treated as disposable logs.
 
 ## Prerequisites
@@ -95,9 +96,7 @@ JavaScript or CSS source spelling. Keep shared-component coverage in one place.
 transitions to check that hidden consumers stay idle. `test-trajectory-data-flow.R`
 checks shared row mapping and deferred controls. `test-dataset-loading-progress.R`
 checks server progress and readiness messages; the visualization browser test
-also exercises the visible loading overlay. `test-ren-backend-benchmark.R` runs
-the real command-line workers against tiny CRBs, including deliberately changed
-values, dimensions and backend expectations. It tests correctness, not speed.
+also exercises the visible loading overlay.
 
 `test-hla-allele-state.R` compares actual network colours and overlap counts
 after changing either allele picker. The browser layout test also checks
@@ -123,8 +122,8 @@ that a production function has a particular body or sequence of statements.
 
 Coverage includes actual HLA graph/table output, IR renderer arguments and cache
 invalidation, Spatial RGB/hulls/backgrounds, first-frame and supplement transport,
-stale dataset messages, Canvas geometry and PNG exports, login layout, benchmark
-readiness/byte counters and shell failure cleanup. Expensive atlas downloads and
+stale dataset messages, Canvas geometry and PNG exports, login layout and shell
+failure cleanup. Expensive atlas downloads and
 timing thresholds remain opt-in; small deterministic inputs exercise correctness.
 Retained text checks concern published documentation, metadata, private output
 contents and parity of bundled core files, rather than implementation spelling.
