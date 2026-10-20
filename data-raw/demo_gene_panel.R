@@ -31,7 +31,7 @@ demo_referenced_genes <- function(object, genes) {
   intersect(genes, unique(named))
 }
 
-demo_gene_panel <- function(object, max_genes = 500L) {
+demo_gene_panel <- function(object, max_genes = 100L) {
   m <- object$expression
   stopifnot(
     inherits(m, "sparseMatrix"),

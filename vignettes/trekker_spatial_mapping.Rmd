@@ -229,7 +229,7 @@ encode_jpeg <- function(path, max_px = 620L, quality = 68L) {
 The source is 21,374 genes × 7,420 nuclei. The existing stratified sampling
 force-includes the 50 nuclei carrying evidence images. The shipped artifact
 keeps a random 1,000 of its 2,536 nuclei (`data-raw/subsample_demos.R`). After analysis, the builder limits expression to
-500 genes, protecting marker, myelination and upstream Moran genes and filling
+100 genes, protecting marker, myelination and upstream Moran genes and filling
 the remaining budget by normalized-expression variance. This narrows gene search;
 it does not recompute UMAP, QC or per-cell scores, or alter retained values.
 

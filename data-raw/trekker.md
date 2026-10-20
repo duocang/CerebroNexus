@@ -153,7 +153,7 @@ The source has **21,374 genes × 7,420 nuclei**. The shipped demo preserves all
 The existing seeded, stratified cell-sampling code below is unchanged.
 
 After computing the full-input scores and attaching the Trekker slot, the builder
-exports at most **500 genes** through `demo_gene_panel.R`. It protects the
+exports at most **100 genes** through `demo_gene_panel.R`. It protects the
 Trekker picker markers, myelination signature and upstream Moran genes present in
 the matrix, then fills the budget by normalized-expression variance. The matrix
 stays sparse; retained values and cell/gene order do not change. This is a selected

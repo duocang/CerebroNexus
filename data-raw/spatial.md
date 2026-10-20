@@ -212,7 +212,7 @@ Every embedded image is stored in its **native** orientation (row 0 = image top)
 callers should pass image files through `exportFromSeurat(spatial_images = ...)`
 or `convertSeuratToCerebro(spatial_images = ...)`. This older demo builder
 already holds decoded data URIs, so it writes the canonical named
-`histology_images` list directly. The final writer caps expression at 500 genes
+`histology_images` list directly. The final writer caps expression at 100 genes
 after analysis, including every spatial expression copy, without changing cells,
 coordinates or images:
 
