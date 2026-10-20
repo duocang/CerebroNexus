@@ -54,9 +54,6 @@
 #  > system_pkgs = c("chromium",
 #  > "nodejs",
 #  > "pandoc"),
-#  > git_pkgs = list(list(package_name = "BPCells",
-#  > repo_url = "https://github.com/bnprks/BPCells/r",
-#  > commit = bpcells_sha)),
 #  > ide = "none",
 #  > project_path = ".",
 #  > overwrite = TRUE,
@@ -126,44 +123,7 @@ let
       withr
       xml2;
   };
- 
-    BPCells-src = pkgs.fetchgit {
-      url = "https://github.com/bnprks/BPCells";
-      rev = "016296413cd7a5725c8b35816df02365d7def853";
-      sha256 = "sha256-fWNql/rTi63WND4WtzgH4x0AP2nb4+C4eGvFwzpz8XQ=";
-    };
 
-    BPCells = (pkgs.rPackages.buildRPackage {
-      pname = "BPCells";
-      name = "BPCells";
-      src = "${BPCells-src}/r";
-      postPatch = "patchShebangs configure";
-      nativeBuildInputs = [ pkgs.pkg-config ];
-      buildInputs = [ pkgs.hdf5 ];
-      propagatedBuildInputs = builtins.attrValues {
-        inherit (pkgs.rPackages) 
-          magrittr
-          Matrix
-          Rcpp
-          rlang
-          vctrs
-          lifecycle
-          stringr
-          tibble
-          dplyr
-          tidyr
-          readr
-          ggplot2
-          scales
-          patchwork
-          scattermore
-          ggrepel
-          RColorBrewer
-          hexbin
-          RcppEigen;
-      };
-    });
-      
   system_packages = builtins.attrValues {
     inherit (pkgs) 
       chromium
@@ -183,7 +143,7 @@ let
     LC_PAPER = "en_US.UTF-8";
     LC_MEASUREMENT = "en_US.UTF-8";
     
-    buildInputs = [ BPCells rpkgs system_packages ];
+    buildInputs = [ rpkgs system_packages ];
     
   }; 
 in

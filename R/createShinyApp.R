@@ -736,90 +736,6 @@ dedent <- function(string) {
   )
 }
 
-.normalizeOverridePath <- function(path, key) {
-  if (
-    !is.character(path) ||
-      length(path) != 1L ||
-      is.na(path) ||
-      !nzchar(path)
-  ) {
-    stop(
-      "cerebro_options[['",
-      key,
-      "']] must be one non-empty absolute path.",
-      call. = FALSE
-    )
-  }
-  style <- .absolutePathStyle(path)
-  if (style %in% c("windows-device", "windows-malformed")) {
-    detail <- if (identical(style, "windows-device")) {
-      "device or extended-length"
-    } else {
-      "malformed Windows"
-    }
-    stop(
-      "Windows ",
-      detail,
-      " path namespaces are not supported.",
-      call. = FALSE
-    )
-  }
-  if (is.na(style)) {
-    stop(
-      "cerebro_options[['",
-      key,
-      "']] must be one absolute path.",
-      call. = FALSE
-    )
-  }
-  if (
-    !identical(.Platform$OS.type, "windows") &&
-      identical(style, "unc") &&
-      startsWith(path, "/")
-  ) {
-    stop(
-      "Forward-slash UNC paths are ambiguous outside Windows; use a ",
-      "backslash UNC or drive path for a Windows host-managed override.",
-      call. = FALSE
-    )
-  }
-  if (!.nativeAbsolutePath(path, style)) {
-    return(path)
-  }
-  .canonicalTargetPath(path)
-}
-
-.pathWithin <- function(
-  candidate,
-  parent,
-  os_type = .Platform$OS.type,
-  canonicalize = function(path) {
-    .canonicalTargetPath(path, os_type = os_type)
-  }
-) {
-  candidate_style <- .absolutePathStyle(candidate, os_type = os_type)
-  candidate_style <- .nativeFilesystemStyle(
-    candidate,
-    candidate_style,
-    os_type = os_type
-  )
-  if (!.nativeAbsolutePath(candidate, candidate_style, os_type = os_type)) {
-    return(FALSE)
-  }
-  candidate <- canonicalize(candidate)
-  parent <- canonicalize(parent)
-  if (identical(os_type, "windows")) {
-    candidate <- tolower(candidate)
-    parent <- tolower(parent)
-  }
-  parent_prefix <- if (endsWith(parent, "/")) {
-    parent
-  } else {
-    paste0(parent, "/")
-  }
-  identical(candidate, parent) || startsWith(candidate, parent_prefix)
-}
-
 # Backend descriptors and frozen plans ------------------------------------
 
 .bundleRequiredCerebroMethods <- c(
@@ -853,16 +769,6 @@ dedent <- function(string) {
   is.environment(object) &&
     inherits(object, "R6") &&
     any(startsWith(class(object), "Cerebro")) &&
-    environmentIsLocked(object)
-}
-
-.isPreSpatialCerebroV1_3 <- function(object) {
-  ## b13fee58 added spatial storage and its accessors to Cerebro_v1.3. Its
-  ## predecessor serializes with this exact R6 class identity, so only that
-  ## historical format may omit the accessors. In particular, a damaged modern
-  ## `Cerebro` object must never silently become a non-spatial dataset.
-  identical(class(object), c("Cerebro_v1.3", "R6")) &&
-    is.environment(object) &&
     environmentIsLocked(object)
 }
 
@@ -920,7 +826,7 @@ dedent <- function(string) {
     )
   }
   if (!getter_exists && !field_exists) {
-    return(list(type = "embedded", location = NULL, legacy = TRUE))
+    .assertCurrentCerebroFile(object, crb_path)
   }
   if (
     !getter_exists ||
@@ -934,15 +840,13 @@ dedent <- function(string) {
       call. = FALSE
     )
   }
+  .assertCurrentCerebroFile(object, crb_path)
   backend <- object[[backend_field]]
-  if (is.null(backend)) {
-    return(list(type = "embedded", location = NULL, legacy = FALSE))
-  }
   valid_type <- is.list(backend) &&
     is.character(backend$type) &&
     length(backend$type) == 1L &&
     !is.na(backend$type) &&
-    backend$type %in% c("embedded", "h5", "bpcells")
+    backend$type %in% c("embedded", .cerebroExternalBackends)
   valid_location <- valid_type &&
     if (identical(backend$type, "embedded")) {
       is.null(backend$location)
@@ -960,7 +864,6 @@ dedent <- function(string) {
       call. = FALSE
     )
   }
-  backend$legacy <- FALSE
   backend
 }
 
@@ -974,11 +877,6 @@ dedent <- function(string) {
     inherits = FALSE
   )
   if (!any(method_exists)) {
-    if (.isPreSpatialCerebroV1_3(object)) {
-      ## Spatial accessors were added in b13fee58. The preceding
-      ## Cerebro_v1.3 serialization is non-spatial, rather than malformed.
-      return(list())
-    }
     stop(
       "Dataset `",
       dataset,
@@ -1101,22 +999,8 @@ dedent <- function(string) {
     overview["genes"] <- list(tryCatch(
       {
         descriptor <- .readBundleBackend(path, object)
-        if (
-          descriptor$type == "bpcells" &&
-            requireNamespace("BPCells", quietly = TRUE)
-        ) {
-          as.integer(nrow(BPCells::open_matrix_dir(.cerebroSidecar(
-            path,
-            descriptor
-          ))))
-        } else if (
-          descriptor$type == "h5" &&
-            requireNamespace("HDF5Array", quietly = TRUE)
-        ) {
-          as.integer(ncol(HDF5Array::TENxMatrix(
-            .cerebroSidecar(path, descriptor),
-            group = "expression"
-          )))
+        if (identical(descriptor$type, "h5")) {
+          .h5Dim(.cerebroSidecar(path, descriptor))[[2L]]
         } else {
           NULL
         }
@@ -1127,7 +1011,7 @@ dedent <- function(string) {
   backend <- tryCatch(object$immune_repertoire_backend, error = function(e) {
     NULL
   })
-  if (is.list(backend) && identical(backend$type, "bpcells-file")) {
+  if (is.list(backend) && identical(backend$type, "file")) {
     immune_repertoire <- TRUE
     tcr_repertoire <- any(as.character(backend$chains) %in% c("TRA", "TRB"))
   } else {
@@ -1180,6 +1064,9 @@ dedent <- function(string) {
       next
     }
     object <- .readCerebroPayload(path)
+    if (.recognizedCerebroObject(object)) {
+      .assertCurrentCerebroFile(object, path)
+    }
     catalog[[path]] <- .readBundleDatasetInfo(
       object,
       labels[[index]],
@@ -1205,10 +1092,12 @@ dedent <- function(string) {
 ) {
   backends <- vector("list", length(cerebro_data))
   spatial_backends <- vector("list", length(cerebro_data))
+  immune_backends <- vector("list", length(cerebro_data))
   spatial_catalogs <- vector("list", length(cerebro_data))
   dataset_catalog <- vector("list", length(cerebro_data))
   names(backends) <- names(cerebro_data)
   names(spatial_backends) <- names(cerebro_data)
+  names(immune_backends) <- names(cerebro_data)
   names(spatial_catalogs) <- names(cerebro_data)
   names(dataset_catalog) <- names(cerebro_data)
   for (index in seq_along(cerebro_data)) {
@@ -1228,6 +1117,10 @@ dedent <- function(string) {
             object,
             cerebro_data[[index]]
           )
+          immune_backends[index] <- list(.immuneRepertoireBackend(
+            object,
+            cerebro_data[[index]]
+          ))
         }
         spatial_catalogs[[index]] <- inspect_spatial(
           object,
@@ -1255,6 +1148,7 @@ dedent <- function(string) {
   list(
     backends = backends,
     spatial_backends = spatial_backends,
+    immune_backends = immune_backends,
     spatial_catalogs = spatial_catalogs,
     dataset_catalog = dataset_catalog
   )
@@ -1334,51 +1228,10 @@ dedent <- function(string) {
   paste0("private-data/dataset-", digest, ".crb")
 }
 
-.bundleBackendOverrideKey <- function(backend, cerebro_options) {
-  if (isTRUE(backend$legacy)) {
-    if (!is.null(cerebro_options[["expression_matrix_h5"]])) {
-      return("expression_matrix_h5")
-    }
-    if (!is.null(cerebro_options[["expression_matrix_BPCells"]])) {
-      return("expression_matrix_BPCells")
-    }
-    return(NULL)
-  }
-  if (identical(backend$type, "embedded")) {
-    return(NULL)
-  }
-  key <- switch(
-    backend$type,
-    h5 = "expression_matrix_h5",
-    bpcells = "expression_matrix_BPCells"
-  )
-  if (is.null(cerebro_options[[key]])) {
-    return(NULL)
-  }
-  key
-}
-
-## Compute the post-override decision once; the caller serializes it so runtime
+## Compute the backend decision once; the caller serializes it so runtime
 ## consumes the same decision that preflight validated.
-.effectiveBundleBackendPlan <- function(backend, cerebro_options) {
-  override_key <- .bundleBackendOverrideKey(backend, cerebro_options)
-  if (!is.null(override_key)) {
-    type <- if (isTRUE(backend$legacy)) {
-      switch(
-        override_key,
-        expression_matrix_h5 = "h5",
-        expression_matrix_BPCells = "bpcells"
-      )
-    } else {
-      backend$type
-    }
-    return(list(
-      type = type,
-      mode = "host_override",
-      location = cerebro_options[[override_key]]
-    ))
-  }
-  if (isTRUE(backend$legacy) || identical(backend$type, "embedded")) {
+.effectiveBundleBackendPlan <- function(backend) {
+  if (identical(backend$type, "embedded")) {
     return(list(type = "embedded", mode = "embedded", location = NULL))
   }
   list(type = backend$type, mode = "bundled", location = backend$location)
@@ -2157,13 +2010,13 @@ dedent <- function(string) {
 #' UI/server. The output directory can be served directly by shiny-server or
 #' run with \code{shiny::runApp(result_dir)}.
 #'
-#' Supports external expression backends (\code{bpcells}, \code{h5}) in
-#' addition to the embedded mode. Each \code{.crb} descriptor names a portable
-#' relative file or directory, which is copied to the same private location
-#' under \code{private-data/}. The historical \code{data/} name is deliberately
+#' Supports the external H5 expression backend in addition to the embedded
+#' mode. Each \code{.crb} descriptor names a portable relative file, and so
+#' does an immune repertoire sidecar; both are copied to the same private
+#' location under \code{private-data/}. The historical \code{data/} name is deliberately
 #' not reused: a still-running older generated app may retain its former
 #' \code{/data} HTTP resource mapping during an in-place replacement. Raw
-#' \code{.crb}, H5, and BPCells artifacts are not registered as HTTP resources.
+#' \code{.crb}, H5, and sidecar files are not registered as HTTP resources.
 #' Spatial background images are the deliberate exception: files explicitly
 #' supplied through \code{spatial_images} are copied verbatim under
 #' \code{spatial-assets/}. The server-side renderer reads these files and embeds
@@ -2171,12 +2024,12 @@ dedent <- function(string) {
 #' Callers must provide trusted image files. Preflight requires a minimum
 #' stable runtime API and reads the ordinary \code{expression_backend} field
 #' without invoking serialized methods or its getter. The generated
-#' configuration stores the effective per-CRB attachment plan after applying
-#' any deployment override, and configured CRBs consume that exact plan at
-#' runtime. Direct launches and uploads also read and validate the ordinary
-#' field without invoking the getter. A historical CRB may omit both field and
-#' getter; an object containing only one is rejected as an unsupported mixed
-#' format.
+#' configuration stores the effective per-CRB attachment plan, and configured
+#' CRBs consume that exact plan at runtime. Direct launches and uploads also
+#' read and validate the ordinary field without invoking the getter. A CRB
+#' from an older release that is no longer read (see
+#' \code{\link{convertCerebro}}) is rejected, as is an object containing only
+#' one of field and getter.
 #' Dataset labels and canonical CRB sources are both unique: two labels cannot
 #' select the same resolved input file.
 #' Generated bundles follow the standard deployment model of one app per R
@@ -2190,15 +2043,7 @@ dedent <- function(string) {
 #' \code{shiny.maxRequestSize} while the app is running and the previous process
 #' option is restored when the app stops.
 #'
-#' A configured runtime matrix override keeps its existing precedence and skips
-#' the descriptor sidecar copy. It must be an absolute path. Native paths are
-#' resolved component by component and rejected if they resolve inside
-#' \code{result_dir}. Unresolved filesystem entries, unsafe Windows aliases,
-#' and Windows device namespaces fail closed; a truly absent ordinary target is
-#' allowed for later provisioning. Non-native absolute paths intended for
-#' another host are preserved lexically and cannot be compared with that host's
-#' app tree. Such a bundle depends on that host-managed path and is therefore
-#' not self-contained. Treat
+#' Treat
 #' input \code{.crb}/\code{.rds} files as trusted serialized R objects;
 #' structural validation is not a sandbox for untrusted RDS input.
 #'
@@ -2244,12 +2089,9 @@ dedent <- function(string) {
 #'   \code{"showcase"}; defaults to \code{"normal"}.
 #' @param colors Optional named list of colour palettes per dataset.
 #' @param cerebro_options Extra entries merged into \code{Cerebro.options} in
-#'   the generated app. Matrix overrides must be absolute host paths and make
-#'   the resulting app host-dependent. Native paths must resolve outside
-#'   \code{result_dir}; non-native paths cannot be compared with the local app
-#'   tree during the build. Duplicate internal entries are removed, and the
-#'   keys \code{.bundle_backend_plan} and \code{.bundle_run_options} are written
-#'   by the function.
+#'   the generated app. Duplicate internal entries are removed, and the keys
+#'   \code{.bundle_backend_plan} and \code{.bundle_run_options} are written by
+#'   the function.
 #' @param overwrite If \code{TRUE} (default), replace \code{result_dir} only
 #'   after a complete staged build succeeds. Publication failures attempt to
 #'   restore the previous app and preserve its backup if restoration fails. If
@@ -2616,6 +2458,20 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
+  retired_options <- intersect(
+    supplied_option_names,
+    c("expression_matrix_h5", "expression_matrix_BPCells")
+  )
+  if (length(retired_options)) {
+    stop(
+      "`cerebro_options` contains retired key(s): ",
+      paste(retired_options, collapse = ", "),
+      ". A data file finds its expression matrix through its own ",
+      "descriptor, next to the .crb; export it with ",
+      "exportFromSeurat(expression_matrix_mode = \"h5\").",
+      call. = FALSE
+    )
+  }
   forbidden_spatial_options <- unique(intersect(
     supplied_option_names,
     builder_spatial_options
@@ -2850,6 +2706,10 @@ createShinyApp <- function(
   backends <- preflight_data$backends
   dataset_catalog <- preflight_data$dataset_catalog
   spatial_backends <- preflight_data$spatial_backends
+  immune_backends <- preflight_data$immune_backends
+  if (!is.list(immune_backends) || length(immune_backends) != length(cerebro_data)) {
+    immune_backends <- vector("list", length(cerebro_data))
+  }
   if (
     !is.list(spatial_backends) ||
       length(spatial_backends) != length(cerebro_data)
@@ -3034,101 +2894,21 @@ createShinyApp <- function(
     )
   }
 
-  override_keys <- c("expression_matrix_h5", "expression_matrix_BPCells")
-  result_target <- .canonicalTargetPath(result_dir)
-  for (key in override_keys) {
-    override <- cerebro_options[[key]]
-    if (is.null(override)) {
-      next
-    }
-    override <- .normalizeOverridePath(override, key)
-    if (.pathWithin(override, result_target)) {
-      stop(
-        "cerebro_options[['",
-        key,
-        "']] must point outside 'result_dir'.",
-        call. = FALSE
-      )
-    }
-    cerebro_options[[key]] <- override
-  }
-
-  override_users <- list(
-    expression_matrix_h5 = character(),
-    expression_matrix_BPCells = character()
-  )
-  for (index in seq_along(backends)) {
-    backend <- backends[[index]]
-    override_key <- .bundleBackendOverrideKey(backend, cerebro_options)
-    if (!is.null(override_key)) {
-      override_users[[override_key]] <- c(
-        override_users[[override_key]],
-        resolved_crb_sources[[index]]
-      )
-    }
-  }
-  distinct_override_users <- vapply(
-    override_users,
-    function(paths) length(unique(paths)),
-    integer(1)
-  )
-  unsafe_override <- names(override_users)[distinct_override_users > 1L]
-  if (length(unsafe_override) > 0L) {
-    stop(
-      "The global override cerebro_options[['",
-      unsafe_override[[1L]],
-      "']] would bind multiple Cerebro data files to the same expression ",
-      "matrix. Use each .crb's own backend or build separate apps.",
-      call. = FALSE
+  ## Sidecars are addressed by one file name next to the CRB. Bundle the real
+  ## file, never a path that reaches it through a symbolic link.
+  bundle_sibling <- function(file, location, artifact) {
+    location <- .portableBundlePath(
+      location,
+      paste0("The ", artifact, " location in '", basename(file), "'")
     )
-  }
-
-  effective_backend_entries <- list()
-  for (index in seq_along(cerebro_data)) {
-    file <- cerebro_data[[index]]
-    backend <- backends[[index]]
-    if (!identical(backend$type, "embedded")) {
-      backend$location <- .portableBundlePath(
-        backend$location,
-        paste0(
-          "The ",
-          backend$type,
-          " backend location in '",
-          basename(file),
-          "'"
-        )
-      )
-    }
-    effective <- .effectiveBundleBackendPlan(backend, cerebro_options)
-    target <- crb_targets[[index]]
-    existing <- effective_backend_entries[[target]]
-    if (!is.null(existing) && !identical(existing, effective)) {
-      stop(
-        "The Cerebro data file '",
-        basename(file),
-        "' changed its expression-backend descriptor during preflight.",
-        call. = FALSE
-      )
-    }
-    effective_backend_entries[[target]] <- effective
-    if (!identical(effective$mode, "bundled")) {
-      next
-    }
-
-    parts <- strsplit(backend$location, "/", fixed = TRUE)[[1L]]
+    parts <- strsplit(location, "/", fixed = TRUE)[[1L]]
     source_root <- dirname(file)
-    source <- file.path(source_root, backend$location)
-    is_directory <- identical(backend$type, "bpcells")
-    source_exists <- if (is_directory) {
-      dir.exists(source)
-    } else {
-      file.exists(source) && !dir.exists(source)
-    }
-    if (!source_exists) {
+    source <- file.path(source_root, location)
+    if (!file.exists(source) || dir.exists(source)) {
       stop(
         "Expected the ",
-        backend$type,
-        " backend at '",
+        artifact,
+        " at '",
         source,
         "' recorded by '",
         basename(file),
@@ -3136,7 +2916,6 @@ createShinyApp <- function(
         call. = FALSE
       )
     }
-
     resolved_root <- normalizePath(
       source_root,
       winslash = "/",
@@ -3158,22 +2937,67 @@ createShinyApp <- function(
     ) {
       stop(
         "The ",
-        backend$type,
-        " backend location '",
-        backend$location,
+        artifact,
+        " location '",
+        location,
         "' in '",
         basename(file),
-        "' resolves through a symbolic link. Copy the real backend beside ",
+        "' resolves through a symbolic link. Copy the real file beside ",
         "the .crb before building the app.",
         call. = FALSE
       )
     }
     claim_target(
-      paste0(private_data_root, "/", backend$location),
+      paste0(private_data_root, "/", location),
       resolved_source,
-      paste0(backend$type, " backend"),
-      directory = is_directory
+      artifact
     )
+    location
+  }
+
+  effective_backend_entries <- list()
+  for (index in seq_along(cerebro_data)) {
+    file <- cerebro_data[[index]]
+    backend <- backends[[index]]
+    if (!identical(backend$type, "embedded")) {
+      backend$location <- .portableBundlePath(
+        backend$location,
+        paste0(
+          "The ",
+          backend$type,
+          " backend location in '",
+          basename(file),
+          "'"
+        )
+      )
+    }
+    effective <- .effectiveBundleBackendPlan(backend)
+    target <- crb_targets[[index]]
+    existing <- effective_backend_entries[[target]]
+    if (!is.null(existing) && !identical(existing, effective)) {
+      stop(
+        "The Cerebro data file '",
+        basename(file),
+        "' changed its expression-backend descriptor during preflight.",
+        call. = FALSE
+      )
+    }
+    effective_backend_entries[[target]] <- effective
+    if (identical(effective$mode, "bundled")) {
+      bundle_sibling(
+        file,
+        backend$location,
+        paste0(backend$type, " backend")
+      )
+    }
+    immune_backend <- immune_backends[[index]]
+    if (!is.null(immune_backend)) {
+      bundle_sibling(
+        file,
+        immune_backend$file,
+        "immune repertoire sidecar"
+      )
+    }
   }
 
   ## Only spatial background images enter the public resource namespace. Raw

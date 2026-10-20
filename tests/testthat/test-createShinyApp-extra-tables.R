@@ -105,7 +105,9 @@ test_that("generated apps select and safely render external sheets", {
   workbook <- readxl::readxl_example("datasets.xlsx")
   unsafe_csv <- file.path(root, "unsafe.csv")
   app <- file.path(root, "app")
-  saveRDS(Cerebro$new(), crb)
+  embedded <- Cerebro$new()
+  embedded$setExpressionBackend(type = "embedded")
+  saveRDS(embedded, crb)
   writeLines(
     c("=formula,html", "=1+1,<script>alert(1)</script>"),
     unsafe_csv

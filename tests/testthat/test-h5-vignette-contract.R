@@ -52,6 +52,8 @@ test_that("legacy H5 guidance persists a portable backend descriptor", {
     ),
     sparse = TRUE
   )
+  crb$setExpressionBackend("embedded")
+  crb$meta_data <- data.frame(cell_barcode = colnames(crb$expression))
   expected_on_disk <- as.matrix(Matrix::t(crb$expression))
   saveRDS(crb, crb_input)
   evaluation <- rlang::env(

@@ -37,22 +37,24 @@ mitochondrial and/or ribosomal genes.}
 
     \item{\code{expression}}{\code{matrix}-like object that holds transcript counts.}
 
-    \item{\code{expression_backend}}{\code{list} describing how/where the expression
-matrix is stored. For step 7.1 every newly exported object tags itself
-\code{list(type = "embedded", location = NULL)}; future step 7.2 will
-introduce \code{type = "h5"} / \code{"bpcells"} with an external
-\code{location}. Older \code{.crb} files (serialised before this field
-existed) load with \code{expression_backend = NULL}; \code{getExpressionBackend()}
-treats that as \code{"embedded"} for backward compatibility.}
+    \item{\code{expression_backend}}{\code{list} describing where the expression
+matrix is stored: \code{list(type = "embedded", location = NULL)} when it
+travels inside the \code{.crb}, or \code{list(type = "h5", location =
+"<stem>.h5")} for an H5 file next to it.}
 
     \item{\code{crb_schema}}{Description of fields omitted from a thin CRB and
-restored from its external expression sidecar. Legacy and embedded CRBs
-leave this as \code{NULL}.}
+restored from its H5 expression sidecar. Embedded CRBs leave this as
+\code{NULL}.}
 
     \item{\code{spatial_molecule_backend}}{Descriptor for molecule tables stored in
-a sibling spatial sidecar. The runtime-only \code{root} member is populated
-by \code{readCerebro()} or the generated Viewer and is never required for
+a sibling spatial sidecar. The runtime-only `root` member is populated
+by `readCerebro()` or the generated Viewer and is never required for
 legacy CRBs with embedded molecule tables.}
+
+    \item{\code{immune_repertoire_backend}}{Descriptor for a large immune
+repertoire stored in a sibling file (\code{type = "file"}). The
+runtime-only `root` member is attached when the CRB is opened; without a
+descriptor the repertoire is the embedded `immune_repertoire` field.}
 
     \item{\code{cell_fingerprint}}{Stable identity of the cell population used by
 portable saved views. Older CRBs leave this as \code{NULL}.}
@@ -99,12 +101,6 @@ containing scRepertoire columns (CTgene, CTnt, CTaa, CTstrict, etc.).}
 per sample x locus x copy) with data provenance, or NULL. Consumed by
 the HLA & TCR Motifs page for donor-level HLA context. Optional; older
 .crb files simply lack it.}
-
-    \item{\code{bcr_data}}{\code{list} that contains BCR data (kept for backward
-compatibility with older .crb files).}
-
-    \item{\code{tcr_data}}{\code{list} that contains TCR data (kept for backward
-compatibility with older .crb files).}
 
     \item{\code{spatial}}{\code{list} that contains spatial data (coordinates and expression).}
 
@@ -176,8 +172,6 @@ Consumed by the Trekker page. Optional; older .crb files simply lack it.}
     \item \href{#method-Cerebro-getTrajectory}{\code{Cerebro$getTrajectory()}}
     \item \href{#method-Cerebro-getBCR}{\code{Cerebro$getBCR()}}
     \item \href{#method-Cerebro-getTCR}{\code{Cerebro$getTCR()}}
-    \item \href{#method-Cerebro-addBCRData}{\code{Cerebro$addBCRData()}}
-    \item \href{#method-Cerebro-addTCRData}{\code{Cerebro$addTCRData()}}
     \item \href{#method-Cerebro-getImmuneRepertoire}{\code{Cerebro$getImmuneRepertoire()}}
     \item \href{#method-Cerebro-addImmuneRepertoire}{\code{Cerebro$addImmuneRepertoire()}}
     \item \href{#method-Cerebro-getHLATyping}{\code{Cerebro$getHLATyping()}}
@@ -557,11 +551,9 @@ default.}
 \if{latex}{\out{\hypertarget{method-Cerebro-setExpressionBackend}{}}}
 \subsection{\code{Cerebro$setExpressionBackend()}}{
   Tag the object with information about how / where its expression matrix
-is stored. In step 7.1 every newly exported \code{.crb} is tagged
-\code{"embedded"} with a NULL location, meaning the matrix is carried
-inside the serialised \code{.crb}. Later steps (7.2 exporter, 7.3
-runtime attach) will produce objects tagged \code{"h5"} or
-\code{"bpcells"} with an external \code{location}.
+is stored: \code{"embedded"} with a NULL location when the matrix is
+carried inside the serialised \code{.crb}, or \code{"h5"} with the name
+of the H5 file that sits next to it.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Cerebro$setExpressionBackend(type = "embedded", location = NULL)}
@@ -570,14 +562,8 @@ runtime attach) will produce objects tagged \code{"h5"} or
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{type}}{Storage backend label. One of \code{"embedded"},
-\code{"h5"}, \code{"bpcells"}. Step 7.1 only recognises
-\code{"embedded"} at runtime; the other two are accepted here (so step
-7.2 can set them) but will still need step-7.3 runtime attach to be
-useful.}
-      \item{\code{location}}{Optional character path (absolute or relative to the
-parent directory of the serialized Cerebro object) where the external
-matrix lives.
+      \item{\code{type}}{Storage backend label, \code{"embedded"} or \code{"h5"}.}
+      \item{\code{location}}{File name of the H5 file next to the \code{.crb};
 \code{NULL} when \code{type == "embedded"}.}
     }
     \if{html}{\out{</div>}}
@@ -588,11 +574,8 @@ matrix lives.
 \if{html}{\out{<a id="method-Cerebro-getExpressionBackend"></a>}}
 \if{latex}{\out{\hypertarget{method-Cerebro-getExpressionBackend}{}}}
 \subsection{\code{Cerebro$getExpressionBackend()}}{
-  Read the expression backend tag. Returns a \code{list(type, location)}.
-For \code{.crb} files generated before the \code{expression_backend}
-field existed the stored slot is \code{NULL}; this method graciously
-falls back to \code{list(type = "embedded", location = NULL)} so that
-downstream code does not need to special-case legacy objects.
+  Read the expression backend tag. Returns a \code{list(type, location)};
+an object that has not been tagged yet counts as embedded.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Cerebro$getExpressionBackend()}
@@ -759,7 +742,7 @@ extract; \code{NULL} returns all cells.}
   \subsection{Returns}{
     A sub-matrix of the same concrete class as \code{self$expression}:
 \code{dgCMatrix} stays \code{dgCMatrix}, \code{RleMatrix} yields
-\code{DelayedMatrix}, \code{IterableMatrix} stays \code{IterableMatrix}.
+\code{DelayedMatrix}.
   }
 }
 
@@ -1296,14 +1279,16 @@ pathways.}
 \if{html}{\out{<a id="method-Cerebro-getBCR"></a>}}
 \if{latex}{\out{\hypertarget{method-Cerebro-getBCR}{}}}
 \subsection{\code{Cerebro$getBCR()}}{
-  Retrieve BCR data
+  Retrieve the BCR rows of the immune repertoire: for each sample the
+cells whose \code{CTgene} names an immunoglobulin chain (IGH, IGK or
+IGL). Samples without such cells are dropped.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Cerebro$getBCR()}
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    BCR data stored in the object.
+    Named list of data.frames (one per sample), or an empty list.
   }
 }
 
@@ -1311,52 +1296,16 @@ pathways.}
 \if{html}{\out{<a id="method-Cerebro-getTCR"></a>}}
 \if{latex}{\out{\hypertarget{method-Cerebro-getTCR}{}}}
 \subsection{\code{Cerebro$getTCR()}}{
-  Retrieve TCR data
+  Retrieve the TCR rows of the immune repertoire: for each sample the
+cells whose \code{CTgene} names a T-cell receptor chain (TRA, TRB, TRG
+or TRD). Samples without such cells are dropped.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Cerebro$getTCR()}
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    TCR data stored in the object.
-  }
-}
-
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-Cerebro-addBCRData"></a>}}
-\if{latex}{\out{\hypertarget{method-Cerebro-addBCRData}{}}}
-\subsection{\code{Cerebro$addBCRData()}}{
-  Add BCR data.
-  \subsection{Usage}{
-    \if{html}{\out{<div class="r">}}
-    \preformatted{Cerebro$addBCRData(data)}
-    \if{html}{\out{</div>}}
-  }
-  \subsection{Arguments}{
-    \if{html}{\out{<div class="arguments">}}
-    \describe{
-      \item{\code{data}}{\code{list} that contains BCR data.}
-    }
-    \if{html}{\out{</div>}}
-  }
-}
-
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-Cerebro-addTCRData"></a>}}
-\if{latex}{\out{\hypertarget{method-Cerebro-addTCRData}{}}}
-\subsection{\code{Cerebro$addTCRData()}}{
-  Add TCR data.
-  \subsection{Usage}{
-    \if{html}{\out{<div class="r">}}
-    \preformatted{Cerebro$addTCRData(data)}
-    \if{html}{\out{</div>}}
-  }
-  \subsection{Arguments}{
-    \if{html}{\out{<div class="arguments">}}
-    \describe{
-      \item{\code{data}}{\code{list} that contains TCR data.}
-    }
-    \if{html}{\out{</div>}}
+    Named list of data.frames (one per sample), or an empty list.
   }
 }
 
@@ -1364,9 +1313,9 @@ pathways.}
 \if{html}{\out{<a id="method-Cerebro-getImmuneRepertoire"></a>}}
 \if{latex}{\out{\hypertarget{method-Cerebro-getImmuneRepertoire}{}}}
 \subsection{\code{Cerebro$getImmuneRepertoire()}}{
-  Get immune repertoire data. Returns the unified \code{immune_repertoire}
-field if available; otherwise falls back to merging legacy
-\code{bcr_data} and \code{tcr_data}.
+  Get immune repertoire data: the \code{immune_repertoire} field, or the
+sibling file that \code{immune_repertoire_backend} points to (loaded and
+checksummed on first use).
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Cerebro$getImmuneRepertoire()}
@@ -1482,13 +1431,16 @@ background'.}
   Retrieve spatial data.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{Cerebro$getSpatialData(name)}
+    \preformatted{Cerebro$getSpatialData(name, hydrate_molecules = TRUE)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{name}}{Name of the spatial data entry.}
+      \item{\code{hydrate_molecules}}{Whether to read an external molecule table. Set
+to \code{FALSE} for Viewer paths that only consume coordinates,
+expression, or images.}
     }
     \if{html}{\out{</div>}}
   }

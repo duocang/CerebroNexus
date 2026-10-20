@@ -35,6 +35,12 @@ the figures are pre-drawn images. Rendering this article requires neither a
 large dataset nor a developer cache.
 Do not overwrite recorded experiments with a new run.
 
+BPCells storage was removed in CerebroNexus 5.1.4 (see `NEWS.md`). The BPCells
+rows, figures and statements in this article are the measurements recorded
+while it was supported; they are kept unchanged as history and cannot be
+reproduced with the current version, which stores external expression only in
+H5 files.
+
 # Real-data expression backends (Scale run, 2026-10-18)
 
 This study compares four ways to store the expression matrix: H5 with gzip

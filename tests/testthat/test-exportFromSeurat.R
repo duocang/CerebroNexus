@@ -201,6 +201,54 @@ test_that("exportFromSeurat: h5 mode writes a TENxMatrix-compatible sibling
   expect_equal(delta, 0)
 })
 
+test_that("exportFromSeurat: h5 mode writes a thin v3 CRB whose cell names live in the H5 file", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("rhdf5")
+
+  out_dir <- withr::local_tempdir()
+  outf <- file.path(out_dir, "thin.crb")
+  args <- valid_args
+  args$file <- outf
+  args$expression_matrix_mode <- "h5"
+  args$verbose <- FALSE
+  do.call(exportFromSeurat, args)
+
+  cells <- colnames(obj_raw)
+  h5_path <- file.path(out_dir, "thin.h5")
+  expect_setequal(.h5CellNames(h5_path), cells)
+  expect_setequal(.h5GeneNames(h5_path), rownames(obj_raw))
+  expect_identical(.h5Dim(h5_path), as.integer(c(length(cells), nrow(obj_raw))))
+
+  payload <- readRDS(outf)
+  schema <- payload$crb_schema
+  expect_identical(schema$version, 3L)
+  expect_named(
+    schema,
+    c("version", "cell_names_hash", "projection_rownames", "n_cells"),
+    ignore.order = TRUE
+  )
+  expect_identical(schema$n_cells, length(cells))
+  expect_identical(
+    schema$cell_names_hash,
+    .cerebroCellNamesHash(.h5CellNames(h5_path))
+  )
+  expect_false("cell_barcode" %in% names(payload$meta_data))
+  expect_null(payload$expression)
+
+  restored <- readCerebro(outf)
+  expect_identical(restored$meta_data$cell_barcode, .h5CellNames(h5_path))
+  expect_identical(colnames(restored$expression), .h5CellNames(h5_path))
+  expect_s4_class(restored$expression, "DelayedMatrix")
+})
+
+test_that("exportFromSeurat: an unknown expression mode is rejected", {
+  args <- valid_args
+  args$file <- tempfile(fileext = ".crb")
+  args$expression_matrix_mode <- "retired-mode"
+  expect_error(do.call(exportFromSeurat, args), "should be one of")
+  expect_false(file.exists(args$file))
+})
+
 test_that("exportFromSeurat: h5 mode errors clearly when HDF5Array is missing", {
   skip_if(requireNamespace("HDF5Array", quietly = TRUE))
   args <- valid_args

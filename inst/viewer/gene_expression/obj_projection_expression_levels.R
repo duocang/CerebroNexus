@@ -279,7 +279,7 @@ if (
   session$onSessionEnded(function() expressionProjectionProgressClose())
 }
 
-## Prime the BPCells row-access path only after the empty UMAP has painted.
+## Prime the H5 row-access path only after the empty UMAP has painted.
 ## This keeps the fast page-open path intact while moving one-time method and
 ## backend initialization out of the user's first gene selection.
 expression_projection_backend_warmed <- reactiveVal(FALSE)
@@ -348,8 +348,8 @@ expression_projection_read_levels <- function(
   } else {
     req(expression_projection_coordinates())
     ## All branches keep the requested slice in canonical index order. The
-    ## class accessors dispatch those indices across dgCMatrix, DelayedArray,
-    ## and IterableMatrix without a barcode lookup.
+    ## class accessors dispatch those indices across dgCMatrix and DelayedArray
+    ## without a barcode lookup.
     if (identical(display_mode, "rgb")) {
       expressionProjectionProgressUpdate(
         0.3,

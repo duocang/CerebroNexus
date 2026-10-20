@@ -13,18 +13,28 @@ test_that("Cerebro object can be instantiated", {
   expect_true(inherits(obj, "R6"))
 })
 
-test_that("legacy serialized Cerebro objects remain readable", {
-  legacy <- Cerebro$new()
+test_that("pre-spatial serialized Cerebro objects are rejected with a pointer to convertCerebro", {
+  ## `Cerebro_v1.3` was the class immediately before spatial storage and its
+  ## accessors were introduced.
+  source <- Cerebro$new()
+  legacy <- new.env(parent = emptyenv())
+  for (binding in setdiff(
+    ls(source, all.names = TRUE),
+    c("spatial", "addSpatialData", "availableSpatial", "getSpatialData")
+  )) {
+    legacy[[binding]] <- source[[binding]]
+  }
   class(legacy) <- c(paste0("Cerebro_v1", ".3"), "R6")
+  lockEnvironment(legacy, bindings = FALSE)
   path <- tempfile(fileext = ".crb")
   saveRDS(legacy, path)
 
   loaded <- readRDS(path)
   expect_true(inherits(loaded, "R6"))
   expect_true(is.function(loaded$getExpressionMatrix))
-  expect_identical(
+  expect_error(
     CerebroNexus:::.readBundleBackend(path),
-    list(type = "embedded", location = NULL, legacy = FALSE)
+    "uses a retired format.*convertCerebro"
   )
 })
 
@@ -372,35 +382,6 @@ test_that("Cerebro: HDF5Array means stay native", {
   expect_zero_column_cell_means(write_hdf5(zero_column_expression_test_matrix()))
 })
 
-test_that("Cerebro: BPCells means stay native", {
-  skip_if_not_installed("BPCells")
-  as_bpcells <- function(mat) {
-    methods::as(
-      methods::as(
-        Matrix::Matrix(mat, sparse = TRUE),
-        "CsparseMatrix"
-      ),
-      "IterableMatrix"
-    )
-  }
-  expect_native_cell_means(
-    as_bpcells(mean_expression_test_matrix()),
-    "BPCells",
-    "IterableMatrix"
-  )
-  obj <- Cerebro$new()
-  obj$setExpression(as_bpcells(mean_expression_test_matrix()))
-  expect_equal(
-    obj$getExpressionRow("g2", cells = c(4L, 2L)),
-    c(c4 = 40, c2 = 20)
-  )
-  expect_equal(
-    as.matrix(obj$getExpressionBlock("g1", cells = c(4L, 2L))),
-    mean_expression_test_matrix()["g1", c(4L, 2L), drop = FALSE]
-  )
-  expect_zero_column_cell_means(as_bpcells(zero_column_expression_test_matrix()))
-})
-
 test_that("Cerebro: addGeneList / getGeneLists round-trip", {
   obj <- Cerebro$new()
   # addGeneList(name, genes) — two separate arguments
@@ -622,9 +603,10 @@ test_that("launchCerebro builds dataset information for configured files", {
   object$setMetaData(data.frame(cell_barcode = cells, row.names = cells))
   object$addExperiment("organism", "Homo sapiens")
   object$addExperiment("date_of_export", as.Date("2026-09-17"))
+  object$setExpressionBackend("embedded")
   object$immune_repertoire_backend <- list(
-    type = "bpcells-file",
-    file = "immune-repertoire",
+    type = "file",
+    file = "dataset.immune.qs2",
     md5 = strrep("a", 32L),
     samples = "Ren",
     chains = c("TRA", "TRB")

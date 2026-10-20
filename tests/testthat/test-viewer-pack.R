@@ -650,9 +650,8 @@ test_that("thin CRBs open Viewer Packs without hydrating cell barcodes", {
   calls <- 0L
   object <- new.env(parent = emptyenv())
   object$crb_schema <- list(
-    version = 2L,
-    cell_names = "expression",
-    cell_names_md5 = paste(rep("a", 32L), collapse = ""),
+    version = 3L,
+    cell_names_hash = paste(rep("a", 32L), collapse = ""),
     projection_rownames = "umap",
     n_cells = 4L
   )
@@ -717,7 +716,7 @@ test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
   object <- readCerebro(crb)
   coordinates <- unname(object$getProjection("umap"))
   thin <- new.env(parent = emptyenv())
-  thin$crb_schema <- list(version = 2L, n_cells = 4L)
+  thin$crb_schema <- list(version = 3L, n_cells = 4L)
 
   runtime <- new.env(parent = globalenv())
   sys.source(

@@ -3,7 +3,9 @@ run_options_test_fixture <- function() {
   source_dir <- file.path(root, "source")
   dir.create(source_dir)
   crb <- file.path(source_dir, "dataset.crb")
-  saveRDS(Cerebro$new(), crb)
+  embedded <- Cerebro$new()
+  embedded$setExpressionBackend(type = "embedded")
+  saveRDS(embedded, crb)
   list(root = root, crb = crb)
 }
 
@@ -461,7 +463,9 @@ test_that("createShinyApp accepts boundary and whole-valued ports", {
 test_that("initial_projections configures initial Linked views panels", {
   fixture <- run_options_test_fixture()
   second <- file.path(dirname(fixture$crb), "dataset-b.crb")
-  saveRDS(Cerebro$new(), second)
+  embedded <- Cerebro$new()
+  embedded$setExpressionBackend(type = "embedded")
+  saveRDS(embedded, second)
   app <- file.path(fixture$root, "app-initial-projections")
 
   createShinyApp(

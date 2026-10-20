@@ -18,18 +18,18 @@
       "source",
       "1M_neurons_filtered_gene_bc_matrices_h5.h5"
     ),
-    seurat = file.path(root, "seurat", "mouse_brain_1m.rds"),
-    seurat_sidecar = file.path(root, "seurat", "mouse_brain_1m.bpcells"),
+    analysis = file.path(root, "analysis", "mouse_brain_1m_sketch.rds"),
     crb = file.path(root, "cerebro", "cerebro_mouse_brain_1m.crb"),
-    crb_sidecar = file.path(root, "cerebro", "cerebro_mouse_brain_1m.bpcells")
+    ## Expression sidecar (cells x genes), next to the CRB.
+    sidecar = file.path(root, "cerebro", "cerebro_mouse_brain_1m.h5")
   )
 }
 
 .viewer1mComplete <- function(file, sidecar) {
   file.exists(file) &&
     !dir.exists(file) &&
-    dir.exists(sidecar) &&
-    length(list.files(sidecar, all.files = TRUE, no.. = TRUE)) > 0L
+    file.exists(sidecar) &&
+    !dir.exists(sidecar)
 }
 
 .viewer1mRequire <- function(packages) {
@@ -500,6 +500,18 @@
   file
 }
 
+.viewer1mSourceGroup <- function(source) {
+  listing <- rhdf5::h5ls(source, recursive = TRUE)
+  hit <- which(listing$name == "indptr" & listing$otype == "H5I_DATASET")
+  if (length(hit) != 1L) {
+    stop(
+      "The 10x source must contain exactly one sparse matrix.",
+      call. = FALSE
+    )
+  }
+  sub("^/", "", listing$group[[hit]])
+}
+
 .viewer1mGeneSymbols <- function(source, n_genes) {
   listing <- rhdf5::h5ls(source, recursive = TRUE)
   hit <- which(listing$name == "gene_names" & listing$otype == "H5I_DATASET")
@@ -513,140 +525,248 @@
   .viewer1mUniqueGeneSymbols(rhdf5::h5read(source, dataset), n_genes)
 }
 
-.viewer1mAnalyze <- function(object) {
-  previous_future_size <- getOption("future.globals.maxSize")
-  options(future.globals.maxSize = max(previous_future_size, 4e9))
-  on.exit(options(future.globals.maxSize = previous_future_size), add = TRUE)
-
-  object <- Seurat::NormalizeData(object, verbose = TRUE)
-  object <- Seurat::FindVariableFeatures(object, verbose = TRUE)
-  object <- Seurat::SketchData(
-    object,
-    ncells = 50000L,
-    method = "LeverageScore",
-    sketched.assay = "sketch",
-    seed = 123L,
-    verbose = TRUE
+## The 10x source lazily, genes x cells, with symbol and barcode names.
+.viewer1mOpenSource <- function(source) {
+  group <- .viewer1mSourceGroup(source)
+  matrix <- HDF5Array::TENxMatrix(source, group = group)
+  cells <- as.character(as.vector(rhdf5::h5read(
+    source,
+    paste0(group, "/barcodes")
+  )))
+  if (anyNA(cells) || anyDuplicated(cells) || length(cells) != ncol(matrix)) {
+    stop("The 10x source must contain unique cell barcodes.", call. = FALSE)
+  }
+  dimnames(matrix) <- list(
+    .viewer1mGeneSymbols(source, nrow(matrix)),
+    cells
   )
-  SeuratObject::DefaultAssay(object) <- "sketch"
-  object <- Seurat::FindVariableFeatures(object, verbose = TRUE)
-  object <- Seurat::ScaleData(object, verbose = TRUE)
-  object <- Seurat::RunPCA(object, npcs = 30L, seed.use = 123L, verbose = TRUE)
-  object <- Seurat::FindNeighbors(object, dims = seq_len(30L), verbose = TRUE)
+  matrix
+}
+
+## Seurat's standard workflow on the sketch only (an in-memory dgCMatrix). The
+## remaining cells are placed by .viewer1mProjectChunk().
+.viewer1mAnalyzeSketch <- function(counts) {
+  object <- SeuratObject::CreateSeuratObject(
+    counts = counts,
+    assay = "RNA",
+    project = "mouse_brain_1m"
+  )
+  object <- Seurat::NormalizeData(object, verbose = FALSE)
+  object <- Seurat::FindVariableFeatures(object, verbose = FALSE)
+  object <- Seurat::ScaleData(object, verbose = FALSE)
+  object <- Seurat::RunPCA(object, npcs = 30L, seed.use = 123L, verbose = FALSE)
+  object <- Seurat::FindNeighbors(object, dims = seq_len(30L), verbose = FALSE)
   object <- Seurat::FindClusters(
     object,
     resolution = 1,
     random.seed = 123L,
-    verbose = TRUE
+    verbose = FALSE
   )
-  object <- Seurat::RunUMAP(
+  Seurat::RunUMAP(
     object,
     dims = seq_len(30L),
     return.model = TRUE,
     seed.use = 123L,
-    verbose = TRUE
-  )
-  Seurat::ProjectData(
-    object,
-    assay = "RNA",
-    full.reduction = "pca.full",
-    sketched.assay = "sketch",
-    sketched.reduction = "pca",
-    umap.model = "umap",
-    dims = seq_len(30L),
-    refdata = list(cluster_full = "seurat_clusters"),
-    verbose = TRUE
+    verbose = FALSE
   )
 }
 
-.viewer1mBuildSeurat <- function(paths) {
-  matrix <- BPCells::open_matrix_10x_hdf5(paths$source)
-  matrix_cells <- colnames(matrix)
-  if (anyDuplicated(matrix_cells) || length(matrix_cells) < 1000000L) {
-    stop("The 10x source must contain at least 1M unique cells.", call. = FALSE)
-  }
-  gene_symbols <- .viewer1mGeneSymbols(paths$source, nrow(matrix))
-  selected_cells <- matrix_cells[
-    floor(seq(0, length(matrix_cells) - 1, length.out = 1000000L)) + 1L
+## What a chunk of cells needs to be placed next to the sketch: the sketch's
+## variable features, their log-normalised mean and sd, the PCA loadings and
+## embeddings, the UMAP model, and the cluster labels.
+.viewer1mSketchModel <- function(object) {
+  features <- SeuratObject::VariableFeatures(object)
+  normalised <- SeuratObject::LayerData(object, layer = "data")[
+    features,
+    ,
+    drop = FALSE
   ]
-  selected_matrix <- matrix[, selected_cells]
-  rownames(selected_matrix) <- gene_symbols
-  if (!inherits(selected_matrix, "IterableMatrix")) {
-    selected_matrix <- methods::as(selected_matrix, "IterableMatrix")
+  moments <- Matrix::rowMeans(normalised)
+  spread <- sqrt(
+    pmax(Matrix::rowMeans(normalised^2) - moments^2, 0) *
+      ncol(normalised) /
+      (ncol(normalised) - 1L)
+  )
+  list(
+    features = features,
+    mean = moments,
+    sd = spread,
+    loadings = SeuratObject::Loadings(object, reduction = "pca")[
+      features,
+      ,
+      drop = FALSE
+    ],
+    pca = SeuratObject::Embeddings(object, reduction = "pca"),
+    umap = SeuratObject::Embeddings(object, reduction = "umap"),
+    reduction = object[["umap"]],
+    clusters = as.character(object$seurat_clusters)
+  )
+}
+
+## Places cells that were not in the sketch: log-normalise, scale with the
+## sketch's moments, project on its PCA, transform with its UMAP model, and
+## take the majority cluster of the 15 nearest sketch cells
+## (Seurat's ProjectUMAP and its neighbour search).
+.viewer1mProjectChunk <- function(counts, model, neighbors = 15L) {
+  totals <- Matrix::colSums(counts)
+  totals[totals == 0] <- 1
+  normalised <- counts[model$features, , drop = FALSE] %*%
+    Matrix::Diagonal(x = 1e4 / totals)
+  normalised@x <- log1p(normalised@x)
+  scaled <- (as.matrix(normalised) - model$mean) / model$sd
+  scaled[!is.finite(scaled)] <- 0
+  scaled <- pmin(scaled, 10)
+  pca <- crossprod(scaled, model$loadings)
+  rownames(pca) <- colnames(counts)
+  projected <- Seurat::ProjectUMAP(
+    query = pca,
+    reference = model$pca,
+    reduction.model = model$reduction,
+    k.param = neighbors
+  )
+  umap <- SeuratObject::Embeddings(projected$proj.umap)
+  nearest <- projected$query.neighbor@nn.idx
+  votes <- matrix(model$clusters[nearest], nrow = nrow(nearest))
+  levels <- unique(model$clusters)
+  tally <- vapply(
+    levels,
+    function(level) rowSums(votes == level),
+    numeric(nrow(votes))
+  )
+  tally <- matrix(tally, nrow = nrow(votes))
+  list(
+    umap = umap,
+    clusters = levels[max.col(tally, ties.method = "first")]
+  )
+}
+
+## Count totals, embedding and clusters for every selected cell. Only the
+## sketch and one chunk are in memory at a time.
+.viewer1mAnalyze <- function(
+  counts,
+  sketch_cells = 50000L,
+  chunk_size = 50000L
+) {
+  n <- ncol(counts)
+  sketch <- sort(sample.int(n, min(sketch_cells, n)))
+  object <- .viewer1mAnalyzeSketch(methods::as(counts[, sketch], "dgCMatrix"))
+  model <- .viewer1mSketchModel(object)
+  umap <- matrix(NA_real_, n, 2L)
+  clusters <- character(n)
+  umap[sketch, ] <- model$umap
+  clusters[sketch] <- model$clusters
+  n_umi <- numeric(n)
+  n_gene <- numeric(n)
+  for (start in seq(1L, n, by = chunk_size)) {
+    index <- start:min(start + chunk_size - 1L, n)
+    message("Reading cells ", index[[1L]], "-", index[[length(index)]], "...")
+    chunk <- methods::as(counts[, index], "dgCMatrix")
+    n_umi[index] <- Matrix::colSums(chunk)
+    n_gene[index] <- Matrix::colSums(chunk > 0)
+    outside <- !index %in% sketch
+    if (any(outside)) {
+      placed <- .viewer1mProjectChunk(chunk[, outside, drop = FALSE], model)
+      umap[index[outside], ] <- placed$umap
+      clusters[index[outside]] <- placed$clusters
+    }
   }
-  selected_matrix <- BPCells::convert_matrix_type(
-    selected_matrix,
-    type = "uint32_t"
+  list(
+    cells = colnames(counts),
+    umap = umap,
+    clusters = clusters,
+    nUMI = n_umi,
+    nGene = n_gene
+  )
+}
+
+## The CRB for the selected cells. The counts go to `<stem>.h5` (cells x genes,
+## group "expression", uncompressed), and only metadata and the projection are
+## kept in the CRB.
+.viewer1mBuildCrb <- function(matrix, analysis, paths) {
+  dir.create(dirname(paths$crb), recursive = TRUE, showWarnings = FALSE)
+  unlink(paths$sidecar, force = TRUE)
+  HDF5Array::writeTENxMatrix(
+    DelayedArray::t(matrix),
+    paths$sidecar,
+    group = "expression",
+    level = 0L
+  )
+  cells <- analysis$cells
+  cluster_levels <- unique(analysis$clusters)
+  cluster_levels <- cluster_levels[order(as.integer(cluster_levels))]
+  metadata <- data.frame(
+    cell_barcode = cells,
+    orig.ident = factor(rep("mouse_brain_1m", length(cells))),
+    sample = factor(rep("10x E18 mouse brain (1M subset)", length(cells))),
+    seurat_clusters = factor(analysis$clusters, levels = cluster_levels),
+    nUMI = analysis$nUMI,
+    nGene = analysis$nGene,
+    row.names = cells,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  projection <- data.frame(
+    UMAP_1 = analysis$umap[, 1L],
+    UMAP_2 = analysis$umap[, 2L],
+    row.names = cells
   )
 
-  dir.create(dirname(paths$seurat), recursive = TRUE, showWarnings = FALSE)
-  if (dir.exists(paths$seurat_sidecar)) {
-    unlink(paths$seurat_sidecar, recursive = TRUE, force = TRUE)
+  object <- Cerebro$new()
+  object$setVersion(utils::packageVersion("CerebroNexus"))
+  object$addExperiment("experiment_name", "10x E18 mouse brain (1M subset)")
+  object$addExperiment("organism", "Mouse")
+  object$addExperiment("date_of_export", as.character(Sys.Date()))
+  object$addParameters("main_group", "seurat_clusters")
+  object$setExpressionBackend("h5", basename(paths$sidecar))
+  object$setMetaData(metadata)
+  object$addGroup("sample", levels(metadata$sample))
+  object$addGroup("seurat_clusters", cluster_levels)
+  object$addProjection("umap", projection)
+  saveCerebro(object, paths$crb)
+}
+
+## Subsamples 1,000,000 evenly spaced cells of the 10x source, analyses a
+## sketch of them and writes the CRB with its H5 sidecar.
+.viewer1mBuild <- function(paths, n_cells = 1000000L, sketch_cells = 50000L) {
+  matrix <- .viewer1mOpenSource(paths$source)
+  if (ncol(matrix) < n_cells) {
+    stop("The 10x source must contain at least 1M unique cells.", call. = FALSE)
   }
-  BPCells::write_matrix_dir(selected_matrix, dir = paths$seurat_sidecar)
-  counts <- BPCells::open_matrix_dir(paths$seurat_sidecar)
-  object <- SeuratObject::CreateSeuratObject(
-    counts = counts,
-    meta.data = data.frame(
-      sample = rep("10x E18 mouse brain (1M subset)", 1000000L),
-      row.names = selected_cells
-    ),
-    assay = "RNA",
-    project = "mouse_brain_1m"
-  )
-  analyzed <- .viewer1mAnalyze(object)
-  embedding <- SeuratObject::Embeddings(analyzed, "full.umap")
-  metadata <- analyzed[[]]
-  metadata <- data.frame(
-    sample = metadata[selected_cells, "sample"],
-    seurat_clusters = as.character(metadata[selected_cells, "cluster_full"]),
-    row.names = selected_cells,
-    check.names = FALSE
-  )
-  object <- SeuratObject::CreateSeuratObject(
-    counts = BPCells::open_matrix_dir(paths$seurat_sidecar),
-    meta.data = metadata,
-    assay = "RNA",
-    project = "mouse_brain_1m"
-  )
-  object[["umap"]] <- SeuratObject::CreateDimReducObject(
-    embeddings = embedding[selected_cells, , drop = FALSE],
-    key = "UMAP_",
-    assay = "RNA"
-  )
-  saveRDS(object, paths$seurat, version = 3)
+  selected <- floor(seq(0, ncol(matrix) - 1, length.out = n_cells)) + 1L
+  matrix <- matrix[, selected]
+  if (file.exists(paths$analysis)) {
+    analysis <- readRDS(paths$analysis)
+  } else {
+    set.seed(123L)
+    analysis <- .viewer1mAnalyze(matrix, sketch_cells = sketch_cells)
+    dir.create(dirname(paths$analysis), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(analysis, paths$analysis, version = 3)
+  }
+  if (!identical(analysis$cells, colnames(matrix))) {
+    stop("The cached 1M analysis belongs to different cells.", call. = FALSE)
+  }
+  .viewer1mBuildCrb(matrix, analysis, paths)
 }
 
 prepareViewer1mBenchmarkData <- function(cache_dir = NULL) {
   paths <- .viewer1mPaths(cache_dir)
-  .viewer1mRequire("BPCells")
-  if (.viewer1mComplete(paths$crb, paths$crb_sidecar)) {
+  if (.viewer1mComplete(paths$crb, paths$sidecar)) {
     return(.viewer1mEnrichDemoCrb(paths$crb))
   }
 
-  .viewer1mRequire(c("Seurat", "SeuratObject", "rhdf5"))
-  if (!.viewer1mComplete(paths$seurat, paths$seurat_sidecar)) {
-    message("Preparing the 1M benchmark data from official 10x data.")
-    .viewer1mDownload(paths$source)
-    .viewer1mBuildSeurat(paths)
-  }
-
-  dir.create(dirname(paths$crb), recursive = TRUE, showWarnings = FALSE)
-  convertSeuratToCerebro(
-    seurat_file = paths$seurat,
-    result_dir = dirname(paths$crb),
-    assay = "RNA",
-    slot = "counts",
-    experiment_name = "10x E18 mouse brain (1M subset)",
-    organism = "Mouse",
-    groups = c("sample", "seurat_clusters"),
-    nUMI = "nCount_RNA",
-    nGene = "nFeature_RNA",
-    expression_matrix_mode = "bpcells",
-    add_most_expressed_genes = FALSE,
-    verbose = TRUE
-  )
-  if (!.viewer1mComplete(paths$crb, paths$crb_sidecar)) {
+  .viewer1mRequire(c(
+    "HDF5Array",
+    "DelayedArray",
+    "Matrix",
+        "rhdf5",
+    "Seurat",
+    "SeuratObject",
+    "uwot"
+  ))
+  message("Preparing the 1M benchmark data from official 10x data.")
+  .viewer1mDownload(paths$source)
+  .viewer1mBuild(paths)
+  if (!.viewer1mComplete(paths$crb, paths$sidecar)) {
     stop("The 1M benchmark CRB is incomplete.", call. = FALSE)
   }
   .viewer1mEnrichDemoCrb(paths$crb)

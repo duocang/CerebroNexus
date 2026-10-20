@@ -1,4 +1,4 @@
-test_that("the 1M demo is opt-in and validates its sidecar", {
+test_that("the 1M demo is opt-in and validates its H5 file", {
   helper <- viewer_test_path("million_cell_demo.R")
   expect_true(file.exists(helper))
   env <- new.env(parent = baseenv())
@@ -17,8 +17,7 @@ test_that("the 1M demo is opt-in and validates its sidecar", {
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
   crb <- file.path(root, "mouse.crb")
   file.create(crb)
-  dir.create(file.path(root, "mouse.bpcells"))
-  file.create(file.path(root, "mouse.bpcells", "shape"))
+  file.create(file.path(root, "mouse.h5"))
 
   configured <- env$viewerAddMillionCellDemo(original, crb)
   label <- "10x E18 mouse brain (1M)"
@@ -32,10 +31,24 @@ test_that("the 1M demo is opt-in and validates its sidecar", {
   expect_equal(unname(configured$expression_point_size[label]), 2)
   expect_equal(unname(configured$expression_point_opacity[label]), 1)
 
-  unlink(file.path(root, "mouse.bpcells", "shape"))
+  unlink(file.path(root, "mouse.h5"))
   expect_error(
     env$viewerAddMillionCellDemo(original, crb),
-    "adjacent non-empty .bpcells"
+    "CEREBRO_1M_DEMO_CRB must name a .crb with an adjacent .h5 file.",
+    fixed = TRUE
+  )
+  dir.create(file.path(root, "mouse.h5"))
+  expect_error(
+    env$viewerAddMillionCellDemo(original, crb),
+    "adjacent .h5 file",
+    fixed = TRUE
+  )
+  unlink(file.path(root, "mouse.h5"), recursive = TRUE)
+  file.create(file.path(root, "mouse.h5"))
+  expect_error(
+    env$viewerAddMillionCellDemo(original, file.path(root, "missing.crb")),
+    "adjacent .h5 file",
+    fixed = TRUE
   )
 })
 

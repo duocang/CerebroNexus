@@ -350,6 +350,9 @@ crb$expression <- Matrix::Matrix(
   sparse = TRUE
 )
 colnames(crb$expression) <- meta$cell_barcode
+## Assigning `$expression` directly does not tag the object; a .crb without an
+## expression-backend descriptor is rejected as a retired format.
+crb$setExpressionBackend("embedded")
 crb$meta_data <- meta
 crb$addImmuneRepertoire(ir)
 crb$addHLATyping(

@@ -248,21 +248,6 @@ test_that("publisher rejects a sidecar with the wrong artifact type", {
     ignore.case = TRUE
   )
 
-  skip_if_not_installed("BPCells")
-  bpc_output <- file.path(root, "bpc.crb")
-  bpc_stage <- file.path(root, "bpc-stage")
-  dir.create(bpc_stage)
-  writeLines("not a directory", file.path(bpc_stage, "bpc.bpcells"))
-  expect_error(
-    .publishCerebroExport(
-      export = minimal_export("bpcells", "bpc.bpcells"),
-      final_file = bpc_output,
-      stage_dir = bpc_stage,
-      expression_matrix_mode = "bpcells"
-    ),
-    regexp = "bpcells.*directory|must be a directory",
-    ignore.case = TRUE
-  )
 })
 
 test_that("H5 replacement updates only its owned portable sibling", {
@@ -331,65 +316,41 @@ test_that("switching to embedded removes the old owned sidecar", {
   expect_false(file.exists(old_sidecar))
 })
 
-test_that("a publication error restores the previous BPCells export", {
-  skip_if_not_installed("BPCells")
+test_that("a publication error restores the previous H5 export", {
+  skip_if_not_installed("rhdf5")
 
   root <- withr::local_tempdir()
   output <- file.path(root, "dataset.crb")
-  saveRDS(minimal_export("bpcells", "dataset.bpcells"), output)
+  saveRDS(minimal_export("h5", "dataset.h5"), output)
+  old_sidecar <- file.path(root, "dataset.h5")
+  writeLines("old matrix", old_sidecar)
   before_crb <- unname(tools::md5sum(output))
+  before_sidecar <- unname(tools::md5sum(old_sidecar))
 
-  old_matrix <- matrix(
-    c(1, 3, 4, 2),
-    nrow = 2,
-    dimnames = list(c("g1", "g2"), c("c1", "c2"))
-  )
-  new_matrix <- old_matrix + 10
-  write_bpcells <- function(matrix, directory) {
-    BPCells::write_matrix_dir(
-      methods::as(
-        methods::as(matrix, "CsparseMatrix"),
-        "IterableMatrix"
-      ),
-      dir = directory
-    )
-  }
-
-  old_sidecar_name <- "dataset.bpcells"
-  old_sidecar <- file.path(root, old_sidecar_name)
-  write_bpcells(old_matrix, old_sidecar)
-
+  ## The staged file is not a readable H5 matrix, so thinning the CRB fails
+  ## after the sidecar has already been moved into place.
   stage <- file.path(root, "stage")
   dir.create(stage)
-  new_sidecar_name <- "dataset.bpcells"
-  staged_sidecar <- file.path(stage, new_sidecar_name)
-  write_bpcells(new_matrix, staged_sidecar)
-
-  export <- new.env(parent = emptyenv())
-  export$getExpressionBackend <- function() {
-    list(type = "bpcells", location = new_sidecar_name)
-  }
-  export$setExpression <- function(...) {
-    stop("injected publication failure", call. = FALSE)
-  }
+  writeLines("new matrix", file.path(stage, "dataset.h5"))
+  export <- minimal_export("h5", "dataset.h5")
+  lockEnvironment(export)
 
   expect_error(
-    .publishCerebroExport(
+    suppressWarnings(.publishCerebroExport(
       export = export,
       final_file = output,
       stage_dir = stage,
-      expression_matrix_mode = "bpcells"
-    ),
-    "injected publication failure"
+      expression_matrix_mode = "h5"
+    ))
   )
   expect_identical(unname(tools::md5sum(output)), before_crb)
-  restored <- as.matrix(BPCells::open_matrix_dir(dir = old_sidecar))
-  expect_equal(restored, old_matrix)
+  expect_identical(unname(tools::md5sum(old_sidecar)), before_sidecar)
   expect_length(
     list.files(root, all.files = TRUE, pattern = "-backup-"),
     0L
   )
 })
+
 
 test_that("late validation cannot replace an existing H5 export", {
   skip_if_not_installed("HDF5Array")
@@ -416,4 +377,286 @@ test_that("late validation cannot replace an existing H5 export", {
   )
   expect_identical(unname(tools::md5sum(output)), before_crb)
   expect_identical(unname(tools::md5sum(sidecar)), before_sidecar)
+})
+
+
+## ---------------------------------------------------------------------------
+## Immune repertoire sidecar
+## ---------------------------------------------------------------------------
+
+export_ir_sidecar <- function(object, file, ...) {
+  exportFromSeurat(
+    object = object,
+    file = file,
+    experiment_name = "immune sidecar",
+    organism = "hg",
+    groups = c("sample", "cluster"),
+    nUMI = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    codec = "qs2",
+    verbose = FALSE,
+    ...
+  )
+  invisible(file)
+}
+
+immune_seurat <- function(n_cells = 12L) {
+  object <- make_ir_seurat(n_cells = n_cells)
+  object@misc$immune_repertoire <- make_ir_repertoire(object)
+  object
+}
+
+test_that("an always-sidecar export publishes the repertoire next to the CRB", {
+  object <- immune_seurat()
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+
+  export_ir_sidecar(object, output, immune_sidecar = "always")
+
+  sidecar <- file.path(root, "dataset.immune.qs2")
+  expect_true(file.exists(sidecar))
+  expect_identical(
+    .readPublishedImmuneBackend(output),
+    list(type = "file", file = "dataset.immune.qs2")
+  )
+  payload <- .readCerebroPayload(output)
+  expect_length(payload$immune_repertoire, 0L)
+  descriptor <- payload$immune_repertoire_backend
+  expect_identical(descriptor$md5, unname(tools::md5sum(sidecar)))
+  expect_setequal(descriptor$samples, c("donorA", "donorB"))
+  expect_setequal(descriptor$chains, c("TRA", "TRB"))
+  expect_false("root" %in% names(descriptor))
+
+  inline <- file.path(root, "inline.crb")
+  export_ir_sidecar(object, inline, immune_sidecar = "never")
+  expect_false(file.exists(file.path(root, "inline.immune.qs2")))
+  expect_length(.readCerebroPayload(inline)$immune_repertoire, 2L)
+  expect_identical(
+    readCerebro(output)$getImmuneRepertoire(),
+    readCerebro(inline)$getImmuneRepertoire()
+  )
+})
+
+test_that("the sidecar follows the codec and the auto threshold", {
+  skip_if_not_installed("HDF5Array")
+  object <- immune_seurat()
+  root <- withr::local_tempdir()
+
+  rds <- file.path(root, "rds.crb")
+  export_ir(object, rds, immune_sidecar = "always")
+  expect_true(file.exists(file.path(root, "rds.immune.rds")))
+  expect_false(file.exists(file.path(root, "rds.immune.qs2")))
+
+  ## auto externalises only an H5-backed CRB above the threshold.
+  embedded <- file.path(root, "embedded.crb")
+  export_ir_sidecar(object, embedded, immune_sidecar_threshold = 1L)
+  expect_false(file.exists(file.path(root, "embedded.immune.qs2")))
+
+  small <- file.path(root, "small.crb")
+  export_ir_sidecar(
+    object,
+    small,
+    expression_matrix_mode = "h5",
+    immune_sidecar_threshold = 1000L
+  )
+  expect_false(file.exists(file.path(root, "small.immune.qs2")))
+
+  large <- file.path(root, "large.crb")
+  export_ir_sidecar(
+    object,
+    large,
+    expression_matrix_mode = "h5",
+    immune_sidecar_threshold = 1L
+  )
+  expect_true(file.exists(file.path(root, "large.immune.qs2")))
+  expect_true(file.exists(file.path(root, "large.h5")))
+})
+
+test_that("re-exporting replaces the owned immune sidecar", {
+  object <- immune_seurat()
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+  sidecar <- file.path(root, "dataset.immune.qs2")
+
+  export_ir_sidecar(object, output, immune_sidecar = "always")
+  first_md5 <- unname(tools::md5sum(sidecar))
+
+  changed <- object@misc$immune_repertoire
+  changed$donorA$CTaa[[1L]] <- "CHANGED"
+  object@misc$immune_repertoire <- changed
+  export_ir_sidecar(object, output, immune_sidecar = "always")
+
+  expect_false(identical(unname(tools::md5sum(sidecar)), first_md5))
+  expect_identical(
+    .readCerebroPayload(output)$immune_repertoire_backend$md5,
+    unname(tools::md5sum(sidecar))
+  )
+  expect_identical(
+    readCerebro(output)$getImmuneRepertoire()$donorA$CTaa[[1L]],
+    "CHANGED"
+  )
+  expect_length(list.files(root, all.files = TRUE, pattern = "-backup-"), 0L)
+})
+
+test_that("an export refuses to overwrite a foreign immune sidecar name", {
+  object <- immune_seurat()
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+  foreign <- file.path(root, "dataset.immune.qs2")
+  writeLines("unrelated user file", foreign)
+
+  expect_error(
+    export_ir_sidecar(object, output, immune_sidecar = "always"),
+    "not owned by the published CRB"
+  )
+  expect_identical(readLines(foreign), "unrelated user file")
+  expect_false(file.exists(output))
+
+  ## A CRB that does not name the file as its own sidecar does not own it.
+  export_ir_sidecar(object, output, immune_sidecar = "never")
+  before_crb <- unname(tools::md5sum(output))
+  expect_error(
+    export_ir_sidecar(object, output, immune_sidecar = "always"),
+    "not owned by the published CRB"
+  )
+  expect_identical(readLines(foreign), "unrelated user file")
+  expect_identical(unname(tools::md5sum(output)), before_crb)
+})
+
+test_that("a failure after the immune sidecar is installed removes it again", {
+  object <- immune_seurat()
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+
+  testthat::local_mocked_bindings(
+    .stageSpatialMolecules = function(...) {
+      stop("injected publication failure", call. = FALSE)
+    },
+    .package = "CerebroNexus"
+  )
+  expect_error(
+    export_ir_sidecar(object, output, immune_sidecar = "always"),
+    "injected publication failure"
+  )
+  expect_false(file.exists(file.path(root, "dataset.immune.qs2")))
+  expect_false(file.exists(output))
+})
+
+test_that("a failure after the immune sidecar is installed restores the old one", {
+  object <- immune_seurat()
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+  sidecar <- file.path(root, "dataset.immune.qs2")
+  export_ir_sidecar(object, output, immune_sidecar = "always")
+  before_crb <- unname(tools::md5sum(output))
+  before_sidecar <- unname(tools::md5sum(sidecar))
+
+  changed <- object@misc$immune_repertoire
+  changed$donorB$CTaa[[1L]] <- "CHANGED"
+  object@misc$immune_repertoire <- changed
+  testthat::local_mocked_bindings(
+    .stageSpatialMolecules = function(...) {
+      stop("injected publication failure", call. = FALSE)
+    },
+    .package = "CerebroNexus"
+  )
+  expect_error(
+    export_ir_sidecar(object, output, immune_sidecar = "always"),
+    "injected publication failure"
+  )
+  expect_identical(unname(tools::md5sum(output)), before_crb)
+  expect_identical(unname(tools::md5sum(sidecar)), before_sidecar)
+  expect_length(list.files(root, all.files = TRUE, pattern = "-backup-"), 0L)
+})
+
+test_that(".readPublishedImmuneBackend reads only a stored file descriptor", {
+  root <- withr::local_tempdir()
+  sentinel <- file.path(root, "binding-ran")
+  immune_export <- function(descriptor) {
+    export <- new.env(parent = emptyenv())
+    class(export) <- c("Cerebro", "R6")
+    export$immune_repertoire_backend <- descriptor
+    export
+  }
+  published <- function(export, name = "export.crb") {
+    path <- file.path(root, name)
+    saveRDS(export, path)
+    .readPublishedImmuneBackend(path)
+  }
+
+  expect_identical(
+    published(immune_export(list(
+      type = "file",
+      file = "dataset.immune.qs2",
+      md5 = strrep("a", 32L),
+      samples = "s1",
+      chains = "TRB"
+    ))),
+    list(type = "file", file = "dataset.immune.qs2")
+  )
+  expect_null(published(immune_export(NULL)))
+  expect_null(published(immune_export(list(
+    type = "retired-file",
+    file = "immune_repertoire.qs2"
+  ))))
+  expect_null(published(immune_export(list(
+    type = "file",
+    file = "nested/dataset.immune.qs2"
+  ))))
+  expect_null(published(immune_export(list(type = "file", file = ".."))))
+  expect_null(.readPublishedImmuneBackend(file.path(root, "missing.crb")))
+
+  active <- new.env(parent = emptyenv())
+  class(active) <- c("Cerebro", "R6")
+  makeActiveBinding(
+    "immune_repertoire_backend",
+    function(value) {
+      writeLines("active", sentinel)
+      list(type = "file", file = "dataset.immune.qs2")
+    },
+    active
+  )
+  expect_null(published(active, "active.crb"))
+
+  lazy <- new.env(parent = emptyenv())
+  class(lazy) <- c("Cerebro", "R6")
+  delayedAssign(
+    "immune_repertoire_backend",
+    {
+      writeLines("lazy", sentinel)
+      list(type = "file", file = "dataset.immune.qs2")
+    },
+    assign.env = lazy
+  )
+  expect_null(published(lazy, "lazy.crb"))
+  expect_false(file.exists(sentinel))
+})
+
+
+test_that("a re-export removes an immune sidecar it no longer uses", {
+  object <- immune_seurat()
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+
+  export_ir_sidecar(object, output, immune_sidecar = "always")
+  expect_true(file.exists(file.path(root, "dataset.immune.qs2")))
+
+  export_ir_sidecar(object, output, immune_sidecar = "never")
+  expect_setequal(list.files(root), "dataset.crb")
+  expect_length(.readCerebroPayload(output)$immune_repertoire, 2L)
+
+  export_ir_sidecar(object, output, immune_sidecar = "always")
+  export_ir(object, output, immune_sidecar = "always")
+  expect_setequal(
+    list.files(root),
+    c("dataset.crb", "dataset.immune.rds")
+  )
+})
+
+test_that("convertSeuratToCerebro forwards the H5 level and the sidecar options", {
+  formals_of <- names(formals(convertSeuratToCerebro))
+  expect_true(all(
+    c("h5_compression_level", "immune_sidecar", "immune_sidecar_threshold") %in%
+      formals_of
+  ))
 })

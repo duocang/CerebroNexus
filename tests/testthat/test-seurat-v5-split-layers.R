@@ -731,30 +731,6 @@ test_that("a sample-split object exports every cell in h5 mode", {
   expect_equal(nrow(readRDS(crb)$getMetaData()), ncol(obj))
 })
 
-test_that("a sample-split object exports every cell in bpcells mode", {
-  skip_if_not_installed("BPCells")
-
-  obj <- make_split_object(c("s1", "s2"))
-  out_dir <- withr::local_tempdir()
-
-  crb <- file.path(out_dir, "external.crb")
-  expect_no_error(do.call(
-    exportFromSeurat,
-    export_args(obj, crb, expression_matrix_mode = "bpcells")
-  ))
-
-  matrix_dir <- file.path(out_dir, "external.bpcells")
-  expect_true(dir.exists(matrix_dir))
-  on_disk <- BPCells::open_matrix_dir(dir = matrix_dir)
-  expect_equal(ncol(on_disk), ncol(obj))
-  expect_identical(BPCells::storage_order(on_disk), "row")
-  payload <- readRDS(crb)
-  expect_identical(payload$crb_schema$version, 2L)
-  expect_identical(payload$crb_schema$cell_names, "expression")
-  expect_equal(nrow(payload$getMetaData()), ncol(obj))
-  expect_equal(dim(readCerebro(crb)$expression), dim(on_disk))
-})
-
 test_that("a layer asked for by name is not joined away underneath the caller", {
   ## Joining consumes the split layers, so a request for one of them by name
   ## and a join cannot both happen. The substitution would be invisible: the
@@ -779,25 +755,24 @@ test_that("a layer asked for by name is not joined away underneath the caller", 
 })
 
 test_that("a disk-backed assay is refused with the reason, not just a class", {
-  ## Reading a BPCells- or DelayedArray-backed assay is not supported. That is
-  ## unchanged here, but the refusal used to read `Received: RenameDims` and
+  ## Reading a disk-backed (DelayedArray / HDF5Array) assay is not supported.
+  ## That is unchanged here, but the refusal used to read `Received: RenameDims` and
   ## nothing else, which says neither what happened nor what to do -- and
-  ## invites confusion with `expression_matrix_mode = "bpcells"`, which is
-  ## about how the .crb stores its matrix, not how the source object holds it.
-  skip_if_not_installed("BPCells")
+  ## invites confusion with `expression_matrix_mode`, which is about how the
+  ## .crb stores its matrix, not how the source object holds it.
+  skip_if_not_installed("HDF5Array")
 
-  matrix_dir <- file.path(withr::local_tempdir(), "counts")
   dense <- matrix(
     rpois(30 * 12, 3),
     nrow = 30,
     dimnames = list(paste0("g", 1:30), paste0("c", 1:12))
   )
-  BPCells::write_matrix_dir(
-    methods::as(methods::as(dense, "CsparseMatrix"), "IterableMatrix"),
-    dir = matrix_dir
-  )
   obj <- Seurat::CreateSeuratObject(
-    counts = BPCells::open_matrix_dir(dir = matrix_dir)
+    counts = HDF5Array::writeHDF5Array(
+      dense,
+      filepath = file.path(withr::local_tempdir(), "counts.h5"),
+      name = "counts"
+    )
   )
   obj$sample <- rep(c("s1", "s2"), length.out = 12)
   obj[["RNA"]] <- split(obj[["RNA"]], f = obj$sample)
@@ -850,22 +825,21 @@ test_that("a disk-backed assay is refused with the reason, not just a class", {
 })
 
 test_that("every selected split layer is checked for disk-backed storage", {
-  skip_if_not_installed("BPCells")
+  skip_if_not_installed("HDF5Array")
 
   obj <- make_split_object(c("s1", "s2"))
   disk_layer <- SeuratObject::LayerData(
     obj[["RNA"]],
     layer = "counts.s2"
   )
-  matrix_dir <- file.path(withr::local_tempdir(), "counts-s2")
-  BPCells::write_matrix_dir(
-    methods::as(disk_layer, "IterableMatrix"),
-    dir = matrix_dir
-  )
   SeuratObject::LayerData(
     obj[["RNA"]],
     layer = "counts.s2"
-  ) <- BPCells::open_matrix_dir(dir = matrix_dir)
+  ) <- HDF5Array::writeHDF5Array(
+    as.matrix(disk_layer),
+    filepath = file.path(withr::local_tempdir(), "counts-s2.h5"),
+    name = "counts"
+  )
 
   err <- tryCatch(
     .getExpressionMatrix(

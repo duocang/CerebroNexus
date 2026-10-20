@@ -1,5 +1,62 @@
 # CerebroNexus 5.1.4
 
+This release removes the BPCells expression storage and several retired storage
+forms. **A `.crb` written by an older release may no longer open**: see
+"Migrating existing files" below.
+
+## Storage
+
+- `expression_matrix_mode` of `exportFromSeurat()` and `convertSeuratToCerebro()`
+  is now `"embedded"` or `"h5"`. The BPCells storage mode is removed; the `h5`
+  backend was the faster reader in the 2026-10-18 scale run. The recorded
+  benchmark results, including the BPCells measurements, are kept as history in
+  `inst/extdata/benchmarks/` and the "Large-dataset benchmarks" article.
+- An H5-backed `.crb` is now thin (CRB schema version 3). The cell names are
+  kept once, in the H5 file (`/expression/genes`), and the `.crb` stores only a
+  checksum and the cell count instead of repeating them in `meta_data` and every
+  projection. The Viewer still defers the cell names until a page needs them, so
+  opening a data set reads no more than before, and it refuses an H5 file whose
+  cell names do not match the `.crb`. H5 `.crb` files from 5.1.x, which carry
+  their cell names, keep opening.
+- The immune repertoire of a large H5-backed data set is stored in a sibling
+  file `<stem>.immune.qs2` (`.rds` with `codec = "rds"`) that the package
+  writes itself: `exportFromSeurat()` and `saveCerebro()` gain
+  `immune_sidecar = c("auto", "always", "never")` and
+  `immune_sidecar_threshold` (100,000 rows). The Viewer lists samples and chains
+  from the descriptor and loads the file when the Immune repertoire page needs
+  it; `createShinyApp()` copies it into the bundle.
+- The host-side overrides `expression_matrix_h5`, `expression_matrix_BPCells`
+  and `expression_matrix_mode` are removed from `launchCerebro()`, and the
+  matching `cerebro_options` entries from `createShinyApp()`, which now stops
+  with an error when `cerebro_options` still contains `expression_matrix_h5` or
+  `expression_matrix_BPCells`. A `.crb` finds its matrix through its own
+  descriptor, relative to its own directory.
+- `Cerebro` no longer has the `bcr_data` and `tcr_data` fields or
+  `addBCRData()` / `addTCRData()`. `getBCR()` and `getTCR()` now return the BCR
+  or TCR rows of the unified immune repertoire. `exportFromSeurat()` still
+  accepts `@misc$tcr_data` / `@misc$bcr_data` as input and merges them into that
+  repertoire.
+
+## Migrating existing files
+
+`readCerebro()`, `launchCerebro()`, `createShinyApp()` and the Viewer stop with
+"uses a retired format" for a `.crb` that has no expression-backend descriptor,
+uses thin schema version 1 or 2, still holds `bcr_data` / `tcr_data`, keeps its
+immune repertoire in a retired sidecar layout, or is a pre-spatial
+`Cerebro_v1.3` object.
+
+- `convertCerebro("x.crb")` upgrades a missing descriptor, `bcr_data` /
+  `tcr_data` and a pre-spatial object in place, and rewrites a 5.1.x H5 `.crb`
+  as a thin one.
+- A `.crb` whose matrix is stored in a retired external layout (the BPCells
+  directory, thin schema 1 or 2) cannot be converted. Re-export it from the
+  source object with `exportFromSeurat(expression_matrix_mode = "h5")`, and
+  delete the old matrix directory afterwards.
+- The shipped example `demo_hla_tcr_dextramer.crb` had no descriptor and was
+  converted.
+
+## Fixes
+
 - Fixes Data info taking 13 to 21 seconds to open a large dataset when the app
   has no prebuilt dataset catalog, as in `run-demo.R`; the 1.46-million-cell
   Ren et al. atlas now opens in about a second. The page counts categories
@@ -8,6 +65,19 @@
   projection resources after it is painted, and renders category bars as one
   string. The Viewer also reserves heap at start-up when a large CRB is
   configured, so opening it no longer triggers a full garbage collection.
+- `convertSeuratToCerebro()` accepts `h5_compression_level`, `immune_sidecar`
+  and `immune_sidecar_threshold` and passes them to `exportFromSeurat()`; before,
+  it always wrote an uncompressed H5 file and could not control the sidecar.
+- Re-exporting with `exportFromSeurat()` removes an immune repertoire sidecar the
+  new export no longer uses, and `saveCerebro()` no longer leaves a staged
+  sidecar behind when a later step fails.
+- `convertCerebro()` stops on an `expression_backend` that is not a descriptor
+  instead of writing the file as embedded.
+- `convertCerebro()` no longer rejects an `output` in the same directory on
+  Windows because of a path-separator mismatch.
+- A background read of a `.crb` that does not finish within 30 s (for example
+  when the worker R process cannot load its packages) no longer leaves the
+  dataset switch waiting forever; the Viewer reads the file in the foreground.
 
 # CerebroNexus 5.1.3
 

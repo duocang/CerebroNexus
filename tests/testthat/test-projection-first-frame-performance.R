@@ -296,7 +296,7 @@ test_that("gene-expression deferred hover selects rows and columns first", {
   expect_identical(scope$aux$cell_barcodes, c("c3", "c1"))
 })
 
-test_that("cached BPCells gene names do not force the expression backend", {
+test_that("cached H5 gene names do not force the expression backend", {
   scope <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = scope)
   slow_calls <- 0L
@@ -315,32 +315,31 @@ test_that("cached BPCells gene names do not force the expression backend", {
   expect_identical(slow_calls, 0L)
 })
 
-test_that("thin BPCells first-frame cache includes its small gene index", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
-  sidecar <- tempfile("bpcells-gene-index-")
-  dir.create(sidecar)
-  on.exit(unlink(sidecar, recursive = TRUE), add = TRUE)
-  writeLines(c("cell-1", "cell-2"), file.path(sidecar, "col_names"))
-  writeLines(c("CD3D", "NKG7"), file.path(sidecar, "row_names"))
+test_that("thin H5 first-frame cache includes its small gene index", {
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
+  fixture <- viewer_h5_fixture(root, save = FALSE)
+  scope <- viewer_runtime_scope()
   object <- new.env(parent = emptyenv())
-  object$meta_data <- data.frame(group = factor(c("A", "B")))
-  object$projections <- list(umap = data.frame(x = 1:2, y = 3:4))
+  object$meta_data <- data.frame(group = factor(c("A", "B", "A", "B")))
+  object$projections <- list(umap = data.frame(x = 1:4, y = 4:1))
   schema <- list(
-    version = 2L,
-    n_cells = 2L,
-    cell_names_md5 = unname(tools::md5sum(file.path(sidecar, "col_names"))),
+    version = 3L,
+    n_cells = 4L,
+    cell_names_hash = rlang::hash(enc2utf8(fixture$cells)),
     projection_rownames = "umap"
   )
 
   object <- scope$.deferThinCrbHydration(
     object,
     "dataset.crb",
-    sidecar,
+    fixture$h5,
     schema
   )
   cache <- attr(object, "cerebro_projection_first_frame", exact = TRUE)
-  expect_identical(cache$gene_names, c("CD3D", "NKG7"))
+  expect_identical(cache$gene_names, fixture$genes)
+  expect_identical(cache$canonical_projections, "umap")
+  expect_identical(cache$meta_data$group, factor(c("A", "B", "A", "B")))
 })
 
 test_that("projection can render before its dynamic controls bind", {
@@ -457,48 +456,32 @@ test_that("full ordered projection rows bypass row subsetting", {
 })
 
 test_that("thin CRBs discard duplicate metadata row names", {
-  skip_if_not_installed("BPCells")
-  skip_if_not_installed("Matrix")
+  skip_if_not_installed("HDF5Array")
   skip_if_not_installed("qs2")
 
   root <- withr::local_tempdir()
-  cells <- paste0("cell-", seq_len(4L))
-  counts <- matrix(
-    seq_len(12L),
-    nrow = 3L,
-    dimnames = list(paste0("gene-", seq_len(3L)), cells)
+  fixture <- viewer_h5_fixture(
+    root,
+    values = matrix(
+      seq_len(12L),
+      nrow = 3L,
+      dimnames = list(paste0("gene-", 1:3), paste0("cell-", 1:4))
+    ),
+    stem = "compact"
   )
-  sparse <- methods::as(Matrix::Matrix(counts, sparse = TRUE), "CsparseMatrix")
-  sidecar <- file.path(root, "expression.bpcells")
-  BPCells::write_matrix_dir(methods::as(sparse, "IterableMatrix"), sidecar)
-
-  object <- Cerebro$new()
-  object$expression <- BPCells::open_matrix_dir(sidecar)
-  object$setExpressionBackend("bpcells", basename(sidecar))
-  object$meta_data <- data.frame(
-    cell_barcode = cells,
-    sample = factor(c("a", "a", "b", "b")),
-    row.names = cells
-  )
-  object$projections <- list(
-    umap = data.frame(
-      UMAP_1 = seq_along(cells),
-      UMAP_2 = rev(seq_along(cells)),
-      row.names = cells
-    )
-  )
-  crb <- file.path(root, "compact.crb")
-  saveCerebro(object, crb)
+  cells <- fixture$cells
+  crb <- fixture$crb
 
   payload <- .readCerebroPayload(crb)
   expect_identical(.row_names_info(payload$meta_data, 1L), -4L)
+  expect_false("cell_barcode" %in% names(payload$meta_data))
+  expect_identical(.row_names_info(payload$projections$umap, 1L), -4L)
 
   restored <- readCerebro(crb)
   expect_identical(.row_names_info(restored$meta_data, 1L), -4L)
   expect_identical(restored$meta_data$cell_barcode, cells)
 
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_scope()
   runtime_object <- runtime$read_cerebro_file(crb)
   runtime_object <- runtime$.attachExternalExpression(runtime_object, crb)
   expect_identical(.row_names_info(runtime_object$meta_data, 1L), -4L)
@@ -507,25 +490,31 @@ test_that("thin CRBs discard duplicate metadata row names", {
 })
 
 test_that("noncanonical thin projections cannot bypass barcode alignment", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
-  sidecar <- tempfile("thin-shuffled-")
-  dir.create(sidecar)
-  on.exit(unlink(sidecar, recursive = TRUE), add = TRUE)
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
   cells <- c("1", "2", "3")
-  writeLines(cells, file.path(sidecar, "col_names"))
+  fixture <- viewer_h5_fixture(
+    root,
+    values = matrix(
+      seq_len(6L),
+      nrow = 2L,
+      dimnames = list(c("g1", "g2"), cells)
+    ),
+    save = FALSE
+  )
+  scope <- viewer_runtime_scope()
   object <- new.env(parent = emptyenv())
   object$meta_data <- data.frame(group = c("A", "B", "C"))
   object$projections <- list(
     umap = data.frame(x = c(30, 20, 10), y = 3:1, row.names = c("3", "2", "1"))
   )
   schema <- list(
-    version = 2L,
+    version = 3L,
     n_cells = 3L,
     projection_rownames = character(),
-    cell_names_md5 = unname(tools::md5sum(file.path(sidecar, "col_names")))
+    cell_names_hash = rlang::hash(enc2utf8(cells))
   )
-  scope$.deferThinCrbHydration(object, "data.crb", sidecar, schema)
+  scope$.deferThinCrbHydration(object, "data.crb", fixture$h5, schema)
   scope$data_set <- function() object
   scope$getProjection <- function(name) object$projections[[name]]
   scope$getMetaData <- function() object$meta_data
@@ -533,4 +522,160 @@ test_that("noncanonical thin projections cannot bypass barcode alignment", {
   aligned <- scope$viewerProjectionFirstFrameCoordinates("umap")
   expect_identical(rownames(aligned), cells)
   expect_identical(aligned$x, c(10, 20, 30))
+})
+
+test_that("thin CRB cell names come from the H5 file and stay lazy", {
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
+  fixture <- viewer_h5_fixture(root, save = FALSE)
+  scope <- viewer_runtime_scope()
+  schema <- list(
+    version = 3L,
+    n_cells = 4L,
+    cell_names_hash = rlang::hash(enc2utf8(fixture$cells)),
+    projection_rownames = "umap"
+  )
+
+  expect_identical(scope$.runtimeH5Names(fixture$h5, "genes"), fixture$cells)
+  expect_identical(scope$.runtimeH5Names(fixture$h5, "barcodes"), fixture$genes)
+  expect_identical(scope$.runtimeH5CellCount(fixture$h5), 4L)
+  expect_identical(
+    scope$.checkThinCrbCells(fixture$cells, schema, "d.crb"),
+    fixture$cells
+  )
+  expect_error(
+    scope$.checkThinCrbCells(rev(fixture$cells), schema, "d.crb"),
+    "H5 cell names do not match CRB 'd.crb'"
+  )
+
+  new_thin <- function() {
+    object <- new.env(parent = emptyenv())
+    object$meta_data <- data.frame(group = factor(c("A", "B", "A", "B")))
+    object$projections <- list(umap = data.frame(x = 1:4, y = 4:1))
+    object
+  }
+
+  ## Cell names are read, hashed and attached only when first touched.
+  hydrated <- scope$.deferThinCrbHydration(
+    new_thin(),
+    "d.crb",
+    fixture$h5,
+    schema
+  )
+  expect_true(all(rlang::env_binding_are_lazy(
+    hydrated,
+    c("meta_data", "projections")
+  )))
+  expect_identical(hydrated$meta_data$cell_barcode, fixture$cells)
+  expect_identical(rownames(hydrated$projections$umap), fixture$cells)
+
+  ## A wrong hash fails when metadata is first touched, not at attach.
+  wrong_hash <- schema
+  wrong_hash$cell_names_hash <- strrep("0", 32L)
+  deferred <- scope$.deferThinCrbHydration(
+    new_thin(),
+    "d.crb",
+    fixture$h5,
+    wrong_hash
+  )
+  cache <- attr(deferred, "cerebro_projection_first_frame", exact = TRUE)
+  expect_identical(cache$gene_names, fixture$genes)
+  expect_error(deferred$meta_data, "H5 cell names do not match CRB 'd.crb'")
+
+  ## A wrong cell count fails at attach.
+  wrong_count <- schema
+  wrong_count$n_cells <- 5L
+  expect_error(
+    scope$.deferThinCrbHydration(new_thin(), "d.crb", fixture$h5, wrong_count),
+    "cell count does not match its H5 sidecar"
+  )
+})
+
+test_that("attaching a thin H5 CRB reads the schema, not the matrix", {
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
+  fixture <- viewer_h5_fixture(root)
+  scope <- viewer_runtime_scope()
+  object <- scope$read_cerebro_file(fixture$crb)
+  object <- scope$.attachExternalExpression(object, fixture$crb)
+  scope$data_set <- function() object
+  lazy <- c("meta_data", "projections", "expression")
+
+  expect_true(all(rlang::env_binding_are_lazy(object, lazy)))
+  expect_identical(scope$getNumberOfCells(), 4L)
+  expect_identical(scope$getGeneNames(), fixture$genes)
+  expect_true(all(rlang::env_binding_are_lazy(object, lazy)))
+  expect_identical(object$meta_data$cell_barcode, fixture$cells)
+  expect_true(rlang::env_binding_are_lazy(object, "expression"))
+  expect_identical(
+    dimnames(object$expression),
+    list(fixture$genes, fixture$cells)
+  )
+})
+
+test_that("attaching a thin H5 CRB does not load HDF5Array", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("callr")
+  root <- withr::local_tempdir()
+  fixture <- viewer_h5_fixture(root)
+
+  state <- callr::r(
+    function(utility, crb) {
+      scope <- new.env(parent = globalenv())
+      sys.source(utility, envir = scope)
+      loaded <- function() "HDF5Array" %in% loadedNamespaces()
+      state <- list(start = loaded())
+      object <- scope$read_cerebro_file(crb)
+      object <- scope$.attachExternalExpression(object, crb)
+      state$attached <- loaded()
+      scope$data_set <- function() object
+      state$cells <- scope$getNumberOfCells()
+      state$genes <- scope$getGeneNames()
+      state$after_names <- loaded()
+      state$barcodes <- object$meta_data$cell_barcode
+      state$after_metadata <- loaded()
+      state$dim <- dim(object$expression)
+      state$after_expression <- loaded()
+      state
+    },
+    list(viewer_test_path("utility_functions.R"), fixture$crb)
+  )
+
+  expect_false(state$start)
+  expect_false(state$attached)
+  expect_identical(state$cells, 4L)
+  expect_identical(state$genes, fixture$genes)
+  expect_false(state$after_names)
+  expect_identical(state$barcodes, fixture$cells)
+  expect_false(state$after_metadata)
+  expect_identical(state$dim, c(3L, 4L))
+  expect_true(state$after_expression)
+})
+
+test_that("a thin CRB without its H5 file names the recovery step", {
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
+  fixture <- viewer_h5_fixture(root)
+  scope <- viewer_runtime_scope()
+  object <- scope$read_cerebro_file(fixture$crb)
+  unlink(fixture$h5)
+
+  expect_error(
+    scope$.attachExternalExpression(object, fixture$crb),
+    "Expected h5 file at .*fixture[.]h5.*Did the [.]h5 sibling get moved"
+  )
+})
+
+test_that("thin CRB schemas other than version 3 are retired", {
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
+  fixture <- viewer_h5_fixture(root)
+  scope <- viewer_runtime_scope()
+  object <- scope$read_cerebro_file(fixture$crb)
+  object$crb_schema$version <- 2L
+
+  expect_error(
+    scope$.attachExternalExpression(object, fixture$crb),
+    "uses a retired format: it uses thin-CRB schema version 2.*convertCerebro"
+  )
 })

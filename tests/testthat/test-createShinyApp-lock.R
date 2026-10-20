@@ -1,13 +1,14 @@
-lock_test_crb <- function(root, backend = NULL) {
+lock_test_crb <- function(
+  root,
+  backend = list(type = "embedded", location = NULL)
+) {
   source <- file.path(root, "source")
   dir.create(source, recursive = TRUE, showWarnings = FALSE)
   object <- Cerebro$new()
-  if (!is.null(backend)) {
-    object$setExpressionBackend(
-      type = backend$type,
-      location = backend$location
-    )
-  }
+  object$setExpressionBackend(
+    type = backend$type,
+    location = backend$location
+  )
   path <- file.path(source, "dataset.crb")
   saveRDS(object, path)
   path
@@ -273,21 +274,6 @@ test_that("Windows path probes use link-aware physical resolution", {
     ),
     "//server/share/app"
   )
-
-  canonicalize <- function(path) {
-    switch(
-      path,
-      "Z:/app/data/future.h5" = "//server/share/app/data/future.h5",
-      "//server/share/app" = "//server/share/app",
-      path
-    )
-  }
-  expect_true(.pathWithin(
-    "Z:/app/data/future.h5",
-    "//server/share/app",
-    os_type = "windows",
-    canonicalize = canonicalize
-  ))
 })
 
 test_that("repeated-slash paths cannot hide a reserved symlink ancestor", {

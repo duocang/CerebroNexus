@@ -18,7 +18,7 @@ convertSeuratToCerebro(
   nGene = "nFeature_RNA",
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
-  expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  expression_matrix_mode = c("embedded", "h5"),
   codec = c("qs2", "rds"),
   spatial_images = NULL,
   verbose = TRUE,
@@ -28,7 +28,10 @@ convertSeuratToCerebro(
   add_most_expressed_genes = TRUE,
   most_expressed_genes = NULL,
   bcr_file = NULL,
-  tcr_file = NULL
+  tcr_file = NULL,
+  h5_compression_level = 0L,
+  immune_sidecar = c("auto", "always", "never"),
+  immune_sidecar_threshold = 100000L
 )
 }
 \arguments{
@@ -75,19 +78,14 @@ data to DelayedArray format for memory efficiency; default: \code{FALSE}.
 Ignored when \code{expression_matrix_mode} is set to an external backend.}
 
 \item{expression_matrix_mode}{How to persist the expression matrix in the
-generated \code{.crb}. One of \code{"embedded"} (default), \code{"bpcells"}
-or \code{"h5"}. See \code{\link{exportFromSeurat}} for details; briefly,
-\code{"embedded"} stores the matrix inside the \code{.crb} (legacy
-behaviour), \code{"bpcells"} writes an on-disk BPCells directory next to
-the \code{.crb} and keeps a lightweight handle inside it (typically
-reduces \code{.crb} size by ~80% on large sparse matrices), and
-\code{"h5"} writes a TENx-format HDF5 file next to the \code{.crb}
-that the Shiny runtime loads lazily, minimising RAM and startup time
-(recommended default for large datasets). The Shiny runtime
-re-resolves both backends relative to the \code{.crb}'s parent
-directory, so packaging the \code{.crb} with its sibling
-\code{<stem>.bpcells/} or \code{<stem>.h5} together is enough for
-portable deployment.}
+generated \code{.crb}. One of \code{"embedded"} (default) or \code{"h5"}.
+See \code{\link{exportFromSeurat}} for details; briefly, \code{"embedded"}
+stores the matrix inside the \code{.crb}, and \code{"h5"} writes a
+TENx-format HDF5 file next to the \code{.crb} that the Viewer loads lazily,
+minimising RAM and startup time (recommended for large datasets). The
+Viewer finds the file relative to the \code{.crb}'s parent directory, so
+packaging the \code{.crb} with its sibling \code{<stem>.h5} together is
+enough for portable deployment.}
 
 \item{codec}{Serialization codec for the CRB payload. Defaults to
 \code{"qs2"}; use \code{"rds"} when direct compatibility with
@@ -134,6 +132,11 @@ default: \code{NULL}.}
 (.rds format). The data will be merged into the unified
 \code{immune_repertoire} slot of the Seurat object before export;
 default: \code{NULL}.}
+
+\item{h5_compression_level, immune_sidecar, immune_sidecar_threshold}{Passed to
+\code{\link{exportFromSeurat}}: the gzip level of the H5 file (default 0,
+uncompressed), and whether and from which size the immune repertoire is
+stored in a sibling file.}
 }
 \value{
 This function does not return a value. It saves a Cerebro object (.crb file)

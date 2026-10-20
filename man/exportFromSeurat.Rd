@@ -18,11 +18,13 @@ exportFromSeurat(
   nGene = "nGene",
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
-  expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  expression_matrix_mode = c("embedded", "h5"),
   h5_compression_level = 0L,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
+  immune_sidecar = c("auto", "always", "never"),
+  immune_sidecar_threshold = 100000L,
   spatial_images = NULL,
   verbose = FALSE,
   .expression_resolution = NULL
@@ -78,32 +80,25 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
 \code{expression_matrix_mode} is set to an external backend.}
 
 \item{expression_matrix_mode}{How to persist the expression matrix. One of
-\code{"embedded"} (default), \code{"bpcells"}, or \code{"h5"}.
+\code{"embedded"} (default) or \code{"h5"}.
 \itemize{
-  \item \code{"embedded"} stores the matrix inside the \code{.crb} file, as
-  before. Compatible with all existing \code{.crb} readers.
-  \item \code{"bpcells"} writes the matrix to a BPCells on-disk directory
-  next to the \code{.crb} and keeps only a lightweight handle in the
-  serialised object. Recommended for large sparse matrices. The resulting
-  \code{.crb} is portable as long as the sibling \code{.bpcells/} directory
-  travels with it; the Shiny runtime re-resolves paths via
-  \code{getExpressionBackend()$location} relative to the \code{.crb}'s
-  parent directory (step 7.3 runtime attach).
-  Delayed/Rle matrix inputs additionally require \pkg{HDF5Array}; they use
-  a temporary block-written HDF5 file instead of a full dense realization.
+  \item \code{"embedded"} stores the matrix inside the \code{.crb} file.
   \item \code{"h5"} writes the matrix via \code{HDF5Array::writeTENxMatrix()}
   to a TENx-format sparse HDF5 file next to the \code{.crb} (sibling
-  \code{<stem>.h5}) and tags the backend with that relative location. The
-  on-disk layout matches \code{inst/extdata/examples/example.h5}: a single
-  \code{/expression} group with \code{data}, \code{indices}, \code{indptr},
-  \code{shape}, \code{genes}, and \code{barcodes} datasets. The matrix is
-  stored cells x genes (TENx column-favoured, optimised for per-gene
-  reads); the Shiny runtime attach reads it back as a lazy
-  \code{HDF5Array::TENxMatrix} seed and transposes it lazily to Cerebro's
-  internal genes x cells layout via \code{DelayedArray::t()} (free). The
-  in-memory \code{dgCMatrix} is never materialised on attach, so RAM stays
-  close to the \code{.crb} metadata size. The gzip level is set by
-  \code{h5_compression_level}. Requires the \pkg{HDF5Array} package.
+  \code{<stem>.h5}) and tags the backend with that file name. The
+  file holds a single \code{/expression} group with \code{data},
+  \code{indices}, \code{indptr}, \code{shape}, \code{genes}, and
+  \code{barcodes} datasets. The matrix is stored cells x genes (TENx
+  column-favoured, optimised for per-gene reads); the Viewer reads it back as
+  a lazy \code{HDF5Array::TENxMatrix} seed and transposes it lazily to
+  Cerebro's internal genes x cells layout via \code{DelayedArray::t()}
+  (free). The in-memory \code{dgCMatrix} is never materialised on attach, so
+  RAM stays close to the \code{.crb} metadata size. The \code{.crb} is thin:
+  the cell names are kept once, in the H5 file, and the \code{.crb} records
+  their order and a checksum. The gzip level is set by
+  \code{h5_compression_level}; the default (no compression) is several
+  times larger than a compressed file but builds and reads faster.
+  Requires the \pkg{HDF5Array} package.
 }
 The CRB and any sidecar are built and validated in a private sibling stage.
 On POSIX systems, new stages and external matrices are owner-only; replacing
@@ -136,6 +131,16 @@ for large datasets, \code{"always"}, or \code{"never"}.}
 \item{viewer_binary_threshold}{Dataset-level cell threshold used by
 \code{viewer_binary = "auto"}.}
 
+\item{immune_sidecar}{Store the immune repertoire in a sibling file
+\code{<stem>.immune.qs2} (\code{.rds} with \code{codec = "rds"}) instead of
+inside the \code{.crb}. \code{"auto"} does so for \code{"h5"} exports whose
+repertoire has at least \code{immune_sidecar_threshold} rows; \code{"always"}
+and \code{"never"} override that. The sidecar must travel with the
+\code{.crb}.}
+
+\item{immune_sidecar_threshold}{Number of repertoire rows (cells with
+receptor data) used by \code{immune_sidecar = "auto"}.}
+
 \item{spatial_images}{Optional named list mapping Seurat image names to named
 image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
 Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
@@ -159,9 +164,9 @@ This function allows to export a Seurat object to visualize in Cerebro.
 If \code{object@misc$immune_repertoire} contains a named list of
 data.frames (one per sample, with \code{barcode}, \code{CTgene},
 \code{CTnt}, \code{CTaa}, and \code{CTstrict}), it will be automatically
-exported into the Cerebro object via \code{addImmuneRepertoire()}. Legacy
-\code{bcr_data} /
-\code{tcr_data} slots are also supported as a fallback.
+exported into the Cerebro object via \code{addImmuneRepertoire()}. When that
+slot is empty, receptors kept apart in \code{object@misc$tcr_data} and
+\code{object@misc$bcr_data} are merged into it.
 }
 
 \section{HLA typing}{

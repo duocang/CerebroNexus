@@ -3,6 +3,27 @@
 .crb_process_cache <- new.env(parent = emptyenv())
 .crb_backend_identities <- new.env(parent = emptyenv())
 crb_prefetch_tasks <- new.env(parent = emptyenv())
+crb_prefetch_started <- new.env(parent = emptyenv())
+
+## A background read that has not finished after this long is abandoned and the
+## dataset is read in the foreground instead. Without a limit a daemon that
+## cannot start (a library path the child R does not see, a blocked socket)
+## would leave the dataset switch waiting forever.
+crb_prefetch_timeout_seconds <- 30
+
+crb_prefetch_waited <- function(key) {
+  started <- crb_prefetch_started[[key]]
+  if (is.null(started)) 0 else as.numeric(Sys.time()) - started
+}
+
+crb_prefetch_abandon <- function(key) {
+  if (exists(key, envir = crb_prefetch_tasks, inherits = FALSE)) {
+    rm(list = key, envir = crb_prefetch_tasks)
+  }
+  if (exists(key, envir = crb_prefetch_started, inherits = FALSE)) {
+    rm(list = key, envir = crb_prefetch_started)
+  }
+}
 
 .touchCrbPrototype <- function(key) {
   cached <- .crb_process_cache[[key]]
@@ -97,6 +118,7 @@ start_crb_prefetch <- function(path, backend_identity) {
     })
   )
   crb_prefetch_tasks[[cache_key]] <- prefetch_task
+  crb_prefetch_started[[cache_key]] <- as.numeric(Sys.time())
   print(glue::glue(
     "[{Sys.time()}] CRB background prefetch started: {basename(path)}"
   ))
@@ -112,7 +134,7 @@ start_crb_prefetch <- function(path, backend_identity) {
       }
       on.exit(
         {
-          rm(list = cache_key, envir = crb_prefetch_tasks)
+          crb_prefetch_abandon(cache_key)
           completion$destroy()
         },
         add = TRUE

@@ -1,22 +1,50 @@
-make_bpcells_cerebro <- function(root, row_major = FALSE) {
-  cells <- paste0("cell-", seq_len(4L))
-  counts <- matrix(
+## ---------------------------------------------------------------------------
+## Fixtures
+## ---------------------------------------------------------------------------
+
+skip_if_no_h5 <- function() {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("rhdf5")
+  skip_if_not_installed("Matrix")
+  skip_if_not_installed("qs2")
+}
+
+h5_cells <- function(prefix = "cell-") paste0(prefix, seq_len(4L))
+
+h5_counts <- function(cells = h5_cells()) {
+  matrix(
     c(0, 1, 4, 2, 0, 5, 3, 6, 0, 7, 8, 9),
     nrow = 3L,
     dimnames = list(paste0("gene-", seq_len(3L)), cells)
   )
-  sparse <- methods::as(Matrix::Matrix(counts, sparse = TRUE), "CsparseMatrix")
-  sidecar <- file.path(root, "expression.bpcells")
-  iterable <- methods::as(sparse, "IterableMatrix")
-  if (row_major) {
-    BPCells::transpose_storage_order(iterable, outdir = sidecar)
-  } else {
-    BPCells::write_matrix_dir(iterable, dir = sidecar)
+}
+
+## The matrix is stored cells x genes with the call exportFromSeurat() makes, so
+## /expression/genes holds the cell names and /expression/barcodes the genes.
+write_h5_matrix <- function(counts, path) {
+  if (file.exists(path)) {
+    file.remove(path)
   }
+  cells_by_genes <- methods::as(
+    Matrix::Matrix(t(counts), sparse = TRUE),
+    "CsparseMatrix"
+  )
+  HDF5Array::writeTENxMatrix(
+    cells_by_genes,
+    path,
+    group = "expression",
+    level = 0L
+  )
+  invisible(path)
+}
+
+make_h5_cerebro <- function(root, stem = "expression") {
+  cells <- h5_cells()
+  counts <- h5_counts(cells)
+  h5 <- write_h5_matrix(counts, file.path(root, paste0(stem, ".h5")))
 
   object <- Cerebro$new()
-  object$expression <- BPCells::open_matrix_dir(sidecar)
-  object$setExpressionBackend("bpcells", basename(sidecar))
+  object$setExpressionBackend("h5", basename(h5))
   object$meta_data <- data.frame(
     cell_barcode = cells,
     sample = c("a", "a", "b", "b"),
@@ -31,45 +59,108 @@ make_bpcells_cerebro <- function(root, row_major = FALSE) {
       row.names = cells
     )
   )
-  list(object = object, cells = cells, counts = counts, sidecar = sidecar)
+  list(
+    object = object,
+    cells = cells,
+    genes = rownames(counts),
+    counts = counts,
+    h5 = h5
+  )
+}
+
+make_embedded_cerebro <- function(cells = h5_cells()) {
+  object <- Cerebro$new()
+  object$meta_data <- data.frame(
+    cell_barcode = cells,
+    sample = c("a", "a", "b", "b"),
+    stringsAsFactors = FALSE
+  )
+  object$setExpression(h5_counts(cells))
+  object
+}
+
+immune_tables <- function(cells = h5_cells()) {
+  list(
+    a = data.frame(
+      barcode = cells[1:2],
+      CTgene = c(
+        "TRAV1.TRAJ1.TRAC_TRBV1.TRBJ1.TRBC1",
+        "IGHV1.IGHJ1.IGHM_IGKV1.IGKJ1.IGKC"
+      ),
+      stringsAsFactors = FALSE
+    ),
+    b = data.frame(
+      barcode = cells[3:4],
+      CTgene = c("TRBV2.TRBJ2.TRBC2", "IGLV1.IGLJ1.IGLC1"),
+      stringsAsFactors = FALSE
+    )
+  )
 }
 
 expect_cerebro_fields <- function(object, fixture) {
   expect_identical(object$getCellNames(), fixture$cells)
   expect_identical(object$meta_data$cell_barcode, fixture$cells)
   expect_identical(rownames(object$getProjection("umap")), fixture$cells)
+  expect_s4_class(object$expression, "DelayedMatrix")
+  expect_identical(colnames(object$expression), fixture$cells)
+  expect_identical(rownames(object$expression), fixture$genes)
   expect_equal(as.matrix(object$expression), fixture$counts)
 }
 
-test_that("BPCells v2 writer keeps both input orders row-major", {
-  skip_if_not_installed("BPCells")
-  skip_if_not_installed("Matrix")
-
-  counts <- Matrix::Matrix(
-    matrix(1:12, nrow = 3L),
-    sparse = TRUE
-  )
-  column_major <- methods::as(counts, "IterableMatrix")
-  row_source <- tempfile("bpcells-row-source-")
-  BPCells::transpose_storage_order(column_major, outdir = row_source)
-  row_major <- BPCells::open_matrix_dir(row_source)
-
-  for (source in list(column_major, row_major)) {
-    output <- tempfile("bpcells-v2-")
-    written <- .writeBpcellsGeneMajor(source, output)
-    expect_identical(BPCells::storage_order(written), "row")
-    expect_equal(as.matrix(written), as.matrix(source))
+## A serialized Cerebro object as an older release wrote it. `drop` removes
+## bindings the old class did not have, `extra` adds or overrides fields (the
+## class no longer declares bcr_data / tcr_data, so they can only be added to a
+## hand-built payload).
+legacy_payload <- function(extra = list(), drop = character(), cls = NULL) {
+  source <- Cerebro$new()
+  payload <- new.env(parent = emptyenv())
+  for (binding in setdiff(ls(source, all.names = TRUE), drop)) {
+    payload[[binding]] <- source[[binding]]
   }
+  for (field in names(extra)) {
+    payload[[field]] <- extra[[field]]
+  }
+  class(payload) <- if (is.null(cls)) class(source) else cls
+  lockEnvironment(payload, bindings = FALSE)
+  payload
+}
+
+runtime_env <- function() {
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime
+}
+
+## ---------------------------------------------------------------------------
+## H5 fixture
+## ---------------------------------------------------------------------------
+
+test_that("the H5 helpers read the cell and gene names of a cells x genes file", {
+  skip_if_no_h5()
+  fixture <- make_h5_cerebro(withr::local_tempdir())
+
+  expect_identical(.h5CellNames(fixture$h5), fixture$cells)
+  expect_identical(.h5GeneNames(fixture$h5), fixture$genes)
+  expect_identical(.h5Dim(fixture$h5), c(4L, 3L))
+  expect_identical(
+    .cerebroCellNamesHash(fixture$cells),
+    rlang::hash(enc2utf8(fixture$cells))
+  )
+  expect_match(.cerebroCellNamesHash(fixture$cells), "^[[:xdigit:]]{32}$")
 })
 
-test_that("legacy RDS CRBs rebuild the current Cerebro class", {
+## ---------------------------------------------------------------------------
+## Thin schema v3
+## ---------------------------------------------------------------------------
+
+test_that("legacy-free RDS CRBs rebuild the current Cerebro class", {
   path <- tempfile(fileext = ".crb")
   object <- Cerebro$new()
-  object$expression <- matrix(
+  object$setExpression(matrix(
     1:4,
     nrow = 2L,
     dimnames = list(c("gene-1", "gene-2"), c("cell-1", "cell-2"))
-  )
+  ))
   saveRDS(object, path)
 
   restored <- readCerebro(path)
@@ -77,12 +168,985 @@ test_that("legacy RDS CRBs rebuild the current Cerebro class", {
   expect_equal(restored$expression, object$expression)
   expect_identical(
     restored$getExpressionBackend(),
-    list(
-      type = "embedded",
-      location = NULL
-    )
+    list(type = "embedded", location = NULL)
   )
 })
+
+test_that("thin v3 CRBs keep the cell names once, in the H5 file", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  rds <- file.path(root, "thin-rds.crb")
+  qs <- file.path(root, "thin-qs2.crb")
+  h5_before <- unname(tools::md5sum(fixture$h5))
+  saveCerebro(fixture$object, rds, codec = "rds")
+  saveCerebro(fixture$object, qs)
+
+  ## both codecs share the one H5 file and saving leaves it alone
+  expect_setequal(
+    list.files(root),
+    c("expression.h5", "thin-rds.crb", "thin-qs2.crb")
+  )
+  expect_identical(unname(tools::md5sum(fixture$h5)), h5_before)
+  expect_identical(
+    readBin(qs, "raw", n = 4L),
+    as.raw(c(0x0b, 0x0e, 0x0a, 0xc1))
+  )
+  expect_false(identical(
+    readBin(rds, "raw", n = 4L),
+    as.raw(c(0x0b, 0x0e, 0x0a, 0xc1))
+  ))
+
+  for (path in c(rds, qs)) {
+    payload <- .readCerebroPayload(path)
+    expect_null(payload$expression)
+    expect_identical(
+      payload$expression_backend,
+      list(type = "h5", location = "expression.h5")
+    )
+    expect_false("cell_barcode" %in% names(payload$meta_data))
+    expect_type(payload$meta_data$nUMI, "integer")
+    expect_type(payload$meta_data$nGene, "integer")
+    expect_identical(payload$meta_data$sample, c("a", "a", "b", "b"))
+    ## the projection keeps its row order only
+    expect_true(.row_names_info(payload$projections$umap) < 0L)
+    expect_identical(payload$projections$umap$UMAP_1, 1:4)
+
+    schema <- payload$crb_schema
+    expect_named(
+      schema,
+      c("version", "cell_names_hash", "projection_rownames", "n_cells"),
+      ignore.order = TRUE
+    )
+    expect_identical(schema$version, 3L)
+    expect_identical(schema$n_cells, 4L)
+    expect_identical(schema$projection_rownames, "umap")
+    expect_identical(
+      schema$cell_names_hash,
+      rlang::hash(enc2utf8(fixture$cells))
+    )
+    expect_identical(
+      payload$cell_fingerprint,
+      "md5-cell-set-v1:e4f597e835d59a5ae4da3f346939b09e"
+    )
+  }
+
+  for (path in c(rds, qs)) {
+    restored <- readCerebro(path)
+    expect_cerebro_fields(restored, fixture)
+    expect_identical(restored$meta_data$sample, c("a", "a", "b", "b"))
+    expect_identical(restored$crb_schema$version, 3L)
+  }
+
+  ## the input object is not modified by saving it
+  expect_identical(fixture$object$meta_data$cell_barcode, fixture$cells)
+  expect_identical(rownames(fixture$object$projections$umap), fixture$cells)
+})
+
+test_that("only projections whose rownames are the cells are compacted", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  fixture$object$projections$other <- data.frame(
+    X_1 = 1:4 + 0,
+    X_2 = 4:1 + 0,
+    row.names = paste0("point-", 1:4)
+  )
+  path <- file.path(root, "projections.crb")
+  saveCerebro(fixture$object, path)
+
+  payload <- .readCerebroPayload(path)
+  expect_identical(payload$crb_schema$projection_rownames, "umap")
+  expect_identical(
+    rownames(payload$projections$other),
+    paste0("point-", 1:4)
+  )
+  restored <- readCerebro(path)
+  expect_identical(rownames(restored$getProjection("umap")), fixture$cells)
+  expect_identical(
+    rownames(restored$getProjection("other")),
+    paste0("point-", 1:4)
+  )
+})
+
+test_that("an H5-backed object must match its H5 file when it is saved", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  fixture$object$meta_data$cell_barcode <- rev(fixture$cells)
+
+  expect_error(
+    saveCerebro(fixture$object, file.path(root, "mismatch.crb")),
+    "same cells in the same order"
+  )
+  expect_false(file.exists(file.path(root, "mismatch.crb")))
+})
+
+test_that("convertCerebro moves a thin CRB between codecs next to its H5 file", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  qs <- file.path(root, "thin-qs2.crb")
+  saveCerebro(fixture$object, qs)
+
+  converted <- file.path(root, "converted-rds.crb")
+  convertCerebro(qs, converted, codec = "rds")
+  expect_false(identical(
+    readBin(converted, "raw", n = 4L),
+    as.raw(c(0x0b, 0x0e, 0x0a, 0xc1))
+  ))
+  expect_cerebro_fields(readCerebro(converted), fixture)
+  expect_identical(.readCerebroPayload(converted)$crb_schema$version, 3L)
+
+  ## the same directory spelled differently is still the same directory
+  if (identical(.Platform$OS.type, "windows")) {
+    spelled <- file.path(
+      normalizePath(root, winslash = "\\"),
+      "spelled.crb"
+    )
+    convertCerebro(qs, spelled, codec = "rds")
+    expect_cerebro_fields(readCerebro(spelled), fixture)
+  }
+
+  other_root <- file.path(root, "elsewhere")
+  cross_directory <- file.path(other_root, "converted-rds.crb")
+  expect_error(
+    convertCerebro(qs, cross_directory, codec = "rds"),
+    "must be in the same directory"
+  )
+  expect_false(file.exists(cross_directory))
+
+  convertCerebro(qs)
+  expect_cerebro_fields(readCerebro(qs), fixture)
+  expect_identical(
+    readBin(qs, "raw", n = 4L),
+    as.raw(c(0x0b, 0x0e, 0x0a, 0xc1))
+  )
+  convertCerebro(qs, codec = "rds")
+  expect_cerebro_fields(readCerebro(qs), fixture)
+})
+
+## ---------------------------------------------------------------------------
+## Integrity of a thin CRB against its H5 file
+## ---------------------------------------------------------------------------
+
+test_that("a swapped or reordered H5 file is rejected", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  path <- file.path(root, "thin.crb")
+  saveCerebro(fixture$object, path)
+  expect_cerebro_fields(readCerebro(path), fixture)
+
+  ## same size, other cell names
+  write_h5_matrix(h5_counts(h5_cells("other-")), fixture$h5)
+  expect_error(readCerebro(path), "H5 cell names do not match")
+
+  ## same cells in another order
+  order <- c(2L, 1L, 3L, 4L)
+  write_h5_matrix(fixture$counts[, order], fixture$h5)
+  expect_error(readCerebro(path), "H5 cell names do not match")
+
+  ## fewer cells
+  write_h5_matrix(fixture$counts[, 1:3], fixture$h5)
+  expect_error(readCerebro(path), "H5 cell names do not match")
+
+  write_h5_matrix(fixture$counts, fixture$h5)
+  expect_cerebro_fields(readCerebro(path), fixture)
+})
+
+test_that("a thin CRB with a wrong cell count or malformed schema is rejected", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  path <- file.path(root, "thin.crb")
+  saveCerebro(fixture$object, path)
+
+  broken <- function(edit) {
+    payload <- .currentCerebroCopy(.readCerebroPayload(path))
+    edit(payload)
+    target <- tempfile(tmpdir = root, fileext = ".crb")
+    saveRDS(payload, target)
+    target
+  }
+
+  wrong_count <- broken(function(p) p$crb_schema$n_cells <- 5L)
+  expect_error(readCerebro(wrong_count), "cell count")
+
+  extra_field <- broken(function(p) p$crb_schema$cell_names <- "expression")
+  expect_error(readCerebro(extra_field), "unsupported CRB schema")
+
+  double_version <- broken(function(p) p$crb_schema$version <- 3)
+  expect_error(readCerebro(double_version), "retired format")
+
+  bad_hash <- broken(function(p) {
+    p$crb_schema$cell_names_hash <- strrep("0", 32L)
+  })
+  expect_error(readCerebro(bad_hash), "H5 cell names do not match")
+
+  short_metadata <- broken(function(p) p$meta_data <- p$meta_data[1:3, ])
+  expect_error(readCerebro(short_metadata), "incompatible cell metadata")
+
+  missing_projection <- broken(function(p) p$projections <- list())
+  expect_error(readCerebro(missing_projection), "missing projection")
+
+  embedded <- broken(function(p) {
+    p$expression_backend <- list(type = "embedded", location = NULL)
+  })
+  expect_error(readCerebro(embedded), "requires an H5 expression backend")
+})
+
+test_that("an H5 CRB written without a schema still reads", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  ## 5.1.x kept the cell names in the CRB: meta_data$cell_barcode and the
+  ## projection rownames, with no crb_schema.
+  legacy <- .currentCerebroCopy(fixture$object)
+  expect_null(legacy$crb_schema)
+  path <- file.path(root, "h5-without-schema.crb")
+  saveRDS(legacy, path)
+
+  expect_cerebro_fields(readCerebro(path), fixture)
+  expect_null(readCerebro(path)$crb_schema)
+
+  runtime <- runtime_env()
+  runtime_object <- runtime$read_cerebro_file(path)
+  runtime_object <- runtime$.attachExternalExpression(runtime_object, path)
+  expect_true(rlang::env_binding_are_lazy(runtime_object, "expression"))
+  expect_false(rlang::env_binding_are_lazy(runtime_object, "meta_data"))
+  expect_identical(runtime_object$meta_data$cell_barcode, fixture$cells)
+
+  ## converting it thins the CRB against the same H5 file
+  convertCerebro(path)
+  payload <- .readCerebroPayload(path)
+  expect_identical(payload$crb_schema$version, 3L)
+  expect_false("cell_barcode" %in% names(payload$meta_data))
+  expect_cerebro_fields(readCerebro(path), fixture)
+})
+
+test_that("a missing H5 file is reported as a missing sidecar", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  path <- file.path(root, "thin.crb")
+  saveCerebro(fixture$object, path)
+
+  lonely <- file.path(root, "copied")
+  dir.create(lonely)
+  file.copy(path, file.path(lonely, "thin.crb"))
+  expect_error(
+    readCerebro(file.path(lonely, "thin.crb")),
+    "expression sidecar is missing"
+  )
+
+  runtime <- runtime_env()
+  expect_error(
+    runtime$.attachExternalExpression(
+      runtime$read_cerebro_file(file.path(lonely, "thin.crb")),
+      file.path(lonely, "thin.crb")
+    ),
+    "Expected h5 file"
+  )
+})
+
+## ---------------------------------------------------------------------------
+## Viewer (runtime) side of a thin CRB
+## ---------------------------------------------------------------------------
+
+test_that("the Viewer hydrates a thin CRB lazily and checks it against the H5 file", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  qs <- file.path(root, "thin.crb")
+  saveCerebro(fixture$object, qs)
+  expected <- readCerebro(qs)
+
+  runtime <- runtime_env()
+  runtime_object <- runtime$read_cerebro_file(qs)
+  runtime_object <- runtime$.attachExternalExpression(runtime_object, qs)
+  expect_true(rlang::env_binding_are_lazy(runtime_object, "meta_data"))
+  expect_true(rlang::env_binding_are_lazy(runtime_object, "projections"))
+  expect_true(rlang::env_binding_are_lazy(runtime_object, "expression"))
+  expect_identical(runtime$.runtimeCerebroCellCount(runtime_object), 4L)
+  expect_true(rlang::env_binding_are_lazy(runtime_object, "meta_data"))
+  first_frame <- attr(runtime_object, "cerebro_projection_first_frame")
+  expect_identical(first_frame$gene_names, fixture$genes)
+  expect_identical(first_frame$canonical_projections, "umap")
+
+  expect_identical(runtime_object$meta_data, expected$meta_data)
+  expect_identical(runtime_object$projections, expected$projections)
+  expect_equal(as.matrix(runtime_object$expression), fixture$counts)
+
+  ## a wrong cell count fails when the object is attached
+  payload <- .currentCerebroCopy(.readCerebroPayload(qs))
+  payload$crb_schema$n_cells <- 5L
+  count_path <- file.path(root, "count.crb")
+  saveRDS(payload, count_path)
+  expect_error(
+    runtime$.attachExternalExpression(
+      runtime$read_cerebro_file(count_path),
+      count_path
+    ),
+    "cell count"
+  )
+
+  ## a foreign H5 file fails when the metadata is first read
+  write_h5_matrix(h5_counts(h5_cells("other-")), fixture$h5)
+  foreign <- runtime$.attachExternalExpression(
+    runtime$read_cerebro_file(qs),
+    qs
+  )
+  expect_true(rlang::env_binding_are_lazy(foreign, "meta_data"))
+  expect_error(foreign$meta_data, "H5 cell names do not match")
+})
+
+test_that("Data Info reads the thin cell count without forcing metadata", {
+  runtime <- runtime_env()
+  object <- new.env(parent = emptyenv())
+  object$crb_schema <- list(version = 3L, n_cells = 4L)
+  delayedAssign(
+    "meta_data",
+    stop("metadata was forced"),
+    assign.env = object
+  )
+
+  expect_identical(runtime$.runtimeCerebroCellCount(object), 4L)
+  expect_true(rlang::env_binding_are_lazy(object, "meta_data"))
+})
+
+## ---------------------------------------------------------------------------
+## Retired formats
+## ---------------------------------------------------------------------------
+
+## Each entry is a CRB that older releases wrote and this version does not read.
+retired_cerebros <- function(root) {
+  cells <- h5_cells()
+  embedded <- list(type = "embedded", location = NULL)
+  tcr <- list(
+    a = data.frame(
+      barcode = cells[1:2],
+      CTgene = rep("TRAV1.TRAJ1.TRAC_TRBV1.TRBJ1.TRBC1", 2L),
+      stringsAsFactors = FALSE
+    ),
+    b = data.frame(
+      barcode = cells[3L],
+      CTgene = "TRBV2.TRBJ2.TRBC2",
+      stringsAsFactors = FALSE
+    )
+  )
+  bcr <- list(
+    b = data.frame(
+      barcode = cells[4L],
+      CTgene = "IGHV1.IGHJ1.IGHM_IGKV1.IGKJ1.IGKC",
+      stringsAsFactors = FALSE
+    )
+  )
+  meta_data <- data.frame(
+    cell_barcode = cells,
+    sample = c("a", "a", "b", "b"),
+    stringsAsFactors = FALSE
+  )
+  counts <- h5_counts(cells)
+  base <- list(
+    expression = counts,
+    meta_data = meta_data,
+    expression_backend = embedded
+  )
+  with_base <- function(...) utils::modifyList(base, list(...))
+
+  entries <- list(
+    no_descriptor = list(
+      payload = legacy_payload(list(expression = counts, meta_data = meta_data)),
+      reason = "no expression-backend descriptor",
+      upgrades = TRUE
+    ),
+    absent_descriptor = list(
+      payload = legacy_payload(
+        list(expression = counts, meta_data = meta_data),
+        drop = c("expression_backend", "getExpressionBackend")
+      ),
+      reason = "no expression-backend descriptor",
+      upgrades = TRUE
+    ),
+    schema_v1 = list(
+      payload = legacy_payload(with_base(
+        crb_schema = list(version = 1L, cell_names = "expression")
+      )),
+      reason = "schema version 1",
+      upgrades = FALSE
+    ),
+    schema_v2 = list(
+      payload = legacy_payload(with_base(
+        crb_schema = list(version = 2L, n_cells = 4L)
+      )),
+      reason = "schema version 2",
+      upgrades = FALSE
+    ),
+    bcr_tcr_data = list(
+      payload = legacy_payload(with_base(tcr_data = tcr, bcr_data = bcr)),
+      reason = "bcr_data/tcr_data",
+      upgrades = TRUE
+    ),
+    retired_immune = list(
+      payload = legacy_payload(with_base(
+        immune_repertoire_backend = list(
+          type = "retired-file",
+          file = "immune_repertoire.qs2",
+          md5 = strrep("a", 32L),
+          samples = "a",
+          chains = "TRB"
+        )
+      )),
+      reason = "retired layout",
+      upgrades = FALSE
+    ),
+    pre_spatial = list(
+      payload = legacy_payload(
+        with_base(),
+        drop = c(
+          "spatial",
+          "addSpatialData",
+          "availableSpatial",
+          "getSpatialData"
+        ),
+        cls = c(paste0("Cerebro_v1", ".3"), "R6")
+      ),
+      reason = "predates spatial support",
+      upgrades = TRUE
+    )
+  )
+  for (name in names(entries)) {
+    path <- file.path(root, paste0(name, ".crb"))
+    saveRDS(entries[[name]]$payload, path)
+    entries[[name]]$path <- path
+  }
+  ## A backend type this version does not know is not a retired format with a
+  ## named reason: the readers report an invalid descriptor and convertCerebro()
+  ## cannot repair it.
+  unknown_backend <- file.path(root, "unknown_backend.crb")
+  saveRDS(
+    legacy_payload(with_base(
+      expression_backend = list(type = "retired-store", location = "x.retired"),
+      expression = NULL
+    )),
+    unknown_backend
+  )
+  list(
+    entries = entries,
+    unknown_backend = unknown_backend,
+    tcr = tcr,
+    bcr = bcr,
+    counts = counts
+  )
+}
+
+test_that("every retired format is rejected with a pointer to convertCerebro", {
+  root <- withr::local_tempdir()
+  retired <- retired_cerebros(root)
+  runtime <- runtime_env()
+
+  for (name in names(retired$entries)) {
+    entry <- retired$entries[[name]]
+    expect_error(
+      readCerebro(entry$path),
+      "uses a retired format",
+      info = name
+    )
+    expect_error(
+      readCerebro(entry$path),
+      "convertCerebro",
+      info = name
+    )
+    expect_error(
+      readCerebro(entry$path),
+      entry$reason,
+      fixed = TRUE,
+      info = name
+    )
+    expect_error(
+      .assertCurrentCerebroFile(.readCerebroPayload(entry$path), entry$path),
+      paste0("'", basename(entry$path), "' uses a retired format"),
+      fixed = TRUE,
+      info = name
+    )
+    ## the Viewer refuses the same files with the same message
+    expect_error(
+      runtime$.attachExternalExpression(
+        runtime$read_cerebro_file(entry$path),
+        entry$path
+      ),
+      "uses a retired format.*convertCerebro",
+      info = name
+    )
+  }
+})
+
+test_that("current formats are not mistaken for retired ones", {
+  root <- withr::local_tempdir()
+  embedded <- make_embedded_cerebro()
+  path <- file.path(root, "embedded.crb")
+  saveCerebro(embedded, path)
+  expect_null(.legacyCerebroReason(.readCerebroPayload(path)))
+  expect_s3_class(readCerebro(path), "Cerebro")
+})
+
+test_that("convertCerebro upgrades what can be repaired without the source", {
+  root <- withr::local_tempdir()
+  retired <- retired_cerebros(root)
+
+  for (name in names(retired$entries)) {
+    entry <- retired$entries[[name]]
+    if (!entry$upgrades) {
+      next
+    }
+    expect_error(readCerebro(entry$path), "retired format", info = name)
+    expect_no_error(convertCerebro(entry$path))
+
+    converted <- readCerebro(entry$path)
+    expect_identical(
+      converted$getExpressionBackend(),
+      list(type = "embedded", location = NULL),
+      info = name
+    )
+    expect_equal(converted$expression, retired$counts, info = name)
+    expect_false(
+      exists("tcr_data", envir = converted, inherits = FALSE),
+      info = name
+    )
+    expect_false(
+      exists("bcr_data", envir = converted, inherits = FALSE),
+      info = name
+    )
+    expect_true(is.function(converted$availableSpatial), info = name)
+    expect_null(.legacyCerebroReason(.readCerebroPayload(entry$path)))
+  }
+
+  ## the receptors of bcr_data / tcr_data end up in the unified repertoire
+  converted <- readCerebro(retired$entries$bcr_tcr_data$path)
+  repertoire <- converted$getImmuneRepertoire()
+  expect_named(repertoire, c("a", "b"))
+  expect_equal(nrow(repertoire$a), 2L)
+  expect_equal(nrow(repertoire$b), 2L)
+  expect_setequal(repertoire$b$barcode, c("cell-3", "cell-4"))
+  expect_named(converted$getTCR(), c("a", "b"))
+  expect_equal(nrow(converted$getTCR()$a), 2L)
+  expect_identical(converted$getTCR()$b$barcode, "cell-3")
+  expect_named(converted$getBCR(), "b")
+  expect_identical(converted$getBCR()$b$barcode, "cell-4")
+})
+
+test_that("convertCerebro refuses a CRB whose storage it cannot read or repair", {
+  root <- withr::local_tempdir()
+  retired <- retired_cerebros(root)
+
+  paths <- c(
+    unknown_backend = retired$unknown_backend,
+    schema_v1 = retired$entries$schema_v1$path,
+    schema_v2 = retired$entries$schema_v2$path,
+    retired_immune = retired$entries$retired_immune$path
+  )
+  for (name in names(paths)) {
+    path <- paths[[name]]
+    before <- unname(tools::md5sum(path))
+    expect_error(
+      convertCerebro(path),
+      "cannot read or repair",
+      info = name
+    )
+    expect_error(convertCerebro(path), "Re-export", info = name)
+    expect_identical(unname(tools::md5sum(path)), before, info = name)
+  }
+})
+
+test_that("readCerebro rejects an expression backend it does not know", {
+  root <- withr::local_tempdir()
+  retired <- retired_cerebros(root)
+  expect_error(
+    readCerebro(retired$unknown_backend),
+    "expression-backend descriptor is invalid"
+  )
+})
+
+## ---------------------------------------------------------------------------
+## Immune repertoire sidecar
+## ---------------------------------------------------------------------------
+
+test_that("immune_sidecar = \"always\" writes the repertoire next to the CRB", {
+  skip_if_not_installed("qs2")
+
+  for (codec in c("qs2", "rds")) {
+    root <- withr::local_tempdir()
+    object <- make_embedded_cerebro()
+    object$addImmuneRepertoire(immune_tables())
+    path <- file.path(root, "dataset.crb")
+    saveCerebro(object, path, codec = codec, immune_sidecar = "always")
+
+    sidecar <- file.path(root, paste0("dataset.immune.", codec))
+    expect_true(file.exists(sidecar), info = codec)
+    expect_setequal(
+      list.files(root),
+      c("dataset.crb", basename(sidecar))
+    )
+
+    payload <- .readCerebroPayload(path)
+    expect_length(payload$immune_repertoire, 0L)
+    descriptor <- payload$immune_repertoire_backend
+    expect_identical(descriptor$type, "file", info = codec)
+    expect_identical(descriptor$file, basename(sidecar), info = codec)
+    expect_identical(descriptor$md5, unname(tools::md5sum(sidecar)))
+    expect_identical(descriptor$samples, c("a", "b"))
+    expect_identical(descriptor$chains, c("TRA", "TRB", "IGH", "IGK", "IGL"))
+    expect_false("root" %in% names(descriptor))
+    expect_setequal(
+      names(descriptor),
+      c("type", "file", "md5", "samples", "chains")
+    )
+    ## the input object keeps its repertoire
+    expect_length(object$immune_repertoire, 2L)
+
+    restored <- readCerebro(path)
+    expect_length(restored$immune_repertoire, 0L)
+    expect_identical(
+      normalizePath(restored$immune_repertoire_backend$root),
+      normalizePath(root)
+    )
+    expect_identical(restored$getImmuneRepertoire(), immune_tables())
+    expect_identical(restored$immune_repertoire, immune_tables())
+  }
+})
+
+test_that("the immune sidecar is checked when the repertoire is loaded", {
+  skip_if_not_installed("qs2")
+
+  root <- withr::local_tempdir()
+  object <- make_embedded_cerebro()
+  object$addImmuneRepertoire(immune_tables())
+  path <- file.path(root, "dataset.crb")
+  saveCerebro(object, path, immune_sidecar = "always")
+  sidecar <- file.path(root, "dataset.immune.qs2")
+  original <- readBin(sidecar, "raw", file.info(sidecar)$size)
+
+  ## reading the CRB does not read the repertoire, so a corrupt file shows up
+  ## only when it is first needed
+  writeBin(c(original[-1L], as.raw(0L)), sidecar)
+  restored <- readCerebro(path)
+  expect_error(restored$getImmuneRepertoire(), "checksum does not match")
+  expect_error(restored$getTCR(), "checksum does not match")
+  expect_length(restored$immune_repertoire, 0L)
+
+  writeBin(original, sidecar)
+  expect_identical(restored$getImmuneRepertoire(), immune_tables())
+
+  ## a sidecar that vanishes after the CRB was read
+  restored <- readCerebro(path)
+  file.remove(sidecar)
+  expect_error(restored$getImmuneRepertoire(), "sidecar is missing")
+
+  ## and one that is missing when the CRB is read
+  expect_error(readCerebro(path), "immune repertoire sidecar is missing")
+
+  ## a CRB copied without its sidecar
+  writeBin(original, sidecar)
+  alone <- file.path(withr::local_tempdir(), "dataset.crb")
+  file.copy(path, alone)
+  expect_error(readCerebro(alone), "immune repertoire sidecar is missing")
+})
+
+test_that("a malformed immune sidecar descriptor is rejected", {
+  skip_if_not_installed("qs2")
+
+  root <- withr::local_tempdir()
+  object <- make_embedded_cerebro()
+  object$addImmuneRepertoire(immune_tables())
+  path <- file.path(root, "dataset.crb")
+  saveCerebro(object, path, immune_sidecar = "always")
+
+  edit <- function(change) {
+    payload <- .currentCerebroCopy(.readCerebroPayload(path))
+    descriptor <- payload$immune_repertoire_backend
+    payload$immune_repertoire_backend <- change(descriptor)
+    target <- tempfile(tmpdir = root, fileext = ".crb")
+    saveRDS(payload, target)
+    target
+  }
+  expect_error(
+    readCerebro(edit(function(d) utils::modifyList(d, list(md5 = "abc")))),
+    "descriptor is invalid"
+  )
+  expect_error(
+    readCerebro(edit(function(d) utils::modifyList(d, list(file = "../x.qs2")))),
+    "descriptor is invalid"
+  )
+  expect_error(
+    readCerebro(edit(function(d) utils::modifyList(d, list(type = "directory")))),
+    "retired format"
+  )
+})
+
+test_that("immune_sidecar = \"auto\" externalises only a large H5-backed repertoire", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  fixture$object$addImmuneRepertoire(immune_tables())
+  sidecar <- file.path(root, "h5.immune.qs2")
+
+  ## below the default threshold the repertoire stays in the CRB
+  saveCerebro(fixture$object, file.path(root, "h5.crb"))
+  expect_false(file.exists(sidecar))
+  expect_length(.readCerebroPayload(file.path(root, "h5.crb"))$immune_repertoire, 2L)
+
+  ## the threshold counts repertoire rows and is inclusive
+  saveCerebro(
+    fixture$object,
+    file.path(root, "h5.crb"),
+    immune_sidecar_threshold = 5L
+  )
+  expect_false(file.exists(sidecar))
+  saveCerebro(
+    fixture$object,
+    file.path(root, "h5.crb"),
+    immune_sidecar_threshold = 4L
+  )
+  expect_true(file.exists(sidecar))
+  payload <- .readCerebroPayload(file.path(root, "h5.crb"))
+  expect_length(payload$immune_repertoire, 0L)
+  expect_identical(payload$immune_repertoire_backend$file, "h5.immune.qs2")
+  restored <- readCerebro(file.path(root, "h5.crb"))
+  expect_cerebro_fields(restored, fixture)
+  expect_identical(restored$getImmuneRepertoire(), immune_tables())
+  file.remove(sidecar)
+
+  ## "never" keeps it embedded whatever the size
+  saveCerebro(
+    fixture$object,
+    file.path(root, "h5.crb"),
+    immune_sidecar = "never",
+    immune_sidecar_threshold = 1L
+  )
+  expect_false(file.exists(sidecar))
+  expect_length(.readCerebroPayload(file.path(root, "h5.crb"))$immune_repertoire, 2L)
+
+  ## "always" also applies to an H5-backed CRB
+  saveCerebro(
+    fixture$object,
+    file.path(root, "h5.crb"),
+    immune_sidecar = "always"
+  )
+  expect_true(file.exists(sidecar))
+})
+
+test_that("auto never moves the repertoire of an embedded CRB out of the file", {
+  skip_if_not_installed("qs2")
+
+  root <- withr::local_tempdir()
+  object <- make_embedded_cerebro()
+  object$addImmuneRepertoire(immune_tables())
+  path <- file.path(root, "embedded.crb")
+
+  saveCerebro(object, path, immune_sidecar_threshold = 1L)
+  expect_identical(list.files(root), "embedded.crb")
+  payload <- .readCerebroPayload(path)
+  expect_length(payload$immune_repertoire, 2L)
+  expect_null(payload$immune_repertoire_backend)
+
+  saveCerebro(object, path, immune_sidecar = "never")
+  expect_identical(list.files(root), "embedded.crb")
+
+  ## nothing to externalise, nothing written
+  saveCerebro(make_embedded_cerebro(), path, immune_sidecar = "always")
+  expect_identical(list.files(root), "embedded.crb")
+})
+
+test_that("saveCerebro validates the immune sidecar options", {
+  object <- make_embedded_cerebro()
+  path <- file.path(withr::local_tempdir(), "options.crb")
+
+  expect_error(
+    saveCerebro(object, path, immune_sidecar = "sometimes"),
+    "should be one of"
+  )
+  expect_error(
+    saveCerebro(object, path, immune_sidecar_threshold = -1),
+    "non-negative"
+  )
+  expect_error(
+    saveCerebro(object, path, immune_sidecar_threshold = c(1, 2)),
+    "non-negative"
+  )
+  expect_false(file.exists(path))
+})
+
+test_that("saving an object that already has a sidecar reuses it", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  fixture$object$addImmuneRepertoire(immune_tables())
+  path <- file.path(root, "dataset.crb")
+  saveCerebro(fixture$object, path, immune_sidecar = "always")
+  sidecar <- file.path(root, "dataset.immune.qs2")
+  md5 <- unname(tools::md5sum(sidecar))
+  info <- file.info(sidecar)
+
+  ## a re-save keeps the descriptor and does not rewrite the file
+  restored <- readCerebro(path)
+  saveCerebro(restored, path, immune_sidecar = "always")
+  expect_identical(unname(tools::md5sum(sidecar)), md5)
+  expect_identical(.readCerebroPayload(path)$immune_repertoire_backend$md5, md5)
+  expect_identical(file.info(sidecar)$mtime, info$mtime)
+
+  ## also once the repertoire was loaded into the object
+  restored$getImmuneRepertoire()
+  expect_length(restored$immune_repertoire, 2L)
+  saveCerebro(restored, path, immune_sidecar = "never")
+  expect_length(.readCerebroPayload(path)$immune_repertoire, 0L)
+  expect_identical(unname(tools::md5sum(sidecar)), md5)
+  expect_identical(
+    readCerebro(path)$getImmuneRepertoire(),
+    immune_tables()
+  )
+
+  ## and when it is saved under another name in the same directory
+  copy <- file.path(root, "copy.crb")
+  saveCerebro(readCerebro(path), copy)
+  expect_false(file.exists(file.path(root, "copy.immune.qs2")))
+  expect_identical(
+    .readCerebroPayload(copy)$immune_repertoire_backend$file,
+    "dataset.immune.qs2"
+  )
+  expect_identical(readCerebro(copy)$getImmuneRepertoire(), immune_tables())
+
+  ## convertCerebro carries the sidecar along
+  convertCerebro(path, codec = "rds")
+  expect_identical(unname(tools::md5sum(sidecar)), md5)
+  expect_identical(readCerebro(path)$getImmuneRepertoire(), immune_tables())
+})
+
+test_that("replacing a CRB replaces its own immune sidecar", {
+  skip_if_not_installed("qs2")
+
+  root <- withr::local_tempdir()
+  object <- make_embedded_cerebro()
+  object$addImmuneRepertoire(immune_tables())
+  path <- file.path(root, "dataset.crb")
+  sidecar <- file.path(root, "dataset.immune.qs2")
+  saveCerebro(object, path, immune_sidecar = "always")
+  first <- unname(tools::md5sum(sidecar))
+
+  changed <- immune_tables()
+  changed$a$CTgene[[1L]] <- "TRGV1.TRGJ1.TRGC1"
+  object$addImmuneRepertoire(changed)
+  saveCerebro(object, path, immune_sidecar = "always")
+
+  expect_false(identical(unname(tools::md5sum(sidecar)), first))
+  expect_identical(readCerebro(path)$getImmuneRepertoire(), changed)
+  expect_setequal(list.files(root, all.files = TRUE, no.. = TRUE), c(
+    "dataset.crb",
+    "dataset.immune.qs2"
+  ))
+})
+
+## ---------------------------------------------------------------------------
+## getBCR() / getTCR() derive from the unified repertoire
+## ---------------------------------------------------------------------------
+
+test_that("getTCR and getBCR split the unified repertoire by chain", {
+  object <- Cerebro$new()
+  expect_identical(object$getTCR(), list())
+  expect_identical(object$getBCR(), list())
+
+  object$addImmuneRepertoire(list(
+    mixed = data.frame(
+      barcode = paste0("c", 1:5),
+      CTgene = c(
+        "TRAV1.TRAJ1.TRAC_TRBV1.TRBJ1.TRBC1",
+        "IGHV1.IGHJ1.IGHM_IGKV1.IGKJ1.IGKC",
+        "TRGV1.TRGJ1.TRGC1_TRDV1.TRDJ1.TRDC",
+        "IGLV1.IGLJ1.IGLC1",
+        NA
+      ),
+      stringsAsFactors = FALSE
+    ),
+    tcr_only = data.frame(
+      barcode = c("t1", "t2"),
+      CTgene = c("TRBV5.TRBJ1.TRBC1", "TRAV9.TRAJ9.TRAC"),
+      stringsAsFactors = FALSE
+    ),
+    bcr_only = data.frame(
+      barcode = "b1",
+      CTgene = "IGHV3.IGHJ3.IGHG1_IGKV3.IGKJ3.IGKC",
+      stringsAsFactors = FALSE
+    ),
+    no_gene_column = data.frame(barcode = "x1", stringsAsFactors = FALSE),
+    empty = data.frame(
+      barcode = character(),
+      CTgene = character(),
+      stringsAsFactors = FALSE
+    )
+  ))
+
+  tcr <- object$getTCR()
+  expect_named(tcr, c("mixed", "tcr_only"))
+  expect_identical(tcr$mixed$barcode, c("c1", "c3"))
+  expect_identical(tcr$tcr_only$barcode, c("t1", "t2"))
+
+  bcr <- object$getBCR()
+  expect_named(bcr, c("mixed", "bcr_only"))
+  expect_identical(bcr$mixed$barcode, c("c2", "c4"))
+  expect_identical(bcr$bcr_only$barcode, "b1")
+
+  ## the unified repertoire itself is untouched
+  expect_named(
+    object$getImmuneRepertoire(),
+    c("mixed", "tcr_only", "bcr_only", "no_gene_column", "empty")
+  )
+  expect_identical(nrow(object$getImmuneRepertoire()$mixed), 5L)
+})
+
+test_that("getTCR and getBCR read a file-backed repertoire lazily", {
+  skip_if_not_installed("qs2")
+
+  root <- withr::local_tempdir()
+  object <- make_embedded_cerebro()
+  object$addImmuneRepertoire(immune_tables())
+  path <- file.path(root, "dataset.crb")
+  saveCerebro(object, path, immune_sidecar = "always")
+
+  restored <- readCerebro(path)
+  expect_length(restored$immune_repertoire, 0L)
+  expect_named(restored$getTCR(), c("a", "b"))
+  expect_identical(restored$getTCR()$a$barcode, "cell-1")
+  expect_identical(restored$getTCR()$b$barcode, "cell-3")
+  expect_named(restored$getBCR(), c("a", "b"))
+  expect_identical(restored$getBCR()$a$barcode, "cell-2")
+  expect_identical(restored$getBCR()$b$barcode, "cell-4")
+})
+
+test_that("the Cerebro class no longer stores bcr_data or tcr_data", {
+  object <- Cerebro$new()
+  expect_false(any(c("bcr_data", "tcr_data") %in% names(Cerebro$public_fields)))
+  expect_false(any(
+    c("addBCRData", "addTCRData") %in% names(Cerebro$public_methods)
+  ))
+  expect_false(exists("bcr_data", envir = object, inherits = FALSE))
+  expect_false(exists("tcr_data", envir = object, inherits = FALSE))
+  expect_error(object$setExpressionBackend("retired-store", "x.retired"), "one of")
+})
+
+## ---------------------------------------------------------------------------
+## Spatial molecules and bundled files
+## ---------------------------------------------------------------------------
 
 test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
   skip_if_not_installed("qs2")
@@ -135,44 +1199,6 @@ test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
   expect_identical(runtime_object$getSpatialData("fov1")$molecules, molecules)
 })
 
-test_that("immune repertoires can load lazily from a BPCells sidecar", {
-  skip_if_not_installed("BPCells")
-  skip_if_not_installed("Matrix")
-  skip_if_not_installed("qs2")
-
-  root <- withr::local_tempdir()
-  fixture <- make_bpcells_cerebro(root)
-  path <- file.path(root, "immune-lazy.crb")
-  repertoire <- list(
-    sample_a = data.frame(
-      barcode = fixture$cells[1:2],
-      CTgene = c("TRB1", "TRB2"),
-      stringsAsFactors = FALSE
-    )
-  )
-  repertoire_file <- file.path(fixture$sidecar, "immune_repertoire.qs2")
-  qs2::qs_save(repertoire, repertoire_file)
-  fixture$object$immune_repertoire_backend <- list(
-    type = "bpcells-file",
-    file = basename(repertoire_file),
-    md5 = unname(tools::md5sum(repertoire_file)),
-    samples = names(repertoire),
-    chains = "TRB"
-  )
-
-  saveCerebro(fixture$object, path)
-  payload <- .readCerebroPayload(path)
-  expect_length(payload$immune_repertoire, 0L)
-  expect_false("root" %in% names(payload$immune_repertoire_backend))
-  expect_identical(payload$immune_repertoire_backend$samples, "sample_a")
-  expect_identical(payload$immune_repertoire_backend$chains, "TRB")
-
-  restored <- readCerebro(path)
-  expect_length(restored$immune_repertoire, 0L)
-  expect_identical(restored$getImmuneRepertoire(), repertoire)
-  expect_identical(restored$immune_repertoire, repertoire)
-})
-
 test_that("bundled demo CRBs use the current qs2 codec", {
   demo_dir <- file.path(viewer_app_test_path(), "extdata", "examples")
   demos <- list.files(
@@ -195,195 +1221,108 @@ test_that("bundled demo CRBs use the current qs2 codec", {
   }
 })
 
-test_that("thin RDS and qs2 CRBs share one validated BPCells sidecar", {
-  skip_if_not_installed("BPCells")
-  skip_if_not_installed("Matrix")
-  skip_if_not_installed("qs2")
+## ---------------------------------------------------------------------------
+## Gate parity, failed saves and malformed descriptors
+## ---------------------------------------------------------------------------
 
+test_that("the package and the Viewer agree on which CRBs are retired", {
   root <- withr::local_tempdir()
-  fixture <- make_bpcells_cerebro(root)
-  rds <- file.path(root, "thin-rds.crb")
-  qs <- file.path(root, "thin-qs2.crb")
-  saveCerebro(fixture$object, rds, codec = "rds")
-  saveCerebro(fixture$object, qs)
+  retired <- retired_cerebros(root)
+  runtime <- runtime_env()
 
-  payload <- .readCerebroPayload(rds)
-  expect_null(payload$expression)
-  expect_false("cell_barcode" %in% names(payload$meta_data))
-  expect_type(payload$meta_data$nUMI, "integer")
-  expect_type(payload$meta_data$nGene, "integer")
-  expect_identical(payload$crb_schema$version, 2L)
-  expect_identical(payload$crb_schema$n_cells, length(fixture$cells))
+  current <- file.path(root, "current.crb")
+  saveCerebro(make_embedded_cerebro(), current)
+  paths <- c(
+    vapply(retired$entries, function(entry) entry$path, character(1)),
+    unknown_backend = retired$unknown_backend,
+    current = current
+  )
+  for (name in names(paths)) {
+    object <- .readCerebroPayload(paths[[name]])
+    expect_identical(
+      .legacyCerebroReason(object),
+      runtime$.runtimeLegacyReason(object),
+      info = name
+    )
+  }
+
+  ## a malformed (active) descriptor is left to the readers by both
+  payload <- new.env(parent = emptyenv())
+  makeActiveBinding("expression_backend", function() NULL, payload)
+  payload$availableSpatial <- function() character()
   expect_identical(
-    payload$cell_fingerprint,
-    "md5-cell-set-v1:e4f597e835d59a5ae4da3f346939b09e"
+    .legacyCerebroReason(payload),
+    runtime$.runtimeLegacyReason(payload)
   )
-  expect_identical(payload$crb_schema$projection_rownames, "umap")
-  expect_identical(
-    readBin(qs, "raw", n = 4L),
-    as.raw(c(0x0b, 0x0e, 0x0a, 0xc1))
-  )
-
-  rds_object <- readCerebro(rds)
-  qs_object <- readCerebro(qs)
-  expect_cerebro_fields(rds_object, fixture)
-  expect_cerebro_fields(qs_object, fixture)
-
-  runtime <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = runtime
-  )
-  runtime_object <- runtime$read_cerebro_file(qs)
-  runtime_object <- runtime$.attachExternalExpression(runtime_object, qs)
-  expect_true(rlang::env_binding_are_lazy(runtime_object, "meta_data"))
-  expect_true(rlang::env_binding_are_lazy(runtime_object, "projections"))
-  expect_true(rlang::env_binding_are_lazy(runtime_object, "expression"))
-  expect_identical(
-    runtime$.runtimeCerebroCellCount(runtime_object),
-    length(fixture$cells)
-  )
-  expect_true(rlang::env_binding_are_lazy(runtime_object, "meta_data"))
-  expect_identical(
-    runtime_object$cell_fingerprint,
-    payload$cell_fingerprint
-  )
-  expect_identical(runtime_object$meta_data, qs_object$meta_data)
-  expect_identical(runtime_object$projections, qs_object$projections)
-  expect_equal(as.matrix(runtime_object$expression), fixture$counts)
-
-  v1 <- .currentCerebroCopy(payload)
-  v1$crb_schema$n_cells <- NULL
-  v1$crb_schema$version <- 1L
-  v1_path <- file.path(root, "thin-v1.crb")
-  saveRDS(v1, v1_path)
-  expect_cerebro_fields(readCerebro(v1_path), fixture)
-  runtime_v1 <- runtime$read_cerebro_file(v1_path)
-  runtime_v1 <- runtime$.attachExternalExpression(runtime_v1, v1_path)
-  expect_false(rlang::env_binding_are_lazy(runtime_v1, "meta_data"))
-  expect_false(rlang::env_binding_are_lazy(runtime_v1, "projections"))
-  expect_true(rlang::env_binding_are_lazy(runtime_v1, "expression"))
-  expect_identical(runtime_v1$meta_data$cell_barcode, fixture$cells)
-
-  invalid_count <- .currentCerebroCopy(payload)
-  invalid_count$crb_schema$n_cells <- length(fixture$cells) + 1L
-  invalid_count_path <- file.path(root, "invalid-count.crb")
-  saveRDS(invalid_count, invalid_count_path)
-  expect_error(readCerebro(invalid_count_path), "cell count")
-  invalid_count_runtime <- runtime$read_cerebro_file(invalid_count_path)
-  expect_error(
-    runtime$.attachExternalExpression(
-      invalid_count_runtime,
-      invalid_count_path
-    ),
-    "cell count"
-  )
-
-  invalid <- .readCerebroPayload(rds)
-  invalid$crb_schema$cell_names_md5 <- paste(rep("0", 32L), collapse = "")
-  invalid_path <- file.path(root, "invalid-checksum.crb")
-  saveRDS(invalid, invalid_path)
-  expect_error(readCerebro(invalid_path), "cell-name index does not match")
-
-  duplicated <- .currentCerebroCopy(payload)
-  duplicated_path <- file.path(root, "duplicated-index.crb")
-  names_file <- file.path(fixture$sidecar, "col_names")
-  writeLines(
-    c(fixture$cells[[1L]], fixture$cells[[1L]], fixture$cells[3:4]),
-    names_file,
-    useBytes = TRUE
-  )
-  duplicated$crb_schema$cell_names_md5 <- unname(tools::md5sum(names_file))
-  saveRDS(duplicated, duplicated_path)
-  duplicated_runtime <- runtime$read_cerebro_file(duplicated_path)
-  duplicated_runtime <- runtime$.attachExternalExpression(
-    duplicated_runtime,
-    duplicated_path
-  )
-  expect_true(rlang::env_binding_are_lazy(duplicated_runtime, "meta_data"))
-  expect_error(
-    duplicated_runtime$meta_data,
-    "incompatible cell metadata"
-  )
-  writeLines(fixture$cells, names_file, useBytes = TRUE)
-
-  missing_root <- file.path(root, "missing-sidecar")
-  dir.create(missing_root)
-  missing_sidecar <- file.path(missing_root, basename(rds))
-  file.copy(rds, missing_sidecar)
-  expect_error(readCerebro(missing_sidecar), "sidecar is missing")
-
-  converted <- file.path(root, "converted-rds.crb")
-  convertCerebro(qs, converted, codec = "rds")
-  expect_cerebro_fields(readCerebro(converted), fixture)
-
-  other_root <- file.path(root, "converted")
-  cross_directory <- file.path(other_root, "converted-rds.crb")
-  expect_error(
-    convertCerebro(qs, cross_directory, codec = "rds"),
-    "must be in the same directory"
-  )
-  expect_false(file.exists(cross_directory))
-
-  convertCerebro(qs)
-  expect_cerebro_fields(readCerebro(qs), fixture)
 })
 
-test_that("Data Info reads the v2 cell count without forcing metadata", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = runtime
+test_that("the package and the Viewer read the same CRB schema and H5 names", {
+  skip_if_no_h5()
+  runtime <- runtime_env()
+  fixture <- make_h5_cerebro(withr::local_tempdir())
+  expect_identical(
+    .h5CellNames(fixture$h5),
+    runtime$.runtimeH5Names(fixture$h5, "genes")
   )
-  object <- new.env(parent = emptyenv())
-  object$crb_schema <- list(version = 2L, n_cells = 4L)
-  delayedAssign(
-    "meta_data",
-    stop("metadata was forced"),
-    assign.env = object
+  expect_identical(
+    .h5GeneNames(fixture$h5),
+    runtime$.runtimeH5Names(fixture$h5, "barcodes")
   )
 
-  expect_identical(runtime$.runtimeCerebroCellCount(object), 4L)
-  expect_true(rlang::env_binding_are_lazy(object, "meta_data"))
+  valid <- list(
+    version = 3L,
+    cell_names_hash = .cerebroCellNamesHash(fixture$cells),
+    projection_rownames = character(),
+    n_cells = 4L
+  )
+  schemas <- list(
+    valid = valid,
+    v2 = utils::modifyList(valid, list(version = 2L)),
+    short_hash = utils::modifyList(valid, list(cell_names_hash = "abc")),
+    extra_field = c(valid, list(other = 1L)),
+    missing_field = valid[c("version", "n_cells")]
+  )
+  for (name in names(schemas)) {
+    object <- legacy_payload(list(crb_schema = schemas[[name]]))
+    package_result <- tryCatch(
+      .readCrbSchema(object, "x.crb"),
+      error = function(error) "error"
+    )
+    viewer_result <- tryCatch(
+      runtime$.readRuntimeCrbSchema(object, "x.crb"),
+      error = function(error) "error"
+    )
+    expect_identical(package_result, viewer_result, info = name)
+  }
 })
 
-test_that("thin schema v2 hydrates row-major BPCells sidecars", {
-  skip_if_not_installed("BPCells")
-  skip_if_not_installed("Matrix")
-
+test_that("a failed save leaves no staged immune sidecar behind", {
   root <- withr::local_tempdir()
-  fixture <- make_bpcells_cerebro(root, row_major = TRUE)
-  path <- file.path(root, "thin-v2.crb")
-  saveCerebro(fixture$object, path, codec = "rds")
-
-  payload <- .readCerebroPayload(path)
-  expect_identical(payload$crb_schema$version, 2L)
-  expect_identical(payload$crb_schema$cell_names, "expression")
-  expect_cerebro_fields(readCerebro(path), fixture)
-
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
-  runtime_object <- runtime$read_cerebro_file(path)
-  runtime_object <- runtime$.attachExternalExpression(runtime_object, path)
-  expect_true(rlang::env_binding_are_lazy(runtime_object, "expression"))
-  expect_equal(as.matrix(runtime_object$expression), fixture$counts)
-
-  malformed <- payload
-  malformed$crb_schema$version <- 2
-  malformed_path <- file.path(root, "malformed-v2.crb")
-  saveRDS(malformed, malformed_path)
-  expect_error(readCerebro(malformed_path), "unsupported CRB schema")
+  object <- make_embedded_cerebro()
+  object$addImmuneRepertoire(immune_tables())
+  testthat::local_mocked_bindings(
+    .stageSpatialMolecules = function(...) stop("spatial staging failed"),
+    .package = "CerebroNexus"
+  )
   expect_error(
-    runtime$.attachExternalExpression(
-      runtime$read_cerebro_file(malformed_path),
-      malformed_path
-    ),
-    "unsupported CRB schema"
+    saveCerebro(object, file.path(root, "dataset.crb"), immune_sidecar = "always"),
+    "spatial staging failed"
   )
+  expect_length(list.files(root, all.files = TRUE, no.. = TRUE), 0L)
+})
 
-  writeLines(
-    c("tampered", fixture$cells[-1L]),
-    file.path(fixture$sidecar, "col_names")
+test_that("convertCerebro rejects a malformed expression backend", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, "junk.crb")
+  saveRDS(
+    legacy_payload(list(
+      expression = h5_counts(h5_cells()),
+      meta_data = data.frame(cell_barcode = h5_cells()),
+      expression_backend = "junk"
+    )),
+    path
   )
-  expect_error(readCerebro(path), "cell-name index does not match")
+  before <- unname(tools::md5sum(path))
+  expect_error(convertCerebro(path), "unsupported expression-backend descriptor")
+  expect_identical(unname(tools::md5sum(path)), before)
 })

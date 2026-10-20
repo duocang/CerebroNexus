@@ -9,7 +9,9 @@ saveCerebro(
   file,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
-  viewer_binary_threshold = 500000L
+  viewer_binary_threshold = 500000L,
+  immune_sidecar = c("auto", "always", "never"),
+  immune_sidecar_threshold = 100000L
 )
 }
 \arguments{
@@ -25,12 +27,26 @@ for large datasets, \code{"always"}, or \code{"never"}.}
 
 \item{viewer_binary_threshold}{Dataset-level cell threshold used by
 \code{viewer_binary = "auto"}.}
+
+\item{immune_sidecar}{Store the immune repertoire in a sibling file
+\code{<stem>.immune.qs2} (\code{.rds} with \code{codec = "rds"}) instead of
+inside the CRB. \code{"auto"} does so for H5-backed CRBs whose repertoire has
+at least \code{immune_sidecar_threshold} rows; \code{"always"} and
+\code{"never"} override that. The Viewer then lists samples and chains
+without reading the repertoire, and loads it when the Immune repertoire page
+needs it. The sidecar must travel with the CRB.}
+
+\item{immune_sidecar_threshold}{Number of repertoire rows (cells with
+receptor data) used by \code{immune_sidecar = "auto"}.}
 }
 \value{
 The output path, invisibly.
 }
 \description{
-Saves a Cerebro object as a thin CRB when it uses a BPCells sidecar and
-stores spatial molecule tables in a sibling per-FOV sidecar. The input
-object and existing sidecars are not modified.
+Saves a Cerebro object. An object whose expression matrix sits in an H5
+sidecar is saved as a thin CRB: the cell names stay in the H5 file and the
+CRB keeps only their order and a checksum. Spatial molecule tables go to a
+sibling per-FOV sidecar, and a large immune repertoire to a sibling file (see
+\code{immune_sidecar}). The input object and existing sidecars are not
+modified.
 }

@@ -968,12 +968,25 @@ server <- function(input, output, session) {
             prefetch_task <- crb_prefetch_tasks[[cache_key]]
             if (!is.null(prefetch_task)) {
               status <- prefetch_task$status()
-              if (status %in% c("initial", "running")) {
+              if (
+                status %in% c("initial", "running") &&
+                  crb_prefetch_waited(cache_key) >= crb_prefetch_timeout_seconds
+              ) {
+                warning(
+                  "CRB background prefetch did not finish within ",
+                  crb_prefetch_timeout_seconds,
+                  " s; loading synchronously.",
+                  call. = FALSE
+                )
+                crb_prefetch_abandon(cache_key)
+              } else if (status %in% c("initial", "running")) {
                 datasetLoadProgress(
                   dataset_label,
                   24,
                   "Reading dataset in the background"
                 )
+                ## Re-check the time limit even if the task never reports back.
+                invalidateLater(1000)
                 prefetch_task$result()
               } else if (identical(status, "success")) {
                 prefetched <- prefetch_task$result()

@@ -97,27 +97,24 @@ test_that("explicit sample column works without name heuristics", {
 })
 
 test_that("thin CRB summaries obtain gene counts from matrix headers", {
-  skip_if_not_installed("BPCells")
-  root <- withr::local_tempdir()
-  sidecar <- file.path(root, "matrix.bpcells")
-  mat <- matrix(0, 3, 2, dimnames = list(c("A", "B", "C"), c("x", "y")))
-  BPCells::write_matrix_dir(
-    mat = methods::as(Matrix::Matrix(mat, sparse = TRUE), "IterableMatrix"),
-    dir = sidecar
+  skip_if_not_installed("HDF5Array")
+  fixture <- viewer_h5_fixture(
+    withr::local_tempdir(),
+    values = matrix(
+      0,
+      3,
+      2,
+      dimnames = list(c("A", "B", "C"), c("x", "y"))
+    ),
+    stem = "thin"
   )
-  object <- Cerebro$new()
-  object$setMetaData(data.frame(
-    sample = c("one", "two"),
-    row.names = c("x", "y")
-  ))
-  object$setExpressionBackend(type = "bpcells", location = basename(sidecar))
   info <- CerebroNexus:::.readBundleDatasetInfo(
-    object,
+    fixture$object,
     "Thin",
-    file.path(root, "thin.crb")
+    fixture$crb
   )
   expect_identical(info$overview$genes, 3L)
-  expect_null(object$expression)
+  expect_null(fixture$object$expression)
 })
 
 test_that("counts match for factors, blanks, whitespace and ties", {
