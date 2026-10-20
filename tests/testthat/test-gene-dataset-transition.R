@@ -61,7 +61,18 @@ test_that("mounted gene selections and completion survive a dataset round trip",
   )
   withr::defer(app$stop())
   app$click(selector = 'a[href="#shiny-tab-geneExpression"]')
-  genes <- c("AAK1", "ABCB9", "AC004687.1", "AC009123.1")
+  ## Genes that both example data sets carry, whatever panel each one keeps.
+  example_genes <- function(file) {
+    readCerebro(system.file(
+      file.path("extdata/examples", file),
+      package = "CerebroNexus"
+    ))$getGeneNames()
+  }
+  pbmc_genes <- example_genes("demo_full_tcr_bcr.crb")
+  shared <- pbmc_genes[
+    tolower(pbmc_genes) %in% tolower(example_genes("demo_spatial_visium.crb"))
+  ]
+  genes <- sort(shared)[seq_len(4L)]
   viewer_set_selectize(app, "expression_genes_input", genes)
   app$set_inputs(
     expression_projection_genes_in_separate_panels = "separate",

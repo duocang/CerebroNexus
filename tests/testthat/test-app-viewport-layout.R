@@ -161,7 +161,17 @@ test_that("shared selection actions and layouts survive navigation and resize", 
   ))
   expect_match(
     linked_selection_status$count,
-    "^[0-9,]+ / 1,476 selected$"
+    paste0(
+      "^[0-9,]+ / ",
+      format(
+        ncol(readCerebro(system.file(
+          "extdata/examples/demo_full_tcr_bcr.crb",
+          package = "CerebroNexus"
+        ))$expression),
+        big.mark = ","
+      ),
+      " selected$"
+    )
   )
   expect_match(linked_selection_status$origin, "^From ")
   expect_no_match(

@@ -11,6 +11,21 @@
 devtools::load_all(".", quiet = TRUE)
 source("data-raw/demo_gene_panel.R")
 
+## A trajectory lists the cells it covers in the row names of `meta`; only the
+## cells that are kept stay in it (the graph edges describe states, not cells).
+demo_subset_trajectories <- function(trajectories, kept) {
+  lapply(trajectories, function(method) {
+    lapply(method, function(trajectory) {
+      if (is.list(trajectory) && is.data.frame(trajectory$meta)) {
+        trajectory$meta <- trajectory$meta[
+          rownames(trajectory$meta) %in% kept, , drop = FALSE
+        ]
+      }
+      trajectory
+    })
+  })
+}
+
 demo_subsample_cells <- function(object, n_keep, seed) {
   cells <- colnames(object$expression)
   stopifnot(
@@ -45,6 +60,7 @@ demo_subsample_cells <- function(object, n_keep, seed) {
     }
     result$spatial[[name]] <- entry
   }
+  result$trajectories <- demo_subset_trajectories(object$trajectories, kept)
   if (length(object$immune_repertoire)) {
     repertoire <- lapply(
       object$immune_repertoire,
