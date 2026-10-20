@@ -350,7 +350,7 @@ umap       <- as.data.frame(Seurat::Embeddings(so, "umap"))
 colnames(umap) <- c("UMAP_1", "UMAP_2")
 ```
 
-The analysis still uses 2,000 variable genes. The final `save_demo_crb()` step retains at most 1,500 genes, protecting available immune markers and filling by normalized-expression variance. All 12,000 cells, donor genotypes, receptors, dextramer calls and UMAP coordinates are preserved. Gene search is restricted to the exported panel.
+The analysis still uses 2,000 variable genes. The final `save_demo_crb()` step retains at most 500 genes, protecting available immune markers and filling by normalized-expression variance. All 12,000 cells, donor genotypes, receptors, dextramer calls and UMAP coordinates are preserved. Gene search is restricted to the exported panel.
 
 ## 3.9 Step 6 — assembling the `.crb`
 

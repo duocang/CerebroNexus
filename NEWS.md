@@ -60,9 +60,12 @@ immune repertoire in a retired sidecar layout, or is a pre-spatial
   directory, thin schema 1 or 2) cannot be converted. Re-export it from the
   source object with `exportFromSeurat(expression_matrix_mode = "h5")`, and
   delete the old matrix directory afterwards.
-- The example data sets in `inst/extdata/examples/` are rebuilt as thin H5-backed
-  CRBs, each with its `<stem>.h5` beside it (`data-raw/convert_demos_to_h5.R`);
-  `example.h5` is now the matrix of `example.crb`.
+- The example data sets in `inst/extdata/examples/` keep at most 500 genes
+  (100 for `demo_hla_tcr_dextramer.crb` and `demo_spatial_visium.crb`, the two
+  that were over 3 MB; before: up to 1,500), protecting marker genes and the
+  genes their analysis tables name, and keep a random subset of their cells
+  (1,000 to 3,000; `data-raw/subsample_demos.R`). They stay embedded; `demo_hla_tcr_dextramer.crb` and
+  `demo_spatial_merfish.crb` were converted to the current format.
 
 ## Stored files
 

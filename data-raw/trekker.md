@@ -146,14 +146,14 @@ Slide-seq demo in [`spatial.md`](spatial.md).
 
 ---
 
-## 5. Cell sampling and the 1,500-gene demo panel
+## 5. Cell sampling and the 500-gene demo panel
 
 The source has **21,374 genes × 7,420 nuclei**. The shipped demo preserves all
 **2,536 nuclei** from the previous artifact, including the evidence-image cells.
 The existing seeded, stratified cell-sampling code below is unchanged.
 
 After computing the full-input scores and attaching the Trekker slot, the builder
-exports at most **1,500 genes** through `demo_gene_panel.R`. It protects the
+exports at most **500 genes** through `demo_gene_panel.R`. It protects the
 Trekker picker markers, myelination signature and upstream Moran genes present in
 the matrix, then fills the budget by normalized-expression variance. The matrix
 stays sparse; retained values and cell/gene order do not change. This is a selected
@@ -203,7 +203,7 @@ Two stages in `build_trekker_demo.R`:
 
 **(a) a proper Cerebro object** — the down-sampled Seurat (SCT `data` + UMAP +
 `cluster`/`celltype` groups) goes through `exportFromSeurat()`, giving a normal
-`Cerebro` object. The final writer retains the selected 1,500-gene panel. This
+`Cerebro` object. The final writer retains the selected 500-gene panel. This
 powers gene colouring on the page: the gene picker lists the stored
 genes, and on selection the server slices one gene, quantises it 0–255, and
 sends it to the client aligned to the page's nuclei.

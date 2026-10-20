@@ -329,7 +329,7 @@ test_that("immune_repertoire module loads without breaking main app", {
 
   # Data info tab should still render normally (1476 cells in the new example)
   cells_box <- app$get_value(output = "load_data_overview")
-  expect_true(grepl("1,?476", cells_box$html))
+  expect_true(grepl("1,?000", cells_box$html))
 })
 
 test_that("Clonal UMAP tab renders with receptor + projection selectors", {

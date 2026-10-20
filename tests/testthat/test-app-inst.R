@@ -104,7 +104,7 @@ test_that("{shinytest2} recording: overview", {
 
   ## Data Info tab: verify key values from the loaded example.crb
   cells_box <- retry_get_value(app, output = "load_data_overview")
-  expect_true(grepl("1,?476", cells_box$html))
+  expect_true(grepl("1,?000", cells_box$html))
 
   organism_box <- retry_get_value(app, output = "load_data_overview")
   expect_true(grepl("Human", organism_box$html))
@@ -877,7 +877,7 @@ test_that("createShinyApp bundles a working app", {
   app$wait_for_idle(timeout = 20000)
 
   cells <- retry_get_value(app, output = "load_data_overview")
-  expect_true(grepl("1,?476", cells$html))
+  expect_true(grepl("1,?000", cells$html))
 
   app$stop()
 })

@@ -20,7 +20,7 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 
 ## Demo gene budget
 
-The active builders call `save_demo_crb()` from `demo_gene_panel.R` before publishing their final artifacts. It caps embedded expression at **1,500 genes**; smaller panels are kept whole. Available neural, stromal and immune markers, the Trekker picker/myelination genes and its upstream Moran genes are protected. Remaining places are filled by variance of the stored normalized expression, with deterministic input-order ties. This is a demo policy, not a biological feature-selection method or a filter applied to users' data.
+The active builders call `save_demo_crb()` from `demo_gene_panel.R` before publishing their final artifacts. It caps embedded expression at **500 genes** (**100** for the two demos that were still over 3 MB, `demo_hla_tcr_dextramer.crb` and `demo_spatial_visium.crb`, via `shrink_demos.R`); smaller panels are kept whole. Available neural, stromal and immune markers, the Trekker picker/myelination genes, its upstream Moran genes and the genes that the analysis tables name are protected. Remaining places are filled by variance of the stored normalized expression, with deterministic input-order ties. This is a demo policy, not a biological feature-selection method or a filter applied to users' data.
 
 Filtering happens after analysis. Retained values, sparse representation, cell identity/order, metadata (including full-input nUMI/nGene), groups, coordinates, trajectories, receptor/HLA data and images are preserved. Spatial expression is subset by the same genes without changing its cell order. The writer refuses to shrink objects carrying gene-analysis tables or gene lists until their references are explicitly reviewed. Panel provenance is stored in `parameters$demo_gene_panel`.
 
@@ -43,21 +43,23 @@ for (input in list.files("inst/extdata/examples", "\\.crb$", full.names = TRUE))
 
 The 2026-10-12 artifacts were derived this way from master `4d74a839`, without rerunning raw-data downloads, normalization, UMAP or cell sampling. All nine retain exactly their previous cells; four have fewer genes. The legacy synthetic Spatial fixture was transformed from its checked-in CRB, not regenerated from an original raw-data generator. Future active builder runs apply the same final export policy; full pipeline byte identity across dependency versions is not claimed.
 
-### Measured artifact sizes (2026-10-12)
+### Measured artifact sizes (500-gene panel)
 
-| CRB | Cells (unchanged) | Genes before → after | Before MiB | After MiB |
+| CRB | Cells (kept) | Genes before → after | Before MiB | After MiB |
 |---|---:|---:|---:|---:|
-| demo_full_tcr_bcr.crb | 1476 | 967 → 967 | 1.04 | 0.87 |
-| demo_hla_tcr_dextramer.crb | 12000 | 2000 → 1500 | 9.03 | 7.15 |
-| demo_spatial_merfish.crb | 5000 | 241 → 241 | 1.82 | 1.68 |
-| demo_spatial_slideseq.crb | 5000 | 2000 → 1500 | 1.48 | 1.20 |
-| demo_spatial_visium.crb | 2696 | 1200 → 1200 | 5.74 | 4.55 |
-| demo_spatial_xenium.crb | 5000 | 248 → 248 | 2.72 | 2.13 |
-| demo_spatial.crb | 1000 | 2500 → 1500 | 0.62 | 0.35 |
-| demo_trekker.crb | 2536 | 21374 → 1500 | 6.79 | 2.43 |
-| example.crb | 1476 | 967 → 967 | 1.03 | 0.86 |
+| demo_full_tcr_bcr.crb | 1000 | 967 → 500 | 1.04 | 0.65 |
+| demo_hla_tcr_dextramer.crb | 2000 | 2000 → 100 | 9.03 | 0.64 |
+| demo_spatial_merfish.crb | 1000 | 241 → 200 | 1.82 | 1.07 |
+| demo_spatial_slideseq.crb | 3000 | 2000 → 300 | 1.48 | 0.57 |
+| demo_spatial_visium.crb | 1000 | 1200 → 100 | 5.74 | 0.72 |
+| demo_spatial_xenium.crb | 2000 | 248 → 200 | 2.72 | 0.90 |
+| demo_spatial.crb | 1000 | 2500 → 500 | 0.62 | 0.27 |
+| demo_trekker.crb | 1000 | 21374 → 250 | 6.79 | 0.99 |
+| example.crb | 1000 | 967 → 300 | 1.03 | 0.57 |
 
-Total: **30.26 → 21.22 MiB (29.9% smaller)** versus master. This includes both gene selection and build-time compression; it is not a load-time speedup claim. Smaller gene counts do not imply proportional disk savings because low-expression rows were already sparse. Images and sidecars are unchanged. Git history size is not reduced.
+Total: **30.26 → 6.37 MiB (78.9% smaller)** versus master. This includes both gene selection and build-time compression; it is not a load-time speedup claim. Smaller gene counts do not imply proportional disk savings because low-expression rows were already sparse. Images and sidecars are unchanged. Git history size is not reduced.
+
+Every demo is also reduced to a random subset of its cells (`subsample_demos.R`, fixed seeds, the target count per file is in that script); expression, metadata, projections, spatial entries, the Trekker per-nucleus vectors and the repertoire are subset together.
 
 ### Validation
 

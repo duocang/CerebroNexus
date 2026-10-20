@@ -1429,7 +1429,7 @@ test_that("spatial and Trekker spaces do not require an expression projection", 
 
   spatial_crb <- base
   spatial_crb$availableSpatial <- function() "slice-a"
-  spatial_crb$getSpatialData <- function(name) {
+  spatial_crb$getSpatialData <- function(name, hydrate_molecules = TRUE) {
     list(
       coordinates = data.frame(
         x = c(1, 2),
@@ -1451,7 +1451,7 @@ test_that("spatial and Trekker spaces do not require an expression projection", 
 
   trekker_crb <- base
   trekker_crb$availableSpatial <- function() character()
-  trekker_crb$getSpatialData <- function(name) NULL
+  trekker_crb$getSpatialData <- function(name, hydrate_molecules = TRUE) NULL
   trekker_crb$getTrekker <- function() {
     list(
       x = c(10, 20),
@@ -2107,7 +2107,7 @@ test_that("each section offers only its own configured backgrounds", {
 test_that("per-image settings also apply to embedded backgrounds", {
   skip_if_not(have_bundle)
   cells <- c("c1", "c2")
-  crb <- list(getSpatialData = function(name) {
+  crb <- list(getSpatialData = function(name, hydrate_molecules = TRUE) {
     list(
       coordinates = data.frame(
         x = c(1.123456789, 2.987654321),
@@ -2209,18 +2209,22 @@ test_that("per-image settings also apply to embedded backgrounds", {
   )
 })
 
-test_that("legacy spatial images share identity and point appearance", {
+test_that("embedded spatial images share identity and point appearance", {
   skip_if_not(have_bundle)
   cells <- c("c1", "c2")
-  crb <- list(getSpatialData = function(name) {
+  crb <- list(getSpatialData = function(name, hydrate_molecules = TRUE) {
     list(
       coordinates = data.frame(
         x = c(1, 2),
         y = c(3, 4),
         row.names = cells
       ),
-      histology_image = "data:image/png;base64,AA==",
-      histology_image_bounds = list(xmin = 0, xmax = 3, ymin = 0, ymax = 5)
+      histology_images = list(
+        `Tissue background` = list(
+          histology_image = "data:image/png;base64,AA==",
+          histology_image_bounds = c(xmin = 0, xmax = 3, ymin = 0, ymax = 5)
+        )
+      )
     )
   })
   cv_env$Cerebro.options <- list(
@@ -2269,7 +2273,7 @@ test_that("legacy spatial images share identity and point appearance", {
 test_that("Linked views keeps the all-ROI coordinate layout unchanged", {
   skip_if_not(have_bundle)
   cells <- c("c1", "c2")
-  crb <- list(getSpatialData = function(name) {
+  crb <- list(getSpatialData = function(name, hydrate_molecules = TRUE) {
     list(
       coordinates = data.frame(
         x = c(0, 2),
@@ -2411,6 +2415,8 @@ test_that("bundling two images of the same basename keeps both", {
   crb_two <- file.path(tmp, "demo-two.crb")
   file.copy(example, crb_one, overwrite = TRUE)
   file.copy(example, crb_two, overwrite = TRUE)
+  ## Both copies name the same H5 sidecar.
+  file.copy(sub("[.]crb$", ".h5", example), tmp, overwrite = TRUE)
   spatial_name <- readCerebro(crb_one)$availableSpatial()[[1L]]
   app_dir <- file.path(tmp, "app")
   createShinyApp(
@@ -2541,7 +2547,7 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
   crb <- list(
     getMetaData = function() metadata,
     availableSpatial = function() c("fov", "fov.2"),
-    getSpatialData = function(name) {
+    getSpatialData = function(name, hydrate_molecules = TRUE) {
       if (name == "fov") {
         sd
       } else {
@@ -2666,7 +2672,7 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
       )
     )
   )
-  crb$getSpatialData <- function(name) embedded
+  crb$getSpatialData <- function(name, hydrate_molecules = TRUE) embedded
   expect_length(cv_env$cv_spatial_one(crb, cells, "fov", FALSE)$images, 0)
   expect_length(cv_env$cv_spatial_one(crb, cells, "fov", FALSE, "A")$images, 1)
   expect_length(cv_env$cv_spatial_one(crb, cells, "fov", FALSE, "B")$images, 0)

@@ -59,8 +59,17 @@ test_that("demo panels retain protected rare genes, cells and exact values", {
   expect_identical(e$demo_gene_panel(y, 3L), y)
   expect_equal(nrow(x$expression), 5L)
   expect_error(e$demo_gene_panel(x, 1L), "Protected genes")
-  x$marker_genes <- list(result = "variable")
-  expect_error(e$demo_gene_panel(x, 3L), "gene references")
+  ## Genes named by an analysis table are protected like the marker genes.
+  x$marker_genes <- list(
+    method = list(group = data.frame(gene = c("unused", "nowhere"), p = 1:2))
+  )
+  z <- e$demo_gene_panel(x, 4L)
+  expect_true("unused" %in% rownames(z$expression))
+  expect_identical(
+    z$parameters$demo_gene_panel$protected_genes,
+    c("Plp1", "MoranRare", "unused")
+  )
+  expect_identical(z$marker_genes, x$marker_genes)
   x$marker_genes <- list()
   x$spatial$fov$expression <- x$expression[1:2, ]
   expect_error(e$demo_gene_panel(x, 3L), "Spatial expression")
@@ -77,7 +86,7 @@ test_that("shipped demo panels retain usable sparse expression and spatial ident
   for (file in files) {
     x <- readCerebro(file)
     expect_s4_class(x$expression, "sparseMatrix")
-    expect_lte(nrow(x$expression), 1500L)
+    expect_lte(nrow(x$expression), 500L)
     expect_identical(
       colnames(x$expression),
       as.character(x$meta_data$cell_barcode)
@@ -147,7 +156,7 @@ test_that("Spatial demo verification reads qs2 and retains the injected image", 
     ))
     data <- out$getSpatialData("fov")
     expect_identical(data$coordinates, coordinates)
-    expect_equal(nrow(data$expression), 1500L)
+    expect_equal(nrow(data$expression), 500L)
     expect_true(all(c("Plp1", "Gad1") %in% rownames(data$expression)))
     expect_identical(
       data$expression,
