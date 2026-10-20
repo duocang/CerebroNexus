@@ -210,7 +210,7 @@ test_that("exportFromSeurat: h5 mode errors clearly when HDF5Array is missing", 
 })
 
 ## Deflate level and stored size of `expression/data`. rhdf5 does not report
-## the level, so it is read with hdf5r or h5dump when either is available.
+## the level, so it is read with h5dump when that is on the PATH.
 h5_data_filter <- function(path) {
   fid <- rhdf5::H5Fopen(path, flags = "H5F_ACC_RDONLY")
   on.exit(rhdf5::H5Fclose(fid), add = TRUE)
@@ -224,15 +224,7 @@ h5_data_filter <- function(path) {
     character(1)
   )
   level <- NA_integer_
-  if (requireNamespace("hdf5r", quietly = TRUE)) {
-    file <- hdf5r::H5File$new(path, mode = "r")
-    on.exit(file$close_all(), add = TRUE)
-    create <- file[["expression/data"]]$get_create_plist()
-    for (i in seq_len(create$get_nfilters()) - 1L) {
-      filter <- create$get_filter(i)
-      if (identical(filter$name, "deflate")) level <- filter$cd_values[[1]]
-    }
-  } else if (nzchar(Sys.which("h5dump"))) {
+  if (nzchar(Sys.which("h5dump"))) {
     dump <- system2(
       "h5dump",
       c("-p", "-H", "-d", "/expression/data", shQuote(path)),
@@ -269,7 +261,7 @@ test_that("exportFromSeurat: h5 data is written at gzip level 0 by default", {
 
   skip_if(
     is.na(default$level),
-    "needs hdf5r or h5dump to read the deflate level"
+    "needs h5dump to read the deflate level"
   )
   expect_identical(default$level, 0L)
   expect_identical(level6$level, 6L)
