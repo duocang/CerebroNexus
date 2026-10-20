@@ -35,8 +35,7 @@ test_that("the Ren demo registers the full published atlas", {
     normalizePath(crb)
   )
   expect_equal(unname(configured$percentage_cells_to_show[label]), 100)
-  expect_equal(unname(configured$expression_point_size[label]), 2)
-  expect_equal(unname(configured$expression_point_opacity[label]), 1)
+  expect_null(configured$expression_point_size)
 
   unlink(file.path(root, "ren.h5"))
   expect_error(

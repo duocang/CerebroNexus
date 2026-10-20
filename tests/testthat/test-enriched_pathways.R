@@ -40,11 +40,3 @@ test_that("enriched_pathways seurat_enrichr returns real data", {
   expect_true(is.data.frame(result))
   expect_true(nrow(result) > 0)
 })
-
-test_that("getMethodsWithEnrichedPathways class method exists", {
-  skip_if_not(file.exists(example_crb))
-  crb <- readCerebro(example_crb)
-  has_with <- is.function(crb$getMethodsWithEnrichedPathways)
-  has_for <- is.function(crb$getMethodsForEnrichedPathways)
-  expect_true(has_with || has_for)
-})

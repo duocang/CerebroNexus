@@ -21,7 +21,7 @@
 #' object@misc$enriched_pathways$<name>; defaults to 'cerebro_GSVA'.
 #' @param thresh_p_val Threshold for p-value, defaults to 0.05.
 #' @param thresh_q_val Threshold for q-value, defaults to 0.1.
-#' @param ... Further parameters passed to `GSVA::gsvaParam()` (GSVA >= 2.0) or `GSVA::gsva()` (GSVA < 2.0).
+#' @param ... Further parameters passed to `GSVA::gsvaParam()`.
 #'
 #' @return
 #' Seurat object with GSVA results for the specified grouping variables
@@ -140,7 +140,6 @@ performGeneSetEnrichmentAnalysis <- function(
     assay = assay,
     slot = "data",
     join_samples = TRUE,
-    allow_cross_semantic_fallback = FALSE,
     return_resolution = TRUE
   )
   data_matrix <- .validate_expression_cells(
@@ -381,21 +380,12 @@ performGeneSetEnrichmentAnalysis <- function(
       }
 
       ## get enrichment score for each gene set in every cell group
-      ## GSVA >= 2.0 uses a param-object API; fall back to old API for older versions
-      if (utils::packageVersion("GSVA") >= "2.0") {
-        gsva_param <- GSVA::gsvaParam(
-          exprData = matrix_mean_by_group,
-          geneSets = gene_sets$genesets,
-          ...
-        )
-        enrichment_scores <- GSVA::gsva(gsva_param)
-      } else {
-        enrichment_scores <- GSVA::gsva(
-          expr = matrix_mean_by_group,
-          gset.idx.list = gene_sets$genesets,
-          ...
-        )
-      }
+      gsva_param <- GSVA::gsvaParam(
+        exprData = matrix_mean_by_group,
+        geneSets = gene_sets$genesets,
+        ...
+      )
+      enrichment_scores <- GSVA::gsva(gsva_param)
 
       ## log message
       # message(

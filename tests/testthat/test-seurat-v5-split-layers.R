@@ -153,8 +153,7 @@ test_that("a sample-name-split object resolves to the joined `data` layer", {
       seurat = obj,
       assay = "RNA",
       slot = "data",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE
+      join_samples = TRUE
     )
   )
 
@@ -178,8 +177,7 @@ test_that("the legacy numeric split form keeps resolving as before", {
       seurat = obj,
       assay = "RNA",
       slot = "data",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE
+      join_samples = TRUE
     )
   )
   expect_equal(ncol(matrix_out), ncol(obj))
@@ -200,7 +198,6 @@ test_that("a full-cell dotted custom layer is not treated as split", {
       assay = "RNA",
       slot = "counts",
       join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE,
       verbose = TRUE
     )
   )
@@ -225,8 +222,7 @@ test_that("a full-cell custom layer is excluded from a real split join", {
       seurat = obj,
       assay = "RNA",
       slot = "data",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE
+      join_samples = TRUE
     )
   )
   expect_equal(ncol(matrix_out), ncol(obj))
@@ -252,8 +248,7 @@ test_that("Seurat-prefix custom layers are excluded from a real split join", {
         seurat = obj,
         assay = "RNA",
         slot = "data",
-        join_samples = TRUE,
-        allow_cross_semantic_fallback = TRUE
+        join_samples = TRUE
       )
     )
     expect_equal(matrix_out, joined_data, info = custom_name)
@@ -280,8 +275,7 @@ test_that("an unrelated partial layer does not hide a real split partition", {
       seurat = obj,
       assay = "RNA",
       slot = "data",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE
+      join_samples = TRUE
     )
   )
   expect_equal(ncol(matrix_out), ncol(obj))
@@ -306,8 +300,7 @@ test_that("a requested custom root resolves its complete split partition", {
       seurat = obj,
       assay = "RNA",
       slot = "ambient",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = FALSE
+      join_samples = TRUE
     )
   )
   expect_equal(matrix_out, fixture$expected)
@@ -328,8 +321,7 @@ test_that("a requested custom root may itself contain a dot", {
       seurat = obj,
       assay = "RNA",
       slot = "ambient.corrected",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = FALSE
+      join_samples = TRUE
     )
   )
   expect_equal(matrix_out, fixture$expected)
@@ -355,8 +347,7 @@ test_that("a dotted requested root is matched literally, not as a regex", {
       seurat = obj,
       assay = "RNA",
       slot = "ambient.corrected",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = FALSE
+      join_samples = TRUE
     )
   )
   expect_equal(matrix_out, requested$expected)
@@ -380,8 +371,7 @@ test_that("an exact custom root takes precedence over its split siblings", {
       seurat = obj,
       assay = "RNA",
       slot = "ambient",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = FALSE
+      join_samples = TRUE
     )
   )
   expect_equal(matrix_out, exact)
@@ -414,8 +404,7 @@ test_that("an ambiguous real Assay5 partition names both covers and is refused",
         seurat = obj,
         assay = "RNA",
         slot = "ambient",
-        join_samples = TRUE,
-        allow_cross_semantic_fallback = TRUE
+        join_samples = TRUE
       )
       NA_character_
     },
@@ -455,8 +444,7 @@ test_that("an incomplete real Assay5 partition is refused", {
         seurat = obj,
         assay = "RNA",
         slot = "ambient",
-        join_samples = TRUE,
-        allow_cross_semantic_fallback = FALSE
+        join_samples = TRUE
       )
       NA_character_
     },
@@ -487,8 +475,7 @@ test_that("a full custom prefix is not substituted for an absent exact root", {
         seurat = obj,
         assay = "RNA",
         slot = "data",
-        join_samples = TRUE,
-        allow_cross_semantic_fallback = FALSE
+        join_samples = TRUE
       )
       NA_character_
     },
@@ -507,15 +494,14 @@ test_that("a missing split root is not partially read when joins are disabled", 
       seurat = obj,
       assay = "RNA",
       slot = "data",
-      join_samples = FALSE,
-      allow_cross_semantic_fallback = FALSE
+      join_samples = FALSE
     ),
     "join_samples = FALSE",
     fixed = TRUE
   )
 })
 
-test_that("cross-semantic fallback resolves a split replacement root", {
+test_that("a missing split root is an error, never replaced by another root", {
   obj <- make_split_object(c("s1", "s2"))
   for (layer in grep(
     "^data\\.",
@@ -527,44 +513,52 @@ test_that("cross-semantic fallback resolves a split replacement root", {
     )
   }
 
-  expect_warning(
-    matrix_out <- .getExpressionMatrix(
+  err <- tryCatch(
+    .getExpressionMatrix(
       seurat = obj,
       assay = "RNA",
       slot = "data",
       join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE
+      layer_argument = "slot"
     ),
-    "falling back to `counts`",
-    fixed = TRUE
+    warning = function(w) paste("unexpected warning:", conditionMessage(w)),
+    error = function(e) conditionMessage(e)
   )
-  expect_equal(ncol(matrix_out), ncol(obj))
-  expect_setequal(colnames(matrix_out), colnames(obj))
+  expect_match(err, "Layer `data` does not exist in the `RNA` assay", fixed = TRUE)
+  expect_match(err, "Available layers: counts.s1, counts.s2", fixed = TRUE)
+  expect_match(err, "`slot = \"counts\"`", fixed = TRUE)
 })
 
-test_that("incomplete requested-prefix noise does not block compatibility", {
-  obj <- make_incomplete_requested_root()
+test_that("the export entry points stop on a missing layer and name the fix", {
+  obj <- make_split_object(c("s1", "s2"))
+  for (layer in grep(
+    "^data\\.",
+    SeuratObject::Layers(obj[["RNA"]]),
+    value = TRUE
+  )) {
+    suppressWarnings(
+      SeuratObject::LayerData(obj[["RNA"]], layer = layer) <- NULL
+    )
+  }
+  crb <- file.path(withr::local_tempdir(), "missing-layer.crb")
 
-  expect_warning(
-    resolution <- .getExpressionMatrix(
-      seurat = obj,
-      assay = "RNA",
-      slot = "data",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE,
-      return_resolution = TRUE
-    ),
-    "falling back to `counts`",
+  expect_error(
+    do.call(exportFromSeurat, export_args(obj, crb)),
+    "Layer `data` does not exist in the `RNA` assay",
     fixed = TRUE
   )
+  expect_false(file.exists(crb))
 
-  expect_identical(resolution$requested, "data")
-  expect_identical(resolution$resolved, "counts")
-  expect_equal(ncol(resolution$data), ncol(obj))
-  expect_setequal(colnames(resolution$data), colnames(obj))
+  ## The layer that does exist is exported when it is asked for by name; the
+  ## split `counts.*` layers are joined as for any other request.
+  expect_no_error(do.call(
+    exportFromSeurat,
+    export_args(obj, crb, slot = "counts")
+  ))
+  expect_equal(ncol(readRDS(crb)$expression), ncol(obj))
 })
 
-test_that("strict incomplete-root errors carry actionable diagnostics", {
+test_that("incomplete-root errors carry actionable diagnostics", {
   obj <- make_incomplete_requested_root()
 
   err <- tryCatch(
@@ -572,8 +566,7 @@ test_that("strict incomplete-root errors carry actionable diagnostics", {
       seurat = obj,
       assay = "RNA",
       slot = "data",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = FALSE
+      join_samples = TRUE
     ),
     error = function(e) conditionMessage(e)
   )
@@ -627,8 +620,7 @@ test_that("resolving a partition leaves every caller layer unchanged", {
       seurat = obj,
       assay = "RNA",
       slot = "data",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = FALSE
+      join_samples = TRUE
     )
   )
 
@@ -675,14 +667,12 @@ test_that("conversion can hand one validated layer resolution to export", {
     assay = "RNA",
     slot = "data",
     join_samples = TRUE,
-    allow_cross_semantic_fallback = TRUE,
     return_resolution = TRUE
   )
   expect_identical(resolution$assay, "RNA")
 
   ## Remove the physical data layers after resolving them. If export ignores
-  ## the handoff and resolves again, compatibility fallback selects raw counts;
-  ## the call still succeeds, so the stored scientific values are the signal.
+  ## the handoff and resolves again, the missing `data` layer is an error.
   for (layer in grep(
     "^data\\.",
     SeuratObject::Layers(obj[["RNA"]]),
@@ -745,8 +735,7 @@ test_that("a layer asked for by name is not joined away underneath the caller", 
       seurat = obj,
       assay = "RNA",
       slot = "data.s2",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE
+      join_samples = TRUE
     )
   )
 
@@ -782,8 +771,7 @@ test_that("a disk-backed assay is refused with the reason, not just a class", {
       seurat = obj,
       assay = "RNA",
       slot = "counts",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE
+      join_samples = TRUE
     ),
     error = function(e) conditionMessage(e)
   )
@@ -817,8 +805,7 @@ test_that("a disk-backed assay is refused with the reason, not just a class", {
     seurat = advice_env$seurat,
     assay = "RNA",
     slot = "counts",
-    join_samples = TRUE,
-    allow_cross_semantic_fallback = TRUE
+    join_samples = TRUE
   )
   expect_equal(ncol(materialised), ncol(dense))
   expect_setequal(colnames(materialised), colnames(dense))
@@ -846,8 +833,7 @@ test_that("every selected split layer is checked for disk-backed storage", {
       seurat = obj,
       assay = "RNA",
       slot = "counts",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE
+      join_samples = TRUE
     ),
     error = function(e) conditionMessage(e)
   )

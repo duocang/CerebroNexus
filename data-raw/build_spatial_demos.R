@@ -21,9 +21,9 @@
 ## MERFISH embeds its DAPI mosaic in the .crb. This deliberately exercises both
 ## supported image paths without storing duplicate Xenium rasters in the .crb.
 ##
-## Slide-seq v2 (ssHippo) is a Seurat *v4-era* `SlideSeq` object; it is the
-## end-to-end proof that exportFromSeurat handles v4 spatial objects, not only
-## Seurat v5 (Visium/MERFISH here are v5).
+## Slide-seq v2 (ssHippo) ships as a Seurat *v4-era* `SlideSeq` object;
+## exportFromSeurat only reads Seurat v5 images, so its beads are rebuilt as a v5
+## FOV before export (Visium/MERFISH here are v5 already).
 ##
 ## One build pulls data directly over the network rather than from an R package.
 ## It now AUTO-DOWNLOADS the raw data on first run (via ensure_download /
@@ -449,7 +449,7 @@ build_visium <- function() {
   ## example of that code path, and it keeps the Visium .crb small. Write the
   ## real H&E to a standalone PNG in the same extdata dir the .crb ships in. The
   ## raster is stored native (row 0 = image top); the app applies the vertical
-  ## flip via `spatial_images_flip_y = TRUE` (ground-truth verified against
+  ## flip via `flip_y = TRUE` in `spatial_image_settings` (ground-truth verified against
   ## Seurat's own SpatialPlot, same value as the embedded flag would be).
   save_raster_png(
     he_raster,
@@ -478,22 +478,35 @@ build_visium <- function() {
 }
 
 ##----------------------------------------------------------------------------##
-## 2. Slide-seq v2  (SeuratData::ssHippo)  -- Seurat v4 SlideSeq object
+## 2. Slide-seq v2  (SeuratData::ssHippo)  -- v4 SlideSeq object, rebuilt as FOV
 ##----------------------------------------------------------------------------##
 build_slideseq <- function() {
-  message("== Slide-seq v2 (ssHippo) == [v4 SlideSeq object]")
+  message("== Slide-seq v2 (ssHippo) == [v4 SlideSeq object -> v5 FOV]")
   suppressPackageStartupMessages(library(SeuratData))
   data("ssHippo", package = "ssHippo.SeuratData")
   obj <- get("ssHippo")
   ## ssHippo ships as a Seurat v3.1.4 object whose `SlideSeq` image predates the
   ## current class definition (missing the `misc` slot); repair it before any
-  ## subset/validObject call. The object stays a v4-era SlideSeq image, which is
-  ## the whole point: it exercises the non-v5 extraction path.
+  ## subset/validObject call.
   obj <- UpdateSeuratObject(obj)
   assay <- "Spatial"
   ## Down-sample first: 53k beads is large and unclustered here.
   keep <- sample(colnames(obj), min(MAX_CELLS, ncol(obj)))
   obj <- subset(obj, cells = keep)
+  ## The image stays a v4 `SlideSeq` after the update, which the export rejects.
+  ## Rebuild the bead positions as a Seurat v5 FOV.
+  image_name <- Images(obj)[1]
+  bead_xy <- GetTissueCoordinates(obj[[image_name]])
+  obj@images <- list()
+  obj[[image_name]] <- SeuratObject::CreateFOV(
+    coords = list(
+      centroids = SeuratObject::CreateCentroids(
+        data.frame(x = bead_xy$x, y = bead_xy$y, cell = rownames(bead_xy))
+      )
+    ),
+    type = "centroids",
+    assay = assay
+  )
   obj <- process_seurat(obj, assay)
   obj <- FindNeighbors(obj, dims = 1:20, verbose = FALSE)
   obj <- FindClusters(obj, resolution = 0.5, verbose = FALSE)

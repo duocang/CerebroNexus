@@ -18,7 +18,7 @@ source(
 
 trekker_slot <- reactive({
   req(data_set())
-  tryCatch(data_set()$getTrekker(), error = function(e) NULL)
+  data_set()$getTrekker()
 })
 
 trekker_gene_names <- reactive({

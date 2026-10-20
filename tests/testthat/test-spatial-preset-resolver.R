@@ -127,7 +127,7 @@ test_that("Viewer chooses FOV or matching ROI images", {
   expect_named(spatial_images_for_roi(images, "normal"), "Overview")
 })
 
-test_that("embedded images expose canonical labels and normalize singular legacy", {
+test_that("embedded images expose their canonical labels", {
   canonical <- list(
     histology_images = list(
       `H&E` = list(
@@ -143,8 +143,7 @@ test_that("embedded images expose canonical labels and normalize singular legacy
         )
       ),
       DAPI = list(histology_image = "data:image/png;base64,DAPI")
-    ),
-    histology_image = "data:image/png;base64,STALE"
+    )
   )
   expect_named(embedded_spatial_images(canonical), c("H&E", "DAPI"))
   expect_identical(
@@ -174,14 +173,13 @@ test_that("embedded images expose canonical labels and normalize singular legacy
     )
   )
 
-  legacy <- list(
-    histology_image = "data:image/png;base64,LEGACY",
-    histology_image_bounds = c(xmin = 1, xmax = 2, ymin = 3, ymax = 4)
-  )
-  expect_named(embedded_spatial_images(legacy), "Tissue background")
+  ## the singular fields of the retired form are not read
   expect_identical(
-    embedded_spatial_images(legacy)[["Tissue background"]]$bounds,
-    legacy$histology_image_bounds
+    embedded_spatial_images(list(
+      histology_image = "data:image/png;base64,SINGULAR",
+      histology_image_bounds = c(xmin = 1, xmax = 2, ymin = 3, ymax = 4)
+    )),
+    list()
   )
   expect_identical(embedded_spatial_images(list()), list())
 })

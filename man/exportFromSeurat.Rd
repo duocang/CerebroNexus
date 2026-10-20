@@ -144,7 +144,10 @@ receptor data) used by \code{immune_sidecar = "auto"}.}
 \item{spatial_images}{Optional named list mapping Seurat image names to named
 image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
 Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
-derived from the exported x/y coordinate range.}
+derived from the exported x/y coordinate range. Only Seurat v5 spatial
+images (\code{FOV}, \code{VisiumV2}) are exported; an object whose
+\code{@images} hold a Seurat v4 \code{VisiumV1}, \code{SlideSeq}, or
+\code{STARmap} image is rejected.}
 
 \item{verbose}{Set this to \code{TRUE} if you want additional log messages;
 defaults to \code{FALSE}.}

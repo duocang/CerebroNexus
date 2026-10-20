@@ -142,31 +142,6 @@ test_that("packed projections and first frames align shuffled cell identities", 
   }
 })
 
-test_that("old packs retain independent assets but cannot publish unchecked projections", {
-  root <- tempfile("pack-legacy-order-")
-  dir.create(root)
-  on.exit(unlink(root, recursive = TRUE), add = TRUE)
-  crb <- viewer_pack_fixture(file.path(root, "data.crb"), immune = TRUE)
-  pack <- buildViewerPack(crb, viewer_binary = "always")
-  path <- file.path(pack, "manifest.json")
-  manifest <- jsonlite::read_json(path, simplifyVector = TRUE)
-  manifest$projection_identity_version <- NULL
-  jsonlite::write_json(manifest, path, auto_unbox = TRUE, dataframe = "rows")
-  expect_match(validateViewerPack(crb)$reason, "Rebuild Viewer Pack")
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "viewer_pack.R"), scope)
-  expect_message(
-    opened <- scope$viewerPackOpen(crb, readCerebro(crb)),
-    "Rebuild"
-  )
-  expect_length(opened$manifest$projection_names, 0)
-  expect_identical(
-    scope$viewerPackCellBarcodes(opened),
-    readCerebro(crb)$getMetaData()$cell_barcode
-  )
-  expect_false(is.null(scope$viewerPackImmuneIndex(opened, "TCR")))
-})
-
 test_that("Viewer Pack gating is dataset-level", {
   root <- tempfile("viewer-pack-gating-")
   dir.create(root)
@@ -642,6 +617,34 @@ test_that("Viewer Pack runtime fails closed on incompatible identity", {
   expect_null(runtime$viewerPackOpen(crb, object))
 })
 
+test_that("a pack of another schema is invalid and is rebuilt over", {
+  root <- tempfile("viewer-pack-schema-")
+  dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  crb <- viewer_pack_fixture(file.path(root, "dataset.crb"), n = 3L)
+  pack <- buildViewerPack(crb, viewer_binary = "always")
+  manifest_path <- file.path(pack, "manifest.json")
+  manifest <- jsonlite::read_json(manifest_path, simplifyVector = TRUE)
+  expect_false(any(
+    c("projection_identity_version", "violin_summary_version") %in%
+      names(manifest)
+  ))
+  manifest$schema_version <- 0L
+  jsonlite::write_json(
+    manifest,
+    manifest_path,
+    auto_unbox = TRUE,
+    dataframe = "rows"
+  )
+  result <- validateViewerPack(crb)
+  expect_false(result$valid)
+  expect_match(result$reason, "schema")
+  expect_null(readViewerPack(crb))
+  expect_error(buildViewerPack(crb, viewer_binary = "always"), "already exists")
+  buildViewerPack(crb, viewer_binary = "always", overwrite = TRUE)
+  expect_true(validateViewerPack(crb)$valid)
+})
+
 test_that("thin CRBs open Viewer Packs without hydrating cell barcodes", {
   root <- tempfile("viewer-pack-thin-runtime-")
   dir.create(root)
@@ -810,6 +813,5 @@ test_that("packed violin summaries survive serialization without altering statis
     "nUMI"
   )
   expect_identical(value, expected)
-  pack$manifest$violin_summary_version <- NULL
-  expect_null(scope$viewerPackGroupMetric(pack, "group", "nUMI"))
+  expect_null(scope$viewerPackGroupMetric(NULL, "group", "nUMI"))
 })

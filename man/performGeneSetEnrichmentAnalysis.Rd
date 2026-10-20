@@ -35,7 +35,7 @@ object@misc$enriched_pathways$<name>; defaults to 'cerebro_GSVA'.}
 
 \item{thresh_q_val}{Threshold for q-value, defaults to 0.1.}
 
-\item{...}{Further parameters passed to `GSVA::gsvaParam()` (GSVA >= 2.0) or `GSVA::gsva()` (GSVA < 2.0).}
+\item{...}{Further parameters passed to `GSVA::gsvaParam()`.}
 }
 \value{
 Seurat object with GSVA results for the specified grouping variables

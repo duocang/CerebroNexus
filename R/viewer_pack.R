@@ -468,11 +468,7 @@
   assets <- NULL
   for (i in seq_along(spatial_names)) {
     name <- spatial_names[[i]]
-    data <- if ("hydrate_molecules" %in% names(formals(getter))) {
-      getter(name, hydrate_molecules = FALSE)
-    } else {
-      getter(name)
-    }
+    data <- getter(name, hydrate_molecules = FALSE)
     coordinates <- data[["coordinates"]]
     spatial_cells <- rownames(coordinates)
     index <- match(spatial_cells, cells)
@@ -918,7 +914,7 @@
     }
     abundance <- .viewerPackImmuneAbundance(repertoire)
     # Homeostasis counts empty strings as clone identities, unlike Abundance.
-    # Store separate exact bins; older packs simply use the raw-data fallback.
+    # Store separate exact bins; the Viewer reads them in place of the raw data.
     homeostasis <- .viewerPackImmuneAbundance(repertoire, drop_empty = FALSE)
     assets <- rbind(
       assets,
@@ -1018,14 +1014,6 @@ validateViewerPack <- function(
     )
   ) {
     return(.viewerPackInvalid("Viewer Pack dataset fingerprint mismatch"))
-  }
-  if (
-    length(manifest$projection_names) &&
-      !identical(manifest$projection_identity_version, 1L)
-  ) {
-    return(.viewerPackInvalid(
-      "Rebuild Viewer Pack: projection identity is unverified"
-    ))
   }
   object <- tryCatch(readCerebro(file), error = function(error) NULL)
   if (is.null(object)) {
@@ -1136,8 +1124,6 @@ buildViewerPack <- function(
   built <- .viewerPackBuildAssets(object, stage)
   manifest <- list(
     schema_version = .viewerPackSchemaVersion,
-    projection_identity_version = 1L,
-    violin_summary_version = 1L,
     dataset_fingerprint = paste0("md5-crb-v1:", .viewerPackMd5(file)),
     cell_order_fingerprint = .viewerPackCellOrderFingerprint(cells),
     n_cells = length(cells),

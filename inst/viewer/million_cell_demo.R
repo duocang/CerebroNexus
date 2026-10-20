@@ -47,8 +47,6 @@ viewerAddMillionCellDemo <- function(
   add_setting("point_size", 1)
   add_setting("point_opacity", 0.5)
   add_setting("percentage_cells_to_show", 100)
-  add_setting("expression_point_size", 2)
-  add_setting("expression_point_opacity", 1)
   options
 }
 
@@ -82,7 +80,5 @@ viewerAddRenDemo <- function(
   add_setting("point_size", 1)
   add_setting("point_opacity", 0.5)
   add_setting("percentage_cells_to_show", 100)
-  add_setting("expression_point_size", 2)
-  add_setting("expression_point_opacity", 1)
   options
 }

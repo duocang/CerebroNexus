@@ -28,8 +28,7 @@ test_that("the 1M demo is opt-in and validates its H5 file", {
   expect_equal(unname(configured$point_size[label]), 1)
   expect_equal(unname(configured$point_opacity[label]), 0.5)
   expect_equal(unname(configured$percentage_cells_to_show[label]), 100)
-  expect_equal(unname(configured$expression_point_size[label]), 2)
-  expect_equal(unname(configured$expression_point_opacity[label]), 1)
+  expect_null(configured$expression_point_size)
 
   unlink(file.path(root, "mouse.h5"))
   expect_error(
@@ -220,29 +219,22 @@ test_that("the Viewer filters methods at trajectory selection boundaries", {
 test_that("Viewer spatial readers leave molecule sidecars dormant", {
   scope <- new.env(parent = globalenv())
   sys.source(viewer_test_path("utility_functions.R"), envir = scope)
-  legacy <- new.env(parent = emptyenv())
-  class(legacy) <- c("Cerebro", "R6")
-  legacy$spatial <- list(
+  dataset <- new.env(parent = emptyenv())
+  class(dataset) <- c("Cerebro", "R6")
+  dataset$spatial <- list(
     slice = list(
       coordinates = data.frame(x = 1:2, y = 3:4),
       expression = matrix(numeric(), nrow = 0L, ncol = 2L)
     )
   )
-  legacy$getSpatialData <- function(name, hydrate_molecules) {
+  dataset$getSpatialData <- function(name, hydrate_molecules) {
     expect_false(hydrate_molecules)
-    legacy$spatial[[name]]
+    dataset$spatial[[name]]
   }
-  scope$data_set <- function() legacy
+  scope$data_set <- function() dataset
   expect_identical(
     scope$getSpatialData("slice")$coordinates,
-    legacy$spatial$slice$coordinates
-  )
-  legacy$getSpatialData <- function(name) legacy$spatial[[name]]
-  scope$data_set <- function() legacy
-
-  expect_identical(
-    scope$getSpatialData("slice")$coordinates,
-    legacy$spatial$slice$coordinates
+    dataset$spatial$slice$coordinates
   )
 })
 

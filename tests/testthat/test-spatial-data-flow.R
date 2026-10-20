@@ -111,10 +111,16 @@ spatial_flow_server <- function(input, output, session) {
   viewerDatasetIdentity <- function() list(fingerprint = "tiny")
   getGeneNames <- function() c("G1", "G2")
   expression <- rbind(G1 = c(1, 2, 3, 4), G2 = c(4, 3, 2, 1))
-  object <- list(getExpressionMatrix = function(cells, genes, ...) {
-    expression_reads <<- expression_reads + 1L
-    expression[genes, cells, drop = FALSE]
-  })
+  object <- list(
+    getExpressionMatrix = function(cells, genes, ...) {
+      expression_reads <<- expression_reads + 1L
+      expression[genes, cells, drop = FALSE]
+    },
+    getExpressionRow = function(gene, cells = NULL) {
+      expression_reads <<- expression_reads + 1L
+      expression[gene, cells]
+    }
+  )
   data_set <- function() object
   sent <- list()
   updates <- list()

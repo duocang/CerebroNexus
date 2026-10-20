@@ -6,11 +6,15 @@ test_that("new viewer defaults match unsorted, unlabelled Seurat plots", {
   defaults <- builderViewerDisplayDefaults()
   expect_identical(defaults$gene_plotting_order, "Input order")
   expect_true(all(!unlist(defaults[grepl("group_labels$", names(defaults))])))
-  # Existing explicit author choices remain readable.
   expect_identical(
     builderViewerDisplayDefaults(list(
-      gene_plotting_order = "Random"
+      gene_plotting_order = "Highest expression on top"
     ))$gene_plotting_order,
+    "Highest expression on top"
+  )
+  # "Random" never shuffled cells; it is rejected rather than reinterpreted.
+  expect_error(
+    builderViewerDisplayDefaults(list(gene_plotting_order = "Random")),
     "Input order"
   )
   expect_identical(

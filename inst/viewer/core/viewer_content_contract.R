@@ -119,6 +119,13 @@ builderViewerDisplayDefaults <- function(value = NULL) {
       call. = FALSE
     )
   }
+  if (identical(value$gene_plotting_order, "Random")) {
+    stop(
+      "Viewer display setting gene_plotting_order = \"Random\" no longer ",
+      "exists; it never shuffled cells. Use \"Input order\".",
+      call. = FALSE
+    )
+  }
   for (key in names(value)) {
     defaults[[key]] <- value[[key]]
   }
@@ -142,11 +149,7 @@ builderViewerDisplayDefaults <- function(value = NULL) {
     gene_palette = c("cerebro_orange", "blues", "greens", "viridis"),
     gene_panel_mode = c("shared", "distinct"),
     gene_panel_palette = c("default", "soft"),
-    gene_plotting_order = c(
-      "Input order",
-      "Random",
-      "Highest expression on top"
-    ),
+    gene_plotting_order = c("Input order", "Highest expression on top"),
     hla_legend_mode = c("auto", "always", "never")
   )
   ranges <- list(
@@ -180,10 +183,6 @@ builderViewerDisplayDefaults <- function(value = NULL) {
     ))
   if (!valid) {
     stop("Viewer display settings are invalid.", call. = FALSE)
-  }
-  # Older bundles called input order "Random" without actually shuffling cells.
-  if (identical(defaults$gene_plotting_order, "Random")) {
-    defaults$gene_plotting_order <- "Input order"
   }
   defaults$label_size <- as.double(defaults$label_size)
   defaults$color_clip <- as.double(defaults$color_clip)

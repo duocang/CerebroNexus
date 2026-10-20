@@ -11,7 +11,7 @@
 ##   - the decoupled APPEARANCE observer (pushes opacity/move/flip/scale/rotate
 ##     straight to the background <div>, never re-rendering the scatter plot),
 ##   - the aspect-ratio lock / single-vs-XY scale mirroring,
-##   - Reset (returns to the per-dataset spatial_images_* preset),
+##   - Reset (returns to the per-image spatial_image_settings preset),
 ##   - slider <-> numeric-box two-way sync.
 ##----------------------------------------------------------------------------##
 

@@ -23,34 +23,25 @@
 }
 
 .msigdbCollectionsFunction <- function() {
-  if ("msigdbr_collections" %in% getNamespaceExports("msigdbr")) {
-    msigdbr::msigdbr_collections()
-  } else {
-    NULL
-  }
+  msigdbr::msigdbr_collections()
 }
 
 .msigdbCatalogueRows <- function() {
   query <- .msigdbFunction()
   collections <- .msigdbCollectionsFunction()
-  column <- intersect(c("gs_collection", "gs_cat"), names(collections))
-  argument <- intersect(c("collection", "category"), names(formals(query)))
-  if (!length(column) || !length(argument)) {
-    return(query(species = "Homo sapiens")) # compatibility with older msigdbr
+  if (!"gs_collection" %in% names(collections)) {
+    stop("MSigDB query returned unexpected columns.")
   }
   # Discard each wide table before requesting the next collection. The public
   # API does not expose gene-set names alone; never retain the full database.
-  pieces <- lapply(unique(collections[[column[[1L]]]]), function(collection) {
-    args <- list(species = "Homo sapiens")
-    args[[argument[[1L]]]] <- collection
-    table <- do.call(query, args)
-    column <- intersect(c("gs_collection", "gs_cat"), names(table))
-    if (!length(column) || !"gs_name" %in% names(table)) {
+  pieces <- lapply(unique(collections$gs_collection), function(collection) {
+    table <- query(species = "Homo sapiens", collection = collection)
+    if (!all(c("gs_name", "gs_collection") %in% names(table))) {
       stop("MSigDB query returned unexpected columns.")
     }
     unique(data.frame(
       gs_name = table$gs_name,
-      gs_collection = table[[column[[1L]]]]
+      gs_collection = table$gs_collection
     ))
   })
   if (!length(pieces)) {
@@ -99,28 +90,12 @@ getMsigdbCatalogue <- function() {
       NULL
     }
   )
-  collection_column <- if (
-    !is.null(table) && "gs_collection" %in% colnames(table)
-  ) {
-    "gs_collection"
-  } else if (!is.null(table) && "gs_cat" %in% colnames(table)) {
-    "gs_cat"
-  } else {
-    NULL
-  }
-  if (
-    is.null(collection_column) ||
-      !is.data.frame(table) ||
-      !"gs_name" %in% colnames(table)
-  ) {
-    if (!is.null(table)) {
-      warning("MSigDB query returned unexpected columns.")
-    }
+  if (!is.data.frame(table)) {
     return(.emptyMsigdbCatalogue())
   }
   catalogue <- unique(data.frame(
     gs_name = trimws(as.character(table[["gs_name"]])),
-    collection = trimws(as.character(table[[collection_column]])),
+    collection = trimws(as.character(table[["gs_collection"]])),
     stringsAsFactors = FALSE
   ))
   catalogue <- catalogue[
@@ -171,15 +146,9 @@ getMsigdbGenes <- function(species, gene_set) {
       return(genes)
     }
   }
-  arguments <- list(species = species)
   query <- .msigdbFunction()
-  if ("collection" %in% names(formals(query))) {
-    arguments[["collection"]] <- collection
-  } else {
-    arguments[["category"]] <- collection
-  }
   table <- tryCatch(
-    do.call(query, arguments),
+    query(species = species, collection = collection),
     error = function(error_condition) {
       warning("MSigDB query failed: ", conditionMessage(error_condition))
       NULL

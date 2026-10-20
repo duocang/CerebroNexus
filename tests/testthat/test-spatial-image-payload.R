@@ -10,21 +10,12 @@ valid_spatial_image_payload <- function() {
   )
 }
 
-normalize_test_spatial_image <- function(payload, image_name, coordinates) {
-  if (.isLegacySpatialImagePayload(payload)) {
-    payload <- .canonicalizeLegacySpatialImagePayload(
-      payload,
-      paste0(
-        "Spatial image payload `",
-        image_name,
-        "` image `Tissue background`"
-      )
-    )
-    payload <- list(`Tissue background` = payload)
-  }
+tissue_image <- function(payload) list(`Tissue background` = payload)
+
+normalize_test_spatial_image <- function(images, image_name, coordinates) {
   list(
     histology_images = .normalizeEmbeddedSpatialImages(
-      payload,
+      images,
       coordinates,
       paste0("Spatial image payload `", image_name, "`")
     )
@@ -36,7 +27,7 @@ test_that("spatial image payload validation accepts a contained FOV image", {
   coordinates <- data.frame(x = c(10, 90), y = c(5, 75))
 
   expect_identical(
-    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(tissue_image(payload), "spatial_fov", coordinates),
     list(histology_images = list(`Tissue background` = payload))
   )
 })
@@ -77,19 +68,27 @@ test_that("spatial image collections match uniquely named Seurat images", {
   )
 })
 
-test_that("Seurat spatial image payloads accept the legacy shorthand", {
+test_that("a Seurat spatial image payload without labels is rejected", {
   payload <- valid_spatial_image_payload()
 
-  normalized <- .validateCerebroSpatialImages(
-    list(spatial_fov = payload),
-    "spatial_fov"
+  expect_error(
+    .validateCerebroSpatialImages(
+      list(spatial_fov = payload),
+      "spatial_fov"
+    ),
+    "`spatial_fov`.*singular `histology_image`.*no longer accepted.*list\\(<label>"
   )
-
-  expect_named(normalized$spatial_fov, "Tissue background")
-  expect_identical(normalized$spatial_fov[["Tissue background"]], payload)
+  payload$histology_image_bounds <- NULL
+  expect_error(
+    .validateCerebroSpatialImages(
+      list(spatial_fov = payload),
+      "spatial_fov"
+    ),
+    "no longer accepted"
+  )
 })
 
-test_that("legacy misc list bounds canonicalize in fixed numeric order", {
+test_that("list-valued image bounds are rejected", {
   payload <- valid_spatial_image_payload()
   payload$histology_image_bounds <- list(
     ymax = 80,
@@ -97,25 +96,14 @@ test_that("legacy misc list bounds canonicalize in fixed numeric order", {
     ymin = 0,
     xmax = 100
   )
-  coordinates <- data.frame(x = c(10, 90), y = c(5, 75))
 
-  declared <- .validateCerebroSpatialImages(
-    list(spatial_fov = payload),
-    "spatial_fov"
-  )
-  expect_named(declared$spatial_fov, "Tissue background")
-
-  normalized <- normalize_test_spatial_image(
-    payload,
-    "spatial_fov",
-    coordinates
-  )
-  bounds <- normalized$histology_images[["Tissue background"]][[
-    "histology_image_bounds"
-  ]]
-  expect_identical(
-    bounds,
-    c(xmin = 0, xmax = 100, ymin = 0, ymax = 80)
+  expect_error(
+    normalize_test_spatial_image(
+      tissue_image(payload),
+      "spatial_fov",
+      data.frame(x = c(10, 90), y = c(5, 75))
+    ),
+    "bounds must contain exactly"
   )
 })
 
@@ -146,7 +134,7 @@ test_that("spatial image payload validation rejects malformed images", {
 
   payload$histology_image <- "not-a-data-uri"
   expect_error(
-    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(tissue_image(payload), "spatial_fov", coordinates),
     "spatial_fov.*data:image"
   )
 
@@ -158,21 +146,21 @@ test_that("spatial image payload validation rejects malformed images", {
     bottom = 80
   )
   expect_error(
-    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(tissue_image(payload), "spatial_fov", coordinates),
     "xmin.*xmax.*ymin.*ymax"
   )
 
   payload <- valid_spatial_image_payload()
   payload$histology_image_bounds[["xmax"]] <- Inf
   expect_error(
-    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(tissue_image(payload), "spatial_fov", coordinates),
     "finite"
   )
 
   payload <- valid_spatial_image_payload()
   payload$histology_image_bounds[["xmin"]] <- 100
   expect_error(
-    normalize_test_spatial_image(payload, "spatial_fov", coordinates),
+    normalize_test_spatial_image(tissue_image(payload), "spatial_fov", coordinates),
     "xmin.*less than.*xmax"
   )
 })
@@ -182,7 +170,7 @@ test_that("spatial image payload validation rejects unusable coordinates", {
 
   expect_error(
     normalize_test_spatial_image(
-      payload,
+      tissue_image(payload),
       "spatial_fov",
       data.frame(row = 10, column = 20)
     ),
@@ -190,7 +178,7 @@ test_that("spatial image payload validation rejects unusable coordinates", {
   )
   expect_error(
     normalize_test_spatial_image(
-      payload,
+      tissue_image(payload),
       "spatial_fov",
       data.frame(x = 101, y = 10)
     ),
@@ -198,7 +186,7 @@ test_that("spatial image payload validation rejects unusable coordinates", {
   )
   expect_error(
     normalize_test_spatial_image(
-      payload,
+      tissue_image(payload),
       "spatial_fov",
       data.frame(x = NA_real_, y = 10)
     ),
@@ -345,4 +333,74 @@ test_that("convertSeuratToCerebro forwards spatial_images without mutation", {
 
   expect_identical(received$spatial_images, declared)
   expect_identical(object@misc, original_misc)
+})
+
+test_that("exportFromSeurat rejects Seurat v4 spatial image classes", {
+  skip_if_not_installed("Seurat")
+  skip_if_not_installed("SeuratObject")
+
+  object <- make_synthetic_spatial_seurat(n_cells = 12, n_genes = 10, seed = 10)
+  coordinates <- data.frame(
+    x = seq_len(12),
+    y = rev(seq_len(12)),
+    row.names = colnames(object)
+  )
+  v4_images <- list(
+    SlideSeq = methods::new(
+      "SlideSeq",
+      coordinates = coordinates,
+      assay = "Spatial",
+      key = "puck_"
+    ),
+    VisiumV1 = methods::new(
+      "VisiumV1",
+      image = array(0, c(2L, 2L, 3L)),
+      scale.factors = structure(
+        list(spot = 1, fiducial = 1, hires = 1, lowres = 1),
+        class = "scalefactors"
+      ),
+      coordinates = data.frame(
+        tissue = 1L,
+        row = 1L,
+        col = 1L,
+        imagerow = coordinates$y,
+        imagecol = coordinates$x,
+        row.names = colnames(object)
+      ),
+      spot.radius = 1,
+      assay = "Spatial",
+      key = "slice_"
+    )
+  )
+
+  for (class_name in names(v4_images)) {
+    v4_object <- object
+    v4_object@images <- list(legacy = v4_images[[class_name]])
+    output <- tempfile(fileext = ".crb")
+
+    expect_error(
+      exportFromSeurat(
+        codec = "rds",
+        object = v4_object,
+        assay = "Spatial",
+        slot = "data",
+        file = output,
+        experiment_name = "Seurat v4 image",
+        organism = "mouse",
+        groups = c("seurat_clusters", "cell_type_final"),
+        nUMI = "nCount_Spatial",
+        nGene = "nFeature_Spatial",
+        verbose = FALSE
+      ),
+      paste0("`legacy`.*Seurat v4 `", class_name, "`.*UpdateSeuratObject"),
+      info = class_name
+    )
+    expect_false(file.exists(output), info = class_name)
+  }
+
+  ## An object without spatial images is not affected.
+  plain <- object
+  plain@images <- list()
+  expect_no_error(.assertCurrentSpatialImages(plain))
+  expect_no_error(.assertCurrentSpatialImages(object))
 })

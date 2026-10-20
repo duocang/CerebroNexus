@@ -11,7 +11,10 @@
 #' @param maxFileSize Maximum size of input file; defaults to \code{800}
 #' (800 MB).
 #' @param crb_file_to_load Path to \code{.crb} file to load on launch of
-#' Cerebro. Useful when using/hosting Cerebro in \code{closed} mode. Defaults to
+#' Cerebro. Useful when using/hosting Cerebro in \code{closed} mode. To offer
+#' several data sets, pass a \emph{named} character vector, e.g.
+#' \code{c(sampleA = "a.crb", sampleB = "b.crb")}: every name is the stable,
+#' unique data set identity used in links and saved state. Defaults to
 #' \code{NULL}.
 #' @param welcome_message \code{string} with custom welcome message to display
 #' in the "Load data" tab. Can contain HTML formatting, e.g.
@@ -121,6 +124,23 @@ launchCerebro <- function(
       "'projections_show_hover_info' parameter must be set to either TRUE or FALSE.",
       call. = FALSE
     )
+  }
+  if (length(crb_file_to_load) > 1L) {
+    file_names <- names(crb_file_to_load)
+    if (
+      is.null(file_names) ||
+        anyNA(file_names) ||
+        any(!nzchar(file_names)) ||
+        anyDuplicated(file_names)
+    ) {
+      stop(
+        "'crb_file_to_load' needs unique, non-empty names when more than one ",
+        "file is given, e.g. crb_file_to_load = c(sampleA = \"a.crb\", ",
+        "sampleB = \"b.crb\"). Each name is the data set identity used in ",
+        "links and saved state.",
+        call. = FALSE
+      )
+    }
   }
 
   ## --------------------------------------------------------------------------##

@@ -64,22 +64,6 @@ viewerPackOpen <- function(file, object) {
   ) {
     return(NULL)
   }
-  if (
-    length(manifest$projection_names) &&
-      !identical(manifest$projection_identity_version, 1L)
-  ) {
-    # Keep independent metadata/IR assets; never publish unchecked coordinates.
-    manifest$projection_names <- character()
-    frames <- manifest$trajectory_frames
-    if (is.data.frame(frames) && "geometry_kind" %in% names(frames)) {
-      manifest$trajectory_frames <- frames[
-        frames$geometry_kind != "canonical_projection",
-        ,
-        drop = FALSE
-      ]
-    }
-    message("Rebuild Viewer Pack to enable verified projection assets: ", pack)
-  }
   list(
     path = pack,
     manifest = manifest,
@@ -389,11 +373,7 @@ viewerPackSpatialFrame <- function(pack, name) {
 }
 
 viewerPackGroupMetric <- function(pack, group, metric) {
-  if (
-    is.null(pack) ||
-      !is.list(pack) ||
-      !identical(pack$manifest$violin_summary_version, 1L)
-  ) {
+  if (is.null(pack) || !is.list(pack)) {
     return(NULL)
   }
   frames <- pack$manifest$group_metric_frames

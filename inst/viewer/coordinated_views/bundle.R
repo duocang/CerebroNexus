@@ -946,18 +946,7 @@ cv_build_projections <- function(
 ##     and FOV, with an optional per-image alignment preset and explicit bounds.
 ## Returns list(name, x, y, image) or NULL.
 cv_spatial_data <- function(crb, nm) {
-  getter <- crb$getSpatialData
-  if ("hydrate_molecules" %in% names(formals(getter))) {
-    return(crb$getSpatialData(nm, hydrate_molecules = FALSE))
-  }
-  stored <- tryCatch(crb$spatial[[nm]], error = function(error) NULL)
-  if (
-    is.list(stored) &&
-      inherits(stored[["molecules"]], "CerebroSpatialMoleculeRef")
-  ) {
-    return(stored)
-  }
-  getter(nm)
+  crb$getSpatialData(nm, hydrate_molecules = FALSE)
 }
 
 cv_spatial_one <- function(
@@ -1035,8 +1024,8 @@ cv_spatial_one <- function(
   )
   span <- c(diff(xr), diff(yr))
   images <- list()
-  ## Use Spatial's canonical histology_images/legacy-image normalization and
-  ## ROI precedence, so both pages offer the same set of eligible images.
+  ## Use Spatial's canonical histology_images normalization and ROI
+  ## precedence, so both pages offer the same set of eligible images.
   embedded <- embedded_spatial_images(sd, roi_value)
   alignment <- sd[["histology_alignment", exact = TRUE]]
   appearance <- cv_alignment_appearance(alignment)
@@ -1082,13 +1071,11 @@ cv_spatial_one <- function(
         entry$image %||%
         entry$uri %||%
         entry$data
-      b <- entry$histology_image_bounds %||%
-        entry$bounds %||%
-        sd[["histology_image_bounds", exact = TRUE]]
+      b <- entry$histology_image_bounds %||% entry$bounds
       label <- entry$image_label %||% entry$label %||% entry_name
     } else {
       emb <- entry
-      b <- sd[["histology_image_bounds", exact = TRUE]]
+      b <- NULL
       label <- entry_name
     }
     if (!is.character(emb) || length(emb) != 1L || is.na(emb) || !nzchar(emb)) {
@@ -1330,7 +1317,7 @@ cv_build_spatial <- function(crb, cells) {
 ## rather than one silently swallowing the other. Aligned to `cells` via barcodes
 ## (NA where a cell was not positioned). Returns list(space, bundle) or NULL.
 cv_build_trekker <- function(crb, cells, md) {
-  tk <- tryCatch(crb$getTrekker(), error = function(e) NULL)
+  tk <- crb$getTrekker()
   if (
     is.null(tk) ||
       is.null(tk$x) ||
@@ -2251,15 +2238,9 @@ cv_build_compact_supplement <- function(
     return(NULL)
   }
   projection_names <- names(first_frame$projections)
-  unsupported <- length(tryCatch(
-    crb$getMethodsForTrajectories(),
-    error = function(e) character()
-  )) ||
-    length(tryCatch(
-      crb$availableSpatial(),
-      error = function(e) character()
-    )) ||
-    !is.null(tryCatch(crb$getTrekker(), error = function(e) NULL))
+  unsupported <- length(crb$getMethodsForTrajectories()) ||
+    length(crb$availableSpatial()) ||
+    !is.null(crb$getTrekker())
   if (unsupported) {
     return(NULL)
   }

@@ -30,7 +30,6 @@
   "cerebroGroupFilterMask",
   "randomlySubsetCells",
   "getXYranges",
-  "match_dataset_by_url",
   "match_dataset_id_by_url",
   "is_cerebro_dataset",
   "read_cerebro_file",
@@ -50,7 +49,9 @@
   ".runtimeH5CellCount",
   ".checkThinCrbCells",
   ".thinCrbCellNames",
+  ".runtimeRequiredCerebroMethods",
   ".runtimeLegacyReason",
+  ".runtimeLegacySpatialReason",
   ".assertCurrentRuntimeCrb",
   ".hydrateThinCrbFields",
   ".deferThinCrbHydration",
@@ -71,7 +72,8 @@
       identical(expression[[1L]], as.name("<-")) &&
       is.symbol(expression[[2L]]) &&
       is.call(expression[[3L]]) &&
-      identical(expression[[3L]][[1L]], as.name("function"))
+      (identical(expression[[3L]][[1L]], as.name("function")) ||
+        identical(expression[[3L]][[1L]], as.name("c")))
   ) {
     return(as.character(expression[[2L]]))
   }

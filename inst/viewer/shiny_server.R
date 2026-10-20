@@ -211,7 +211,7 @@ server <- function(input, output, session) {
     use_webgl = TRUE,
     # Cell summaries use the already loaded colour/coordinate data. Complete
     # metadata is requested for one cell through Details, never for all points.
-    # Retain this legacy payload flag for the shared scatter producers.
+    # The shared scatter producers read this as their hover payload flag.
     show_hover_info_in_projections = FALSE
   )
 
@@ -358,13 +358,12 @@ server <- function(input, output, session) {
       NULL
     }
     info <- viewerDatasetInfo(catalog, target)
-    viewerOverviewTruncated(info$overview) ||
-      viewerDatasetLoadRequired(
-        isolate(input[["sidebar"]]),
-        info,
-        initial_tab,
-        isolate(initial_page_applied())
-      )
+    viewerDatasetLoadRequired(
+      isolate(input[["sidebar"]]),
+      info,
+      initial_tab,
+      isolate(initial_page_applied())
+    )
   }
 
   viewer_request_dataset <- function(
@@ -537,43 +536,32 @@ server <- function(input, output, session) {
         !is.null(Cerebro.options[["crb_file_to_load"]])
     ) {
       file_to_load <- Cerebro.options[["crb_file_to_load"]]
-      ## Older launch configurations could provide more than one unnamed path.
-      ## Give those entries deterministic opaque ids rather than falling back to
-      ## paths as browser-visible identity.
+      ## launchCerebro() and createShinyApp() always name several files; a
+      ## hand-written configuration must do the same.
       file_names <- names(file_to_load)
-      valid_file_names <- is.character(file_names) &&
-        length(file_names) == length(file_to_load) &&
-        !anyNA(file_names) &&
-        all(nzchar(file_names)) &&
-        !anyDuplicated(file_names)
-      if (length(file_to_load) > 1L && !valid_file_names) {
-        file_names <- paste0("legacy-", seq_along(file_to_load))
-        names(file_to_load) <- file_names
+      if (length(file_to_load) > 1L && !viewerDatasetIdsValid(file_names)) {
+        stop(
+          "Cerebro.options[['crb_file_to_load']] needs unique, non-empty names ",
+          "when more than one file is given, e.g. c(sampleA = \"a.crb\", ",
+          "sampleB = \"b.crb\").",
+          call. = FALSE
+        )
       }
       ## multiple files (or a single named file) -> enable dataset switcher
       if (length(file_to_load) > 1 || !is.null(names(file_to_load))) {
         available_crb_files$files <- file_to_load
-        file_names <- names(file_to_load)
+        available_crb_files$names <- file_names
+        configured_labels <- Cerebro.options[["dataset_labels"]]
         if (
-          !is.null(file_names) &&
-            length(file_names) == length(file_to_load)
+          !is.character(configured_labels) ||
+            is.null(names(configured_labels)) ||
+            !identical(names(configured_labels), file_names) ||
+            anyNA(configured_labels) ||
+            any(!nzchar(configured_labels))
         ) {
-          available_crb_files$names <- file_names
-          configured_labels <- Cerebro.options[["dataset_labels"]]
-          if (
-            !is.character(configured_labels) ||
-              is.null(names(configured_labels)) ||
-              !identical(names(configured_labels), file_names) ||
-              anyNA(configured_labels) ||
-              any(!nzchar(configured_labels))
-          ) {
-            configured_labels <- stats::setNames(file_names, file_names)
-          }
-          available_crb_files$labels <- unname(configured_labels[file_names])
-        } else {
-          available_crb_files$names <- NULL
-          available_crb_files$labels <- NULL
+          configured_labels <- stats::setNames(file_names, file_names)
         }
+        available_crb_files$labels <- unname(configured_labels[file_names])
 
         ##--------------------------------------------------------------------##
         ## Check for a dataset specified in the URL (query string or path),
@@ -604,8 +592,7 @@ server <- function(input, output, session) {
           }
         }
 
-        ## URL/state identity is always the stable dataset id. Filename matching
-        ## remains as a compatibility fallback for old shared links.
+        ## URL/state identity is always the stable dataset id.
         if (!is.null(url_dataset)) {
           selection <- match_dataset_id_by_url(
             url_dataset,
@@ -849,12 +836,6 @@ server <- function(input, output, session) {
         selected,
         available_crb_files$labels
       )
-      # Legacy summaries retained only ten categories. Rebuild those once from
-      # metadata rather than misrepresenting the remainder as one category.
-      if (viewerOverviewTruncated(info$overview)) {
-        req(isTRUE(dataset_load_requested()))
-        info$overview <- viewerDatasetOverview(data_set())
-      }
       return(info)
     }
 
@@ -944,8 +925,8 @@ server <- function(input, output, session) {
         } else {
           ## Clone the process-cached prototype and attach session-local backends.
           ## Configured bundle CRBs consume the exact backend plan validated during
-          ## createShinyApp(). Uploads and older configurations fall back to the
-          ## ordinary expression_backend field; serialized getters are not called.
+          ## createShinyApp(). Uploads and plain launches use the ordinary
+          ## expression_backend field; serialized getters are not called.
           backend_plan <- if (exists("Cerebro.options")) {
             Cerebro.options[[".bundle_backend_plan"]]
           } else {
@@ -1311,8 +1292,8 @@ server <- function(input, output, session) {
   }
   ## Trajectory frames may bind an exact row subset to a canonical projection.
   ## The binding is published only by the Viewer Pack builder after exact
-  ## coordinate comparison. Older packs and non-matching frames retain their
-  ## dedicated geometry asset.
+  ## coordinate comparison. Non-matching frames retain their dedicated geometry
+  ## asset.
   viewer_trajectory_resources <- new.env(parent = emptyenv())
   viewerTrajectoryFrameAsset <- function(method, name) {
     pack <- viewerPackCurrent()
@@ -1777,10 +1758,7 @@ server <- function(input, output, session) {
     } else {
       ""
     }
-    stored_fingerprint <- tryCatch(
-      dataset$cell_fingerprint,
-      error = function(error) NULL
-    )
+    stored_fingerprint <- dataset$cell_fingerprint
     if (
       is.character(stored_fingerprint) &&
         length(stored_fingerprint) == 1L &&
@@ -2023,9 +2001,9 @@ server <- function(input, output, session) {
         if (!is.null(result)) {
           return(isTRUE(result))
         }
-        ## Legacy catalogs lack projection names. Keep navigation reachable
-        ## until the full selected object is available, without loading it just
-        ## to paint the lightweight Data info page.
+        ## Uploads and the bundled example have no catalog entry. Keep
+        ## navigation reachable until the full selected object is available,
+        ## without loading it just to paint the lightweight Data info page.
         if (!isTRUE(dataset_load_requested())) return(TRUE)
       }
       if (!is.null(catalog_field)) {
@@ -2139,8 +2117,7 @@ server <- function(input, output, session) {
   toggleConditionalTab(
     "trekker",
     function() {
-      tk <- tryCatch(data_set()$getTrekker(), error = function(e) NULL)
-      !is.null(tk)
+      !is.null(data_set()$getTrekker())
     },
     catalog_field = "trekker"
   )

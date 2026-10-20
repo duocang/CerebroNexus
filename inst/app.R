@@ -35,8 +35,8 @@ Cerebro.options <<- list(
     ## REAL public spatial data, one per technology (down-sampled). The bracketed
     ## label states the platform. All four flow through the same platform-
     ## agnostic .getSpatialData extraction, spanning spot / bead / in-situ-imaging
-    ## capture and Seurat v4 vs v5 objects: Slide-seq v2 is a
-    ## Seurat v4 object, the others are v5. The demos deliberately show BOTH
+    ## capture. Slide-seq v2 started as a Seurat v4 object and
+    ## is rebuilt as a v5 FOV before export, the others are v5. The demos deliberately show BOTH
     ## background-image paths: MERFISH embeds its DAPI in the .crb; Visium and
     ## Xenium load external files via `spatial_images` below. Slide-seq has no
     ## tissue photo by design (bead scatter is the complete spatial view).

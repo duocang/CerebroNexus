@@ -8983,14 +8983,6 @@
     var selection = saved && saved.selection || {};
     var view = saved && saved.view || {};
     var viewport = view.zoomed === false ? null : view.viewport;
-    if (viewport && viewport.cx == null && viewport.x0 != null) {
-      viewport = {
-        cx: (Number(viewport.x0) + Number(viewport.x1)) / 2,
-        cy: (Number(viewport.y0) + Number(viewport.y1)) / 2,
-        span: Math.max(Number(viewport.x1) - Number(viewport.x0),
-          Number(viewport.y1) - Number(viewport.y0))
-      };
-    }
     target.selection = (selection.cells || []).map(String);
     target.hiddenGroups = (view.hidden_groups || []).map(String);
     target.mode = view.mode || 'lasso';

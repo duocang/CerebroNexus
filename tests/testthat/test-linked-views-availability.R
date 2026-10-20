@@ -34,7 +34,7 @@ test_that("Linked views depends on available views, not their names or selection
   expect_true(viewerLinkedViewsAvailable(info))
 })
 
-test_that("legacy objects use their full registered content", {
+test_that("loaded objects use their full registered content", {
   object <- list(availableProjections = function() "umap")
   expect_false(viewerLinkedViewsAvailable(object = object))
   object$availableProjections <- function() c("umap", "tsne")

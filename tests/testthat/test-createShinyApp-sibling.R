@@ -336,9 +336,7 @@ test_that("Viewer resolves scatter defaults for the selected dataset", {
   options <- list(
     point_size = c(PBMC = 2, Xenium = 5),
     point_opacity = c(PBMC = 0.4, Xenium = 1),
-    percentage_cells_to_show = c(PBMC = 40, Xenium = 100),
-    expression_point_size = c(PBMC = 3, Xenium = 2),
-    expression_point_opacity = c(PBMC = 0.8, Xenium = 1)
+    percentage_cells_to_show = c(PBMC = 40, Xenium = 100)
   )
 
   expect_identical(
@@ -353,9 +351,7 @@ test_that("Viewer resolves scatter defaults for the selected dataset", {
     runtime$viewerScatterDefaults(options, "Missing"),
     list(point_size = 5, point_opacity = 1, percentage_cells_to_show = 100)
   )
-  ## Ordinary projection views share one author configuration: the legacy
-  ## page-specific overrides above must not shadow it. test-shared-scatter-
-  ## settings.R pins the same rule directly.
+  ## Ordinary projection views share one author configuration.
   expect_identical(
     runtime$viewerScatterDefaults(options, "Xenium", "expression"),
     list(point_size = 5, point_opacity = 1, percentage_cells_to_show = 100)
@@ -1070,7 +1066,7 @@ test_that("every copied artifact has a portable bundle target", {
   build_test_app(
     c("Dataset" = crb),
     app,
-    spatial_images = list("Dataset" = reserved_image)
+    spatial_images = list(Dataset = list(section = c("Tissue background" = reserved_image)))
   )
   config <- readRDS(file.path(app, "cerebro_config.rds"))
   expect_true(file.exists(file.path(
@@ -1953,7 +1949,7 @@ test_that("private and spatial targets may share a basename", {
   suppressWarnings(build_test_app(
     c("First" = crb),
     app,
-    spatial_images = list("First" = image)
+    spatial_images = list(First = list(section = c("Tissue background" = image)))
   ))
 
   config <- readRDS(file.path(app, "cerebro_config.rds"))
@@ -1997,7 +1993,10 @@ test_that("different datasets isolate equal spatial image basenames", {
   build_test_app(
     c("First" = first_crb, "Second" = second_crb),
     app,
-    spatial_images = list("First" = first, "Second" = second)
+    spatial_images = list(
+      First = list(section = c("Tissue background" = first)),
+      Second = list(section = c("Tissue background" = second))
+    )
   )
   config <- readRDS(file.path(app, "cerebro_config.rds"))
   expect_identical(
@@ -2032,7 +2031,10 @@ test_that("duplicate spatial image data set names are rejected", {
     build_test_app(
       c("Dataset" = crb),
       file.path(root, "app"),
-      spatial_images = list("Dataset" = first, "Dataset" = second)
+      spatial_images = list(
+        Dataset = list(section = c("Tissue background" = first)),
+        Dataset = list(section = c("Tissue background" = second))
+      )
     ),
     "spatial_images names must be unique"
   )
@@ -2139,7 +2141,25 @@ test_that("spatial image bundle targets use encoded portable components", {
   expect_false(grepl("\\\\", target))
 })
 
-test_that("builder-owned spatial options cannot bypass formal parameters", {
+test_that("retired per-page scatter options are rejected, not dropped", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(root, "data.crb")
+  app <- file.path(root, "app")
+  expect_error(
+    build_test_app(
+      c(Dataset = crb),
+      app,
+      cerebro_options = list(
+        expression_point_size = c(Dataset = 3),
+        expression_point_opacity = c(Dataset = 0.5)
+      )
+    ),
+    "expression_point_size, expression_point_opacity.*point_size"
+  )
+  expect_false(dir.exists(app))
+})
+
+test_that("builder-owned spatial options cannot bypass the parameters", {
   root <- withr::local_tempdir()
   crb <- write_spatial_bundle_crb(file.path(root, "source"))
   keys <- c(
@@ -2155,7 +2175,7 @@ test_that("builder-owned spatial options cannot bypass formal parameters", {
         app,
         cerebro_options = stats::setNames(list(TRUE), key)
       ),
-      paste0("cerebro_options.*", key, ".*formal.*parameter")
+      paste0("cerebro_options.*", key, ".*createShinyApp[(][)] parameters")
     )
     expect_false(dir.exists(app))
   }
@@ -2175,7 +2195,7 @@ test_that("builder-owned spatial options cannot bypass formal parameters", {
         spatial_image_settings = list(bypass = TRUE)
       )
     ),
-    "cerebro_options.*spatial_images.*spatial_image_settings.*formal.*parameter"
+    "cerebro_options.*spatial_images.*spatial_image_settings.*createShinyApp[(][)] parameters"
   )
   expect_false(dir.exists(app))
 })
@@ -2334,7 +2354,7 @@ test_that("spatial image settings accept only strict scalar fields", {
   }
 })
 
-test_that("legacy spatial image paths require one unambiguous spatial", {
+test_that("the old c(Dataset = path) spatial_images form is rejected", {
   root <- withr::local_tempdir()
   image <- file.path(root, "histology.png")
   writeLines("IMAGE", image)
@@ -2342,44 +2362,15 @@ test_that("legacy spatial image paths require one unambiguous spatial", {
     file.path(root, "single"),
     spatials = list(section = character())
   )
-  app <- file.path(root, "single-app")
 
-  build_test_app(
-    c(Dataset = single),
-    app,
-    spatial_images = c(Dataset = image)
-  )
-  config <- readRDS(file.path(app, "cerebro_config.rds"))
-  expect_identical(
-    config$spatial_images$Dataset$section[["Tissue background"]],
-    expected_spatial_image_target(
-      "Dataset",
-      "section",
-      "Tissue background",
-      "histology.png"
+  for (declared in list(c(Dataset = image), list(Dataset = image))) {
+    app <- file.path(root, "single-app")
+    expect_error(
+      build_test_app(c(Dataset = single), app, spatial_images = declared),
+      "spatial_images.*c[(]label = path[)].*no longer accepted"
     )
-  )
-  multiple <- write_spatial_bundle_crb(
-    file.path(root, "multiple"),
-    spatials = list(first = character(), second = character())
-  )
-  expect_error(
-    build_test_app(
-      c(Dataset = multiple),
-      file.path(root, "multiple-app"),
-      spatial_images = c(Dataset = image)
-    ),
-    "legacy spatial_images.*first.*second"
-  )
-  none <- write_bundle_crb(file.path(root, "none"))
-  expect_error(
-    build_test_app(
-      c(Dataset = none),
-      file.path(root, "none-app"),
-      spatial_images = c(Dataset = image)
-    ),
-    "legacy spatial_images.*no available spatial"
-  )
+    expect_false(dir.exists(app))
+  }
 })
 
 test_that("Cerebro objects missing spatial accessors are rejected", {
@@ -2440,7 +2431,7 @@ test_that("partial, active, and lazy spatial accessors are rejected", {
   expect_false(file.exists(sentinel))
 })
 
-test_that("unambiguous legacy multi-path vectors bundle every image", {
+test_that("several labelled images of one spatial entry bundle every image", {
   root <- withr::local_tempdir()
   crb <- write_spatial_bundle_crb(file.path(root, "source"))
   paths <- file.path(root, c("first.png", "second.png"))
@@ -2448,13 +2439,19 @@ test_that("unambiguous legacy multi-path vectors bundle every image", {
   writeLines("SECOND", paths[[2L]])
   app <- file.path(root, "app")
 
-  build_test_app(c(Dataset = crb), app, spatial_images = list(Dataset = paths))
+  build_test_app(
+    c(Dataset = crb),
+    app,
+    spatial_images = list(
+      Dataset = list(section = c(first = paths[[1L]], second = paths[[2L]]))
+    )
+  )
 
   images <- readRDS(file.path(
     app,
     "cerebro_config.rds"
   ))$spatial_images$Dataset$section
-  expect_named(images, c("Tissue background 1", "Tissue background 2"))
+  expect_named(images, c("first", "second"))
   expect_identical(readLines(file.path(app, images[[1L]])), "FIRST")
   expect_identical(readLines(file.path(app, images[[2L]])), "SECOND")
 })
@@ -2470,7 +2467,10 @@ test_that("one spatial image can be shared by multiple data sets", {
   build_test_app(
     c("First" = first, "Second" = second),
     app,
-    spatial_images = list("First" = image, "Second" = image)
+    spatial_images = list(
+      First = list(section = c("Tissue background" = image)),
+      Second = list(section = c("Tissue background" = image))
+    )
   )
 
   config <- readRDS(file.path(app, "cerebro_config.rds"))
@@ -2511,7 +2511,7 @@ test_that("external spatial images render from disk without an HTTP mapping", {
   build_test_app(
     c("Dataset" = crb),
     app,
-    spatial_images = list("Dataset" = image)
+    spatial_images = list(Dataset = list(section = c("Tissue background" = image)))
   )
 
   config <- readRDS(file.path(app, "cerebro_config.rds"))
@@ -2562,7 +2562,7 @@ test_that("forged spatial backgrounds cannot read unconfigured files", {
   build_test_app(
     c("Dataset" = crb),
     app,
-    spatial_images = list("Dataset" = image)
+    spatial_images = list(Dataset = list(section = c("Tissue background" = image)))
   )
 
   config <- readRDS(file.path(app, "cerebro_config.rds"))
@@ -2625,7 +2625,10 @@ test_that("unknown spatial image datasets fail before bundling", {
     build_test_app(
       c("Dataset" = crb),
       app,
-      spatial_images = list("Dataset" = matched, "Typo" = unmatched)
+      spatial_images = list(
+        Dataset = list(section = c("Tissue background" = matched)),
+        Typo = list(section = c("Tissue background" = unmatched))
+      )
     ),
     "dataset `Typo`.*cerebro_data"
   )
@@ -2642,7 +2645,7 @@ test_that("missing spatial images fail before bundling", {
     build_test_app(
       c("Dataset" = crb),
       app,
-      spatial_images = list("Dataset" = missing)
+      spatial_images = list(Dataset = list(section = c("Tissue background" = missing)))
     ),
     "does not exist"
   )
@@ -3400,7 +3403,9 @@ test_that("the runtime rejects an H5 backend that is a directory", {
   dir.create(file.path(root, "matrix.h5"))
   object <- new.env(parent = emptyenv())
   class(object) <- "Cerebro"
-  object$availableSpatial <- function() character()
+  for (accessor in names(runtime$.runtimeRequiredCerebroMethods())) {
+    object[[accessor]] <- function(...) NULL
+  }
   object$expression_backend <- list(type = "h5", location = "matrix.h5")
   object$getExpressionBackend <- function() {
     list(type = "h5", location = "matrix.h5")

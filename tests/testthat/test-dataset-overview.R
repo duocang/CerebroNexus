@@ -64,9 +64,8 @@ test_that("all categories remain separately visible in large summaries", {
   result <- overview_helpers$viewerDatasetOverview(object)
   expect_length(result$sample$counts, 200)
   expect_equal(result$sample$total, 1000)
-  expect_equal(sum(result$sample$counts) + result$sample$remaining, 1000)
+  expect_equal(sum(result$sample$counts), 1000)
   expect_equal(result$samples, 200)
-  expect_false(overview_helpers$viewerOverviewTruncated(result))
   html <- as.character(overview_helpers$viewerOverviewBars(result$sample))
   expect_equal(
     lengths(regmatches(
@@ -76,11 +75,6 @@ test_that("all categories remain separately visible in large summaries", {
     200
   )
   expect_false(grepl("Top 10|Other categories", html))
-  legacy <- result
-  legacy$sample$counts <- head(result$sample$counts, 10)
-  legacy$sample$remaining <- 950
-  expect_true(overview_helpers$viewerOverviewTruncated(legacy))
-  expect_false(overview_helpers$viewerOverviewTruncated(NULL))
 })
 
 test_that("explicit sample column works without name heuristics", {

@@ -563,6 +563,29 @@ retired_cerebros <- function(root) {
     expression_backend = embedded
   )
   with_base <- function(...) utils::modifyList(base, list(...))
+  ## Spatial entries as older releases stored them.
+  fov_entry <- function(...) {
+    c(
+      list(
+        coordinates = data.frame(
+          x = c(10, 20, 30, 40),
+          y = c(5, 15, 25, 35),
+          row.names = cells
+        ),
+        expression = counts
+      ),
+      list(...)
+    )
+  }
+  tissue <- "data:image/png;base64,AA=="
+  molecules <- data.frame(
+    x = c(1, 2, 3),
+    y = c(4, 5, 6),
+    gene = c("A", "B", "A"),
+    stringsAsFactors = FALSE
+  )
+  old_getter <- function(name) NULL
+  environment(old_getter) <- baseenv()
 
   entries <- list(
     no_descriptor = list(
@@ -625,6 +648,72 @@ retired_cerebros <- function(root) {
         cls = c(paste0("Cerebro_v1", ".3"), "R6")
       ),
       reason = "predates spatial support",
+      upgrades = TRUE
+    ),
+    singular_image = list(
+      payload = legacy_payload(with_base(spatial = list(
+        fov = fov_entry(
+          histology_image = tissue,
+          histology_image_bounds = list(
+            ymax = 40,
+            xmin = 0,
+            ymin = 0,
+            xmax = 100
+          )
+        )
+      ))),
+      reason = "spatial entry 'fov' stores a singular histology_image",
+      upgrades = TRUE
+    ),
+    singular_bounds_only = list(
+      payload = legacy_payload(with_base(spatial = list(
+        fov = fov_entry(
+          histology_images = list(
+            DAPI = list(histology_image = tissue)
+          ),
+          histology_image_bounds = c(xmin = 0, xmax = 1, ymin = 0, ymax = 1)
+        )
+      ))),
+      reason = "spatial entry 'fov' stores a singular histology_image",
+      upgrades = TRUE
+    ),
+    embedded_molecules = list(
+      payload = legacy_payload(with_base(spatial = list(
+        fov = fov_entry(molecules = molecules)
+      ))),
+      reason = "spatial entry 'fov' embeds its molecule table",
+      upgrades = TRUE
+    ),
+    eager_spatial_getter = list(
+      payload = legacy_payload(c(
+        with_base(spatial = list(fov = fov_entry())),
+        list(getSpatialData = old_getter)
+      )),
+      reason = "predates deferred spatial molecule loading",
+      upgrades = TRUE
+    ),
+    pre_hla = list(
+      payload = legacy_payload(
+        with_base(),
+        drop = c("hla_typing", "addHLATyping", "getHLATyping")
+      ),
+      reason = "predates HLA typing support",
+      upgrades = TRUE
+    ),
+    pre_trekker = list(
+      payload = legacy_payload(
+        with_base(),
+        drop = c("trekker", "addTrekker", "getTrekker")
+      ),
+      reason = "predates Trekker support",
+      upgrades = TRUE
+    ),
+    pre_enriched_pathways = list(
+      payload = legacy_payload(
+        with_base(),
+        drop = "getMethodsForEnrichedPathways"
+      ),
+      reason = "predates the enriched-pathways page",
       upgrades = TRUE
     )
   )
@@ -691,7 +780,47 @@ test_that("every retired format is rejected with a pointer to convertCerebro", {
       "uses a retired format.*convertCerebro",
       info = name
     )
+    ## and the package and the Viewer name the same reason
+    stored <- .readCerebroPayload(entry$path)
+    expect_identical(
+      runtime$.runtimeLegacyReason(stored),
+      .legacyCerebroReason(stored),
+      info = name
+    )
   }
+})
+
+test_that("only a spatial entry in a retired form is gated", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, "spatial.crb")
+  runtime <- runtime_env()
+  coordinates <- data.frame(x = c(1, 2), y = c(3, 4))
+  object <- Cerebro$new()
+  object$setExpressionBackend("embedded")
+  object$addSpatialData(
+    "fov",
+    list(
+      coordinates = coordinates,
+      expression = matrix(numeric(), nrow = 0L, ncol = 2L),
+      histology_images = list(
+        DAPI = list(histology_image = "data:image/png;base64,AA==")
+      ),
+      molecules = data.frame(x = 1, y = 2, gene = "A")
+    )
+  )
+  saveCerebro(object, path)
+  stored <- .readCerebroPayload(path)
+
+  ## a canonical image and a molecule sidecar reference are current
+  expect_s3_class(stored$spatial$fov$molecules, "CerebroSpatialMoleculeRef")
+  expect_null(.legacySpatialReason(stored))
+  expect_null(runtime$.runtimeLegacySpatialReason(stored))
+  expect_s3_class(readCerebro(path), "Cerebro")
+
+  ## an in-memory object keeps table molecules until it is saved; only a file
+  ## read from disk is checked
+  expect_s3_class(object$spatial$fov$molecules, "data.frame")
+  expect_s3_class(stored$spatial$fov$molecules, "CerebroSpatialMoleculeRef")
 })
 
 test_that("current formats are not mistaken for retired ones", {
@@ -701,6 +830,37 @@ test_that("current formats are not mistaken for retired ones", {
   saveCerebro(embedded, path)
   expect_null(.legacyCerebroReason(.readCerebroPayload(path)))
   expect_s3_class(readCerebro(path), "Cerebro")
+})
+
+test_that("the package and the Viewer require the same accessors", {
+  expect_identical(
+    runtime_env()$.runtimeRequiredCerebroMethods(),
+    .requiredCerebroMethods
+  )
+  ## every required accessor is a method of the current class
+  expect_true(all(
+    names(.requiredCerebroMethods) %in% names(Cerebro$public_methods)
+  ))
+})
+
+test_that("the Viewer gate also runs from the process-wide function cache", {
+  cache <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("source_cache.R"), envir = cache)
+  scope <- new.env(parent = globalenv())
+  withr::local_options(cerebro.quiet_runtime = TRUE)
+  cache$viewerSource(viewer_test_path("utility_functions.R"), scope)
+
+  root <- withr::local_tempdir()
+  retired <- retired_cerebros(root)
+  current <- file.path(root, "current.crb")
+  saveCerebro(make_embedded_cerebro(), current)
+  expect_null(scope$.runtimeLegacyReason(.readCerebroPayload(current)))
+  expect_match(
+    scope$.runtimeLegacyReason(
+      .readCerebroPayload(retired$entries$pre_hla$path)
+    ),
+    "predates HLA typing support"
+  )
 })
 
 test_that("convertCerebro upgrades what can be repaired without the source", {
@@ -730,7 +890,12 @@ test_that("convertCerebro upgrades what can be repaired without the source", {
       exists("bcr_data", envir = converted, inherits = FALSE),
       info = name
     )
-    expect_true(is.function(converted$availableSpatial), info = name)
+    for (accessor in names(.requiredCerebroMethods)) {
+      expect_true(is.function(converted[[accessor]]), info = paste(name, accessor))
+    }
+    expect_equal(nrow(converted$getHLATyping()), 0L, info = name)
+    expect_null(converted$getTrekker(), info = name)
+    expect_identical(converted$getMethodsForEnrichedPathways(), NULL, info = name)
     expect_null(.legacyCerebroReason(.readCerebroPayload(entry$path)))
   }
 
@@ -746,6 +911,78 @@ test_that("convertCerebro upgrades what can be repaired without the source", {
   expect_identical(converted$getTCR()$b$barcode, "cell-3")
   expect_named(converted$getBCR(), "b")
   expect_identical(converted$getBCR()$b$barcode, "cell-4")
+})
+
+test_that("convertCerebro repairs singular spatial images", {
+  skip_if_not_installed("qs2")
+  root <- withr::local_tempdir()
+  retired <- retired_cerebros(root)
+  bounds <- c(xmin = 0, xmax = 100, ymin = 0, ymax = 40)
+
+  convertCerebro(retired$entries$singular_image$path)
+  converted <- readCerebro(retired$entries$singular_image$path)
+  stored <- converted$spatial$fov
+  expect_false(any(
+    c("histology_image", "histology_image_bounds") %in% names(stored)
+  ))
+  expect_named(stored$histology_images, "Tissue background")
+  expect_identical(
+    stored$histology_images[["Tissue background"]]$histology_image,
+    "data:image/png;base64,AA=="
+  )
+  ## list-valued bounds become the numeric vector of the current form
+  expect_identical(
+    stored$histology_images[["Tissue background"]]$histology_image_bounds,
+    bounds
+  )
+  expect_identical(converted$getSpatialData("fov")$histology_images, stored$histology_images)
+
+  ## a canonical manifest wins over stray singular fields, which are dropped
+  convertCerebro(retired$entries$singular_bounds_only$path)
+  converted <- readCerebro(retired$entries$singular_bounds_only$path)
+  expect_named(converted$spatial$fov$histology_images, "DAPI")
+  expect_false("histology_image_bounds" %in% names(converted$spatial$fov))
+})
+
+test_that("a singular spatial image that cannot be normalized stops convertCerebro", {
+  root <- withr::local_tempdir()
+  retired <- retired_cerebros(root)
+  path <- retired$entries$singular_image$path
+  payload <- .readCerebroPayload(path)
+  entry <- payload$spatial$fov
+  entry$histology_image <- "not-a-data-uri"
+  broken <- legacy_payload(list(
+    expression = retired$counts,
+    meta_data = payload$meta_data,
+    expression_backend = payload$expression_backend,
+    spatial = list(fov = entry)
+  ))
+  broken_path <- file.path(root, "broken.crb")
+  saveRDS(broken, broken_path)
+  before <- unname(tools::md5sum(broken_path))
+
+  expect_error(convertCerebro(broken_path), "Tissue background.*data:image")
+  expect_identical(unname(tools::md5sum(broken_path)), before)
+})
+
+test_that("convertCerebro moves embedded spatial molecules into the sidecar", {
+  skip_if_not_installed("qs2")
+  root <- withr::local_tempdir()
+  retired <- retired_cerebros(root)
+  path <- retired$entries$embedded_molecules$path
+  molecules <- .readCerebroPayload(path)$spatial$fov$molecules
+  expect_s3_class(molecules, "data.frame")
+  expect_error(readCerebro(path), "embeds its molecule table")
+
+  convertCerebro(path)
+  expect_s3_class(
+    .readCerebroPayload(path)$spatial$fov$molecules,
+    "CerebroSpatialMoleculeRef"
+  )
+  expect_true(dir.exists(file.path(root, "embedded_molecules.spatial")))
+  converted <- readCerebro(path)
+  expect_s3_class(converted$spatial$fov$molecules, "CerebroSpatialMoleculeRef")
+  expect_identical(converted$getSpatialData("fov")$molecules, molecules)
 })
 
 test_that("convertCerebro refuses a CRB whose storage it cannot read or repair", {

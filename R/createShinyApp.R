@@ -931,22 +931,8 @@ dedent <- function(string) {
     )
   }
   catalog <- lapply(available, function(spatial_name) {
-    getter <- object$getSpatialData
-    getter_arguments <- names(formals(getter))
-    stored <- tryCatch(object$spatial[[spatial_name]], error = function(error) {
-      NULL
-    })
     data <- tryCatch(
-      if ("hydrate_molecules" %in% getter_arguments) {
-        getter(spatial_name, hydrate_molecules = FALSE)
-      } else if (
-        is.list(stored) &&
-          inherits(stored[["molecules"]], "CerebroSpatialMoleculeRef")
-      ) {
-        .normalizeSpatialDataImages(stored, spatial_name)
-      } else {
-        getter(spatial_name)
-      },
+      object$getSpatialData(spatial_name, hydrate_molecules = FALSE),
       error = function(error) {
         stop(
           "Could not read dataset `",
@@ -2071,7 +2057,7 @@ dedent <- function(string) {
 #' @param dataset_labels Optional named character vector mapping every dataset
 #'   identity in \code{cerebro_data} to its display label. Values must be
 #'   non-empty but may repeat. When omitted, the dataset identities are also
-#'   used as display labels for backward compatibility.
+#'   used as display labels.
 #' @param result_dir Output directory. Its basename must be portable, its path
 #'   must not use the reserved build-lock namespace, and its final target must
 #'   not be a symbolic link or unresolved filesystem entry.
@@ -2147,9 +2133,9 @@ dedent <- function(string) {
 #'   CRB's \code{availableSpatial()}, and image labels must be unique and
 #'   non-empty within an entry. A leaf may instead be a descriptor containing
 #'   \code{path} and optional coordinate \code{bounds}. Supplied files are
-#'   copied to opaque, safe relative paths under \code{spatial-assets/}. The
-#'   legacy \code{c(Dataset = path)} form is accepted only
-#'   when that CRB has exactly one spatial entry.
+#'   copied to opaque, safe relative paths under \code{spatial-assets/}. A
+#'   plain \code{c(Dataset = path)} vector is rejected; write
+#'   \code{list(Dataset = list(<spatial entry> = c(label = path)))}.
 #' @param spatial_image_settings Optional nested settings in
 #'   \code{dataset -> spatial entry -> image label -> settings} form. Settings
 #'   may contain only \code{flip_x}, \code{flip_y}, \code{scale_x},
@@ -2160,18 +2146,11 @@ dedent <- function(string) {
 #'   dataset and spatial entry. The image label must exist in the union of the
 #'   CRB's embedded images and this call's \code{spatial_images}; unknown
 #'   identities are rejected. Labels are user-facing names, not protocol names.
-#' @param spatial_images_flip_x Legacy named per-dataset horizontal flip values.
-#' @param spatial_images_flip_y Legacy named per-dataset vertical flip values.
-#' @param spatial_images_scale_x Legacy named per-dataset X scale values.
-#' @param spatial_images_scale_y Legacy named per-dataset Y scale values.
-#' @param spatial_images_offset_x Legacy named per-dataset horizontal offsets.
-#' @param spatial_images_offset_y Legacy named per-dataset vertical offsets.
 #' @param spatial_plot_rotation Optional nested rotations in
 #'   \code{dataset -> spatial entry -> degrees} form, applied only to spatial
-#'   cell coordinates. The legacy named per-dataset vector form remains
-#'   supported and applies one rotation to every spatial entry in that dataset.
-#'   Dataset names must match \code{cerebro_data}; spatial names must match the
-#'   corresponding CRB's \code{availableSpatial()}.
+#'   cell coordinates. Dataset names must match \code{cerebro_data}; spatial
+#'   names must match the corresponding CRB's \code{availableSpatial()}. A
+#'   per-dataset numeric vector is rejected.
 #' @param auth Optional authentication settings. \code{NULL}, the default,
 #'   leaves the generated Viewer public. To require a login, provide a named
 #'   list with \code{credentials}, the path to an encrypted SQLite database
@@ -2235,12 +2214,6 @@ createShinyApp <- function(
   variable_to_compare = NULL,
   spatial_images = NULL,
   spatial_image_settings = NULL,
-  spatial_images_flip_x = NULL,
-  spatial_images_flip_y = NULL,
-  spatial_images_scale_x = NULL,
-  spatial_images_scale_y = NULL,
-  spatial_images_offset_x = NULL,
-  spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
   auth = NULL,
   extra_tables = NULL,
@@ -2435,6 +2408,8 @@ createShinyApp <- function(
     }
     cerebro_options[["viewer_content"]] <- viewer_content
   }
+  ## The per-dataset `spatial_images_flip_x` ... `spatial_images_offset_y`
+  ## options were removed; they stay reserved so they are not silently ignored.
   builder_spatial_options <- c(
     "spatial_images",
     "spatial_image_settings",
@@ -2472,6 +2447,23 @@ createShinyApp <- function(
       call. = FALSE
     )
   }
+  retired_page_options <- intersect(
+    supplied_option_names,
+    paste0(
+      "expression_",
+      c("point_size", "point_opacity", "percentage_cells_to_show")
+    )
+  )
+  if (length(retired_page_options)) {
+    stop(
+      "`cerebro_options` contains per-page scatter option(s) that no longer ",
+      "exist: ",
+      paste(retired_page_options, collapse = ", "),
+      ". All projection views share the point_size, point_opacity and ",
+      "percentage_cells_to_show parameters of createShinyApp().",
+      call. = FALSE
+    )
+  }
   forbidden_spatial_options <- unique(intersect(
     supplied_option_names,
     builder_spatial_options
@@ -2480,8 +2472,10 @@ createShinyApp <- function(
     stop(
       "`cerebro_options` contains builder-owned spatial key(s): ",
       paste(forbidden_spatial_options, collapse = ", "),
-      ". Supply these through the corresponding createShinyApp() formal ",
-      "parameters instead.",
+      ". Supply `spatial_images` and `spatial_image_settings` through the ",
+      "createShinyApp() parameters instead; per-image flips, scales and ",
+      "offsets go in `spatial_image_settings = list(Dataset = ",
+      "list(<spatial entry> = list(<image label> = list(flip_x = TRUE))))`.",
       call. = FALSE
     )
   }
@@ -2750,26 +2744,6 @@ createShinyApp <- function(
     spatial_catalogs,
     spatial_images
   )
-  legacy_settings <- list(
-    spatial_images_flip_x = "flip_x",
-    spatial_images_flip_y = "flip_y",
-    spatial_images_scale_x = "scale_x",
-    spatial_images_scale_y = "scale_y",
-    spatial_images_offset_x = "offset_x",
-    spatial_images_offset_y = "offset_y"
-  )
-  for (argument in names(legacy_settings)) {
-    spatial_image_settings <- .mergeAppSpatialImageSettings(
-      spatial_image_settings,
-      .normalizeLegacyAppSpatialSetting(
-        get(argument, inherits = FALSE),
-        argument,
-        legacy_settings[[argument]],
-        spatial_catalogs,
-        spatial_images
-      )
-    )
-  }
   crb_targets <- paste0(private_data_root, "/", basename(cerebro_data))
   colliding_targets <- duplicated(tolower(crb_targets)) |
     duplicated(tolower(crb_targets), fromLast = TRUE)
@@ -3212,10 +3186,6 @@ createShinyApp <- function(
   }
   if (!is.null(initial_page)) {
     cerebro_options[["initial_page"]] <- initial_page
-  }
-  # Drop obsolete per-page overrides so generated apps have a single source.
-  for (field in c("point_size", "point_opacity", "percentage_cells_to_show")) {
-    cerebro_options[[paste0("expression_", field)]] <- NULL
   }
   for (field in c("spatial_point_appearance", "spatial_roi_settings")) {
     values <- get(field)

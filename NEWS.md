@@ -60,8 +60,81 @@ immune repertoire in a retired sidecar layout, or is a pre-spatial
   directory, thin schema 1 or 2) cannot be converted. Re-export it from the
   source object with `exportFromSeurat(expression_matrix_mode = "h5")`, and
   delete the old matrix directory afterwards.
-- The shipped example `demo_hla_tcr_dextramer.crb` had no descriptor and was
-  converted.
+- The example data sets in `inst/extdata/examples/` are rebuilt as thin H5-backed
+  CRBs, each with its `<stem>.h5` beside it (`data-raw/convert_demos_to_h5.R`);
+  `example.h5` is now the matrix of `example.crb`.
+
+## Stored files
+
+`readCerebro()`, `launchCerebro()`, `createShinyApp()` and the Viewer now also
+reject, with "uses a retired format", a `.crb` that
+
+- was written by an exporter older than the `getHLATyping()` (2.3.0),
+  `getTrekker()` (2.2.0) or `getMethodsForEnrichedPathways()` (after 1.7.0)
+  accessors;
+- holds a spatial entry with the singular `histology_image` /
+  `histology_image_bounds` fields instead of `histology_images`;
+- holds spatial molecule tables inside the `.crb` instead of in the
+  `<stem>.spatial/` sidecar, or has a `getSpatialData()` without
+  `hydrate_molecules`.
+
+`convertCerebro()` upgrades all of these in place: it rebuilds the object on the
+current class, converts a singular image to `histology_images` and moves molecule
+tables into the sidecar.
+The Viewer no longer carries guards for objects that lack an accessor, so a
+current `.crb` is the only supported input.
+
+## Calls that now fail
+
+- **Seurat layers.** A requested layer that does not exist is an error in
+  `exportFromSeurat()`, `convertSeuratToCerebro()`, `calculatePercentGenes()`,
+  `getMostExpressedGenes()`, `addPercentMtRibo()` and
+  `performGeneSetEnrichmentAnalysis()`; no other layer is substituted. Before,
+  an RNA assay with only `counts` exported at the default `slot = "data"`
+  silently exported `counts`. The message lists the layers that exist; the fix is
+  `slot = "counts"` (or running `NormalizeData()`).
+- **`createShinyApp()` spatial arguments.** `spatial_images_flip_x/_y`,
+  `spatial_images_scale_x/_y` and `spatial_images_offset_x/_y` are removed; use
+  `spatial_image_settings`. `spatial_images = c(Dataset = path)` and a
+  per-dataset numeric `spatial_plot_rotation` are rejected with the nested form
+  to use: `spatial_images = list(Dataset = list(<spatial entry> = c(label =
+  path)))`, `spatial_plot_rotation = list(Dataset = list(<spatial entry> = 90))`.
+  `expression_point_size`, `expression_point_opacity` and
+  `expression_percentage_cells_to_show` in `cerebro_options` are rejected (they
+  never had an effect); use `point_size`, `point_opacity` and
+  `percentage_cells_to_show`.
+- **`addSpatialData()`** and `@misc$cerebro_spatial_images` reject the singular
+  `histology_image` fields.
+- **Seurat v4 spatial images** (`VisiumV1`, `SlideSeq`, `STARmap`) are rejected
+  by `exportFromSeurat()` and `convertSeuratToCerebro()`. Rebuild the image as a
+  Seurat v5 image (`Load10X_Spatial()`, `CreateFOV()`) or drop it from
+  `object@images`; non-spatial Seurat v4 objects still export.
+- **`launchCerebro()`** needs unique, non-empty names when `crb_file_to_load`
+  has more than one file, for example `c(sampleA = "a.crb", sampleB = "b.crb")`.
+  Unnamed multi-file launches no longer get `legacy-N` ids.
+- **Links.** `?dataset=` and `/name` links match only the dataset id (the name
+  given in `cerebro_data` or `crb_file_to_load`), no longer the file name.
+- `getMethodsWithEnrichedPathways()` is removed; use
+  `getMethodsForEnrichedPathways()`.
+- The display setting `gene_plotting_order = "Random"` is rejected; it never
+  shuffled cells. Use `"Input order"`.
+
+## Viewer
+
+- Viewer Packs without the `projection_identity_version` or
+  `violin_summary_version` markers, or of another schema, are ignored and
+  rebuilt; no released pack is affected.
+- Saved specialist views whose canvas viewport uses `x0/x1/y0/y1` are rejected
+  on import; views saved by the current Viewer are unaffected.
+- The Data info page no longer rebuilds category summaries that older code had
+  truncated to ten entries.
+
+## Dependencies
+
+- Minimum versions are raised so the compatibility code could go: R 4.4.0,
+  GSVA 2.0.0 (the `gsvaParam()` API only), msigdbr 24.1.0 (the
+  `collection`/`msigdbr_collections()` API only) and ggplot2 3.4.0 (`linewidth`).
+- `%||%` now comes from rlang; `R/utils-compat.R` is removed.
 
 ## Large demo data
 
