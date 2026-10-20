@@ -500,7 +500,7 @@ Historical gate output before the 1,500-gene panel update:
 ```
 
 The current demo retains a random 2,000 of the 12,000 dextramer-selected
-cells (`data-raw/subsample_demos.R`) and caps expression
+cells (fixed seed, recorded in the file) and caps expression
 at 100 genes after analysis, protecting available immune markers and filling
 by normalized-expression variance. Gene search is limited to that panel; UMAP,
 full-input QC, receptors, donor genotypes and dextramer calls are unchanged.

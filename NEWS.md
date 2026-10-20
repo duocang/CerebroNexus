@@ -63,7 +63,7 @@ immune repertoire in a retired sidecar layout, or is a pre-spatial
 - The example data sets in `inst/extdata/examples/` keep at most 100 genes
   (before: up to 1,500), protecting marker genes and the
   genes their analysis tables name, and keep a random subset of their cells
-  (1,000 to 3,000; `data-raw/subsample_demos.R`). They stay embedded; `demo_hla_tcr_dextramer.crb` and
+  (1,000 to 3,000). They stay embedded; `demo_hla_tcr_dextramer.crb` and
   `demo_spatial_merfish.crb` were converted to the current format. The three
   Xenium background images were recompressed without loss, and the unused
   `example.h5` was removed.

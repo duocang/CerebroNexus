@@ -20,7 +20,7 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 
 ## Demo gene budget
 
-The active builders call `save_demo_crb()` from `demo_gene_panel.R` before publishing their final artifacts. It caps embedded expression at **100 genes** (`shrink_demos.R` applies the same cap to the shipped files); smaller panels are kept whole. Available neural, stromal and immune markers, the Trekker picker/myelination genes, its upstream Moran genes and the genes that the analysis tables name are protected. Remaining places are filled by variance of the stored normalized expression, with deterministic input-order ties. This is a demo policy, not a biological feature-selection method or a filter applied to users' data.
+The active builders call `save_demo_crb()` from `demo_gene_panel.R` before publishing their final artifacts. It caps embedded expression at **100 genes**; smaller panels are kept whole. Available neural, stromal and immune markers, the Trekker picker/myelination genes, its upstream Moran genes and the genes that the analysis tables name are protected. Remaining places are filled by variance of the stored normalized expression, with deterministic input-order ties. This is a demo policy, not a biological feature-selection method or a filter applied to users' data.
 
 Filtering happens after analysis. Retained values, sparse representation, cell identity/order, metadata (including full-input nUMI/nGene), groups, coordinates, trajectories, receptor/HLA data and images are preserved. Spatial expression is subset by the same genes without changing its cell order. The writer refuses to shrink objects carrying gene-analysis tables or gene lists until their references are explicitly reviewed. Panel provenance is stored in `parameters$demo_gene_panel`.
 
@@ -59,7 +59,7 @@ The 2026-10-12 artifacts were derived this way from master `4d74a839`, without r
 
 Total: **30.26 → 5.51 MiB** (the "Before" column is the build before any gene cap; master, with the 1,500-gene cap, was 21.22 MiB). This includes both gene selection and build-time compression; it is not a load-time speedup claim. The three Xenium background images are recompressed without loss (3.5 → 1.8 MiB). Git history size is not reduced.
 
-Every demo is also reduced to a random subset of its cells (`subsample_demos.R`, fixed seeds, the target count per file is in that script); expression, metadata, projections, spatial entries, the Trekker per-nucleus vectors and the repertoire are subset together.
+The shipped files were also cut in place to a random subset of their cells (1,000 to 3,000 each) and to the gene panel above, because their large sources are not rebuilt for this. Cells, expression, metadata, projections, spatial entries, the Trekker per-nucleus vectors and the repertoire were subset together, and group levels left without cells were dropped. The subset size and seed of each file are stored in its `parameters$demo_cell_subsample`, and the panel in `parameters$demo_gene_panel`.
 
 ### Validation
 
