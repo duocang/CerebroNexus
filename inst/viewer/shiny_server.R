@@ -874,7 +874,10 @@ server <- function(input, output, session) {
       ),
       path = selected,
       cells = .runtimeCerebroCellCount(data),
-      overview = viewerDatasetOverview(data),
+      overview = viewerDatasetOverview(
+        data,
+        gene_count = tryCatch(length(getGeneNames()), error = function(e) NULL)
+      ),
       organism = scalar(experiment$organism),
       date = scalar(experiment$date_of_export)
     )

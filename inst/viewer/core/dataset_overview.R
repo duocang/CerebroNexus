@@ -8,7 +8,7 @@ viewerOverviewText <- function(value) {
   trimws(as.character(value))
 }
 
-viewerDatasetOverview <- function(object) {
+viewerDatasetOverview <- function(object, gene_count = NULL) {
   safely <- function(expr, fallback = NULL) {
     tryCatch(expr, error = function(e) fallback)
   }
@@ -24,18 +24,36 @@ viewerDatasetOverview <- function(object) {
     sample_column <- NULL
   }
   summarize <- function(column) {
-    values <- as.character(metadata[[column]])
-    values[is.na(values) | !nzchar(trimws(values))] <- NA_character_
-    counts <- sort(table(values, useNA = "no"), decreasing = TRUE)
-    if (!length(counts)) {
+    # Count on integer codes and clean only the distinct values: a million-cell
+    # column has a handful of levels, so trimming every cell is wasted work.
+    raw <- metadata[[column]]
+    if (is.factor(raw)) {
+      distinct <- levels(raw)
+      codes <- as.integer(raw)
+    } else {
+      distinct <- unique(raw)
+      codes <- match(raw, distinct)
+    }
+    distinct <- as.character(distinct)
+    usable <- !is.na(distinct) & nzchar(trimws(distinct))
+    tally <- tabulate(codes, nbins = length(distinct))
+    missing <- length(codes) - sum(tally[usable])
+    keep <- usable & tally > 0L
+    if (!any(keep)) {
       return(NULL)
     }
+    distinct <- distinct[keep]
+    tally <- tally[keep]
+    by_name <- order(distinct)
+    distinct <- distinct[by_name]
+    tally <- tally[by_name]
+    by_size <- order(tally, decreasing = TRUE)
     list(
       column = column,
-      levels = length(counts),
-      total = sum(counts),
-      missing = sum(is.na(values)),
-      counts = stats::setNames(as.numeric(counts), names(counts)),
+      levels = length(distinct),
+      total = sum(tally),
+      missing = missing,
+      counts = stats::setNames(as.numeric(tally[by_size]), distinct[by_size]),
       remaining = 0
     )
   }
@@ -43,7 +61,13 @@ viewerDatasetOverview <- function(object) {
   annotations <- lapply(setdiff(groups, sample_column), summarize)
   names(annotations) <- setdiff(groups, sample_column)
   annotations <- Filter(Negate(is.null), annotations)
-  genes <- safely(length(object$getGeneNames()))
+  # A caller that already knows the gene count (the Viewer reads it from the
+  # H5 file) avoids attaching the expression matrix just to count its rows.
+  genes <- if (is.null(gene_count)) {
+    safely(length(object$getGeneNames()))
+  } else {
+    as.integer(gene_count)
+  }
   if (is.null(genes) || genes == 0L) {
     genes <- NULL
   }

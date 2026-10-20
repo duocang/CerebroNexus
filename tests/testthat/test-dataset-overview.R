@@ -119,3 +119,31 @@ test_that("thin CRB summaries obtain gene counts from matrix headers", {
   expect_identical(info$overview$genes, 3L)
   expect_null(object$expression)
 })
+
+test_that("counts match for factors, blanks, whitespace and ties", {
+  object <- overview_fixture()
+  object$getMetaData <- function() {
+    data.frame(
+      sample = factor(c("b", "a", "a", " ", NA)),
+      cluster = c("T", "B", "B", "T", ""),
+      stringsAsFactors = FALSE
+    )
+  }
+  result <- overview_helpers$viewerDatasetOverview(object)
+  expect_equal(result$sample$counts, c(a = 2, b = 1))
+  expect_identical(result$sample$levels, 2L)
+  expect_equal(result$sample$total, 3)
+  expect_equal(result$sample$missing, 2)
+  expect_equal(result$annotations$cluster$counts, c(B = 2, T = 2))
+  expect_equal(result$annotations$cluster$missing, 1)
+})
+
+test_that("a supplied gene count replaces reading the gene names", {
+  object <- overview_fixture()
+  object$getGeneNames <- function() stop("Must not attach the matrix")
+  expect_identical(
+    overview_helpers$viewerDatasetOverview(object, gene_count = 27943)$genes,
+    27943L
+  )
+  expect_null(overview_helpers$viewerDatasetOverview(object)$genes)
+})
