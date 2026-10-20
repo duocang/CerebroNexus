@@ -86,7 +86,7 @@ test_that("shipped demo panels retain usable sparse expression and spatial ident
   for (file in files) {
     x <- readCerebro(file)
     expect_s4_class(x$expression, "sparseMatrix")
-    expect_lte(nrow(x$expression), 500L)
+    expect_lte(nrow(x$expression), 100L)
     expect_identical(
       colnames(x$expression),
       as.character(x$meta_data$cell_barcode)
@@ -156,7 +156,7 @@ test_that("Spatial demo verification reads qs2 and retains the injected image", 
     ))
     data <- out$getSpatialData("fov")
     expect_identical(data$coordinates, coordinates)
-    expect_equal(nrow(data$expression), 500L)
+    expect_equal(nrow(data$expression), 100L)
     expect_true(all(c("Plp1", "Gad1") %in% rownames(data$expression)))
     expect_identical(
       data$expression,
