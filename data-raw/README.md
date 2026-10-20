@@ -43,21 +43,21 @@ for (input in list.files("inst/extdata/examples", "\\.crb$", full.names = TRUE))
 
 The 2026-10-12 artifacts were derived this way from master `4d74a839`, without rerunning raw-data downloads, normalization, UMAP or cell sampling. All nine retain exactly their previous cells; four have fewer genes. The legacy synthetic Spatial fixture was transformed from its checked-in CRB, not regenerated from an original raw-data generator. Future active builder runs apply the same final export policy; full pipeline byte identity across dependency versions is not claimed.
 
-### Measured artifact sizes (500-gene panel)
+### Measured artifact sizes (100-gene panel)
 
 | CRB | Cells (kept) | Genes before → after | Before MiB | After MiB |
 |---|---:|---:|---:|---:|
-| demo_full_tcr_bcr.crb | 1000 | 967 → 500 | 1.04 | 0.65 |
+| demo_full_tcr_bcr.crb | 1000 | 967 → 100 | 1.04 | 0.46 |
 | demo_hla_tcr_dextramer.crb | 2000 | 2000 → 100 | 9.03 | 0.64 |
-| demo_spatial_merfish.crb | 1000 | 241 → 200 | 1.82 | 1.07 |
-| demo_spatial_slideseq.crb | 3000 | 2000 → 300 | 1.48 | 0.57 |
+| demo_spatial_merfish.crb | 1000 | 241 → 100 | 1.82 | 1.04 |
+| demo_spatial_slideseq.crb | 3000 | 2000 → 100 | 1.48 | 0.45 |
 | demo_spatial_visium.crb | 1000 | 1200 → 100 | 5.74 | 0.72 |
-| demo_spatial_xenium.crb | 2000 | 248 → 200 | 2.72 | 0.90 |
-| demo_spatial.crb | 1000 | 2500 → 500 | 0.62 | 0.27 |
-| demo_trekker.crb | 1000 | 21374 → 250 | 6.79 | 0.99 |
-| example.crb | 1000 | 967 → 300 | 1.03 | 0.57 |
+| demo_spatial_xenium.crb | 2000 | 248 → 100 | 2.72 | 0.70 |
+| demo_spatial.crb | 1000 | 2500 → 100 | 0.62 | 0.16 |
+| demo_trekker.crb | 1000 | 21374 → 100 | 6.79 | 0.91 |
+| example.crb | 1000 | 967 → 100 | 1.03 | 0.44 |
 
-Total: **30.26 → 6.37 MiB (78.9% smaller)** versus master. This includes both gene selection and build-time compression; it is not a load-time speedup claim. Smaller gene counts do not imply proportional disk savings because low-expression rows were already sparse. Images and sidecars are unchanged. Git history size is not reduced.
+Total: **30.26 → 5.51 MiB** (the "Before" column is the build before any gene cap; master, with the 1,500-gene cap, was 21.22 MiB). This includes both gene selection and build-time compression; it is not a load-time speedup claim. The three Xenium background images are recompressed without loss (3.5 → 1.8 MiB). Git history size is not reduced.
 
 Every demo is also reduced to a random subset of its cells (`subsample_demos.R`, fixed seeds, the target count per file is in that script); expression, metadata, projections, spatial entries, the Trekker per-nucleus vectors and the repertoire are subset together.
 
