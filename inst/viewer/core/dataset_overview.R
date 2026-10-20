@@ -8,12 +8,31 @@ viewerOverviewText <- function(value) {
   trimws(as.character(value))
 }
 
-viewerDatasetOverview <- function(object, gene_count = NULL) {
+viewerDatasetOverview <- function(
+  object,
+  gene_count = NULL,
+  projections = NULL
+) {
   safely <- function(expr, fallback = NULL) {
     tryCatch(expr, error = function(e) fallback)
   }
   experiment <- safely(object$getExperiment(), list())
-  metadata <- safely(object$getMetaData(), data.frame())
+  # Summaries never need cell names. A thin CRB that the Viewer has not yet
+  # hydrated keeps its stored table in the first-frame cache; reading
+  # `meta_data` itself would first read every cell name from the H5 file.
+  stored <- if (is.environment(object)) {
+    frame <- attr(object, "cerebro_projection_first_frame", exact = TRUE)
+    if (is.list(frame) && is.data.frame(frame$meta_data)) {
+      frame$meta_data
+    } else {
+      safely(object$meta_data)
+    }
+  }
+  metadata <- if (is.data.frame(stored)) {
+    stored
+  } else {
+    safely(object$getMetaData(), data.frame())
+  }
   groups <- intersect(safely(object$getGroups(), character()), names(metadata))
   # Only explicit sample metadata or the canonical sample column is used.
   sample_column <- viewerOverviewText(experiment$sample_column)
@@ -72,10 +91,13 @@ viewerDatasetOverview <- function(object, gene_count = NULL) {
     genes <- NULL
   }
   spatial <- safely(as.character(object$availableSpatial()), character())
-  projections <- safely(
-    as.character(object$availableProjections()),
-    character()
-  )
+  # The accessor of a thin CRB would hydrate it; a caller that already holds
+  # the names (the Viewer's first-frame cache) passes them in.
+  projections <- if (is.null(projections)) {
+    safely(as.character(object$availableProjections()), character())
+  } else {
+    as.character(projections)
+  }
   list(
     version = 2L,
     description = viewerOverviewText(experiment$description),

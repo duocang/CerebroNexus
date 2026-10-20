@@ -876,7 +876,8 @@ server <- function(input, output, session) {
       cells = .runtimeCerebroCellCount(data),
       overview = viewerDatasetOverview(
         data,
-        gene_count = tryCatch(length(getGeneNames()), error = function(e) NULL)
+        gene_count = tryCatch(length(getGeneNames()), error = function(e) NULL),
+        projections = tryCatch(availableProjections(), error = function(e) NULL)
       ),
       organism = scalar(experiment$organism),
       date = scalar(experiment$date_of_export)
@@ -1866,17 +1867,47 @@ server <- function(input, output, session) {
     ## they cannot delay that prefetch on a first Spatial visit.
     projection_resources <- viewerProjectionCatalog()
     if (length(projection_resources)) {
-      category_resources <- viewer_overview_category_resources()
-      session$sendCustomMessage(
-        "cell_view_resource_catalog",
-        list(
-          id = "overview_projection",
-          resources = unname(projection_resources),
-          category_resources = unname(category_resources),
-          dataset_context = viewer_loaded_dataset_context(),
-          dataset_identity = dataset_identity
+      loaded_context <- viewer_loaded_dataset_context()
+      publish_projection_catalog <- function() {
+        category_resources <- viewer_overview_category_resources()
+        session$sendCustomMessage(
+          "cell_view_resource_catalog",
+          list(
+            id = "overview_projection",
+            resources = unname(projection_resources),
+            category_resources = unname(category_resources),
+            dataset_context = loaded_context,
+            dataset_identity = dataset_identity
+          )
         )
-      )
+      }
+      if (identical(input[["sidebar"]], "loadData")) {
+        ## Data info shows no projection, and the category assets scan every
+        ## cell for its group levels. Paint the page first, then publish them
+        ## unless the user has already moved on (leaving Data info re-runs
+        ## this observer, which publishes at that point).
+        session$onFlushed(
+          function() {
+            if (session$isClosed()) {
+              return()
+            }
+            withReactiveDomain(
+              session,
+              isolate({
+                if (
+                  identical(input[["sidebar"]], "loadData") &&
+                    identical(viewer_loaded_dataset_context(), loaded_context)
+                ) {
+                  publish_projection_catalog()
+                }
+              })
+            )
+          },
+          once = TRUE
+        )
+      } else {
+        publish_projection_catalog()
+      }
     }
   })
 

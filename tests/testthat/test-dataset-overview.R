@@ -147,3 +147,34 @@ test_that("a supplied gene count replaces reading the gene names", {
   )
   expect_null(overview_helpers$viewerDatasetOverview(object)$genes)
 })
+
+test_that("the overview of a Cerebro object does not hydrate cell names", {
+  object <- new.env()
+  makeActiveBinding(
+    "meta_data",
+    function() stop("Must not read cell names"),
+    object
+  )
+  attr(object, "cerebro_projection_first_frame") <- list(
+    meta_data = data.frame(sample = c("a", "a", "b"))
+  )
+  object$getMetaData <- function() stop("Must not read cell names")
+  object$getExperiment <- function() list()
+  object$getGroups <- function() "sample"
+  object$getGeneNames <- function() c("A", "B")
+  object$availableProjections <- function() "umap"
+  object$availableSpatial <- function() character()
+  result <- overview_helpers$viewerDatasetOverview(object)
+  expect_equal(result$sample$counts, c(a = 2, b = 1))
+  expect_identical(result$genes, 2L)
+})
+
+test_that("supplied projection names replace reading them from the object", {
+  object <- overview_fixture()
+  object$availableProjections <- function() stop("Must not hydrate")
+  result <- overview_helpers$viewerDatasetOverview(
+    object,
+    projections = c("UMAP", "PCA")
+  )
+  expect_identical(result$projections, c("UMAP", "PCA"))
+})
