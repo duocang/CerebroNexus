@@ -139,7 +139,12 @@
   if (!is.null(status) && status != 0L) {
     stop("Could not checksum ", basename(path), ".", call. = FALSE)
   }
-  tolower(strsplit(output[[1L]], "[[:space:]]+")[[1L]][[1L]])
+  # sha256sum starts the line with a backslash when the path contains one.
+  tolower(sub(
+    "^\\\\",
+    "",
+    strsplit(output[[1L]], "[[:space:]]+")[[1L]][[1L]]
+  ))
 }
 
 .viewerRenValidateFile <- function(path, spec, checksum = FALSE) {
