@@ -63,22 +63,8 @@ output$ir_visualizations_UI <- renderUI({
       # Clonal expansion overlaid on the cell UMAP — the default landing tab,
       # so the first thing the user sees is where expanded clones sit.
       "Clonal projection",
-      value = "Clonal UMAP",
-      # Reserve a viewport-proportional placeholder for the spinner so the
-      # container does not collapse to the ~400px default and snap up when the
-      # plot arrives. 60vh matches the non-faceted plotly's own placeholder (and
-      # the projection pages'), so the placeholder and the settled height are
-      # close — no visible jump on first open.
-      conditionalPanel(
-        condition = paste0(
-          "input.ir_p_umap_group_by && ",
-          "input.ir_p_umap_group_by != ''"
-        ),
-        shinycssloaders::withSpinner(
-          uiOutput("ir_ui_clonalUMAP"),
-          proxy.height = "60vh"
-        )
-      )
+      value = "Clonal UMAP"
+      # Drawn by the shared cell-view host in UI.R, grouped or not.
     ),
     tabPanel(
       "Abundance",
@@ -294,53 +280,6 @@ ir_empty_plotly <- function(msg) {
     )
 }
 
-ir_umap_split_layout <- function(
-  n_groups,
-  width = NULL,
-  height = NULL,
-  min_px = 300L
-) {
-  n_groups <- max(1L, as.integer(n_groups %||% 1L))
-  width <- suppressWarnings(as.numeric(width))
-  height <- suppressWarnings(as.numeric(height))
-  if (length(width) != 1 || is.na(width) || width <= 0) {
-    width <- 900
-  }
-  if (length(height) != 1 || is.na(height) || height <= 0) {
-    height <- 650
-  }
-  max_cols <- max(1L, min(n_groups, floor(width / min_px)))
-  candidates <- seq_len(max_cols)
-  layouts <- lapply(candidates, function(ncol) {
-    nrow <- ceiling(n_groups / ncol)
-    draw_height <- max(height, nrow * min_px)
-    panel_px <- min(width / ncol, draw_height / nrow)
-    fill_ratio <- n_groups / (ncol * nrow)
-    data.frame(
-      ncol = ncol,
-      nrow = nrow,
-      panel_px = panel_px,
-      score = panel_px * fill_ratio
-    )
-  })
-  layouts <- do.call(rbind, layouts)
-  ok <- layouts$panel_px >= min_px
-  choices <- if (any(ok)) layouts[ok, , drop = FALSE] else layouts
-  best_score <- max(choices$score)
-  choices <- choices[choices$score == best_score, , drop = FALSE]
-  ncol <- max(choices$ncol)
-  nrow <- ceiling(n_groups / ncol)
-  draw_height <- max(height, nrow * min_px)
-  panel_px <- min(width / ncol, draw_height / nrow)
-  list(
-    ncol = ncol,
-    nrow = nrow,
-    width = ceiling(width),
-    height = ceiling(nrow * panel_px),
-    panel_px = panel_px
-  )
-}
-
 ir_umap_grouped_data <- function(df, group_by) {
   if (is.null(group_by) || !nzchar(group_by)) {
     return(df)
@@ -379,69 +318,6 @@ ir_umap_grouped_data <- function(df, group_by) {
   df
 }
 
-ir_umap_split_group_count <- function(group_by) {
-  md <- tryCatch(getMetaData(), error = function(e) NULL)
-  if (
-    is.null(md) ||
-      is.null(group_by) ||
-      !nzchar(group_by) ||
-      !("cell_barcode" %in% colnames(md)) ||
-      !(group_by %in% colnames(md))
-  ) {
-    return(1L)
-  }
-  cells <- tryCatch(ir_umap_cells_to_show(), error = function(e) NULL)
-  if (!is.null(cells)) {
-    md <- md[md$cell_barcode %in% cells, , drop = FALSE]
-  }
-  vals <- as.character(md[[group_by]])
-  vals <- vals[!is.na(vals) & nzchar(vals)]
-  max(1L, length(unique(vals)))
-}
-
-ir_umap_client_px <- function(keys, fallback) {
-  cd <- session$clientData
-  vals <- vapply(
-    keys,
-    function(key) {
-      suppressWarnings(as.numeric(cd[[key]] %||% NA_real_))
-    },
-    numeric(1)
-  )
-  vals <- vals[!is.na(vals) & vals > 0]
-  if (length(vals) == 0) {
-    return(fallback)
-  }
-  vals[[1]]
-}
-
-ir_umap_split_current_layout <- function(group_by) {
-  layout <- ir_umap_split_layout(
-    ir_umap_split_group_count(group_by),
-    width = ir_umap_client_px(
-      c(
-        "output_ir_plot_clonalUMAP_static_width",
-        "output_ir_ui_clonalUMAP_width",
-        "output_ir_visualizations_UI_width"
-      ),
-      fallback = 900
-    ),
-    height = ir_umap_client_px(
-      c(
-        "output_ir_ui_clonalUMAP_height",
-        "output_ir_visualizations_UI_height"
-      ),
-      fallback = 650
-    )
-  )
-  layout
-}
-
-ir_umap_split_output_height <- function(group_by) {
-  layout <- ir_umap_split_current_layout(group_by)
-  ceiling(layout$height)
-}
-
 ir_projection_display_name <- function(projection) {
   key <- tolower(as.character(projection %||% "projection"))
   switch(
@@ -462,71 +338,12 @@ ir_projection_axis_names <- function(projection) {
   paste0(label, "_", 1:2)
 }
 
-ir_clonal_umap_ggplot <- function(
-  df,
-  group_by,
-  point_size,
-  alpha,
-  ncol,
-  projection
-) {
-  axes <- ir_projection_axis_names(projection)
-  bg <- df[is.na(df$expansion), , drop = FALSE]
-  fg <- df[!is.na(df$expansion), , drop = FALSE]
-  ggplot2::ggplot() +
-    ggplot2::geom_point(
-      data = bg,
-      ggplot2::aes(x = .data$x, y = .data$y),
-      colour = "grey85",
-      size = point_size,
-      alpha = alpha
-    ) +
-    ggplot2::geom_point(
-      data = fg,
-      ggplot2::aes(x = .data$x, y = .data$y, colour = .data$expansion),
-      size = point_size,
-      alpha = alpha
-    ) +
-    ggplot2::facet_wrap(stats::as.formula("~ .umap_group"), ncol = ncol) +
-    ggplot2::scale_colour_manual(
-      values = IR_EXPANSION_COLORS,
-      drop = FALSE,
-      name = "Clonotype"
-    ) +
-    ggplot2::coord_equal() +
-    ggplot2::labs(x = axes[[1]], y = axes[[2]]) +
-    ggplot2::theme_classic() +
-    ggplot2::theme(aspect.ratio = 1)
-}
-
-output$ir_ui_clonalUMAP <- renderUI({
-  group_by <- input[["ir_p_umap_group_by"]]
-  req(!is.null(group_by))
-  if (!nzchar(group_by)) {
-    ## The non-faceted host is present in UI.R, but the shared client renderer
-    ## requests data only after the hidden dashboard page gains a layout box.
-    ## This removes nested UI round trips without preloading IR on Data info.
-    return(NULL)
-  }
-  ## Faceted: a group_by column is chosen. Faceting needs a multi-panel ggplot,
-  ## which the single-canvas shared renderer cannot express, so this variant
-  ## stays on a static image output.
-  imageOutput(
-    "ir_plot_clonalUMAP_static",
-    height = paste0(ir_umap_split_output_height(group_by), "px")
-  )
-})
-
 output[["ir_selection_status_UI"]] <- renderUI({
   if (!has_scRepertoire() || !ir_repertoire_available()) {
     return(NULL)
   }
   active_tab <- input[["ir_tabs"]]
-  group_by <- ir_param("ir_p_umap_group_by", "")
-  if (
-    (!is.null(active_tab) && !identical(active_tab, "Clonal UMAP")) ||
-      (!is.null(group_by) && nzchar(group_by))
-  ) {
+  if (!is.null(active_tab) && !identical(active_tab, "Clonal UMAP")) {
     return(
       div(
         class = "cerebro-selection-status-slot",
@@ -552,11 +369,88 @@ output[["ir_selection_status_UI"]] <- renderUI({
   )
 })
 
-## Draw the non-faceted Clonal UMAP through the shared cell-view engine.
-## We marshal the same grey "Other cells" background + one-trace-per-expansion-
-## level data the old renderPlotly built, but as the meta/data/hover arrays the
-## shared renderer consumes. Runs only when no
-## grouping column is chosen (the faceted variant uses the static ggplot below).
+## Draw the Clonal UMAP through the shared cell-view engine. Without a grouping
+## column we marshal a grey "Other cells" background + one trace per expansion
+## level as the meta/data/hover arrays the shared renderer consumes. With one,
+## every group gets its own panel of the same engine (ir_clonal_umap_panels), so
+## the grouped view zooms, hovers and brushes like the ungrouped one and a brush
+## in any panel selects exactly the cells drawn there.
+## One panel per group, all drawn by the same engine view. `df` has one row per
+## cell (x, y, expansion, barcode and the group in `.umap_group`), so every cell
+## belongs to exactly one panel and a brush selects the barcodes drawn inside it.
+## Cells without the receptor come first and the most expanded clones last, so
+## they are painted on top. Panels share axis ranges and are titled with their
+## group and the number of cells that carry the receptor.
+ir_clonal_umap_panels <- function(df, projection) {
+  present <- as.character(df$expansion)
+  present[is.na(present)] <- "Other cells"
+  order_rows <- order(
+    !is.na(df$expansion),
+    as.integer(df$expansion),
+    na.last = FALSE
+  )
+  df <- df[order_rows, , drop = FALSE]
+  label <- present[order_rows]
+  levels <- c(
+    if (any(label == "Other cells")) "Other cells",
+    intersect(IR_CLONE_LABELS, label)
+  )
+  colors <- c(
+    if (any(label == "Other cells")) "#D9D9D9",
+    unname(IR_EXPANSION_COLORS[setdiff(levels, "Other cells")])
+  )
+  pad <- function(values) {
+    span <- diff(range(values, na.rm = TRUE))
+    range(values, na.rm = TRUE) + c(-1, 1) * max(span, 1e-6) * 0.04
+  }
+  x_range <- pad(df$x)
+  y_range <- pad(df$y)
+  axes <- ir_projection_axis_names(projection)
+  keys <- as.character(df$barcode)
+  groups <- df$.umap_group
+  panels <- lapply(seq_along(levels(groups)), function(index) {
+    rows <- which(groups == levels(groups)[[index]])
+    if (!length(rows)) {
+      return(NULL)
+    }
+    carriers <- sum(!is.na(df$expansion[rows]))
+    list(
+      id = paste0("group", index),
+      label = paste0(
+        levels(groups)[[index]],
+        "  ·  ",
+        format(carriers, big.mark = ","),
+        " cells"
+      ),
+      selection_key = keys[rows],
+      x = as.numeric(df$x[rows]),
+      y = as.numeric(df$y[rows]),
+      x_range = x_range,
+      y_range = y_range,
+      hover = paste0(
+        keys[rows],
+        "<br>",
+        label[rows],
+        "<br>",
+        axes[[1]],
+        ": ",
+        formatC(df$x[rows], format = "f", digits = 2),
+        "<br>",
+        axes[[2]],
+        ": ",
+        formatC(df$y[rows], format = "f", digits = 2)
+      )
+    )
+  })
+  list(
+    keys = keys,
+    group = label,
+    levels = levels,
+    colors = colors,
+    panels = panels[!vapply(panels, is.null, logical(1))]
+  )
+}
+
 ir_clonal_umap_last_request <- reactiveVal(NULL)
 
 observe(
@@ -573,10 +467,7 @@ observe(
       identical(input[["ir_tabs"]], "Clonal UMAP")
     )
     group_by <- ir_param("ir_p_umap_group_by", "")
-    ## Faceting is handled by the static ggplot path; nothing to push here.
-    if (!is.null(group_by) && nzchar(group_by)) {
-      return()
-    }
+    grouped <- !is.null(group_by) && nzchar(group_by)
 
     ## Receptor and projection arrive from the visible toolbar. Show-all and the
     ## appearance controls live in the unopened settings drawer, so use their
@@ -625,10 +516,58 @@ observe(
       percentage = percentage,
       group_labels = isTRUE(group_labels),
       point_border = point_border,
-      keep_square = keep_square
+      keep_square = keep_square,
+      group_by = if (grouped) as.character(group_by) else ""
     )
     previous_signature <- ir_clonal_umap_last_request()
     if (identical(previous_signature, request_signature)) {
+      return()
+    }
+    if (grouped) {
+      df <- ir_clonal_umap_data(
+        projection,
+        receptor,
+        clone_call,
+        show_all = show_all,
+        cells = cells,
+        percentage = percentage
+      )
+      df <- if (is.null(df)) NULL else ir_umap_grouped_data(df, group_by)
+      req(!is.null(df), nrow(df) > 0L)
+      grouped_view <- ir_clonal_umap_panels(df, projection)
+      isolate(
+        cerebroCellViewRender(
+          "ir_clonalUMAP_projection",
+          list(
+            color_type = "categorical",
+            space_label = paste("Clonal", ir_projection_display_name(projection)),
+            color_variable = "expansion",
+            traces = grouped_view$levels,
+            group_colors = grouped_view$colors,
+            appearance = list(
+              group_labels = FALSE,
+              draw_border = point_border,
+              keep_square = keep_square
+            )
+          ),
+          list(
+            selection_key = grouped_view$keys,
+            group = grouped_view$group,
+            panels = grouped_view$panels,
+            point_size = point_size,
+            point_opacity = alpha,
+            point_line = if (point_border) {
+              list(color = "rgb(196,196,196)", width = 1)
+            } else {
+              list()
+            },
+            reset_axes = TRUE
+          ),
+          list(hoverinfo = "text"),
+          dataset_context = dataset_context
+        )
+      )
+      ir_clonal_umap_last_request(request_signature)
       return()
     }
     render_data <- ir_clonal_umap_data(
@@ -788,91 +727,6 @@ output[["ir_clonalUMAP_projection_composition"]] <- renderUI({
   }
   cerebroSelectionSummary(sel, "Clonal projection", composition = TRUE)
 })
-
-output$ir_plot_clonalUMAP_static <- renderImage(
-  {
-    receptor <- ir_param("ir_p_umap_receptor")
-    projection <- ir_param("ir_p_umap_projection")
-    group_by <- ir_param("ir_p_umap_group_by", "")
-    req(nzchar(group_by))
-    clone_call <- "gene"
-    show_all <- isTRUE(ir_param("ir_p_umap_show_all", TRUE))
-    cells <- ir_umap_cells_to_show()
-    df <- ir_clonal_umap_data(
-      projection,
-      receptor,
-      clone_call,
-      show_all = show_all,
-      cells = cells,
-      percentage = current_scatter_defaults()$percentage_cells_to_show
-    )
-
-    plot <- safeRenderPlot(
-      {
-        if (is.null(df) || nrow(df) == 0) {
-          return(
-            ggplot2::ggplot() +
-              ggplot2::annotate(
-                "text",
-                x = 0,
-                y = 0,
-                label = paste0(
-                  "No clonal projection to display.\n",
-                  "Needs a cell projection and ",
-                  if (is.null(receptor)) "TCR/BCR" else receptor,
-                  " clonotypes whose barcodes match the cells."
-                ),
-                size = 4.5,
-                colour = "#666666"
-              ) +
-              ggplot2::theme_void()
-          )
-        }
-        df <- ir_umap_grouped_data(df, group_by)
-        validate(need(
-          !is.null(df) && nrow(df) > 0,
-          "No cells match this grouping."
-        ))
-        point_size <- current_scatter_defaults()$point_size
-        alpha <- current_scatter_defaults()$point_opacity
-        n_groups <- length(levels(df$.umap_group))
-        layout <- isolate(ir_umap_split_layout(
-          n_groups,
-          width = session$clientData$output_ir_plot_clonalUMAP_static_width,
-          height = session$clientData$output_ir_plot_clonalUMAP_static_height
-        ))
-        ir_clonal_umap_ggplot(
-          df,
-          group_by = group_by,
-          point_size = point_size,
-          alpha = alpha,
-          ncol = layout$ncol,
-          projection = projection
-        )
-      },
-      "clonalUMAP"
-    )
-    layout <- isolate(ir_umap_split_current_layout(group_by))
-    path <- tempfile(fileext = ".png")
-    ggplot2::ggsave(
-      path,
-      plot = plot,
-      width = layout$width,
-      height = layout$height,
-      units = "px",
-      dpi = 72,
-      bg = "white"
-    )
-    list(
-      src = path,
-      contentType = "image/png",
-      width = layout$width,
-      height = layout$height,
-      alt = "Clonal projection grouped by the selected cell metadata"
-    )
-  },
-  deleteFile = TRUE
-)
 
 ## ---- BCR-specific renderers --------------------------------------------- ##
 output$ir_plot_isotype <- plotly::renderPlotly({

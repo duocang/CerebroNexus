@@ -204,6 +204,12 @@ current `.crb` is the only supported input.
   dataset switch waiting forever; the Viewer reads the file in the foreground.
   The 30 s count from when the switch starts to wait, not from when the read
   began, and the end of an abandoned read no longer discards a newer one.
+- The Immune repertoire Clonal projection grouped by a metadata column is no
+  longer a static 72 dpi image. Every group is a panel of the same interactive
+  canvas as the ungrouped view, titled with its group and the number of cells
+  that carry the receptor: zoom, hover and box or lasso select work in each
+  panel, and a selection lists exactly the cells drawn in the panel it was made
+  in.
 
 ## Documentation
 

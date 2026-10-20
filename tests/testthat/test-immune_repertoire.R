@@ -139,26 +139,45 @@ test_that("example.crb preserves core data fields", {
   expect_true(!is.null(crb$experiment))
 })
 
-test_that("Clonal UMAP split layout avoids empty facet slots on wide canvases", {
+test_that("grouped Clonal UMAP panels partition the cells and label their counts", {
   viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
   skip_if_not(file.exists(viz))
   env <- new.env(parent = baseenv())
-  env$`%||%` <- function(x, y) if (is.null(x)) y else x
-  eval(viewer_r_assignment(viz, "ir_umap_split_layout"), env)
+  env$IR_CLONE_LABELS <- c("Single", "Small", "Medium")
+  env$IR_EXPANSION_COLORS <- c(Single = "#1", Small = "#2", Medium = "#3")
+  env$ir_projection_axis_names <- function(projection) c("UMAP_1", "UMAP_2")
+  eval(viewer_r_assignment(viz, "ir_clonal_umap_panels"), env)
 
-  layout <- env$ir_umap_split_layout(3, width = 1200, height = 450)
+  df <- data.frame(
+    x = c(0, 1, 2, 3, 4, 5),
+    y = c(5, 4, 3, 2, 1, 0),
+    expansion = factor(
+      c(NA, "Small", "Single", NA, "Medium", "Single"),
+      levels = env$IR_CLONE_LABELS
+    ),
+    barcode = paste0("cell", 1:6),
+    .umap_group = factor(c("a", "a", "b", "b", "b", "b"), levels = c("a", "b", "c")),
+    stringsAsFactors = FALSE
+  )
+  out <- env$ir_clonal_umap_panels(df, "umap")
 
-  expect_equal(layout$ncol, 3L)
-  expect_equal(layout$nrow, 1L)
-  expect_gte(layout$panel_px, 300)
-  expect_lte(layout$height, 500)
-
-  tall_layout <- env$ir_umap_split_layout(6, width = 900, height = 500)
-
-  expect_equal(tall_layout$ncol, 3L)
-  expect_equal(tall_layout$nrow, 2L)
-  expect_gte(tall_layout$panel_px, 300)
-  expect_gte(tall_layout$height, 600)
+  ## cells of every group land in exactly one panel; the empty group has none
+  expect_length(out$panels, 2L)
+  keys <- lapply(out$panels, `[[`, "selection_key")
+  expect_identical(sort(unlist(keys)), sort(df$barcode))
+  expect_identical(keys[[1L]], c("cell1", "cell2"))
+  expect_setequal(keys[[2L]], c("cell3", "cell4", "cell5", "cell6"))
+  ## titled with the group and its receptor-carrying cells
+  expect_match(out$panels[[1L]]$label, "^a +· +1 cells$")
+  expect_match(out$panels[[2L]]$label, "^b +· +3 cells$")
+  ## panels share axis ranges so groups stay comparable
+  expect_identical(out$panels[[1L]]$x_range, out$panels[[2L]]$x_range)
+  ## colour levels and colours line up; cells without the receptor come first
+  expect_identical(out$levels, c("Other cells", "Single", "Small", "Medium"))
+  expect_length(out$colors, length(out$levels))
+  expect_identical(unname(out$group[seq_len(2)]), c("Other cells", "Other cells"))
+  expect_identical(out$group[[length(out$group)]], "Medium")
+  expect_length(out$group, length(out$keys))
 })
 
 # ---- Compare (interactive alluvial) ------------------------------------- #

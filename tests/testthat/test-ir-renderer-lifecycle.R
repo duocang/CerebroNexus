@@ -324,8 +324,6 @@ test_that("Clonal projection paints before drawer binding and defers cell identi
       expect_length(scope$sent, 2)
       expect_true(scope$sent[[2]]$meta$appearance$draw_border)
       expect_false(scope$sent[[2]]$meta$appearance$group_labels)
-      session$setInputs(ir_p_umap_group_by = "sample")
-      expect_length(scope$sent, 2)
     }
   )
 })
