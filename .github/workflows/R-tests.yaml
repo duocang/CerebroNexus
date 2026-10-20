@@ -36,12 +36,12 @@ jobs:
 
       # Install R package dependencies via nix-shell, using the default.nix file in the repository
       - name: Install R package dependencies
-        run: nix-shell default.nix --arg withBPCells true --run "echo 'R package dependencies installed'"
+        run: nix-shell default.nix --run "echo 'R package dependencies installed'"
 
       ## Run all tests — load package from source, then run every test_*.R.
       - name: Run all unit/integration tests
         run: |
-          nix-shell default.nix --arg withBPCells true --run "Rscript -e \"
+          nix-shell default.nix --run "Rscript -e \"
             devtools::load_all('.')
             testthat::test_dir(
               path = 'tests/testthat',

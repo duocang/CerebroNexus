@@ -65,8 +65,6 @@
 # compatibility with older R versions and R packages for Linux/WSL and
 # Apple Silicon computers.
 # Report any issues to https://github.com/ropensci/rix
-# BPCells is opt-in: nix-shell default.nix --arg withBPCells true
-{ withBPCells ? false }:
 let
  pkgs = import (fetchTarball "https://github.com/rstats-on-nix/nixpkgs/archive/2026-10-13.tar.gz") {};
  
@@ -185,9 +183,7 @@ let
     LC_PAPER = "en_US.UTF-8";
     LC_MEASUREMENT = "en_US.UTF-8";
     
-    # Keep dependencies flat. Recent Nixpkgs no longer reliably propagates
-    # nested lists in buildInputs (and warns that support will be removed).
-    buildInputs = (if withBPCells then [ BPCells ] else [ ]) ++ rpkgs ++ system_packages;
+    buildInputs = [ BPCells rpkgs system_packages ];
     
   }; 
 in

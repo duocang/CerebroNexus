@@ -10,10 +10,9 @@
   saved Viewer results moved to the same repository.
 - `exportFromSeurat()` writes the H5 expression file without gzip compression,
   because export and read speed matter more than disk size.
-- BPCells is no longer installed by default: `DESCRIPTION` drops the BPCells
-  remote, and the Nix shell adds it only with
-  `nix-shell default.nix --arg withBPCells true`. Reading BPCells-backed Seurat
-  objects still needs BPCells installed.
+- BPCells is no longer installed with the package: `DESCRIPTION` drops the
+  BPCells remote. Reading BPCells-backed Seurat objects still needs BPCells
+  installed.
 - Fixes the HLA motif network's Focus button showing as off right after a selection was focused, when the server's selection reply arrived after the click.
 
 # CerebroNexus 5.1.2
