@@ -178,3 +178,17 @@ test_that("supplied projection names replace reading them from the object", {
   )
   expect_identical(result$projections, c("UMAP", "PCA"))
 })
+
+test_that("category bars escape labels and format counts", {
+  html <- as.character(overview_helpers$viewerOverviewBars(list(
+    counts = c("<b>T</b>" = 1234, B = 766),
+    total = 2000,
+    missing = 0
+  )))
+  expect_match(html, 'title="&lt;b&gt;T&lt;/b&gt;"', fixed = TRUE)
+  expect_match(html, ">&lt;b&gt;T&lt;/b&gt;</span>", fixed = TRUE)
+  expect_match(html, "1,234", fixed = TRUE)
+  expect_match(html, 'style="width:61.7%"', fixed = TRUE)
+  expect_match(html, "<small>38.3%</small>", fixed = TRUE)
+  expect_false(grepl("dataset-note", html, fixed = TRUE))
+})

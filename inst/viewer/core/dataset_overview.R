@@ -45,10 +45,13 @@ viewerDatasetOverview <- function(
   summarize <- function(column) {
     # Count on integer codes and clean only the distinct values: a million-cell
     # column has a handful of levels, so trimming every cell is wasted work.
+    # tabulate() reads a factor's codes in place; as.integer() would copy
+    # every column, and those copies trigger a full garbage collection that
+    # costs about a second in a Viewer process.
     raw <- metadata[[column]]
     if (is.factor(raw)) {
       distinct <- levels(raw)
-      codes <- as.integer(raw)
+      codes <- raw
     } else {
       distinct <- unique(raw)
       codes <- match(raw, distinct)

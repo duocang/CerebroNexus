@@ -6,36 +6,36 @@ viewerOverviewBars <- function(summary) {
   if (is.null(summary) || !length(summary$counts)) {
     return(NULL)
   }
-  counts <- summary$counts
+  counts <- unname(summary$counts)
+  labels <- names(summary$counts)
+  percent <- 100 * counts / summary$total
+  # A sample column can have hundreds of categories. One vectorised string per
+  # row renders them several times faster than one tag tree per row.
+  rows <- paste0(
+    '<div class="dataset-bar-row">\n',
+    '  <span class="dataset-bar-label" title="',
+    htmltools::htmlEscape(labels, attribute = TRUE),
+    '">',
+    htmltools::htmlEscape(labels),
+    '</span>\n',
+    '  <span class="dataset-bar-track" aria-hidden="true">\n',
+    '    <span style="width:',
+    vapply(percent, format, character(1), scientific = FALSE, trim = TRUE),
+    '%"></span>\n',
+    '  </span>\n',
+    '  <span class="dataset-bar-value">\n',
+    '    ',
+    viewerOverviewNumber(counts),
+    '\n',
+    '    <small>',
+    sprintf("%.1f%%", percent),
+    '</small>\n',
+    '  </span>\n',
+    '</div>'
+  )
   shiny::tags$div(
     class = "dataset-bars",
-    lapply(seq_along(counts), function(i) {
-      percent <- 100 * counts[[i]] / summary$total
-      shiny::tags$div(
-        class = "dataset-bar-row",
-        shiny::tags$span(
-          class = "dataset-bar-label",
-          title = names(counts)[i],
-          names(counts)[i]
-        ),
-        shiny::tags$span(
-          class = "dataset-bar-track",
-          `aria-hidden` = "true",
-          shiny::tags$span(
-            style = paste0(
-              "width:",
-              format(percent, scientific = FALSE, trim = TRUE),
-              "%"
-            )
-          )
-        ),
-        shiny::tags$span(
-          class = "dataset-bar-value",
-          viewerOverviewNumber(counts[[i]]),
-          shiny::tags$small(sprintf("%.1f%%", percent))
-        )
-      )
-    }),
+    htmltools::HTML(paste(rows, collapse = "\n")),
     if (summary$missing > 0) {
       shiny::tags$p(
         class = "dataset-note",

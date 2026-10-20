@@ -43,6 +43,7 @@ source(
   file.path(Cerebro.options[["cerebro_root"]], "viewer", "crb_cache.R"),
   local = TRUE
 )
+.reserveCrbHeap(Cerebro.options[["crb_file_to_load"]])
 .viewer_pack_process_cache <- new.env(parent = emptyenv())
 ## CRBs without a stored cell fingerprint would otherwise hash every barcode on
 ## each session's load. The value depends only on the file's cells.
