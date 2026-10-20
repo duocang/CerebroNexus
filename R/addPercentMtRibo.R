@@ -189,7 +189,7 @@ addPercentMtRibo <- function(
       seurat = object,
       assay = assay,
       slot = "counts",
-      join_samples = TRUE,
+      join_samples = TRUE,
       return_resolution = TRUE
     )
     counts_matrix <- .validate_expression_cells(
