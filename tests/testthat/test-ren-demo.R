@@ -1,5 +1,5 @@
 ren_demo_script <- function() {
-  testthat::test_path("..", "bench", "prepare_viewer_ren_data.R")
+  testthat::test_path("..", "demo", "prepare_viewer_ren_data.R")
 }
 
 test_that("the Ren demo registers the full published atlas", {

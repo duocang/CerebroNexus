@@ -571,8 +571,8 @@
 #'   \code{HDF5Array::TENxMatrix} seed and transposes it lazily to Cerebro's
 #'   internal genes x cells layout via \code{DelayedArray::t()} (free). The
 #'   in-memory \code{dgCMatrix} is never materialised on attach, so RAM stays
-#'   close to the \code{.crb} metadata size. Requires the \pkg{HDF5Array}
-#'   package.
+#'   close to the \code{.crb} metadata size. The gzip level is set by
+#'   \code{h5_compression_level}. Requires the \pkg{HDF5Array} package.
 #' }
 #' The CRB and any sidecar are built and validated in a private sibling stage.
 #' On POSIX systems, new stages and external matrices are owner-only; replacing
@@ -586,6 +586,13 @@
 #' Only POSIX mode bits are set or preserved; ownership, ACLs, extended
 #' attributes, and security labels remain the deployment system's
 #' responsibility on every platform.
+#' @param h5_compression_level Gzip compression level, from 0 to 9, of the
+#' H5 file written when \code{expression_matrix_mode = "h5"}; ignored by the
+#' other modes. The default 0 writes the data without compression: the file
+#' is about 7 times larger than at HDF5Array's default level 6 (about 69 GiB
+#' instead of 10 GiB for 1.5 million human prefrontal cortex cells), but it
+#' builds about three times faster and single-gene reads are about a third
+#' faster. Set 6 when disk space matters more than speed.
 #' @param codec Serialization codec for the CRB payload. Defaults to
 #' \code{"qs2"}; use \code{"rds"} when direct compatibility with
 #' \code{readRDS()} is required.
@@ -660,6 +667,7 @@ exportFromSeurat <- function(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  h5_compression_level = 0L,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
@@ -672,6 +680,18 @@ exportFromSeurat <- function(
   ##--------------------------------------------------------------------------##
 
   expression_matrix_mode <- match.arg(expression_matrix_mode)
+  if (
+    !is.numeric(h5_compression_level) ||
+      length(h5_compression_level) != 1L ||
+      is.na(h5_compression_level) ||
+      !h5_compression_level %in% 0:9
+  ) {
+    stop(
+      "`h5_compression_level` must be one integer from 0 to 9.",
+      call. = FALSE
+    )
+  }
+  h5_compression_level <- as.integer(h5_compression_level)
   codec <- match.arg(codec)
   viewer_options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
   if (
@@ -1136,7 +1156,16 @@ exportFromSeurat <- function(
     if (file.exists(h5_abs)) {
       file.remove(h5_abs)
     }
-    HDF5Array::writeTENxMatrix(m_disk, h5_abs, group = "expression")
+    ## The default gzip level 0 stores the data without compression (the
+    ## shuffle and deflate filters are still applied). On 1.3-1.5M-cell
+    ## sources it reads single genes ~30% faster than HDF5Array's default
+    ## level 6, at roughly 7x the file size.
+    HDF5Array::writeTENxMatrix(
+      m_disk,
+      h5_abs,
+      group = "expression",
+      level = h5_compression_level
+    )
 
     ## self$expression stays NULL — saveRDS therefore does not embed the
     ## matrix inside the .crb. The runtime attach reads the sibling back

@@ -19,6 +19,7 @@ exportFromSeurat(
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
   expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  h5_compression_level = 0L,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
@@ -101,8 +102,8 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
   \code{HDF5Array::TENxMatrix} seed and transposes it lazily to Cerebro's
   internal genes x cells layout via \code{DelayedArray::t()} (free). The
   in-memory \code{dgCMatrix} is never materialised on attach, so RAM stays
-  close to the \code{.crb} metadata size. Requires the \pkg{HDF5Array}
-  package.
+  close to the \code{.crb} metadata size. The gzip level is set by
+  \code{h5_compression_level}. Requires the \pkg{HDF5Array} package.
 }
 The CRB and any sidecar are built and validated in a private sibling stage.
 On POSIX systems, new stages and external matrices are owner-only; replacing
@@ -116,6 +117,14 @@ concurrent writers remain outside this multi-path transaction guarantee.
 Only POSIX mode bits are set or preserved; ownership, ACLs, extended
 attributes, and security labels remain the deployment system's
 responsibility on every platform.}
+
+\item{h5_compression_level}{Gzip compression level, from 0 to 9, of the
+H5 file written when \code{expression_matrix_mode = "h5"}; ignored by the
+other modes. The default 0 writes the data without compression: the file
+is about 7 times larger than at HDF5Array's default level 6 (about 69 GiB
+instead of 10 GiB for 1.5 million human prefrontal cortex cells), but it
+builds about three times faster and single-gene reads are about a third
+faster. Set 6 when disk space matters more than speed.}
 
 \item{codec}{Serialization codec for the CRB payload. Defaults to
 \code{"qs2"}; use \code{"rds"} when direct compatibility with

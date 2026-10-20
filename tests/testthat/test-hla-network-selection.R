@@ -168,6 +168,40 @@ test_that("HLA retires drawn selection geometry on a dataset request", {
   expect_true("HLA dataset geometry checks passed" %in% result)
 })
 
+test_that("a late HLA selection reply keeps the Focus button on", {
+  skip_if(Sys.which("node") == "", "node not on PATH")
+  runner <- tempfile(fileext = ".js")
+  on.exit(unlink(runner), add = TRUE)
+  writeLines(
+    c(
+      "const fs=require('fs'),assert=require('assert'),docEvents={},handlers={};",
+      "const context={epoch:'test',dataset_key:'A',generation:1};",
+      "const classes=new Set(),attrs={};",
+      "const focus={classList:{toggle:(name,on)=>{on?classes.add(name):classes.delete(name)},contains:name=>classes.has(name)},setAttribute:(name,value)=>{attrs[name]=value},getAttribute:name=>attrs[name]};",
+      "global.window={HTMLWidgets:{find:()=>null},setTimeout:()=>{},CerebroDatasetContext:{phase:()=> 'ready',current:()=>context,key:()=> 'A:1',accepts:()=>true},addEventListener:()=>{},dispatchEvent:()=>{}};",
+      "global.CustomEvent=function(name,init){this.type=name;this.detail=init&&init.detail};",
+      "global.Shiny={addCustomMessageHandler:(name,fn)=>{handlers[name]=fn},setInputValue:()=>{}};window.Shiny=Shiny;",
+      "global.document={readyState:'loading',addEventListener:(name,fn)=>{docEvents[name]=fn},getElementById:id=>id==='hla_motif_network_focus_selection'?focus:null,querySelectorAll:()=>[]};",
+      sprintf(
+        "eval(fs.readFileSync(%s,'utf8'));",
+        encodeString(viewer_test_path("www", "hla_motifs.js"), quote = '"')
+      ),
+      "docEvents['shiny:connected']();",
+      # The cell view turns Focus on when it is clicked ...
+      "focus.classList.toggle('is-on',true);focus.setAttribute('aria-pressed','true');",
+      # ... and only afterwards does the server's selection reply arrive.
+      "handlers['hla_motif_selection_state']({node_keys:['k1'],cells:['cell-1']});",
+      "assert(focus.classList.contains('is-on'));",
+      "assert.strictEqual(focus.getAttribute('aria-pressed'),'true');",
+      "console.log('HLA late reply checks passed')"
+    ),
+    runner
+  )
+  result <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
+  expect_true("HLA late reply checks passed" %in% result)
+})
+
 test_that("successful specialist restoration does not replay stale state", {
   output <- run_specialist_state_node(c(
     "window.cerebroCellViews = {applyState: (_id, config) => {",
