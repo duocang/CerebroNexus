@@ -2415,8 +2415,6 @@ test_that("bundling two images of the same basename keeps both", {
   crb_two <- file.path(tmp, "demo-two.crb")
   file.copy(example, crb_one, overwrite = TRUE)
   file.copy(example, crb_two, overwrite = TRUE)
-  ## Both copies name the same H5 sidecar.
-  file.copy(sub("[.]crb$", ".h5", example), tmp, overwrite = TRUE)
   spatial_name <- readCerebro(crb_one)$availableSpatial()[[1L]]
   app_dir <- file.path(tmp, "app")
   createShinyApp(

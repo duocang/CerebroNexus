@@ -72,6 +72,8 @@ test_that("mounted gene selections and completion survive a dataset round trip",
   shared <- pbmc_genes[
     tolower(pbmc_genes) %in% tolower(example_genes("demo_spatial_visium.crb"))
   ]
+  ## The round trip needs four genes; fail clearly if a panel change leaves fewer.
+  expect_gte(length(shared), 4L)
   genes <- sort(shared)[seq_len(4L)]
   viewer_set_selectize(app, "expression_genes_input", genes)
   app$set_inputs(
