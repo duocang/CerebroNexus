@@ -40,6 +40,8 @@ build_smoke_app <- function(envir = parent.frame()) {
     cerebro_data = c("Dataset A" = crb_a, "Dataset B" = crb_b),
     result_dir = app_dir,
     launch_browser = FALSE,
+    ## The bundle freezes its port; parallel test files must not share one.
+    port = httpuv::randomPort(),
     spatial_images = list(
       "Dataset A" = list(fov = c(Histology = img_a)),
       "Dataset B" = list(fov = c(Histology = img_b))
@@ -231,6 +233,7 @@ build_real_app <- function(envir = parent.frame()) {
     cerebro_data = c("Visium" = visium_crb, "Xenium" = xenium_crb),
     result_dir = app_dir,
     launch_browser = FALSE,
+    port = httpuv::randomPort(),
     initial_page = "spatial",
     spatial_images = list(
       Visium = stats::setNames(

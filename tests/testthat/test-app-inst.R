@@ -823,6 +823,8 @@ test_that("createShinyApp bundles a working app", {
     cerebro_data = c("mydata" = tmp),
     result_dir = app_dir,
     launch_browser = FALSE,
+    ## The bundle freezes its port; parallel test files must not share one.
+    port = httpuv::randomPort(),
     verbose = FALSE
   )
 
