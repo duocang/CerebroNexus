@@ -675,7 +675,12 @@
       call. = FALSE
     )
   }
-  .demoWriteH5Transposed(matrix, sidecar)
+  ## `group` is read directly (CSR arrays) when the file stores it that way.
+  .demoWriteH5Transposed(
+    matrix,
+    sidecar,
+    source = .demoAnnDataCsrSource(h5ad, group)
+  )
   DelayedArray::t(HDF5Array::TENxMatrix(sidecar, group = "expression"))
 }
 
