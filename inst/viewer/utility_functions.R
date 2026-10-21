@@ -48,7 +48,11 @@ viewerLinkedViewsAvailable <- function(info = NULL, object = NULL) {
     ## first-frame cache; the accessor would first read every cell name.
     cached <- viewerProjectionFirstFrameCache(object)$projections
     projections <- as.character(
-      if (is.null(cached)) read(object$availableProjections()) else names(cached)
+      if (is.null(cached)) {
+        read(object$availableProjections())
+      } else {
+        names(cached)
+      }
     )
     projections <- unique(projections[
       !is.na(projections) & nzchar(projections)
