@@ -880,8 +880,7 @@
           example_layer,
           "\"`. No other layer is substituted for `",
           layer_name,
-          "`.
-"
+          "`.\n"
         )
       } else {
         paste0(
@@ -889,8 +888,7 @@
           layer_name,
           "` layer; add it to the assay first (for example ",
           "`Seurat::NormalizeData()` creates `data`). No other layer is ",
-          "substituted for it.
-"
+          "substituted for it.\n"
         )
       }
       stop(
@@ -900,16 +898,14 @@
           layer_name,
           "` does not exist in the `",
           assay,
-          "` assay.
-",
+          "` assay.\n",
           "Available layers: ",
           if (length(available_layers) > 0L) {
             paste(available_layers, collapse = ", ")
           } else {
             "none"
           },
-          "
-",
+          "\n",
           fix,
           "Inspect the assay with: SeuratObject::Layers(object[[\"",
           assay,
