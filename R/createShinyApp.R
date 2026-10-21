@@ -2707,7 +2707,9 @@ createShinyApp <- function(
   dataset_catalog <- preflight_data$dataset_catalog
   spatial_backends <- preflight_data$spatial_backends
   immune_backends <- preflight_data$immune_backends
-  if (!is.list(immune_backends) || length(immune_backends) != length(cerebro_data)) {
+  if (
+    !is.list(immune_backends) || length(immune_backends) != length(cerebro_data)
+  ) {
     immune_backends <- vector("list", length(cerebro_data))
   }
   if (

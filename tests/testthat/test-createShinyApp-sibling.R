@@ -2849,7 +2849,11 @@ test_that("retired CRB formats are rejected with the convertCerebro message", {
     saveRDS(case$payload(), crb)
     app <- file.path(root, paste0(case_name, "-app"))
 
-    expect_error(build_test_app(c(Retired = crb), app), retired, info = case_name)
+    expect_error(
+      build_test_app(c(Retired = crb), app),
+      retired,
+      info = case_name
+    )
     expect_error(
       build_test_app(c(Retired = crb), app),
       case$reason,

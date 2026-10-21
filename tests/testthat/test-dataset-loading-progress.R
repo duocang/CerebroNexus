@@ -311,7 +311,8 @@ test_that("a background read that never finishes does not stall the dataset swit
         result = function() shiny::req(FALSE)
       )
       crb_prefetch_started[[key]] <- as.numeric(Sys.time()) -
-        crb_prefetch_timeout_seconds - 1
+        crb_prefetch_timeout_seconds -
+        1
       viewer_server_load(
         viewer_server_statements("shiny_server.R", server = TRUE),
         scope,

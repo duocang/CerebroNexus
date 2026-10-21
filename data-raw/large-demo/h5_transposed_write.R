@@ -112,7 +112,8 @@
   n_genes <- ncol(pointers) - 1L
   genes <- task$from:task$to
   n_block <- length(genes)
-  counts <- pointers[, genes + 1L, drop = FALSE] - pointers[, genes, drop = FALSE]
+  counts <- pointers[, genes + 1L, drop = FALSE] -
+    pointers[, genes, drop = FALSE]
   gene_total <- colSums(counts)
   total <- sum(gene_total)
   out_index <- integer(total)
@@ -137,18 +138,30 @@
       connection <- file(path, open = "rb")
       seek(connection, 4 * (n_genes + 1) + 4 * pointers[chunk, task$from])
       index <- readBin(connection, "integer", n = length_chunk)
-      seek(connection, 4 * (n_genes + 1) + 4 * nnz + 8 * pointers[chunk, task$from])
+      seek(
+        connection,
+        4 * (n_genes + 1) + 4 * nnz + 8 * pointers[chunk, task$from]
+      )
       value <- readBin(connection, "double", n = length_chunk)
       close(connection)
       segment_start <- cumsum(c(0, count))[seq_len(n_block)]
-      target <- rep(gene_start + before[chunk, ] - segment_start, times = count) +
+      target <- rep(
+        gene_start + before[chunk, ] - segment_start,
+        times = count
+      ) +
         seq_len(length_chunk)
       out_index[target] <- index + as.integer(spec$offsets[[chunk]])
       out_value[target] <- value
     }
   }
-  writeBin(out_index, file.path(spec$dir, sprintf("block-%03d-i.bin", task$block)))
-  writeBin(out_value, file.path(spec$dir, sprintf("block-%03d-x.bin", task$block)))
+  writeBin(
+    out_index,
+    file.path(spec$dir, sprintf("block-%03d-i.bin", task$block))
+  )
+  writeBin(
+    out_value,
+    file.path(spec$dir, sprintf("block-%03d-x.bin", task$block))
+  )
   gene_total
 }
 
@@ -165,7 +178,12 @@
 ) {
   for (package in c("rhdf5", "Matrix")) {
     if (!requireNamespace(package, quietly = TRUE)) {
-      stop("Writing the H5 expression file requires ", package, ".", call. = FALSE)
+      stop(
+        "Writing the H5 expression file requires ",
+        package,
+        ".",
+        call. = FALSE
+      )
     }
   }
   genes <- rownames(matrix)
@@ -222,8 +240,13 @@
 
   ## Pass 1: read the cells once, one chunk per task.
   say(
-    "pass 1: reading ", format(n_cells, big.mark = ","), " cells in ", n_chunks,
-    " chunks on ", workers, " process(es)"
+    "pass 1: reading ",
+    format(n_cells, big.mark = ","),
+    " cells in ",
+    n_chunks,
+    " chunks on ",
+    workers,
+    " process(es)"
   )
   tasks <- lapply(seq_len(n_chunks), function(chunk) {
     list(
@@ -239,10 +262,15 @@
   )
   pointers <- do.call(rbind, lapply(pointer_list, as.numeric))
   rm(pointer_list)
-  counts <- pointers[, -1L, drop = FALSE] - pointers[, -(n_genes + 1L), drop = FALSE]
+  counts <- pointers[, -1L, drop = FALSE] -
+    pointers[, -(n_genes + 1L), drop = FALSE]
   gene_total <- colSums(counts)
   rm(counts)
-  say("pass 1 done: ", format(sum(gene_total), big.mark = ","), " non-zero values")
+  say(
+    "pass 1 done: ",
+    format(sum(gene_total), big.mark = ","),
+    " non-zero values"
+  )
 
   ## Pass 2: cut the genes into blocks of about `block_nnz` values.
   block_of <- floor((cumsum(gene_total) - gene_total) / block_nnz)
@@ -307,7 +335,12 @@
       indptr[(block$from:block$to) + 1L] <- written + cumsum(totals[[k]])
       written <- written + total
     }
-    say("wrote gene block ", max(vapply(wave, function(b) b$block, 1L)), " of ", length(blocks))
+    say(
+      "wrote gene block ",
+      max(vapply(wave, function(b) b$block, 1L)),
+      " of ",
+      length(blocks)
+    )
   }
   rhdf5::h5createDataset(
     h5,

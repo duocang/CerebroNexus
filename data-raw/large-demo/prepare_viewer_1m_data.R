@@ -772,7 +772,7 @@ prepareViewer1mBenchmarkData <- function(cache_dir = NULL) {
     "HDF5Array",
     "DelayedArray",
     "Matrix",
-        "rhdf5",
+    "rhdf5",
     "Seurat",
     "SeuratObject",
     "uwot"

@@ -566,7 +566,10 @@ retired_cerebros <- function(root) {
 
   entries <- list(
     no_descriptor = list(
-      payload = legacy_payload(list(expression = counts, meta_data = meta_data)),
+      payload = legacy_payload(list(
+        expression = counts,
+        meta_data = meta_data
+      )),
       reason = "no expression-backend descriptor",
       upgrades = TRUE
     ),
@@ -884,11 +887,15 @@ test_that("a malformed immune sidecar descriptor is rejected", {
     "descriptor is invalid"
   )
   expect_error(
-    readCerebro(edit(function(d) utils::modifyList(d, list(file = "../x.qs2")))),
+    readCerebro(edit(function(d) {
+      utils::modifyList(d, list(file = "../x.qs2"))
+    })),
     "descriptor is invalid"
   )
   expect_error(
-    readCerebro(edit(function(d) utils::modifyList(d, list(type = "directory")))),
+    readCerebro(edit(function(d) {
+      utils::modifyList(d, list(type = "directory"))
+    })),
     "retired format"
   )
 })
@@ -904,7 +911,10 @@ test_that("immune_sidecar = \"auto\" externalises only a large H5-backed reperto
   ## below the default threshold the repertoire stays in the CRB
   saveCerebro(fixture$object, file.path(root, "h5.crb"))
   expect_false(file.exists(sidecar))
-  expect_length(.readCerebroPayload(file.path(root, "h5.crb"))$immune_repertoire, 2L)
+  expect_length(
+    .readCerebroPayload(file.path(root, "h5.crb"))$immune_repertoire,
+    2L
+  )
 
   ## the threshold counts repertoire rows and is inclusive
   saveCerebro(
@@ -935,7 +945,10 @@ test_that("immune_sidecar = \"auto\" externalises only a large H5-backed reperto
     immune_sidecar_threshold = 1L
   )
   expect_false(file.exists(sidecar))
-  expect_length(.readCerebroPayload(file.path(root, "h5.crb"))$immune_repertoire, 2L)
+  expect_length(
+    .readCerebroPayload(file.path(root, "h5.crb"))$immune_repertoire,
+    2L
+  )
 
   ## "always" also applies to an H5-backed CRB
   saveCerebro(
@@ -1051,10 +1064,13 @@ test_that("replacing a CRB replaces its own immune sidecar", {
 
   expect_false(identical(unname(tools::md5sum(sidecar)), first))
   expect_identical(readCerebro(path)$getImmuneRepertoire(), changed)
-  expect_setequal(list.files(root, all.files = TRUE, no.. = TRUE), c(
-    "dataset.crb",
-    "dataset.immune.qs2"
-  ))
+  expect_setequal(
+    list.files(root, all.files = TRUE, no.. = TRUE),
+    c(
+      "dataset.crb",
+      "dataset.immune.qs2"
+    )
+  )
 })
 
 ## ---------------------------------------------------------------------------
@@ -1141,7 +1157,10 @@ test_that("the Cerebro class no longer stores bcr_data or tcr_data", {
   ))
   expect_false(exists("bcr_data", envir = object, inherits = FALSE))
   expect_false(exists("tcr_data", envir = object, inherits = FALSE))
-  expect_error(object$setExpressionBackend("retired-store", "x.retired"), "one of")
+  expect_error(
+    object$setExpressionBackend("retired-store", "x.retired"),
+    "one of"
+  )
 })
 
 ## ---------------------------------------------------------------------------
@@ -1305,7 +1324,11 @@ test_that("a failed save leaves no staged immune sidecar behind", {
     .package = "CerebroNexus"
   )
   expect_error(
-    saveCerebro(object, file.path(root, "dataset.crb"), immune_sidecar = "always"),
+    saveCerebro(
+      object,
+      file.path(root, "dataset.crb"),
+      immune_sidecar = "always"
+    ),
     "spatial staging failed"
   )
   expect_length(list.files(root, all.files = TRUE, no.. = TRUE), 0L)
@@ -1323,7 +1346,10 @@ test_that("convertCerebro rejects a malformed expression backend", {
     path
   )
   before <- unname(tools::md5sum(path))
-  expect_error(convertCerebro(path), "unsupported expression-backend descriptor")
+  expect_error(
+    convertCerebro(path),
+    "unsupported expression-backend descriptor"
+  )
   expect_identical(unname(tools::md5sum(path)), before)
 })
 
@@ -1454,7 +1480,10 @@ test_that("the cell names are read once for hydration and expression", {
   expect_identical(reads, 1L)
 
   ## expression alone reads them once as well
-  other <- runtime$.attachExternalExpression(runtime$read_cerebro_file(path), path)
+  other <- runtime$.attachExternalExpression(
+    runtime$read_cerebro_file(path),
+    path
+  )
   reads <- 0L
   other$expression
   other$expression
@@ -1470,8 +1499,16 @@ test_that("a retired format that convertCerebro cannot repair says to re-export"
   for (name in names(retired$entries)) {
     entry <- retired$entries[[name]]
     ## the same advice from the package and from the Viewer
-    advice <- if (isTRUE(entry$upgrades)) "Convert it once" else "re-export it from the source"
-    wrong <- if (isTRUE(entry$upgrades)) "re-export it from the source" else "Convert it once"
+    advice <- if (isTRUE(entry$upgrades)) {
+      "Convert it once"
+    } else {
+      "re-export it from the source"
+    }
+    wrong <- if (isTRUE(entry$upgrades)) {
+      "re-export it from the source"
+    } else {
+      "Convert it once"
+    }
     attach <- function() {
       runtime$.attachExternalExpression(
         runtime$read_cerebro_file(entry$path),

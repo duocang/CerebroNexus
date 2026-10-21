@@ -843,7 +843,10 @@
       is.na(threshold) ||
       threshold < 0
   ) {
-    stop("`immune_sidecar_threshold` must be one non-negative number.", call. = FALSE)
+    stop(
+      "`immune_sidecar_threshold` must be one non-negative number.",
+      call. = FALSE
+    )
   }
   list(mode = mode, threshold = threshold)
 }
