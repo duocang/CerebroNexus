@@ -413,6 +413,7 @@ test_that("a SpatialData store as a .zip is a Builder source and builds one sect
 
 test_that("a zip that holds no SpatialData store is refused with a clear message", {
   skip_if_not_installed("zip")
+  skip_if_not_installed("arrow")
   dir <- withr::local_tempdir()
   writeLines("hello", file.path(dir, "note.txt"))
   zip_file <- file.path(withr::local_tempdir(), "other.zip")

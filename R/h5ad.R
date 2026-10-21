@@ -657,6 +657,8 @@
 #'   \code{sample}, \code{Sample} or \code{sample_id} is used if present, else
 #'   all cells are one sample (\code{"Sample_1"}).
 #' @param verbose Print what was skipped.
+#' @param .root Internal: HDF5 group that holds the data set (used for the
+#'   modalities inside a MuData file). Leave \code{NULL}.
 #'
 #' @return A \code{SingleCellExperiment} with genes in rows and cells in
 #'   columns. Duplicate gene names are made unique with a message; duplicate

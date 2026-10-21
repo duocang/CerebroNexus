@@ -13,7 +13,8 @@ readH5adAsSCE(
   airr_sample = NULL,
   spatial_images = "auto",
   extra_modalities = NULL,
-  verbose = FALSE
+  verbose = FALSE,
+  .root = NULL
 )
 }
 \arguments{
@@ -59,6 +60,9 @@ vector of image labels (\code{"hires"}, \code{"lowres"},
 \code{"fullres"}), or \code{FALSE} for none. Needs the \pkg{png} package.}
 
 \item{verbose}{Print what was skipped.}
+
+\item{.root}{Internal: HDF5 group that holds the data set (used for the
+modalities inside a MuData file). Leave \code{NULL}.}
 }
 \value{
 A \code{SingleCellExperiment} with genes in rows and cells in

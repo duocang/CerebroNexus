@@ -101,6 +101,7 @@ test_that("pictures are placed in the shape coordinates of their section", {
 })
 
 test_that("cell coordinates come from the shapes the table annotates, matched by instance id", {
+  skip_if_not_installed("arrow")
   sce <- quiet(readSpatialDataAsSCE(fixture("small_sd_cells.zarr")))
   coordinates <- SingleCellExperiment::reducedDim(sce, "spatial")
   ids <- SummarizedExperiment::colData(sce)$spot_id
@@ -113,6 +114,7 @@ test_that("cell coordinates come from the shapes the table annotates, matched by
 })
 
 test_that("a SpatialData store converts to a .crb with one section per region and its picture", {
+  skip_if_not_installed("arrow")
   skip_if_not_installed("png")
   path <- quiet(convertSpatialDataToCerebro(
     fixture("small_sd_visium.zarr"), withr::local_tempdir(),
