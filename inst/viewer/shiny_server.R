@@ -602,6 +602,21 @@ server <- function(input, output, session) {
             print(glue::glue(
               "[{Sys.time()}] Dataset selected via URL: {url_dataset} -> {selection}"
             ))
+          } else if (!is.null(query$dataset)) {
+            ## Links match the dataset id only; an older link that named the
+            ## file would otherwise open another dataset without a word. The
+            ## path segment is not reported: it is often the app's mount path.
+            showNotification(
+              paste0(
+                "The link names the dataset \"",
+                url_dataset,
+                "\", which this app does not have, so another dataset is ",
+                "shown. Links use the dataset id, not the file name."
+              ),
+              type = "warning",
+              duration = NULL,
+              id = "dataset-link-unmatched"
+            )
           }
         }
 
