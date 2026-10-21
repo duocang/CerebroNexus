@@ -112,6 +112,10 @@ immune repertoire in a retired sidecar layout, or is a pre-spatial
   gene expression, so expression of another data set with the same number of
   cells is no longer painted onto a thin `.crb`. The refusal is written to the
   log.
+- The "uses a retired format" error says to re-export the file with
+  `exportFromSeurat()` when `convertCerebro()` cannot repair it (a BPCells or thin
+  schema 1 or 2 `.crb`); before, it sent every such file to `convertCerebro()`,
+  which then refused it.
 - `convertCerebro()` stops on an `expression_backend` that is not a descriptor
   instead of writing the file as embedded.
 - `convertCerebro()` no longer rejects an `output` in the same directory on

@@ -2835,9 +2835,12 @@ retired_crb_cases <- function() {
 test_that("retired CRB formats are rejected with the convertCerebro message", {
   root <- withr::local_tempdir()
   cases <- retired_crb_cases()
+  ## A form convertCerebro() cannot repair says to re-export instead.
   retired <- paste0(
-    "retired format: .*",
-    "Convert it once with CerebroNexus::convertCerebro\\(\\)"
+    "retired format: .*(",
+    "Convert it once with CerebroNexus::convertCerebro\\(\\)|",
+    "convertCerebro\\(\\) cannot repair it; re-export it from the source",
+    ")"
   )
 
   for (case_name in names(cases)) {

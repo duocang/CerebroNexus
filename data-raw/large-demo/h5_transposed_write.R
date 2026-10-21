@@ -1,3 +1,6 @@
+## Base R has `%||%` from 4.4; this file is sourced on its own.
+`%||%` <- function(a, b) if (is.null(a)) b else a
+
 ## Writes a genes x cells matrix that is stored cell by cell (an AnnData `X`, a
 ## TENx file with cell columns) to the cells x genes TENx H5 layout that
 ## exportFromSeurat() writes, without HDF5Array::writeTENxMatrix().

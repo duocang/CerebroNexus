@@ -4384,14 +4384,20 @@ get_or_load_crb <- function(
   }
   schema <- stored("crb_schema")
   if (is.list(schema) && !identical(schema$version, 3L)) {
-    return(paste0("it uses thin-CRB schema version ", schema$version[1L]))
+    return(structure(
+      paste0("it uses thin-CRB schema version ", schema$version[1L]),
+      repairable = FALSE
+    ))
   }
   if (length(stored("bcr_data")) > 0L || length(stored("tcr_data")) > 0L) {
     return("its receptors are stored in the retired bcr_data/tcr_data fields")
   }
   immune <- stored("immune_repertoire_backend")
   if (is.list(immune) && !identical(immune$type, "file")) {
-    return("its immune repertoire sidecar uses a retired layout")
+    return(structure(
+      "its immune repertoire sidecar uses a retired layout",
+      repairable = FALSE
+    ))
   }
   if (!exists("availableSpatial", envir = obj, inherits = FALSE)) {
     return("it predates spatial support")
@@ -4407,7 +4413,15 @@ get_or_load_crb <- function(
       basename(crb_path),
       "' uses a retired format: ",
       reason,
-      ". Convert it once with CerebroNexus::convertCerebro().",
+      ". ",
+      if (isFALSE(attr(reason, "repairable"))) {
+        paste0(
+          "convertCerebro() cannot repair it; re-export it from the source ",
+          "object with exportFromSeurat(expression_matrix_mode = \"h5\")."
+        )
+      } else {
+        "Convert it once with CerebroNexus::convertCerebro()."
+      },
       call. = FALSE
     )
   }

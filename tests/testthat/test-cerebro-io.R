@@ -1461,3 +1461,28 @@ test_that("the cell names are read once for hydration and expression", {
   other$meta_data
   expect_identical(reads, 2L)
 })
+
+test_that("a retired format that convertCerebro cannot repair says to re-export", {
+  root <- withr::local_tempdir()
+  retired <- retired_cerebros(root)
+  runtime <- runtime_env()
+
+  for (name in names(retired$entries)) {
+    entry <- retired$entries[[name]]
+    ## the same advice from the package and from the Viewer
+    advice <- if (isTRUE(entry$upgrades)) "Convert it once" else "re-export it from the source"
+    wrong <- if (isTRUE(entry$upgrades)) "re-export it from the source" else "Convert it once"
+    attach <- function() {
+      runtime$.attachExternalExpression(
+        runtime$read_cerebro_file(entry$path),
+        entry$path
+      )
+    }
+    for (read in list(function() readCerebro(entry$path), attach)) {
+      message <- tryCatch(read(), error = conditionMessage)
+      expect_match(message, advice, fixed = TRUE, info = name)
+      expect_false(grepl(wrong, message, fixed = TRUE), info = name)
+      expect_match(message, "convertCerebro", fixed = TRUE, info = name)
+    }
+  }
+})
