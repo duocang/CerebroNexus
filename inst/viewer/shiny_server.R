@@ -2253,6 +2253,15 @@ server <- function(input, output, session) {
     },
     ignoreInit = TRUE
   )
+  ## Share requests from any page are answered by the Linked views server.
+  observeEvent(
+    list(
+      input[["coordviews_config_request"]],
+      input[["coordviews_config_upload_request"]]
+    ),
+    load_deferred_viewer_server("coordinated_views/server.R"),
+    ignoreInit = TRUE
+  )
   observeEvent(
     input[["sidebar"]],
     {
