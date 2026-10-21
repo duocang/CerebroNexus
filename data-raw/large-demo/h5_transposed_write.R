@@ -6,7 +6,8 @@
 ## is stored by cells has to be scanned from start to end for every block of
 ## genes: with the default block size that is thousands of passes over a file
 ## of tens of gigabytes. The transposition is done here in two passes instead,
-## both spread over several R processes:
+## both spread over `workers` R processes (default 2; set CEREBRO_DEMO_WORKERS
+## to use more cores at the cost of about 3-5 GB of memory per process):
 ##
 ## 1. The cells are read once in chunks. Each chunk is transposed (cells x genes,
 ##    sorted by gene) and written to one scratch file: the column pointers, the
@@ -155,7 +156,7 @@
   group = "expression",
   chunk_cells = 40000L,
   block_nnz = 1e8,
-  workers = max(1L, min(8L, parallel::detectCores(logical = FALSE) - 1L)),
+  workers = as.integer(Sys.getenv("CEREBRO_DEMO_WORKERS", "2")),
   scratch_dir = dirname(h5),
   verbose = TRUE
 ) {
