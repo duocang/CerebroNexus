@@ -193,6 +193,32 @@
   if (!valid) NULL else backend[c("type", "file")]
 }
 
+## The immune repertoire sidecar of the CRB being replaced that the new CRB no
+## longer uses, or NULL. Only the canonical sidecar names of this CRB qualify,
+## and a file that another CRB in the directory still points to stays.
+.retiredImmuneSidecar <- function(previous, final_file, location) {
+  canonical <- c(
+    .immuneRepertoireSidecarName(final_file, "qs2"),
+    .immuneRepertoireSidecarName(final_file, "rds")
+  )
+  if (
+    is.null(previous) ||
+      identical(previous$file, location) ||
+      !previous$file %in% canonical
+  ) {
+    return(NULL)
+  }
+  others <- list.files(dirname(final_file), "[.]crb$", full.names = TRUE)
+  others <- others[basename(others) != basename(final_file)]
+  for (other in others) {
+    shared <- .readPublishedImmuneBackend(other)
+    if (!is.null(shared) && identical(shared$file, previous$file)) {
+      return(NULL)
+    }
+  }
+  file.path(dirname(final_file), previous$file)
+}
+
 .publishCerebroExport <- function(
   export,
   final_file,
@@ -435,17 +461,11 @@
   stage_immune <- immune$stage
   ## A sidecar this export no longer uses (the repertoire moved back into the
   ## CRB, or the codec changed) is removed after the new CRB is committed.
-  if (
-    !is.null(previous_immune_backend) &&
-      !identical(previous_immune_backend$file, immune$location) &&
-      previous_immune_backend$file %in%
-        c(
-          .immuneRepertoireSidecarName(final_file, "qs2"),
-          .immuneRepertoireSidecarName(final_file, "rds")
-        )
-  ) {
-    retired_immune <- file.path(final_dir, previous_immune_backend$file)
-  }
+  retired_immune <- .retiredImmuneSidecar(
+    previous_immune_backend,
+    final_file,
+    immune$location
+  )
   if (!is.null(immune$location)) {
     final_immune <- file.path(final_dir, immune$location)
     if (.pathIsSymbolicLink(final_immune)) {
@@ -565,27 +585,8 @@
     }
   }
   for (retired in list(retired_sidecar, retired_immune)) {
-    if (
-      !is.null(retired) &&
-        (file.exists(retired) || dir.exists(retired))
-    ) {
-      if (.pathIsSymbolicLink(retired)) {
-        warning(
-          "The previous sidecar is a symbolic link and was not removed: ",
-          retired,
-          call. = FALSE
-        )
-      } else {
-        status <- unlink(retired, recursive = TRUE, force = TRUE)
-        if (!identical(status, 0L)) {
-          warning(
-            "The new export was published, but the previous sidecar remains ",
-            "at: ",
-            retired,
-            call. = FALSE
-          )
-        }
-      }
+    if (!is.null(retired)) {
+      .removeRetiredSidecar(retired)
     }
   }
   invisible(final_file)
@@ -758,10 +759,10 @@ exportFromSeurat <- function(
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
-  immune_sidecar = c("auto", "always", "never"),
-  immune_sidecar_threshold = 100000L,
   spatial_images = NULL,
   verbose = FALSE,
+  immune_sidecar = c("auto", "always", "never"),
+  immune_sidecar_threshold = 100000L,
   .expression_resolution = NULL
 ) {
   ##--------------------------------------------------------------------------##

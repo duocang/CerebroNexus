@@ -4,12 +4,31 @@
 .crb_backend_identities <- new.env(parent = emptyenv())
 crb_prefetch_tasks <- new.env(parent = emptyenv())
 crb_prefetch_started <- new.env(parent = emptyenv())
+crb_prefetch_seen <- new.env(parent = emptyenv())
 
-## A background read that has not finished after this long is abandoned and the
-## dataset is read in the foreground instead. Without a limit a daemon that
-## cannot start (a library path the child R does not see, a blocked socket)
-## would leave the dataset switch waiting forever.
+## A background read that a dataset switch has waited this long for is abandoned
+## and the dataset is read in the foreground instead. The clock starts when the
+## switch begins to wait (crb_prefetch_begin_wait), not when the task started: a
+## read that began earlier, while the user was elsewhere, is not penalised.
+## Without a limit a daemon that cannot start (a library path the child R does
+## not see, a blocked socket) would leave the dataset switch waiting forever.
 crb_prefetch_timeout_seconds <- 30
+## The loader looks again every second while it waits. A longer gap means the
+## user left and came back, which starts a new wait.
+crb_prefetch_wait_gap_seconds <- 5
+
+crb_prefetch_begin_wait <- function(key) {
+  now <- as.numeric(Sys.time())
+  seen <- crb_prefetch_seen[[key]]
+  if (
+    is.null(crb_prefetch_started[[key]]) ||
+      (!is.null(seen) && now - seen > crb_prefetch_wait_gap_seconds)
+  ) {
+    crb_prefetch_started[[key]] <- now
+  }
+  crb_prefetch_seen[[key]] <- now
+  invisible(NULL)
+}
 
 crb_prefetch_waited <- function(key) {
   started <- crb_prefetch_started[[key]]
@@ -20,8 +39,10 @@ crb_prefetch_abandon <- function(key) {
   if (exists(key, envir = crb_prefetch_tasks, inherits = FALSE)) {
     rm(list = key, envir = crb_prefetch_tasks)
   }
-  if (exists(key, envir = crb_prefetch_started, inherits = FALSE)) {
-    rm(list = key, envir = crb_prefetch_started)
+  for (clock in list(crb_prefetch_started, crb_prefetch_seen)) {
+    if (exists(key, envir = clock, inherits = FALSE)) {
+      rm(list = key, envir = clock)
+    }
   }
 }
 
@@ -118,7 +139,6 @@ start_crb_prefetch <- function(path, backend_identity) {
     })
   )
   crb_prefetch_tasks[[cache_key]] <- prefetch_task
-  crb_prefetch_started[[cache_key]] <- as.numeric(Sys.time())
   print(glue::glue(
     "[{Sys.time()}] CRB background prefetch started: {basename(path)}"
   ))
@@ -134,7 +154,10 @@ start_crb_prefetch <- function(path, backend_identity) {
       }
       on.exit(
         {
-          crb_prefetch_abandon(cache_key)
+          ## An abandoned task must not remove the entries of a newer one.
+          if (identical(crb_prefetch_tasks[[cache_key]], prefetch_task)) {
+            crb_prefetch_abandon(cache_key)
+          }
           completion$destroy()
         },
         add = TRUE

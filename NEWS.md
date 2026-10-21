@@ -15,8 +15,10 @@ forms. **A `.crb` written by an older release may no longer open**: see
   kept once, in the H5 file (`/expression/genes`), and the `.crb` stores only a
   checksum and the cell count instead of repeating them in `meta_data` and every
   projection. The Viewer still defers the cell names until a page needs them, so
-  opening a data set reads no more than before, and it refuses an H5 file whose
-  cell names do not match the `.crb`. H5 `.crb` files from 5.1.x, which carry
+  opening a data set reads no more than before. Opening compares only the cell
+  count; the Viewer refuses an H5 file whose cell names do not match the `.crb`
+  when the names are first read, which is at the latest before any gene
+  expression is read. H5 `.crb` files from 5.1.x, which carry
   their cell names, keep opening.
 - The immune repertoire of a large H5-backed data set is stored in a sibling
   file `<stem>.immune.qs2` (`.rds` with `codec = "rds"`) that the package
@@ -68,16 +70,25 @@ immune repertoire in a retired sidecar layout, or is a pre-spatial
 - `convertSeuratToCerebro()` accepts `h5_compression_level`, `immune_sidecar`
   and `immune_sidecar_threshold` and passes them to `exportFromSeurat()`; before,
   it always wrote an uncompressed H5 file and could not control the sidecar.
-- Re-exporting with `exportFromSeurat()` removes an immune repertoire sidecar the
-  new export no longer uses, and `saveCerebro()` no longer leaves a staged
-  sidecar behind when a later step fails.
+- Re-exporting with `exportFromSeurat()` or saving with `saveCerebro()` removes an
+  immune repertoire sidecar of the replaced CRB that the new CRB no longer uses,
+  and `saveCerebro()` no longer leaves a staged sidecar behind when a later step
+  fails. An object whose repertoire already sits in a sidecar keeps pointing to
+  it whatever `immune_sidecar` is; see `?saveCerebro`.
+- `immune_sidecar` and `immune_sidecar_threshold` come after `verbose` in
+  `exportFromSeurat()`, so the position of the arguments before them is the same
+  as in 5.1.3.
+- The Viewer checks the H5 file's cell names against the `.crb` before it reads
+  gene expression, so expression of another data set with the same number of
+  cells is no longer painted onto a thin `.crb`.
 - `convertCerebro()` stops on an `expression_backend` that is not a descriptor
   instead of writing the file as embedded.
 - `convertCerebro()` no longer rejects an `output` in the same directory on
   Windows because of a path-separator mismatch.
 - A background read of a `.crb` that does not finish within 30 s (for example
   when the worker R process cannot load its packages) no longer leaves the
-  dataset switch waiting forever; the Viewer reads the file in the foreground.
+  dataset switch waiting forever; the Viewer reads the file in the foreground. The
+  30 s count from when the switch starts to wait, not from when the read began.
 
 # CerebroNexus 5.1.3
 

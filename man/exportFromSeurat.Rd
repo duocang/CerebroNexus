@@ -23,10 +23,10 @@ exportFromSeurat(
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
-  immune_sidecar = c("auto", "always", "never"),
-  immune_sidecar_threshold = 100000L,
   spatial_images = NULL,
   verbose = FALSE,
+  immune_sidecar = c("auto", "always", "never"),
+  immune_sidecar_threshold = 100000L,
   .expression_resolution = NULL
 )
 }

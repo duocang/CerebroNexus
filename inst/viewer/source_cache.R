@@ -49,6 +49,7 @@
   ".runtimeH5Names",
   ".runtimeH5CellCount",
   ".checkThinCrbCells",
+  ".thinCrbCellNames",
   ".runtimeLegacyReason",
   ".assertCurrentRuntimeCrb",
   ".hydrateThinCrbFields",

@@ -4222,7 +4222,23 @@ get_or_load_crb <- function(
   )
 }
 
-.deferThinCrbHydration <- function(obj, crb_path, sidecar, schema) {
+## The H5 file's cell names, compared with the CRB's checksum. `state` is shared
+## by everything that reads them for one attach, so a data set that has been
+## hydrated is not read and hashed a second time before its expression.
+.thinCrbCellNames <- function(state, sidecar, schema, crb_path) {
+  cells <- .runtimeH5Names(sidecar, "genes")
+  .checkThinCrbCells(cells, schema, crb_path)
+  state$verified <- TRUE
+  cells
+}
+
+.deferThinCrbHydration <- function(
+  obj,
+  crb_path,
+  sidecar,
+  schema,
+  state = new.env(parent = emptyenv())
+) {
   if (!identical(.runtimeH5CellCount(sidecar), schema$n_cells)) {
     stop(
       "The thin CRB cell count does not match its H5 sidecar.",
@@ -4243,8 +4259,7 @@ get_or_load_crb <- function(
     hydrated <- NULL
     function() {
       if (is.null(hydrated)) {
-        cells <- .runtimeH5Names(sidecar, "genes")
-        .checkThinCrbCells(cells, schema, crb_path)
+        cells <- .thinCrbCellNames(state, sidecar, schema, crb_path)
         hydrated <<- .hydrateThinCrbFields(
           metadata,
           projections,
@@ -4463,8 +4478,15 @@ get_or_load_crb <- function(
       call. = FALSE
     )
   }
+  cell_names_state <- new.env(parent = emptyenv())
   if (!is.null(crb_schema)) {
-    obj <- .deferThinCrbHydration(obj, crb_path, loc_abs, crb_schema)
+    obj <- .deferThinCrbHydration(
+      obj,
+      crb_path,
+      loc_abs,
+      crb_schema,
+      cell_names_state
+    )
   }
   ## On-disk layout is cells x genes (TENxMatrix orientation, optimised for
   ## per-gene column reads). Cerebro's internal layout is genes x cells, so
@@ -4472,9 +4494,23 @@ get_or_load_crb <- function(
   ## The matrix is never materialised into a dgCMatrix at attach time;
   ## queries stream from disk through the DelayedMatrix path in
   ## getExpressionRow / getExpressionBlock. Attach on first expression use.
+  ## A thin CRB stores no cell names, so the H5 file's names are compared with
+  ## its checksum here: the attach above only compared the cell count, and
+  ## expression of another data set with as many cells must not be painted.
   delayedAssign(
     "expression",
     {
+      if (!is.null(crb_schema) && !isTRUE(cell_names_state$verified)) {
+        ## Callers often wrap the first expression access in tryCatch(), so the
+        ## refusal is also logged.
+        tryCatch(
+          .thinCrbCellNames(cell_names_state, loc_abs, crb_schema, crb_path),
+          error = function(error) {
+            print(glue::glue("[{Sys.time()}] {conditionMessage(error)}"))
+            stop(error)
+          }
+        )
+      }
       print(glue::glue(
         "[{Sys.time()}] Attaching h5 backend (lazy TENxMatrix): {loc_abs}"
       ))

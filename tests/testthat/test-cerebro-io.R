@@ -1326,3 +1326,138 @@ test_that("convertCerebro rejects a malformed expression backend", {
   expect_error(convertCerebro(path), "unsupported expression-backend descriptor")
   expect_identical(unname(tools::md5sum(path)), before)
 })
+
+test_that("saveCerebro removes a sidecar the new CRB no longer uses", {
+  skip_if_not_installed("qs2")
+
+  root <- withr::local_tempdir()
+  object <- make_embedded_cerebro()
+  object$addImmuneRepertoire(immune_tables())
+  path <- file.path(root, "dataset.crb")
+
+  saveCerebro(object, path, immune_sidecar = "always")
+  expect_setequal(list.files(root), c("dataset.crb", "dataset.immune.qs2"))
+
+  ## the repertoire moves back into the CRB
+  saveCerebro(object, path, immune_sidecar = "never")
+  expect_identical(list.files(root), "dataset.crb")
+  expect_identical(readCerebro(path)$getImmuneRepertoire(), immune_tables())
+
+  ## another codec replaces the file instead of adding a second one
+  saveCerebro(object, path, immune_sidecar = "always")
+  saveCerebro(object, path, codec = "rds", immune_sidecar = "always")
+  expect_setequal(list.files(root), c("dataset.crb", "dataset.immune.rds"))
+  expect_identical(readCerebro(path)$getImmuneRepertoire(), immune_tables())
+
+  ## the same codec keeps the file
+  saveCerebro(object, path, codec = "rds", immune_sidecar = "always")
+  expect_setequal(list.files(root), c("dataset.crb", "dataset.immune.rds"))
+})
+
+test_that("saveCerebro keeps a sidecar its CRB still points to", {
+  skip_if_not_installed("qs2")
+
+  root <- withr::local_tempdir()
+  object <- make_embedded_cerebro()
+  object$addImmuneRepertoire(immune_tables())
+  path <- file.path(root, "dataset.crb")
+  saveCerebro(object, path, immune_sidecar = "always")
+
+  ## a file-backed repertoire keeps its sidecar, whatever the mode
+  restored <- readCerebro(path)
+  saveCerebro(restored, path, immune_sidecar = "never")
+  expect_true(file.exists(file.path(root, "dataset.immune.qs2")))
+  expect_identical(readCerebro(path)$getImmuneRepertoire(), immune_tables())
+
+  ## a copy shares it, and saving the copy removes nothing of the original
+  copy <- file.path(root, "copy.crb")
+  saveCerebro(readCerebro(path), copy)
+  saveCerebro(readCerebro(path), copy)
+  expect_true(file.exists(file.path(root, "dataset.immune.qs2")))
+  expect_identical(readCerebro(copy)$getImmuneRepertoire(), immune_tables())
+
+  ## moving the repertoire back is explicit, and the copy still needs the file
+  moved <- readCerebro(path)
+  moved$addImmuneRepertoire(moved$getImmuneRepertoire())
+  saveCerebro(moved, path, immune_sidecar = "never")
+  expect_length(.readCerebroPayload(path)$immune_repertoire, 2L)
+  expect_true(file.exists(file.path(root, "dataset.immune.qs2")))
+  expect_identical(readCerebro(copy)$getImmuneRepertoire(), immune_tables())
+
+  ## once nothing points to it any more, it goes
+  saveCerebro(moved, copy, immune_sidecar = "never")
+  saveCerebro(moved, path, immune_sidecar = "always")
+  saveCerebro(moved, path, immune_sidecar = "never")
+  expect_false(file.exists(file.path(root, "dataset.immune.qs2")))
+})
+
+test_that("saveCerebro never removes a sidecar another CRB owns", {
+  skip_if_not_installed("qs2")
+
+  root <- withr::local_tempdir()
+  object <- make_embedded_cerebro()
+  object$addImmuneRepertoire(immune_tables())
+  saveCerebro(object, file.path(root, "a.crb"), immune_sidecar = "always")
+  saveCerebro(object, file.path(root, "b.crb"), immune_sidecar = "always")
+
+  saveCerebro(object, file.path(root, "b.crb"), immune_sidecar = "never")
+  expect_setequal(
+    list.files(root),
+    c("a.crb", "a.immune.qs2", "b.crb")
+  )
+})
+
+test_that("the Viewer checks the H5 cell names before it reads expression", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  path <- file.path(root, "thin.crb")
+  saveCerebro(fixture$object, path)
+  runtime <- runtime_env()
+  attach <- function() {
+    runtime$.attachExternalExpression(runtime$read_cerebro_file(path), path)
+  }
+
+  expect_equal(as.matrix(attach()$expression), fixture$counts)
+
+  ## another data set with as many cells opens, but its expression is refused
+  write_h5_matrix(h5_counts(h5_cells("other-")), fixture$h5)
+  foreign <- attach()
+  expect_error(foreign$expression, "H5 cell names do not match")
+})
+
+test_that("the cell names are read once for hydration and expression", {
+  skip_if_no_h5()
+
+  root <- withr::local_tempdir()
+  fixture <- make_h5_cerebro(root)
+  path <- file.path(root, "thin.crb")
+  saveCerebro(fixture$object, path)
+  runtime <- runtime_env()
+  reads <- 0L
+  original <- runtime$.runtimeH5Names
+  runtime$.runtimeH5Names <- function(sidecar, dataset) {
+    if (identical(dataset, "genes")) {
+      reads <<- reads + 1L
+    }
+    original(sidecar, dataset)
+  }
+  object <- runtime$.attachExternalExpression(
+    runtime$read_cerebro_file(path),
+    path
+  )
+  expect_identical(reads, 0L)
+  object$meta_data
+  expect_identical(reads, 1L)
+  expect_equal(as.matrix(object$expression), fixture$counts)
+  expect_identical(reads, 1L)
+
+  ## expression alone reads them once as well
+  other <- runtime$.attachExternalExpression(runtime$read_cerebro_file(path), path)
+  reads <- 0L
+  other$expression
+  other$expression
+  other$meta_data
+  expect_identical(reads, 2L)
+})

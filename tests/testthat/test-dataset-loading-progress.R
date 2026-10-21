@@ -333,3 +333,42 @@ test_that("a background read that never finishes does not stall the dataset swit
     }
   )
 })
+
+test_that("the prefetch time limit counts from when a switch starts to wait", {
+  cache <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("crb_cache.R"), cache)
+  key <- "a.crb"
+
+  ## a read that began earlier has not been waited for yet
+  expect_identical(cache$crb_prefetch_waited(key), 0)
+  cache$crb_prefetch_begin_wait(key)
+  expect_lt(cache$crb_prefetch_waited(key), 5)
+
+  ## the clock is not restarted by a second look
+  cache$crb_prefetch_started[[key]] <- as.numeric(Sys.time()) - 40
+  cache$crb_prefetch_begin_wait(key)
+  expect_gte(cache$crb_prefetch_waited(key), 40)
+  expect_gte(cache$crb_prefetch_waited(key), cache$crb_prefetch_timeout_seconds)
+
+  cache$crb_prefetch_abandon(key)
+  expect_identical(cache$crb_prefetch_waited(key), 0)
+})
+
+test_that("a user who left and came back starts a new wait", {
+  cache <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("crb_cache.R"), cache)
+  key <- "b.crb"
+  now <- as.numeric(Sys.time())
+
+  ## waiting without a break keeps the clock
+  cache$crb_prefetch_started[[key]] <- now - 20
+  cache$crb_prefetch_seen[[key]] <- now - 1
+  cache$crb_prefetch_begin_wait(key)
+  expect_gte(cache$crb_prefetch_waited(key), 20)
+
+  ## an hour away is not an hour of waiting
+  cache$crb_prefetch_started[[key]] <- now - 3600
+  cache$crb_prefetch_seen[[key]] <- now - 3590
+  cache$crb_prefetch_begin_wait(key)
+  expect_lt(cache$crb_prefetch_waited(key), 5)
+})

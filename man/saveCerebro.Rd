@@ -34,7 +34,11 @@ inside the CRB. \code{"auto"} does so for H5-backed CRBs whose repertoire has
 at least \code{immune_sidecar_threshold} rows; \code{"always"} and
 \code{"never"} override that. The Viewer then lists samples and chains
 without reading the repertoire, and loads it when the Immune repertoire page
-needs it. The sidecar must travel with the CRB.}
+needs it. The sidecar must travel with the CRB. An object whose repertoire
+already sits in a sidecar keeps pointing to that file whatever the mode is (a
+copy saved under another name shares it); to move it back into the CRB, call
+\code{addImmuneRepertoire(object$getImmuneRepertoire())} first. A sidecar of
+the CRB being replaced that the new CRB no longer uses is removed.}
 
 \item{immune_sidecar_threshold}{Number of repertoire rows (cells with
 receptor data) used by \code{immune_sidecar = "auto"}.}

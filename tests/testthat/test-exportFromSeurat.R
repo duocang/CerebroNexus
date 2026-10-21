@@ -382,3 +382,19 @@ test_that("h5 attach is lazy: .attachExternalExpression returns a DelayedMatrix
   expect_setequal(rownames(attached$expression), rownames(orig))
   expect_setequal(colnames(attached$expression), colnames(orig))
 })
+
+test_that("exportFromSeurat keeps the position of the arguments of 5.1.3", {
+  released <- c(
+    "object", "assay", "slot", "file", "experiment_name", "organism", "groups",
+    "main_group", "cell_cycle", "nUMI", "nGene", "add_all_meta_data",
+    "use_delayed_array", "expression_matrix_mode", "h5_compression_level",
+    "codec", "viewer_binary", "viewer_binary_threshold", "spatial_images",
+    "verbose"
+  )
+  arguments <- names(formals(exportFromSeurat))
+  expect_identical(arguments[seq_along(released)], released)
+  expect_true(all(
+    c("immune_sidecar", "immune_sidecar_threshold") %in%
+      arguments[-seq_along(released)]
+  ))
+})

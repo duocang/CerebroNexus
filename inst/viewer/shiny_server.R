@@ -968,6 +968,9 @@ server <- function(input, output, session) {
             prefetch_task <- crb_prefetch_tasks[[cache_key]]
             if (!is.null(prefetch_task)) {
               status <- prefetch_task$status()
+              if (status %in% c("initial", "running")) {
+                crb_prefetch_begin_wait(cache_key)
+              }
               if (
                 status %in% c("initial", "running") &&
                   crb_prefetch_waited(cache_key) >= crb_prefetch_timeout_seconds
