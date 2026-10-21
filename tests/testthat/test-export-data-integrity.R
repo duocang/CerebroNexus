@@ -247,7 +247,6 @@ test_that("publisher rejects a sidecar with the wrong artifact type", {
     regexp = "h5.*file|regular file",
     ignore.case = TRUE
   )
-
 })
 
 test_that("H5 replacement updates only its owned portable sibling", {

@@ -1,5 +1,11 @@
 demo_h5_helper <- function() {
-  testthat::test_path("..", "..", "data-raw", "large-demo", "h5_transposed_write.R")
+  testthat::test_path(
+    "..",
+    "..",
+    "data-raw",
+    "large-demo",
+    "h5_transposed_write.R"
+  )
 }
 
 demo_h5_fixture <- function() {
@@ -7,7 +13,10 @@ demo_h5_fixture <- function() {
   genes_by_cells <- abs(Matrix::rsparsematrix(40L, 700L, 0.1))
   genes_by_cells@x <- round(genes_by_cells@x * 10) + 1
   dimnames(genes_by_cells) <- list(paste0("g", 1:40), paste0("c", 1:700))
-  expected <- withr::local_tempfile(fileext = ".h5", .local_envir = parent.frame())
+  expected <- withr::local_tempfile(
+    fileext = ".h5",
+    .local_envir = parent.frame()
+  )
   HDF5Array::writeTENxMatrix(
     methods::as(Matrix::t(genes_by_cells), "CsparseMatrix"),
     expected,
@@ -18,7 +27,14 @@ demo_h5_fixture <- function() {
 }
 
 expect_same_h5 <- function(written, expected, info = NULL) {
-  for (dataset in c("data", "indices", "indptr", "shape", "genes", "barcodes")) {
+  for (dataset in c(
+    "data",
+    "indices",
+    "indptr",
+    "shape",
+    "genes",
+    "barcodes"
+  )) {
     expect_identical(
       as.vector(rhdf5::h5read(written, paste0("expression/", dataset))),
       as.vector(rhdf5::h5read(expected, paste0("expression/", dataset))),
@@ -47,7 +63,11 @@ test_that("the demo H5 writer matches writeTENxMatrix on a cell-major source", {
       workers = workers,
       verbose = FALSE
     )
-    expect_same_h5(written, fixture$expected, info = paste(workers, "worker(s)"))
+    expect_same_h5(
+      written,
+      fixture$expected,
+      info = paste(workers, "worker(s)")
+    )
     expect_identical(.h5CellNames(written), colnames(fixture$matrix))
     expect_identical(.h5GeneNames(written), rownames(fixture$matrix))
     expect_length(
@@ -104,6 +124,10 @@ test_that("the demo H5 writer reads an AnnData CSR matrix from its arrays", {
       workers = workers,
       verbose = FALSE
     )
-    expect_same_h5(written, fixture$expected, info = paste(workers, "worker(s)"))
+    expect_same_h5(
+      written,
+      fixture$expected,
+      info = paste(workers, "worker(s)")
+    )
   }
 })

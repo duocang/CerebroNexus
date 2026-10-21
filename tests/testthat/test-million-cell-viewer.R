@@ -53,7 +53,13 @@ test_that("the 1M demo is opt-in and validates its H5 file", {
 })
 
 test_that("the 1M preparation keeps unique gene symbols", {
-  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path(
+    "..",
+    "..",
+    "data-raw",
+    "large-demo",
+    "prepare_viewer_1m_data.R"
+  )
   skip_if_not(
     file.exists(script),
     "demo tree not present (expected when checking a built package)"
@@ -137,7 +143,13 @@ test_that("the 1M preparation keeps unique gene symbols", {
 })
 
 test_that("the 1M demo replaces the illustrative path with marker guidance", {
-  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path(
+    "..",
+    "..",
+    "data-raw",
+    "large-demo",
+    "prepare_viewer_1m_data.R"
+  )
   skip_if_not(
     file.exists(script),
     "demo tree not present (expected when checking a built package)"
@@ -719,7 +731,13 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
 })
 
 test_that("the 1M preparation uses CEREBRO_LARGE_CACHE like the Ren one", {
-  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path(
+    "..",
+    "..",
+    "data-raw",
+    "large-demo",
+    "prepare_viewer_1m_data.R"
+  )
   skip_if_not(
     file.exists(script),
     "demo tree not present (expected when checking a built package)"
@@ -728,7 +746,10 @@ test_that("the 1M preparation uses CEREBRO_LARGE_CACHE like the Ren one", {
   sys.source(script, envir = env)
 
   withr::local_envvar(CEREBRO_LARGE_CACHE = "/data/large")
-  expect_identical(env$.viewer1mPaths()$crb, "/data/large/1m/cerebro-v2/cerebro_mouse_brain_1m.crb")
+  expect_identical(
+    env$.viewer1mPaths()$crb,
+    "/data/large/1m/cerebro-v2/cerebro_mouse_brain_1m.crb"
+  )
   ## an explicit argument still wins
   expect_identical(
     env$.viewer1mPaths("/other")$source,
@@ -737,7 +758,13 @@ test_that("the 1M preparation uses CEREBRO_LARGE_CACHE like the Ren one", {
 })
 
 test_that("a mouse brain built by an earlier release is not taken for the current one", {
-  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path(
+    "..",
+    "..",
+    "data-raw",
+    "large-demo",
+    "prepare_viewer_1m_data.R"
+  )
   skip_if_not(
     file.exists(script),
     "demo tree not present (expected when checking a built package)"
@@ -753,7 +780,10 @@ test_that("a mouse brain built by an earlier release is not taken for the curren
   ## version 1 kept its files in `cerebro`, without a stamp
   old <- file.path(root, "1m", "cerebro")
   dir.create(old, recursive = TRUE)
-  file.create(file.path(old, c("cerebro_mouse_brain_1m.crb", "cerebro_mouse_brain_1m.h5")))
+  file.create(file.path(
+    old,
+    c("cerebro_mouse_brain_1m.crb", "cerebro_mouse_brain_1m.h5")
+  ))
   expect_false(identical(dirname(paths$crb), old))
   expect_false(complete())
 
