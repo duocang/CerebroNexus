@@ -1,4 +1,8 @@
 .viewer1mCacheDir <- function(path = NULL) {
+  if (is.null(path)) {
+    configured <- Sys.getenv("CEREBRO_LARGE_CACHE", "")
+    if (nzchar(configured)) path <- configured
+  }
   if (!is.null(path)) {
     if (
       !is.character(path) || length(path) != 1L || is.na(path) || !nzchar(path)

@@ -722,3 +722,21 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     c("c3", "c1", "c2")
   )
 })
+
+test_that("the 1M preparation uses CEREBRO_LARGE_CACHE like the Ren one", {
+  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
+  skip_if_not(
+    file.exists(script),
+    "demo tree not present (expected when checking a built package)"
+  )
+  env <- new.env(parent = globalenv())
+  sys.source(script, envir = env)
+
+  withr::local_envvar(CEREBRO_LARGE_CACHE = "/data/large")
+  expect_identical(env$.viewer1mPaths()$crb, "/data/large/1m/cerebro/cerebro_mouse_brain_1m.crb")
+  ## an explicit argument still wins
+  expect_identical(
+    env$.viewer1mPaths("/other")$source,
+    "/other/1m/source/1M_neurons_filtered_gene_bc_matrices_h5.h5"
+  )
+})
