@@ -19,12 +19,15 @@ exportFromSeurat(
   nGene = "nGene",
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
-  expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  expression_matrix_mode = c("embedded", "h5"),
+  h5_compression_level = 0L,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
   spatial_images = NULL,
   verbose = FALSE,
+  immune_sidecar = c("auto", "always", "never"),
+  immune_sidecar_threshold = 100000L,
   .expression_resolution = NULL
 )
 ```
@@ -105,36 +108,28 @@ exportFromSeurat(
 
 - expression_matrix_mode:
 
-  How to persist the expression matrix. One of `"embedded"` (default),
-  `"bpcells"`, or `"h5"`.
+  How to persist the expression matrix. One of `"embedded"` (default) or
+  `"h5"`.
 
-  - `"embedded"` stores the matrix inside the `.crb` file, as before.
-    Compatible with all existing `.crb` readers.
-
-  - `"bpcells"` writes the matrix to a BPCells on-disk directory next to
-    the `.crb` and keeps only a lightweight handle in the serialised
-    object. Recommended for large sparse matrices. The resulting `.crb`
-    is portable as long as the sibling `.bpcells/` directory travels
-    with it; the Shiny runtime re-resolves paths via
-    `getExpressionBackend()$location` relative to the `.crb`'s parent
-    directory (step 7.3 runtime attach). Delayed/Rle matrix inputs
-    additionally require HDF5Array; they use a temporary block-written
-    HDF5 file instead of a full dense realization.
+  - `"embedded"` stores the matrix inside the `.crb` file.
 
   - `"h5"` writes the matrix via
     [`HDF5Array::writeTENxMatrix()`](https://rdrr.io/pkg/HDF5Array/man/writeTENxMatrix.html)
     to a TENx-format sparse HDF5 file next to the `.crb` (sibling
-    `<stem>.h5`) and tags the backend with that relative location. The
-    on-disk layout matches `inst/extdata/examples/example.h5`: a single
-    `/expression` group with `data`, `indices`, `indptr`, `shape`,
-    `genes`, and `barcodes` datasets. The matrix is stored cells x genes
-    (TENx column-favoured, optimised for per-gene reads); the Shiny
-    runtime attach reads it back as a lazy
+    `<stem>.h5`) and tags the backend with that file name. The file
+    holds a single `/expression` group with `data`, `indices`, `indptr`,
+    `shape`, `genes`, and `barcodes` datasets. The matrix is stored
+    cells x genes (TENx column-favoured, optimised for per-gene reads);
+    the Viewer reads it back as a lazy
     [`HDF5Array::TENxMatrix`](https://rdrr.io/pkg/HDF5Array/man/TENxMatrix-class.html)
     seed and transposes it lazily to Cerebro's internal genes x cells
     layout via `DelayedArray::t()` (free). The in-memory `dgCMatrix` is
     never materialised on attach, so RAM stays close to the `.crb`
-    metadata size. Requires the HDF5Array package.
+    metadata size. The `.crb` is thin: the cell names are kept once, in
+    the H5 file, and the `.crb` records their order and a checksum. The
+    gzip level is set by `h5_compression_level`; the default (no
+    compression) is several times larger than a compressed file but
+    builds and reads faster. Requires the HDF5Array package.
 
   The CRB and any sidecar are built and validated in a private sibling
   stage. On POSIX systems, new stages and external matrices are
@@ -148,6 +143,16 @@ exportFromSeurat(
   this multi-path transaction guarantee. Only POSIX mode bits are set or
   preserved; ownership, ACLs, extended attributes, and security labels
   remain the deployment system's responsibility on every platform.
+
+- h5_compression_level:
+
+  Gzip compression level, from 0 to 9, of the H5 file written when
+  `expression_matrix_mode = "h5"`; ignored by the other modes. The
+  default 0 writes the data without compression: the file is about 7
+  times larger than at HDF5Array's default level 6 (about 69 GiB instead
+  of 10 GiB for 1.5 million human prefrontal cortex cells), but it
+  builds about three times faster and single-gene reads are about a
+  third faster. Set 6 when disk space matters more than speed.
 
 - codec:
 
@@ -163,6 +168,19 @@ exportFromSeurat(
 - viewer_binary_threshold:
 
   Dataset-level cell threshold used by `viewer_binary = "auto"`.
+
+- immune_sidecar:
+
+  Store the immune repertoire in a sibling file `<stem>.immune.qs2`
+  (`.rds` with `codec = "rds"`) instead of inside the `.crb`. `"auto"`
+  does so for `"h5"` exports whose repertoire has at least
+  `immune_sidecar_threshold` rows; `"always"` and `"never"` override
+  that. The sidecar must travel with the `.crb`.
+
+- immune_sidecar_threshold:
+
+  Number of repertoire rows (cells with receptor data) used by
+  `immune_sidecar = "auto"`.
 
 - spatial_images:
 
@@ -194,7 +212,8 @@ If `object@misc$immune_repertoire` contains a named list of data.frames
 `CTstrict`), it will be automatically exported into the Cerebro object
 via
 [`addImmuneRepertoire()`](https://mihem.github.io/CerebroNexus/reference/addImmuneRepertoire.md).
-Legacy `bcr_data` / `tcr_data` slots are also supported as a fallback.
+When that slot is empty, receptors kept apart in `object@misc$tcr_data`
+and `object@misc$bcr_data` are merged into it.
 
 ## HLA typing
 
@@ -223,22 +242,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [09:58:21] Initializing Cerebro object...
-#> [09:58:21] Adding expression data (embedded)...
-#> [09:58:21] Collecting available meta data...
-#> [09:58:21] Extracting all meta data columns...
-#> [09:58:21] Extracting dimensional reductions...
-#> [09:58:21] Will export the following dimensional reductions: umap
-#> [09:58:21] Extracting marker genes table...
-#> [09:58:21] No trajectories to extract...
-#> [09:58:21] Checking for spatial data...
-#> [09:58:21] Overview of Cerebro object:
+#> [20:56:23] Initializing Cerebro object...
+#> [20:56:23] Adding expression data (embedded)...
+#> [20:56:23] Collecting available meta data...
+#> [20:56:23] Extracting all meta data columns...
+#> [20:56:23] Extracting dimensional reductions...
+#> [20:56:23] Will export the following dimensional reductions: umap
+#> [20:56:23] Extracting marker genes table...
+#> [20:56:23] No trajectories to extract...
+#> [20:56:23] Checking for spatial data...
+#> [20:56:23] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 5.1.2
+#> exporter package version: 5.2.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-10-19
+#> date of export: 2026-10-21
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -254,6 +273,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [09:58:21] Saving Cerebro object to: /tmp/nix-shell-4429-1893294891/RtmpWKLRPj/pbmc_Seurat.crb
-#> [09:58:21] Done!
+#> [20:56:23] Saving Cerebro object to: /tmp/nix-shell-4472-4176209942/RtmpbrcTtu/pbmc_Seurat.crb
+#> [20:56:23] Done!
 ```
