@@ -4141,7 +4141,10 @@ get_or_load_crb <- function(
 
 .checkThinCrbCells <- function(cells, schema, crb_path) {
   if (
-    !identical(rlang::hash(enc2utf8(as.character(cells))), schema$cell_names_hash)
+    !identical(
+      rlang::hash(enc2utf8(as.character(cells))),
+      schema$cell_names_hash
+    )
   ) {
     stop(
       "The H5 cell names do not match CRB '",

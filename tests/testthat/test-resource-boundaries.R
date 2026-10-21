@@ -316,4 +316,3 @@ test_that("delayed exports round-trip without whole-matrix as.matrix", {
     )
   }
 })
-

@@ -972,7 +972,8 @@ server <- function(input, output, session) {
                 crb_prefetch_begin_wait(cache_key)
               }
               if (
-                status %in% c("initial", "running") &&
+                status %in%
+                  c("initial", "running") &&
                   crb_prefetch_waited(cache_key) >= crb_prefetch_timeout_seconds
               ) {
                 warning(

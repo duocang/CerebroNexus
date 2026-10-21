@@ -496,9 +496,16 @@
         )
       }
     }
-    .setExportArtifactMode(stage_immune, "0600", "the immune repertoire sidecar")
+    .setExportArtifactMode(
+      stage_immune,
+      "0600",
+      "the immune repertoire sidecar"
+    )
     if (!file.rename(stage_immune, final_immune)) {
-      stop("Failed to install the staged immune repertoire sidecar.", call. = FALSE)
+      stop(
+        "Failed to install the staged immune repertoire sidecar.",
+        call. = FALSE
+      )
     }
     installed_immune <- TRUE
   }
