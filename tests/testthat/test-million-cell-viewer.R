@@ -728,10 +728,43 @@ test_that("the 1M preparation uses CEREBRO_LARGE_CACHE like the Ren one", {
   sys.source(script, envir = env)
 
   withr::local_envvar(CEREBRO_LARGE_CACHE = "/data/large")
-  expect_identical(env$.viewer1mPaths()$crb, "/data/large/1m/cerebro/cerebro_mouse_brain_1m.crb")
+  expect_identical(env$.viewer1mPaths()$crb, "/data/large/1m/cerebro-v2/cerebro_mouse_brain_1m.crb")
   ## an explicit argument still wins
   expect_identical(
     env$.viewer1mPaths("/other")$source,
     "/other/1m/source/1M_neurons_filtered_gene_bc_matrices_h5.h5"
   )
+})
+
+test_that("a mouse brain built by an earlier release is not taken for the current one", {
+  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
+  skip_if_not(
+    file.exists(script),
+    "demo tree not present (expected when checking a built package)"
+  )
+  env <- new.env(parent = globalenv())
+  sys.source(script, envir = env)
+  root <- withr::local_tempdir()
+  paths <- env$.viewer1mPaths(root)
+  complete <- function() {
+    env$.viewer1mComplete(paths$crb, paths$sidecar, paths$stamp)
+  }
+
+  ## version 1 kept its files in `cerebro`, without a stamp
+  old <- file.path(root, "1m", "cerebro")
+  dir.create(old, recursive = TRUE)
+  file.create(file.path(old, c("cerebro_mouse_brain_1m.crb", "cerebro_mouse_brain_1m.h5")))
+  expect_false(identical(dirname(paths$crb), old))
+  expect_false(complete())
+
+  ## files without the stamp, or with another version, are not finished
+  dir.create(dirname(paths$crb), recursive = TRUE)
+  file.create(c(paths$crb, paths$sidecar))
+  expect_false(complete())
+  writeLines("1", paths$stamp)
+  expect_false(complete())
+  writeLines(as.character(env$.viewer1mVersion), paths$stamp)
+  expect_true(complete())
+  file.remove(paths$sidecar)
+  expect_false(complete())
 })

@@ -1,3 +1,8 @@
+## Version of the prepared mouse brain data, as for the Ren data. Version 1
+## (folder `cerebro`) held 1,000,000 evenly spaced cells and was never stamped;
+## a finished build of an earlier version must not be taken for this one.
+.viewer1mVersion <- 2L
+
 .viewer1mCacheDir <- function(path = NULL) {
   if (is.null(path)) {
     configured <- Sys.getenv("CEREBRO_LARGE_CACHE", "")
@@ -16,6 +21,7 @@
 
 .viewer1mPaths <- function(cache_dir = NULL) {
   root <- file.path(.viewer1mCacheDir(cache_dir), "1m")
+  prepared <- file.path(root, paste0("cerebro-v", .viewer1mVersion))
   list(
     source = file.path(
       root,
@@ -23,17 +29,21 @@
       "1M_neurons_filtered_gene_bc_matrices_h5.h5"
     ),
     analysis = file.path(root, "analysis", "mouse_brain_e18_sketch.rds"),
-    crb = file.path(root, "cerebro", "cerebro_mouse_brain_1m.crb"),
+    crb = file.path(prepared, "cerebro_mouse_brain_1m.crb"),
     ## Expression sidecar (cells x genes), next to the CRB.
-    sidecar = file.path(root, "cerebro", "cerebro_mouse_brain_1m.h5")
+    sidecar = file.path(prepared, "cerebro_mouse_brain_1m.h5"),
+    ## Written last: a build that stopped halfway has none.
+    stamp = file.path(prepared, "demo-version")
   )
 }
 
-.viewer1mComplete <- function(file, sidecar) {
+.viewer1mComplete <- function(file, sidecar, stamp) {
   file.exists(file) &&
     !dir.exists(file) &&
     file.exists(sidecar) &&
-    !dir.exists(sidecar)
+    !dir.exists(sidecar) &&
+    file.exists(stamp) &&
+    identical(readLines(stamp, warn = FALSE), as.character(.viewer1mVersion))
 }
 
 .viewer1mRequire <- function(packages) {
@@ -697,7 +707,7 @@
 ## kept in the CRB.
 .viewer1mBuildCrb <- function(matrix, analysis, paths) {
   dir.create(dirname(paths$crb), recursive = TRUE, showWarnings = FALSE)
-  unlink(paths$sidecar, force = TRUE)
+  unlink(c(paths$sidecar, paths$stamp), force = TRUE)
   .viewerDemoRequireTransposedWriter()
   .demoWriteH5Transposed(matrix, paths$sidecar)
   cells <- analysis$cells
@@ -754,7 +764,7 @@
 
 prepareViewer1mBenchmarkData <- function(cache_dir = NULL) {
   paths <- .viewer1mPaths(cache_dir)
-  if (.viewer1mComplete(paths$crb, paths$sidecar)) {
+  if (.viewer1mComplete(paths$crb, paths$sidecar, paths$stamp)) {
     return(.viewer1mEnrichDemoCrb(paths$crb))
   }
 
@@ -770,7 +780,8 @@ prepareViewer1mBenchmarkData <- function(cache_dir = NULL) {
   message("Preparing the 1M benchmark data from official 10x data.")
   .viewer1mDownload(paths$source)
   .viewer1mBuild(paths)
-  if (!.viewer1mComplete(paths$crb, paths$sidecar)) {
+  writeLines(as.character(.viewer1mVersion), paths$stamp)
+  if (!.viewer1mComplete(paths$crb, paths$sidecar, paths$stamp)) {
     stop("The 1M benchmark CRB is incomplete.", call. = FALSE)
   }
   .viewer1mEnrichDemoCrb(paths$crb)

@@ -89,7 +89,10 @@ immune repertoire in a retired sidecar layout, or is a pre-spatial
   (1.3M)". Its cached analysis is stored as `mouse_brain_e18_sketch.rds`. The
   file and function names still say `1m`.
 - The mouse brain script reads `CEREBRO_LARGE_CACHE` like the Ren script, so an
-  existing download is found.
+  existing download is found. It prepares the data in `1m/cerebro-v2/` with a
+  `demo-version` stamp, as the Ren script does in its `cerebro-v2` folder, so a
+  mouse brain built by an earlier release (1,000,000 cells, folder `cerebro`) is
+  not taken for the 1.3M data set. The earlier files are left in place.
 - `CEREBRO_1M_DEMO_CRB` and `CEREBRO_REN_DEMO_CRB` must name a `.crb` with an
   adjacent `.h5` file (before: an adjacent `.bpcells` directory). The demo data
   built by an earlier release has to be built again.
