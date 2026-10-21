@@ -121,11 +121,12 @@ test_that("mounted gene selections and completion survive a dataset round trip",
   )
   expect_length(app$get_js("geneErrors"), 0L)
   ## Summary work follows current visibility, including after a previous visit.
-  app$run_js(
-    "document.getElementById('expression_summary_gate').scrollIntoView()"
-  )
+  ## Scroll on every poll: panels above the gate may still change height.
   app$wait_for_js(
-    "Shiny.shinyapp.$inputValues.expression_summary_viewport_request === true",
+    paste0(
+      "(() => {document.getElementById('expression_summary_gate').scrollIntoView();",
+      "return Shiny.shinyapp.$inputValues.expression_summary_viewport_request === true;})()"
+    ),
     timeout = 30000
   )
   app$run_js(
