@@ -231,7 +231,7 @@ work from an installed package alone. Record `git rev-parse HEAD`,
 output, and save new runs outside the recorded-data directory.
 
 The million-cell and Ren demo data used by `run-demo.R` are prepared by the
-scripts in `tests/demo/` of a CerebroNexus checkout. For the mouse preparation,
+scripts in `data-raw/large-demo/` of a CerebroNexus checkout. For the mouse preparation,
 allow at least 16 GiB free disk for the recorded artifact layout, additional
 space for parallel backends/outputs, and tens of minutes or longer depending on
 hardware and downloads. The source alone is about 3.93 GiB. Full Ren
@@ -240,7 +240,8 @@ script and available disk before starting it. Do not use an arbitrary memory
 limit or a historical completion time as a guarantee.
 
 ```{r prepare-mouse, eval=FALSE}
-source("tests/demo/prepare_viewer_1m_data.R")
+source("data-raw/large-demo/h5_transposed_write.R")
+source("data-raw/large-demo/prepare_viewer_1m_data.R")
 pkgload::load_all(".")
 crb <- prepareViewer1mBenchmarkData()
 ```

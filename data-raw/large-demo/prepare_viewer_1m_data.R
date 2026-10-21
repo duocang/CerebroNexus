@@ -682,7 +682,7 @@
 .viewerDemoRequireTransposedWriter <- function() {
   if (!exists(".demoWriteH5Transposed", mode = "function")) {
     stop(
-      "Source tests/demo/h5_transposed_write.R before building the demo data.",
+      "Source data-raw/large-demo/h5_transposed_write.R before building the demo data.",
       call. = FALSE
     )
   }

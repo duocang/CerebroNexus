@@ -89,7 +89,7 @@ immune repertoire in a retired sidecar layout, or is a pre-spatial
   their results and the paper figures moved to
   [duocang/CerebroNexus_paper_code](https://github.com/duocang/CerebroNexus_paper_code).
   `tests/bench/` is gone; the data preparation used by `run-demo.R` and its
-  tests is now in `tests/demo/`.
+  tests is now in `data-raw/large-demo/`.
 - `exportFromSeurat()` writes the H5 expression file at gzip level 0 (stored
   without compression; the shuffle and deflate filters are still applied),
   because export and read speed matter more than disk size. The file is about

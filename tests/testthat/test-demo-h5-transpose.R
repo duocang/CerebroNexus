@@ -2,7 +2,7 @@ test_that("the demo H5 writer matches writeTENxMatrix on a cell-major source", {
   skip_if_not_installed("HDF5Array")
   skip_if_not_installed("rhdf5")
   skip_if_not_installed("qs2")
-  helper <- testthat::test_path("..", "demo", "h5_transposed_write.R")
+  helper <- testthat::test_path("..", "..", "data-raw", "large-demo", "h5_transposed_write.R")
   skip_if_not(file.exists(helper))
   env <- new.env(parent = globalenv())
   sys.source(helper, envir = env)

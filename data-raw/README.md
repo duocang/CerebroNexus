@@ -12,6 +12,7 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 | understand or rebuild the **trajectory** demo | [`trajectory.md`](trajectory.md) |
 | understand or rebuild the **HLA & TCR motif** demos | [`hla.md`](hla.md) |
 | understand or rebuild the **Trekker** demo | [`trekker.md`](trekker.md) |
+| prepare the **large demo data sets** (1M mouse brain, Ren COVID-19 atlas) for `run-demo.R` | [`large-demo/README.md`](large-demo/README.md) |
 | know what a sub-directory here is | [Directory layout](#directory-layout) below |
 | add a **new** dataset | copy the template in [`DATASETS.md`](DATASETS.md), then add a build script + a per-type notes file |
 
@@ -122,6 +123,7 @@ Only the scripts and the `.md` files are tracked. Every sub-directory here is a 
 | `*.R` | yes | — | the build scripts, one per data family |
 | `DATASETS.md` | yes | — | the provenance registry: source, citation, licence, acquire command, sampling — one entry per shipped `.crb` |
 | `*.md` (`spatial`, `immune_repertoire`, `trajectory`, `hla`, `trekker`) | yes | — | per-family design and rebuild notes: what to download, what each step does, and the code that does it. They link back to `DATASETS.md` rather than repeat it |
+| `large-demo/` | yes | `run-demo.R` | the scripts that download, convert and register the two large demo data sets (not shipped in `inst/extdata/examples/`). Their downloads go to the user cache directory, not into this tree; see [`large-demo/README.md`](large-demo/README.md) |
 | `vdj_10x/` | **no** (cache) | `build_ir_demos.R` | 10x PBMC VDJ contig CSVs (`pbmc3_t_contig.csv`, `pbmc3_b_contig.csv`) for the immune-repertoire demos |
 | `vdj_10x_dextramer/` | **no** (cache, ~2.7 GB) | `build_hla_tcr_dextramer_demo.R` | the 10x dextramer cohort: per-donor contig annotations, binarized dextramer matrices and expression matrices, plus a local copy of the paper's supplementary PDF (table S1 = the donor genotypes; the publisher's file is never committed — the URL is in [`hla.md`](hla.md#32-download)) |
 | `pubtcrs/` | **no** (cache, ~349 MB) | `build_hla_tcr_bulk_demo.R` | the Emerson/DeWitt cohort archive from Zenodo, plus a cached occurrence scan |

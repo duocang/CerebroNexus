@@ -53,7 +53,7 @@ test_that("the 1M demo is opt-in and validates its H5 file", {
 })
 
 test_that("the 1M preparation keeps unique gene symbols", {
-  script <- testthat::test_path("..", "demo", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
   skip_if_not(
     file.exists(script),
     "demo tree not present (expected when checking a built package)"
@@ -137,7 +137,7 @@ test_that("the 1M preparation keeps unique gene symbols", {
 })
 
 test_that("the 1M demo replaces the illustrative path with marker guidance", {
-  script <- testthat::test_path("..", "demo", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
   skip_if_not(
     file.exists(script),
     "demo tree not present (expected when checking a built package)"
