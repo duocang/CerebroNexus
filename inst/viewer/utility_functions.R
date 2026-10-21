@@ -44,7 +44,16 @@ viewerInitialPageDecision <- function(
 viewerLinkedViewsAvailable <- function(info = NULL, object = NULL) {
   if (!is.null(object)) {
     read <- function(value) tryCatch(force(value), error = function(e) NULL)
-    projections <- as.character(read(object$availableProjections()))
+    ## A thin CRB the Viewer has not hydrated lists its projections in the
+    ## first-frame cache; the accessor would first read every cell name.
+    cached <- viewerProjectionFirstFrameCache(object)$projections
+    projections <- as.character(
+      if (is.null(cached)) {
+        read(object$availableProjections())
+      } else {
+        names(cached)
+      }
+    )
     projections <- unique(projections[
       !is.na(projections) & nzchar(projections)
     ])

@@ -137,3 +137,28 @@ start_crb_prefetch <- function(path, backend_identity) {
   )
   invisible(NULL)
 }
+
+## The Viewer process holds millions of R objects from its package imports, so
+## every full garbage collection costs about a second. Opening a large CRB
+## allocates more than R's default free heap, which forced one or two of them
+## while Data info waited. Raise the heap trigger once at startup instead:
+## requesting a block larger than the free space makes R collect once and grow
+## its trigger, and the unused block is released by the next young collection.
+.reserveCrbHeap <- function(paths) {
+  sizes <- suppressWarnings(file.size(as.character(paths)))
+  largest <- max(c(0, sizes), na.rm = TRUE)
+  ## A qs2 CRB expands to about five times its file size in memory; leave room
+  ## for that and its transient copies.
+  bytes <- min(16 * largest, 4 * 1024^3)
+  if (bytes < 256 * 1024^2) {
+    return(invisible(FALSE))
+  }
+  invisible(tryCatch(
+    {
+      block <- raw(bytes)
+      rm(block)
+      TRUE
+    },
+    error = function(error) FALSE
+  ))
+}
