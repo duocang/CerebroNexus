@@ -81,12 +81,14 @@ An entry with no image remains a valid coordinates-only spatial view.
 
 Genuinely measured, public spatial-transcriptomics demos. Each is a down-sampled subset of a **different** technology, so the dropdown demonstrates that one platform-agnostic extraction pipeline (`.getSpatialData`, `R/seurat_utils.R`) ingests them all — there is no per-platform loader.
 
-| File | Technology (dropdown label) | Public source | Cells | Real tissue image |
+| File | Technology (dropdown label) | Public source | Cells shipped (built) | Real tissue image |
 |---|---|---|---|---|
-| `demo_spatial_visium.crb` | Mouse brain (Visium) | `SeuratData::stxBrain` (anterior1) | 2,696 | ✅ H&E, **external** PNG |
-| `demo_spatial_slideseq.crb` | Mouse hippocampus (Slide-seq v2) | `SeuratData::ssHippo` | 5,000 | — (structural, see §5) |
-| `demo_spatial_merfish.crb` | Mouse ileum (MERFISH) | `MerfishData::MouseIleumPetukhov2021` | 5,000 | ✅ DAPI mosaic, **embedded** |
-| `demo_spatial_xenium.crb` | Mouse brain (Xenium) | 10x `Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP` | 5,000 | ✅ DAPI + 2 colour variants, **external** PNG |
+| `demo_spatial_visium.crb` | Mouse brain (Visium) | `SeuratData::stxBrain` (anterior1) | 1,000 (2,696) | ✅ H&E, **external** PNG |
+| `demo_spatial_slideseq.crb` | Mouse hippocampus (Slide-seq v2) | `SeuratData::ssHippo` | 3,000 (5,000) | — (structural, see §5) |
+| `demo_spatial_merfish.crb` | Mouse ileum (MERFISH) | `MerfishData::MouseIleumPetukhov2021` | 1,000 (5,000) | ✅ DAPI mosaic, **embedded** |
+| `demo_spatial_xenium.crb` | Mouse brain (Xenium) | 10x `Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP` | 2,000 (5,000) | ✅ DAPI + 2 colour variants, **external** PNG |
+
+`build_spatial_demos.R` produces the built cell counts with 100 genes; the shipped files are then cut to a random subset of cells with `subsample_demos.R` (see [`README.md`](README.md)).
 
 They deliberately exercise **both** background-image paths the app supports:
 

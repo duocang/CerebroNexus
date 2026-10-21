@@ -63,7 +63,7 @@
 #       reagent's peptide, or that the reagent's allele is the one presenting
 #       it in that donor. 10x's binarized flags are raw binder calls, and
 #       dextramer staining is famously cross-reactive at this scale. Measured
-#       on the shipped cells: only 5,271 of 12,000 bound a reagent restricted
+#       on the built cells: only 5,271 of 12,000 bound a reagent restricted
 #       by an allele their donor actually carries. 6,654 bound one the donor
 #       demonstrably lacks, and 75 cannot be decided because table S1 leaves
 #       that donor's HLA-B half-called (the per-donor counts are printed and
@@ -161,7 +161,7 @@ donor4,2,HLA-B*57:01",
 ## Shipped size. The demo must stay a few MB, so the antigen-selected cells are
 ## subsampled per donor and the matrix is cut to informative genes.
 CELLS_PER_DONOR <- 3000L
-N_GENES <- 2000L # analysis features; final export is capped at 1,500
+N_GENES <- 2000L # analysis features; final export is capped at 100
 
 ## ---- 1. Download (on demand) -------------------------------------------- ##
 dir.create(CACHE, showWarnings = FALSE, recursive = TRUE)
@@ -445,7 +445,7 @@ cat(sprintf(
 ## Real measured transcriptomes for exactly the kept cells. Subset FIRST, then
 ## run the standard Seurat pipeline, so nothing is computed on cells that are
 ## thrown away. The per-donor subsample happens HERE, after the expression join,
-## so the shipped object is exactly CELLS_PER_DONOR per donor -- balance the
+## so the built object is exactly CELLS_PER_DONOR per donor -- balance the
 ## verification gate asserts. Subsampling before the join left it to chance.
 cat("== 5. expression + UMAP ==\n")
 mats <- lapply(DONORS, function(d) {

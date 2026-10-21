@@ -25,7 +25,7 @@ Every command is meant to be copy-pasted and run from the package root.
 
 | File | Dropdown label | Cells | Repertoire | shipped? |
 |---|---|---|---|---|
-| `demo_full_tcr_bcr.crb` | PBMC - Full (T+B) | all (T + B + Mono), 1,476 | TCR **and** BCR | **yes** |
+| `demo_full_tcr_bcr.crb` | PBMC - Full (T+B) | all (T + B + Mono), 1,000 shipped (1,476 built) | TCR **and** BCR | **yes** |
 | `demo_healthy_t.crb` | PBMC - Healthy (T/NK) | T + Mono | TCR only | optional |
 | `demo_bcell_rich.crb` | PBMC - B-cell rich | B + 25 % of T | BCR only | optional |
 

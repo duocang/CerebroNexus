@@ -401,7 +401,7 @@ export_and_verify <- function(
     }
   }
 
-  # Export at most 1,500 genes after UMAP/QC; keep spatial expression in sync.
+  # Export at most 100 genes after UMAP/QC; keep spatial expression in sync.
   save_demo_crb(crb, file)
   crb <- readCerebro(file)
 

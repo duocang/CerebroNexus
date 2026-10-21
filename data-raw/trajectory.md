@@ -25,7 +25,7 @@ The trajectory demo is **not a separate `.crb`**. A monocle2 pseudotime trajecto
 
 | Carried in | Method | Trajectory name | Cells | Stored fields |
 |---|---|---|---|---|
-| `demo_full_tcr_bcr.crb` | monocle2 `DDRTree` | `B_cell_maturation` | 915 B cells | `DR_1`, `DR_2`, `pseudotime`, `state` + tree edges |
+| `demo_full_tcr_bcr.crb` | monocle2 `DDRTree` | `B_cell_maturation` | 603 B cells shipped (915 built) | `DR_1`, `DR_2`, `pseudotime`, `state` + tree edges |
 
 Consequence worth noting: this script **overwrites its own input**. Rebuilding the IR demo ([`immune_repertoire.md`](immune_repertoire.md)) drops the trajectory, so the two builds run in order — IR first, trajectory second.
 

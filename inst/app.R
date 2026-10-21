@@ -57,8 +57,9 @@ Cerebro.options <<- list(
     ## The HLA & TCR demo: REAL single cells with REAL paired TCR, from 10x's
     ## dextramer cohort. The repertoire is ANTIGEN-SELECTED (cells were sorted
     ## for binding a pMHC dextramer), which is precisely why its motif network is
-    ## legible where an unselected repertoire's is not -- 12,000 cells give 169
-    ## TRB nodes in 39 motifs on measured sequences. Donor genotypes are the
+    ## legible where an unselected repertoire's is not -- the shipped 2,000 cells
+    ## give 38 TRB nodes in 8 motifs on measured sequences (169 in 39 for the
+    ## full 12,000-cell build). Donor genotypes are the
     ## PUBLISHED ones (table S1 of the source paper), measured independently of
     ## these cells, so the carrier contrasts are real; the repertoire is still
     ## antigen-selected and says so, since the reagent panel decided which

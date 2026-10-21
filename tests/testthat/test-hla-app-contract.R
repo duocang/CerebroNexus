@@ -134,7 +134,7 @@ test_that("shipped demo yields a readable TRB motif network on real sequences", 
   # The whole argument for the page: a Hamming-1 CDR3 network is legible on an
   # ANTIGEN-SELECTED repertoire. An unselected one is sparse -- the real-sequence
   # predecessor gave 4 nodes in 2 motifs. Measured on the shipped random 2,000
-  # cells: 42 nodes in 10 motifs, largest 11 (157 / 31 / 36 on all 12,000).
+  # cells: 38 nodes in 8 motifs, largest 12 (157 / 31 / 36 on all 12,000).
   # Assert well under those so a rebuild is not brittle, but far above the
   # near-empty scatter this replaced.
   crb <- hla_sc_demo()
