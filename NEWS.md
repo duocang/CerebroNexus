@@ -1,3 +1,117 @@
+# CerebroNexus 5.3.0
+
+This release removes the remaining compatibility code for files, arguments and
+dependency versions that no current release writes or needs. **Some calls and
+stored files that 5.2.0 accepted now fail with an error that says what to use
+instead**: see "Stored files" and "Calls that now fail" below.
+
+## Stored files
+
+`readCerebro()`, `launchCerebro()`, `createShinyApp()` and the Viewer now also
+reject, with "uses a retired format", a `.crb` that
+
+- was written by an exporter older than the `getHLATyping()` (2.3.0),
+  `getTrekker()` (2.2.0) or `getMethodsForEnrichedPathways()` (after 1.7.0)
+  accessors;
+- holds a spatial entry with the singular `histology_image` /
+  `histology_image_bounds` fields instead of `histology_images`;
+- holds spatial molecule tables inside the `.crb` instead of in the
+  `<stem>.spatial/` sidecar, or has a `getSpatialData()` without
+  `hydrate_molecules`.
+
+`convertCerebro()` upgrades all of these in place: it rebuilds the object on the
+current class, converts a singular image to `histology_images` and moves molecule
+tables into the sidecar.
+The Viewer no longer carries guards for objects that lack an accessor, so a
+current `.crb` is the only supported input.
+
+## Calls that now fail
+
+- **Seurat layers.** A requested layer that does not exist is an error in
+  `exportFromSeurat()`, `convertSeuratToCerebro()`, `calculatePercentGenes()`,
+  `getMostExpressedGenes()`, `addPercentMtRibo()` and
+  `performGeneSetEnrichmentAnalysis()`; no other layer is substituted. Before,
+  an RNA assay with only `counts` exported at the default `slot = "data"`
+  silently exported `counts`. The message lists the layers that exist; the fix is
+  `slot = "counts"` (or running `NormalizeData()`).
+- **`createShinyApp()` spatial arguments.** `spatial_images_flip_x/_y`,
+  `spatial_images_scale_x/_y` and `spatial_images_offset_x/_y` are removed; use
+  `spatial_image_settings`. `spatial_images = c(Dataset = path)` and a
+  per-dataset numeric `spatial_plot_rotation` are rejected with the nested form
+  to use: `spatial_images = list(Dataset = list(<spatial entry> = c(label =
+  path)))`, `spatial_plot_rotation = list(Dataset = list(<spatial entry> = 90))`.
+  `expression_point_size`, `expression_point_opacity` and
+  `expression_percentage_cells_to_show` in `cerebro_options` are rejected (they
+  never had an effect); use `point_size`, `point_opacity` and
+  `percentage_cells_to_show`.
+- **`addSpatialData()`** and `@misc$cerebro_spatial_images` reject the singular
+  `histology_image` fields.
+- **Seurat v4 Visium images** (`VisiumV1`) are rejected by `exportFromSeurat()`
+  and `convertSeuratToCerebro()`. Rebuild the image as a `VisiumV2` image
+  (`Load10X_Spatial()`) or drop it from `object@images`; non-spatial Seurat v4
+  objects still export. `SlideSeq` and `STARmap` images, which Seurat 5 still
+  builds (`ReadSlideSeq()`, `LoadCurioSeeker()`, `LoadSTARmap()`), keep
+  exporting.
+- **`launchCerebro()`** needs unique, non-empty names when `crb_file_to_load`
+  has more than one file, for example `c(sampleA = "a.crb", sampleB = "b.crb")`.
+  Unnamed multi-file launches no longer get `legacy-N` ids.
+- **Links.** `?dataset=` and `/name` links match only the dataset id (the name
+  given in `cerebro_data` or `crb_file_to_load`), no longer the file name. A
+  `?dataset=` link that matches no id opens another dataset with a warning that
+  says so.
+- `getMethodsWithEnrichedPathways()` is removed; use
+  `getMethodsForEnrichedPathways()`.
+- The display setting `gene_plotting_order = "Random"` is rejected; it never
+  shuffled cells. Use `"Input order"`.
+
+## Viewer
+
+- Viewer Packs are checked by their schema version only. The
+  `projection_identity_version` and `violin_summary_version` markers are no
+  longer written or checked; every release with Viewer Packs (5.0.0 and later)
+  wrote both, so no released pack is affected. A pack built by development code
+  before 5.0.0 is no longer refused and has to be rebuilt with
+  `buildViewerPack()`.
+- Saved specialist views whose canvas viewport uses `x0/x1/y0/y1` are rejected
+  on import; views saved by the current Viewer are unaffected.
+- The Data info page no longer rebuilds category summaries that older code had
+  truncated to ten entries.
+
+## Dependencies
+
+- Minimum versions are raised so the compatibility code could go: R 4.4.0,
+  GSVA 2.0.0 (the `gsvaParam()` API only), msigdbr 24.1.0 (the
+  `collection`/`msigdbr_collections()` API only) and ggplot2 3.4.0 (`linewidth`).
+  R 4.4.0 follows from GSVA: GSVA 2.0.0 is part of Bioconductor 3.20, which
+  needs R 4.4.
+- `%||%` now comes from rlang; `R/utils-compat.R` is removed.
+
+## Immune repertoire
+
+- The Clonal projection grouped by a metadata column is no longer a static
+  72 dpi image. Every group is a panel of the same interactive canvas as the
+  ungrouped view, titled with its group and the number of cells that carry the
+  receptor: zoom, hover and box or lasso select work in each panel, and a
+  selection lists exactly the cells drawn in the panel it was made in. A column
+  with more than 12 groups among the cells shown is not drawn (filter its groups
+  or choose another column); a notice says so, and also when no cell or only
+  some cells have a value in the column.
+
+## Example data
+
+- The example data sets in `inst/extdata/examples/` keep at most 100 genes
+  (before: up to 1,500) and a random subset of their cells (1,000 to 3,000).
+  Marker genes come first, but the 100 genes cannot hold every gene the
+  analysis tables name: in `example.crb` 89 of the 1,911 marker genes, 32 of the
+  182 most expressed genes and 45 of the 721 enriched-pathway genes are in the
+  matrix, so those tables list genes that Gene expression cannot show. They stay
+  embedded; `demo_spatial_merfish.crb` was converted to the current format.
+- Every example is reproduced by running `data-raw/subsample_demos.R` and then
+  `data-raw/shrink_demos.R` on the examples of 5.2.0; see `data-raw/README.md`.
+  The Trekker example keeps all 50 nuclei with a positioning-evidence image.
+- The three Xenium background images were recompressed without loss, and the
+  unused `example.h5` was removed.
+
 # CerebroNexus 5.2.0
 
 This release removes the BPCells expression storage and several retired storage
@@ -60,85 +174,8 @@ immune repertoire in a retired sidecar layout, or is a pre-spatial
   directory, thin schema 1 or 2) cannot be converted. Re-export it from the
   source object with `exportFromSeurat(expression_matrix_mode = "h5")`, and
   delete the old matrix directory afterwards.
-- The example data sets in `inst/extdata/examples/` keep at most 100 genes
-  (before: up to 1,500), protecting marker genes and the
-  genes their analysis tables name, and keep a random subset of their cells
-  (1,000 to 3,000). They stay embedded; `demo_hla_tcr_dextramer.crb` and
-  `demo_spatial_merfish.crb` were converted to the current format. The three
-  Xenium background images were recompressed without loss, and the unused
-  `example.h5` was removed.
-
-## Stored files
-
-`readCerebro()`, `launchCerebro()`, `createShinyApp()` and the Viewer now also
-reject, with "uses a retired format", a `.crb` that
-
-- was written by an exporter older than the `getHLATyping()` (2.3.0),
-  `getTrekker()` (2.2.0) or `getMethodsForEnrichedPathways()` (after 1.7.0)
-  accessors;
-- holds a spatial entry with the singular `histology_image` /
-  `histology_image_bounds` fields instead of `histology_images`;
-- holds spatial molecule tables inside the `.crb` instead of in the
-  `<stem>.spatial/` sidecar, or has a `getSpatialData()` without
-  `hydrate_molecules`.
-
-`convertCerebro()` upgrades all of these in place: it rebuilds the object on the
-current class, converts a singular image to `histology_images` and moves molecule
-tables into the sidecar.
-The Viewer no longer carries guards for objects that lack an accessor, so a
-current `.crb` is the only supported input.
-
-## Calls that now fail
-
-- **Seurat layers.** A requested layer that does not exist is an error in
-  `exportFromSeurat()`, `convertSeuratToCerebro()`, `calculatePercentGenes()`,
-  `getMostExpressedGenes()`, `addPercentMtRibo()` and
-  `performGeneSetEnrichmentAnalysis()`; no other layer is substituted. Before,
-  an RNA assay with only `counts` exported at the default `slot = "data"`
-  silently exported `counts`. The message lists the layers that exist; the fix is
-  `slot = "counts"` (or running `NormalizeData()`).
-- **`createShinyApp()` spatial arguments.** `spatial_images_flip_x/_y`,
-  `spatial_images_scale_x/_y` and `spatial_images_offset_x/_y` are removed; use
-  `spatial_image_settings`. `spatial_images = c(Dataset = path)` and a
-  per-dataset numeric `spatial_plot_rotation` are rejected with the nested form
-  to use: `spatial_images = list(Dataset = list(<spatial entry> = c(label =
-  path)))`, `spatial_plot_rotation = list(Dataset = list(<spatial entry> = 90))`.
-  `expression_point_size`, `expression_point_opacity` and
-  `expression_percentage_cells_to_show` in `cerebro_options` are rejected (they
-  never had an effect); use `point_size`, `point_opacity` and
-  `percentage_cells_to_show`.
-- **`addSpatialData()`** and `@misc$cerebro_spatial_images` reject the singular
-  `histology_image` fields.
-- **Seurat v4 spatial images** (`VisiumV1`, `SlideSeq`, `STARmap`) are rejected
-  by `exportFromSeurat()` and `convertSeuratToCerebro()`. Rebuild the image as a
-  Seurat v5 image (`Load10X_Spatial()`, `CreateFOV()`) or drop it from
-  `object@images`; non-spatial Seurat v4 objects still export.
-- **`launchCerebro()`** needs unique, non-empty names when `crb_file_to_load`
-  has more than one file, for example `c(sampleA = "a.crb", sampleB = "b.crb")`.
-  Unnamed multi-file launches no longer get `legacy-N` ids.
-- **Links.** `?dataset=` and `/name` links match only the dataset id (the name
-  given in `cerebro_data` or `crb_file_to_load`), no longer the file name.
-- `getMethodsWithEnrichedPathways()` is removed; use
-  `getMethodsForEnrichedPathways()`.
-- The display setting `gene_plotting_order = "Random"` is rejected; it never
-  shuffled cells. Use `"Input order"`.
-
-## Viewer
-
-- Viewer Packs without the `projection_identity_version` or
-  `violin_summary_version` markers, or of another schema, are ignored and
-  rebuilt; no released pack is affected.
-- Saved specialist views whose canvas viewport uses `x0/x1/y0/y1` are rejected
-  on import; views saved by the current Viewer are unaffected.
-- The Data info page no longer rebuilds category summaries that older code had
-  truncated to ten entries.
-
-## Dependencies
-
-- Minimum versions are raised so the compatibility code could go: R 4.4.0,
-  GSVA 2.0.0 (the `gsvaParam()` API only), msigdbr 24.1.0 (the
-  `collection`/`msigdbr_collections()` API only) and ggplot2 3.4.0 (`linewidth`).
-- `%||%` now comes from rlang; `R/utils-compat.R` is removed.
+- The shipped example `demo_hla_tcr_dextramer.crb` had no descriptor and was
+  converted.
 
 ## Large demo data
 
@@ -205,12 +242,6 @@ current `.crb` is the only supported input.
   dataset switch waiting forever; the Viewer reads the file in the foreground.
   The 30 s count from when the switch starts to wait, not from when the read
   began, and the end of an abandoned read no longer discards a newer one.
-- The Immune repertoire Clonal projection grouped by a metadata column is no
-  longer a static 72 dpi image. Every group is a panel of the same interactive
-  canvas as the ungrouped view, titled with its group and the number of cells
-  that carry the receptor: zoom, hover and box or lasso select work in each
-  panel, and a selection lists exactly the cells drawn in the panel it was made
-  in.
 
 ## Documentation
 
