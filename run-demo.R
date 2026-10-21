@@ -20,6 +20,10 @@ if (!requireNamespace("pkgload", quietly = TRUE)) {
 pkgload::load_all(repo_root, export_all = FALSE, quiet = TRUE, helpers = FALSE)
 message("Viewer source: ", repo_root)
 source(
+  file.path(repo_root, "tests", "demo", "h5_transposed_write.R"),
+  local = TRUE
+)
+source(
   file.path(repo_root, "tests", "demo", "prepare_viewer_1m_data.R"),
   local = TRUE
 )

@@ -679,18 +679,23 @@
   )
 }
 
+.viewerDemoRequireTransposedWriter <- function() {
+  if (!exists(".demoWriteH5Transposed", mode = "function")) {
+    stop(
+      "Source tests/demo/h5_transposed_write.R before building the demo data.",
+      call. = FALSE
+    )
+  }
+}
+
 ## The CRB for the selected cells. The counts go to `<stem>.h5` (cells x genes,
 ## group "expression", uncompressed), and only metadata and the projection are
 ## kept in the CRB.
 .viewer1mBuildCrb <- function(matrix, analysis, paths) {
   dir.create(dirname(paths$crb), recursive = TRUE, showWarnings = FALSE)
   unlink(paths$sidecar, force = TRUE)
-  HDF5Array::writeTENxMatrix(
-    DelayedArray::t(matrix),
-    paths$sidecar,
-    group = "expression",
-    level = 0L
-  )
+  .viewerDemoRequireTransposedWriter()
+  .demoWriteH5Transposed(matrix, paths$sidecar)
   cells <- analysis$cells
   cluster_levels <- unique(analysis$clusters)
   cluster_levels <- cluster_levels[order(as.integer(cluster_levels))]

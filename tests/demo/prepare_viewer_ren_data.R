@@ -668,12 +668,14 @@
     stop("The Ren expression matrix needs unique gene names.", call. = FALSE)
   }
   dimnames(matrix) <- list(genes, cells)
-  HDF5Array::writeTENxMatrix(
-    DelayedArray::t(matrix),
-    sidecar,
-    group = "expression",
-    level = 0L
-  )
+  ## writeTENxMatrix() would scan the whole source once per block of genes.
+  if (!exists(".demoWriteH5Transposed", mode = "function")) {
+    stop(
+      "Source tests/demo/h5_transposed_write.R before building the demo data.",
+      call. = FALSE
+    )
+  }
+  .demoWriteH5Transposed(matrix, sidecar)
   DelayedArray::t(HDF5Array::TENxMatrix(sidecar, group = "expression"))
 }
 
