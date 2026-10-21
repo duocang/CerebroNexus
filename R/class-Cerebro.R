@@ -51,18 +51,15 @@ Cerebro <- R6::R6Class(
     #' @field expression \code{matrix}-like object that holds transcript counts.
     expression = NULL,
 
-    #' @field expression_backend \code{list} describing how/where the expression
-    #' matrix is stored. For step 7.1 every newly exported object tags itself
-    #' \code{list(type = "embedded", location = NULL)}; future step 7.2 will
-    #' introduce \code{type = "h5"} / \code{"bpcells"} with an external
-    #' \code{location}. Older \code{.crb} files (serialised before this field
-    #' existed) load with \code{expression_backend = NULL}; \code{getExpressionBackend()}
-    #' treats that as \code{"embedded"} for backward compatibility.
+    #' @field expression_backend \code{list} describing where the expression
+    #' matrix is stored: \code{list(type = "embedded", location = NULL)} when it
+    #' travels inside the \code{.crb}, or \code{list(type = "h5", location =
+    #' "<stem>.h5")} for an H5 file next to it.
     expression_backend = NULL,
 
     #' @field crb_schema Description of fields omitted from a thin CRB and
-    #' restored from its external expression sidecar. Legacy and embedded CRBs
-    #' leave this as \code{NULL}.
+    #' restored from its H5 expression sidecar. Embedded CRBs leave this as
+    #' \code{NULL}.
     crb_schema = NULL,
 
     #' @field spatial_molecule_backend Descriptor for molecule tables stored in
@@ -72,9 +69,9 @@ Cerebro <- R6::R6Class(
     spatial_molecule_backend = NULL,
 
     #' @field immune_repertoire_backend Descriptor for a large immune
-    #' repertoire stored inside a BPCells expression sidecar. The runtime-only
-    #' `root` member is attached when the CRB is opened; legacy CRBs continue to
-    #' use the embedded `immune_repertoire` field.
+    #' repertoire stored in a sibling file (\code{type = "file"}). The
+    #' runtime-only `root` member is attached when the CRB is opened; without a
+    #' descriptor the repertoire is the embedded `immune_repertoire` field.
     immune_repertoire_backend = NULL,
 
     #' @field cell_fingerprint Stable identity of the cell population used by
@@ -134,14 +131,6 @@ Cerebro <- R6::R6Class(
     #'   the HLA & TCR Motifs page for donor-level HLA context. Optional; older
     #'   .crb files simply lack it.
     hla_typing = NULL,
-
-    #' @field bcr_data \code{list} that contains BCR data (kept for backward
-    #'   compatibility with older .crb files).
-    bcr_data = list(),
-
-    #' @field tcr_data \code{list} that contains TCR data (kept for backward
-    #'   compatibility with older .crb files).
-    tcr_data = list(),
 
     #' @field spatial \code{list} that contains spatial data (coordinates and expression).
     spatial = list(),
@@ -375,13 +364,12 @@ Cerebro <- R6::R6Class(
             "matrix",
             "dgCMatrix",
             "RleMatrix",
-            "DelayedMatrix",
-            "IterableMatrix"
+            "DelayedMatrix"
           )
         )
       ) {
         warning(
-          "Expression data should ideally be a matrix-like object (matrix, dgCMatrix, RleMatrix, IterableMatrix, etc)."
+          "Expression data should ideally be a matrix-like object (matrix, dgCMatrix, RleMatrix, etc)."
         )
       }
       if (!is.null(self$meta_data) && nrow(self$meta_data) > 0) {
@@ -399,23 +387,15 @@ Cerebro <- R6::R6Class(
 
     #' @description
     #' Tag the object with information about how / where its expression matrix
-    #' is stored. In step 7.1 every newly exported \code{.crb} is tagged
-    #' \code{"embedded"} with a NULL location, meaning the matrix is carried
-    #' inside the serialised \code{.crb}. Later steps (7.2 exporter, 7.3
-    #' runtime attach) will produce objects tagged \code{"h5"} or
-    #' \code{"bpcells"} with an external \code{location}.
+    #' is stored: \code{"embedded"} with a NULL location when the matrix is
+    #' carried inside the serialised \code{.crb}, or \code{"h5"} with the name
+    #' of the H5 file that sits next to it.
     #'
-    #' @param type Storage backend label. One of \code{"embedded"},
-    #' \code{"h5"}, \code{"bpcells"}. Step 7.1 only recognises
-    #' \code{"embedded"} at runtime; the other two are accepted here (so step
-    #' 7.2 can set them) but will still need step-7.3 runtime attach to be
-    #' useful.
-    #' @param location Optional character path (absolute or relative to the
-    #' parent directory of the serialized Cerebro object) where the external
-    #' matrix lives.
+    #' @param type Storage backend label, \code{"embedded"} or \code{"h5"}.
+    #' @param location File name of the H5 file next to the \code{.crb};
     #' \code{NULL} when \code{type == "embedded"}.
     setExpressionBackend = function(type = "embedded", location = NULL) {
-      allowed <- c("embedded", "h5", "bpcells")
+      allowed <- c("embedded", "h5")
       if (length(type) != 1L || !is.character(type) || !(type %in% allowed)) {
         stop(
           "`type` must be one of: ",
@@ -441,11 +421,8 @@ Cerebro <- R6::R6Class(
     },
 
     #' @description
-    #' Read the expression backend tag. Returns a \code{list(type, location)}.
-    #' For \code{.crb} files generated before the \code{expression_backend}
-    #' field existed the stored slot is \code{NULL}; this method graciously
-    #' falls back to \code{list(type = "embedded", location = NULL)} so that
-    #' downstream code does not need to special-case legacy objects.
+    #' Read the expression backend tag. Returns a \code{list(type, location)};
+    #' an object that has not been tagged yet counts as embedded.
     getExpressionBackend = function() {
       if (is.null(self$expression_backend)) {
         return(list(type = "embedded", location = NULL))
@@ -489,8 +466,6 @@ Cerebro <- R6::R6Class(
       ## calculate mean expression per gene with the backend-aware rowMeans
       if (inherits(mat, "DelayedArray")) {
         mean_expression <- DelayedArray::rowMeans(mat)
-      } else if (inherits(mat, "IterableMatrix")) {
-        mean_expression <- BPCells::rowMeans(mat)
       } else {
         mean_expression <- Matrix::rowMeans(mat)
       }
@@ -534,8 +509,6 @@ Cerebro <- R6::R6Class(
 
       if (inherits(mat, "DelayedArray")) {
         mean_expression <- DelayedArray::colMeans(mat)
-      } else if (inherits(mat, "IterableMatrix")) {
-        mean_expression <- BPCells::colMeans(mat)
       } else {
         mean_expression <- Matrix::colMeans(mat)
       }
@@ -605,22 +578,6 @@ Cerebro <- R6::R6Class(
         return(out)
       }
 
-      ## BPCells IterableMatrix: native [gene, cells] returns another
-      ## IterableMatrix; coerce 1 x n to numeric.
-      if (inherits(self$expression, "IterableMatrix")) {
-        sub <- if (is.null(cell_idx)) {
-          self$expression[gene_idx, , drop = FALSE]
-        } else {
-          self$expression[gene_idx, cell_idx, drop = FALSE]
-        }
-        out <- as.numeric(as.matrix(sub))
-        if (!is.null(cell_selection$restore)) {
-          out <- out[cell_selection$restore]
-        }
-        names(out) <- cells
-        return(out)
-      }
-
       ## dgCMatrix / base matrix: [gene, cells] already returns a named
       ## numeric vector without densifying the full matrix.
       out <- if (is.null(cell_idx)) {
@@ -645,7 +602,7 @@ Cerebro <- R6::R6Class(
     #' @return
     #' A sub-matrix of the same concrete class as \code{self$expression}:
     #' \code{dgCMatrix} stays \code{dgCMatrix}, \code{RleMatrix} yields
-    #' \code{DelayedMatrix}, \code{IterableMatrix} stays \code{IterableMatrix}.
+    #' \code{DelayedMatrix}.
     getExpressionBlock = function(genes, cells = NULL) {
       if (is.null(genes) || length(genes) == 0L) {
         stop("`genes` must be a non-empty character vector.", call. = FALSE)
@@ -1093,43 +1050,31 @@ Cerebro <- R6::R6Class(
     },
 
     #' @description
-    #' Retrieve BCR data
+    #' Retrieve the BCR rows of the immune repertoire: for each sample the
+    #' cells whose \code{CTgene} names an immunoglobulin chain (IGH, IGK or
+    #' IGL). Samples without such cells are dropped.
     #'
     #' @return
-    #' BCR data stored in the object.
+    #' Named list of data.frames (one per sample), or an empty list.
     getBCR = function() {
-      return(self$bcr_data)
+      private$receptorRows("IG[HKL]")
     },
 
     #' @description
-    #' Retrieve TCR data
+    #' Retrieve the TCR rows of the immune repertoire: for each sample the
+    #' cells whose \code{CTgene} names a T-cell receptor chain (TRA, TRB, TRG
+    #' or TRD). Samples without such cells are dropped.
     #'
     #' @return
-    #' TCR data stored in the object.
+    #' Named list of data.frames (one per sample), or an empty list.
     getTCR = function() {
-      return(self$tcr_data)
+      private$receptorRows("TR[ABGD]")
     },
 
     #' @description
-    #' Add BCR data.
-    #'
-    #' @param data \code{list} that contains BCR data.
-    addBCRData = function(data) {
-      self$bcr_data <- data
-    },
-
-    #' @description
-    #' Add TCR data.
-    #'
-    #' @param data \code{list} that contains TCR data.
-    addTCRData = function(data) {
-      self$tcr_data <- data
-    },
-
-    #' @description
-    #' Get immune repertoire data. Returns the unified \code{immune_repertoire}
-    #' field if available; otherwise falls back to merging legacy
-    #' \code{bcr_data} and \code{tcr_data}.
+    #' Get immune repertoire data: the \code{immune_repertoire} field, or the
+    #' sibling file that \code{immune_repertoire_backend} points to (loaded and
+    #' checksummed on first use).
     #'
     #' @return Named list of data.frames (one per sample), or empty list.
     getImmuneRepertoire = function() {
@@ -1141,7 +1086,7 @@ Cerebro <- R6::R6Class(
       })
       if (!is.null(backend)) {
         valid <- is.list(backend) &&
-          identical(backend$type, "bpcells-file") &&
+          identical(backend$type, "file") &&
           is.character(backend$root) &&
           length(backend$root) == 1L &&
           !is.na(backend$root) &&
@@ -1187,9 +1132,7 @@ Cerebro <- R6::R6Class(
         self$immune_repertoire <- repertoire
         return(repertoire)
       }
-      # Backward compatibility: merge legacy bcr + tcr
-      merged <- c(self$bcr_data, self$tcr_data)
-      return(merged)
+      self$immune_repertoire
     },
 
     #' @description
@@ -1906,6 +1849,22 @@ Cerebro <- R6::R6Class(
 
   ## private fields and methods
   private = list(
+    ## Rows of the immune repertoire whose CTgene matches a receptor pattern.
+    receptorRows = function(pattern) {
+      repertoire <- self$getImmuneRepertoire()
+      rows <- lapply(repertoire, function(table) {
+        if (!is.data.frame(table) || !"CTgene" %in% names(table)) {
+          return(NULL)
+        }
+        table[grepl(pattern, as.character(table$CTgene)), , drop = FALSE]
+      })
+      rows[vapply(
+        rows,
+        function(table) is.data.frame(table) && nrow(table) > 0L,
+        logical(1)
+      )]
+    },
+
     resolveExpressionCells = function(cells) {
       cell_names <- colnames(self$expression)
       if (is.null(cells)) {
@@ -1938,8 +1897,7 @@ Cerebro <- R6::R6Class(
         if (
           length(indices) > 1L &&
             is.unsorted(indices) &&
-            (inherits(self$expression, "IterableMatrix") ||
-              inherits(self$expression, "DelayedArray"))
+            inherits(self$expression, "DelayedArray")
         ) {
           read_order <- order(indices)
           indices <- indices[read_order]

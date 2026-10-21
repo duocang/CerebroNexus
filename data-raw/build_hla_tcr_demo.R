@@ -1053,6 +1053,9 @@ meta$nUMI <- pmax(meta$nUMI, 500)
 ## ---- Assemble ----------------------------------------------------------- ##
 crb <- Cerebro$new()
 crb$expression <- expression
+## Assigning `$expression` directly does not tag the object; a .crb without an
+## expression-backend descriptor is rejected as a retired format.
+crb$setExpressionBackend("embedded")
 crb$setMetaData(meta)
 crb$projections <- list(umap = projection)
 crb$groups <- list(

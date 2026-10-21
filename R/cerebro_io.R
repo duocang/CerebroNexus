@@ -25,6 +25,9 @@
   copy
 }
 
+## Every expression matrix kept outside the CRB lives in one H5 file.
+.cerebroExternalBackends <- c("h5")
+
 .cerebroBackend <- function(object) {
   if (!.recognizedCerebroObject(object)) {
     stop("`object` must be a serialized Cerebro object.", call. = FALSE)
@@ -43,17 +46,12 @@
     is.character(backend$type) &&
     length(backend$type) == 1L &&
     !is.na(backend$type) &&
-    backend$type %in% c("embedded", "bpcells", "h5")
+    backend$type %in% c("embedded", .cerebroExternalBackends)
   valid_location <- valid_type &&
     if (identical(backend$type, "embedded")) {
       is.null(backend$location)
     } else {
-      is.character(backend$location) &&
-        length(backend$location) == 1L &&
-        !is.na(backend$location) &&
-        nzchar(backend$location) &&
-        !backend$location %in% c(".", "..") &&
-        !grepl("[/\\\\]", backend$location)
+      .cerebroSiblingName(backend$location)
     }
   if (!valid_type || !valid_location) {
     stop("The Cerebro expression-backend descriptor is invalid.", call. = FALSE)
@@ -61,17 +59,22 @@
   list(type = backend$type, location = backend$location)
 }
 
+## A sidecar is addressed by one file name that sits next to the CRB.
+.cerebroSiblingName <- function(name) {
+  is.character(name) &&
+    length(name) == 1L &&
+    !is.na(name) &&
+    nzchar(name) &&
+    !name %in% c(".", "..") &&
+    !grepl("[/\\\\]", name)
+}
+
 .cerebroSidecar <- function(file, backend) {
   sidecar <- file.path(
     dirname(normalizePath(file, mustWork = FALSE)),
     backend$location
   )
-  exists <- if (identical(backend$type, "bpcells")) {
-    dir.exists(sidecar)
-  } else {
-    file.exists(sidecar) && !dir.exists(sidecar)
-  }
-  if (!exists) {
+  if (!file.exists(sidecar) || dir.exists(sidecar)) {
     stop(
       "The ",
       backend$type,
@@ -83,16 +86,139 @@
   sidecar
 }
 
-.bpcellsCellNamesChecksum <- function(sidecar) {
-  names_file <- file.path(sidecar, "col_names")
-  if (!file.exists(names_file) || dir.exists(names_file)) {
-    stop("The BPCells sidecar has no cell-name index.", call. = FALSE)
+## ---- Retired formats ----------------------------------------------------- ##
+## Older CerebroNexus releases wrote CRBs that the readers no longer open. Each
+## retired form is named here once, so readCerebro(), createShinyApp() and the
+## Viewer reject it with one message and convertCerebro() knows what to repair.
+
+.legacyCerebroReason <- function(object) {
+  stored <- function(field) {
+    if (.storedCerebroField(object, field)) object[[field]] else NULL
   }
-  checksum <- unname(tools::md5sum(names_file))
-  if (length(checksum) != 1L || is.na(checksum) || !nzchar(checksum)) {
-    stop("Could not checksum the BPCells cell-name index.", call. = FALSE)
+  no_backend <- "it has no expression-backend descriptor"
+  if (!exists("expression_backend", envir = object, inherits = FALSE)) {
+    return(no_backend)
   }
-  checksum
+  backend <- stored("expression_backend")
+  if (is.null(backend)) {
+    ## An active or lazy binding is malformed, not old; the readers report it.
+    return(if (.storedCerebroField(object, "expression_backend")) no_backend)
+  }
+  schema <- stored("crb_schema")
+  if (is.list(schema) && !identical(schema$version, 3L)) {
+    return(structure(
+      paste0("it uses thin-CRB schema version ", schema$version[1L]),
+      repairable = FALSE
+    ))
+  }
+  if (length(stored("bcr_data")) > 0L || length(stored("tcr_data")) > 0L) {
+    return("its receptors are stored in the retired bcr_data/tcr_data fields")
+  }
+  immune <- stored("immune_repertoire_backend")
+  if (is.list(immune) && !identical(immune$type, "file")) {
+    return(structure(
+      "its immune repertoire sidecar uses a retired layout",
+      repairable = FALSE
+    ))
+  }
+  if (!exists("availableSpatial", envir = object, inherits = FALSE)) {
+    return("it predates spatial support")
+  }
+  NULL
+}
+
+.assertCurrentCerebroFile <- function(object, file) {
+  reason <- .legacyCerebroReason(object)
+  if (!is.null(reason)) {
+    stop(
+      "The Cerebro data file '",
+      basename(file),
+      "' uses a retired format: ",
+      reason,
+      ". ",
+      if (isFALSE(attr(reason, "repairable"))) {
+        paste0(
+          "convertCerebro() cannot repair it; re-export it from the source ",
+          "object with exportFromSeurat(expression_matrix_mode = \"h5\")."
+        )
+      } else {
+        "Convert it once with CerebroNexus::convertCerebro()."
+      },
+      call. = FALSE
+    )
+  }
+  invisible(object)
+}
+
+## ---- H5 expression sidecar ------------------------------------------------ ##
+## exportFromSeurat() writes the matrix cells x genes through
+## HDF5Array::writeTENxMatrix(), which names the two axes the other way round
+## from the 10x convention: /expression/genes holds the CELL names and
+## /expression/barcodes the GENE names. Reading them with rhdf5 avoids loading
+## HDF5Array, whose namespace takes seconds to attach.
+
+.readH5Names <- function(sidecar, dataset) {
+  if (!requireNamespace("rhdf5", quietly = TRUE)) {
+    stop("An H5-backed CRB requires the rhdf5 package.", call. = FALSE)
+  }
+  as.character(as.vector(rhdf5::h5read(
+    sidecar,
+    paste0("expression/", dataset)
+  )))
+}
+
+.h5CellNames <- function(sidecar) .readH5Names(sidecar, "genes")
+
+.h5GeneNames <- function(sidecar) .readH5Names(sidecar, "barcodes")
+
+## c(n_cells, n_genes), as the matrix is stored (cells x genes).
+.h5Dim <- function(sidecar) {
+  if (!requireNamespace("rhdf5", quietly = TRUE)) {
+    stop("An H5-backed CRB requires the rhdf5 package.", call. = FALSE)
+  }
+  as.integer(as.vector(rhdf5::h5read(sidecar, "expression/shape")))
+}
+
+.cerebroCellNamesHash <- function(cells) {
+  rlang::hash(enc2utf8(as.character(cells)))
+}
+
+.validCellNames <- function(cells) {
+  is.character(cells) &&
+    !anyNA(cells) &&
+    all(nzchar(cells)) &&
+    !anyDuplicated(cells)
+}
+
+## ---- Immune repertoire sidecar -------------------------------------------- ##
+
+.immuneRepertoireSidecarName <- function(file, codec) {
+  paste0(
+    tools::file_path_sans_ext(basename(file)),
+    ".immune.",
+    if (identical(codec, "qs2")) "qs2" else "rds"
+  )
+}
+
+.immuneRepertoireChains <- function(repertoire) {
+  genes <- unlist(
+    lapply(repertoire, function(table) as.character(table[["CTgene"]])),
+    use.names = FALSE
+  )
+  supported <- c("TRA", "TRB", "TRG", "TRD", "IGH", "IGK", "IGL")
+  supported[vapply(
+    supported,
+    function(chain) any(grepl(chain, genes, fixed = TRUE), na.rm = TRUE),
+    logical(1)
+  )]
+}
+
+.immuneRepertoireRows <- function(repertoire) {
+  sum(vapply(
+    repertoire,
+    function(table) if (is.data.frame(table)) nrow(table) else 0L,
+    integer(1)
+  ))
 }
 
 .immuneRepertoireBackend <- function(object, file) {
@@ -108,13 +234,8 @@
     return(NULL)
   }
   valid <- is.list(descriptor) &&
-    identical(descriptor$type, "bpcells-file") &&
-    is.character(descriptor$file) &&
-    length(descriptor$file) == 1L &&
-    !is.na(descriptor$file) &&
-    nzchar(descriptor$file) &&
-    !descriptor$file %in% c(".", "..") &&
-    !grepl("[/\\\\]", descriptor$file) &&
+    identical(descriptor$type, "file") &&
+    .cerebroSiblingName(descriptor$file) &&
     is.character(descriptor$md5) &&
     length(descriptor$md5) == 1L &&
     !is.na(descriptor$md5) &&
@@ -127,14 +248,7 @@
   if (anyNA(samples) || anyNA(chains)) {
     stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
   }
-  expression_backend <- .cerebroBackend(object)
-  if (!identical(expression_backend$type, "bpcells")) {
-    stop(
-      "An immune repertoire sidecar requires a BPCells backend.",
-      call. = FALSE
-    )
-  }
-  root <- .cerebroSidecar(file, expression_backend)
+  root <- dirname(normalizePath(file, mustWork = FALSE))
   repertoire_file <- file.path(root, descriptor$file)
   if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
     stop(
@@ -144,7 +258,7 @@
     )
   }
   list(
-    type = "bpcells-file",
+    type = "file",
     file = descriptor$file,
     md5 = descriptor$md5,
     samples = unique(samples[nzchar(samples)]),
@@ -179,15 +293,17 @@
   values
 }
 
+## Builds the object that is serialised. An H5-backed CRB is thin: the cell
+## names live once, in the H5 file, and the metadata and projections keep only
+## their row order. The schema records what readCerebro() must verify.
 .thinCerebroPayload <- function(object, file, sidecar = NULL) {
   backend <- .cerebroBackend(object)
   payload <- .currentCerebroCopy(object)
   payload$crb_schema <- NULL
+  payload$expression_backend <- backend
   immune_backend <- .immuneRepertoireBackend(object, file)
   if (!is.null(immune_backend)) {
     payload$immune_repertoire <- list()
-    payload$bcr_data <- list()
-    payload$tcr_data <- list()
     payload$immune_repertoire_backend <- immune_backend[c(
       "type",
       "file",
@@ -202,24 +318,18 @@
   if (is.null(sidecar)) {
     sidecar <- .cerebroSidecar(file, backend)
   }
-  if (identical(backend$type, "h5")) {
-    payload$expression <- NULL
-    return(payload)
-  }
+  payload$expression <- NULL
 
-  cells <- colnames(payload$expression)
+  cells <- .h5CellNames(sidecar)
   metadata <- payload$meta_data
   if (
-    !is.character(cells) ||
-      anyNA(cells) ||
-      any(!nzchar(cells)) ||
-      anyDuplicated(cells) ||
+    !.validCellNames(cells) ||
       !is.data.frame(metadata) ||
       !"cell_barcode" %in% names(metadata) ||
       !identical(as.character(metadata$cell_barcode), cells)
   ) {
     stop(
-      "The BPCells sidecar and CRB metadata must contain the same cells in ",
+      "The H5 sidecar and CRB metadata must contain the same cells in ",
       "the same order.",
       call. = FALSE
     )
@@ -241,12 +351,10 @@
     metadata[[name]] <- .compactCountColumn(metadata[[name]])
   }
   payload$meta_data <- metadata
-  payload$expression <- NULL
   payload$cell_fingerprint <- .cerebroCellFingerprint(cells)
   payload$crb_schema <- list(
-    version = 2L,
-    cell_names = "expression",
-    cell_names_md5 = .bpcellsCellNamesChecksum(sidecar),
+    version = 3L,
+    cell_names_hash = .cerebroCellNamesHash(cells),
     projection_rownames = compact_projections,
     n_cells = length(cells)
   )
@@ -270,40 +378,31 @@
     return(NULL)
   }
   schema_names <- names(schema)
-  expected_names <- if (identical(schema$version, 1L)) {
-    c("version", "cell_names", "cell_names_md5", "projection_rownames")
-  } else if (identical(schema$version, 2L)) {
-    c(
-      "version",
-      "cell_names",
-      "cell_names_md5",
-      "projection_rownames",
-      "n_cells"
-    )
-  } else {
-    character()
-  }
+  expected_names <- c(
+    "version",
+    "cell_names_hash",
+    "projection_rownames",
+    "n_cells"
+  )
   valid <- is.list(schema) &&
     !is.data.frame(schema) &&
-    length(expected_names) > 0L &&
     length(schema) == length(expected_names) &&
     !is.null(schema_names) &&
     !anyDuplicated(schema_names) &&
     setequal(schema_names, expected_names) &&
-    identical(schema$cell_names, "expression") &&
-    is.character(schema$cell_names_md5) &&
-    length(schema$cell_names_md5) == 1L &&
-    !is.na(schema$cell_names_md5) &&
-    grepl("^[[:xdigit:]]{32}$", schema$cell_names_md5) &&
+    identical(schema$version, 3L) &&
+    is.character(schema$cell_names_hash) &&
+    length(schema$cell_names_hash) == 1L &&
+    !is.na(schema$cell_names_hash) &&
+    grepl("^[[:xdigit:]]{32}$", schema$cell_names_hash) &&
     is.character(schema$projection_rownames) &&
     !anyNA(schema$projection_rownames) &&
     !any(!nzchar(schema$projection_rownames)) &&
     !anyDuplicated(schema$projection_rownames) &&
-    (identical(schema$version, 1L) ||
-      (is.integer(schema$n_cells) &&
-        length(schema$n_cells) == 1L &&
-        !is.na(schema$n_cells) &&
-        schema$n_cells >= 0L))
+    is.integer(schema$n_cells) &&
+    length(schema$n_cells) == 1L &&
+    !is.na(schema$n_cells) &&
+    schema$n_cells >= 0L
   if (!valid) {
     stop(
       "The Cerebro data file '",
@@ -320,17 +419,10 @@
     return(object)
   }
   sidecar <- .cerebroSidecar(file, backend)
-  if (identical(backend$type, "bpcells")) {
-    if (!requireNamespace("BPCells", quietly = TRUE)) {
-      stop("A BPCells-backed CRB requires the BPCells package.", call. = FALSE)
-    }
-    object$expression <- BPCells::open_matrix_dir(sidecar)
-  } else {
-    if (!requireNamespace("HDF5Array", quietly = TRUE)) {
-      stop("An H5-backed CRB requires the HDF5Array package.", call. = FALSE)
-    }
-    object$expression <- t(HDF5Array::TENxMatrix(sidecar, group = "expression"))
+  if (!requireNamespace("HDF5Array", quietly = TRUE)) {
+    stop("An H5-backed CRB requires the HDF5Array package.", call. = FALSE)
   }
+  object$expression <- t(HDF5Array::TENxMatrix(sidecar, group = "expression"))
   object
 }
 
@@ -338,41 +430,33 @@
   if (is.null(schema)) {
     return(object)
   }
-  if (!identical(backend$type, "bpcells")) {
-    stop("A thin CRB requires a BPCells expression backend.", call. = FALSE)
+  if (!identical(backend$type, "h5")) {
+    stop("A thin CRB requires an H5 expression backend.", call. = FALSE)
   }
-  sidecar <- .cerebroSidecar(file, backend)
-  if (!identical(.bpcellsCellNamesChecksum(sidecar), schema$cell_names_md5)) {
+  cells <- colnames(object$expression)
+  if (!identical(.cerebroCellNamesHash(cells), schema$cell_names_hash)) {
     stop(
-      "The BPCells cell-name index does not match CRB '",
+      "The H5 cell names do not match CRB '",
       basename(file),
       "'.",
       call. = FALSE
     )
   }
-
-  cells <- colnames(object$expression)
-  if (
-    identical(schema$version, 2L) &&
-      !identical(length(cells), schema$n_cells)
-  ) {
+  if (!identical(length(cells), schema$n_cells)) {
     stop(
-      "The thin CRB cell count does not match its BPCells sidecar.",
+      "The thin CRB cell count does not match its H5 sidecar.",
       call. = FALSE
     )
   }
   metadata <- object$meta_data
   if (
-    !is.character(cells) ||
-      anyNA(cells) ||
-      any(!nzchar(cells)) ||
-      anyDuplicated(cells) ||
+    !.validCellNames(cells) ||
       !is.data.frame(metadata) ||
       nrow(metadata) != length(cells) ||
       "cell_barcode" %in% names(metadata)
   ) {
     stop(
-      "The thin CRB and BPCells sidecar have incompatible cell metadata.",
+      "The thin CRB and H5 sidecar have incompatible cell metadata.",
       call. = FALSE
     )
   }
@@ -570,14 +654,19 @@
   stage,
   file,
   spatial_stage = NULL,
-  spatial = NULL
+  spatial = NULL,
+  immune_stage = NULL,
+  immune = NULL
 ) {
   backup <- NULL
   spatial_backup <- NULL
+  immune_backup <- NULL
   backed_up <- FALSE
   backed_up_spatial <- FALSE
+  backed_up_immune <- FALSE
   installed <- FALSE
   installed_spatial <- FALSE
+  installed_immune <- FALSE
   committed <- FALSE
   on.exit(
     {
@@ -603,6 +692,21 @@
           warning(
             "Could not restore the original spatial sidecar; preserved at: ",
             spatial_backup,
+            call. = FALSE
+          )
+        }
+        if (installed_immune && file.exists(immune)) {
+          unlink(immune, force = TRUE)
+        }
+        if (
+          backed_up_immune &&
+            file.exists(immune_backup) &&
+            !file.rename(immune_backup, immune)
+        ) {
+          warning(
+            "Could not restore the original immune repertoire sidecar; ",
+            "preserved at: ",
+            immune_backup,
             call. = FALSE
           )
         }
@@ -634,6 +738,25 @@
     }
     installed_spatial <- TRUE
   }
+  if (!is.null(immune_stage)) {
+    if (file.exists(immune)) {
+      immune_backup <- tempfile(
+        paste0(".", basename(immune), "-backup-"),
+        dirname(immune)
+      )
+      if (!file.rename(immune, immune_backup)) {
+        stop(
+          "Could not preserve the existing immune repertoire sidecar.",
+          call. = FALSE
+        )
+      }
+      backed_up_immune <- TRUE
+    }
+    if (!file.rename(immune_stage, immune)) {
+      stop("Could not install the immune repertoire sidecar.", call. = FALSE)
+    }
+    installed_immune <- TRUE
+  }
   if (!file.rename(stage, file)) {
     stop("Could not install the new CRB.", call. = FALSE)
   }
@@ -645,14 +768,94 @@
   if (!is.null(spatial_backup) && dir.exists(spatial_backup)) {
     unlink(spatial_backup, recursive = TRUE)
   }
+  if (!is.null(immune_backup) && file.exists(immune_backup)) {
+    unlink(immune_backup)
+  }
   invisible(file)
+}
+
+## Moves a large repertoire out of the CRB into `<stem>.immune.<qs2|rds>` next
+## to it. "auto" does so only for H5-backed CRBs, whose metadata and expression
+## already live outside the serialised object; a repertoire that is already
+## file-backed keeps its sidecar.
+.stageImmuneRepertoire <- function(
+  payload,
+  file,
+  codec,
+  mode = "auto",
+  threshold = 100000L
+) {
+  none <- list(payload = payload, stage = NULL, location = NULL)
+  repertoire <- payload$immune_repertoire
+  if (!is.list(repertoire) || !length(repertoire) || identical(mode, "never")) {
+    return(none)
+  }
+  external <- identical(payload$expression_backend$type, "h5")
+  large <- .immuneRepertoireRows(repertoire) >= threshold
+  if (!(identical(mode, "always") || (external && large))) {
+    return(none)
+  }
+  location <- .immuneRepertoireSidecarName(file, codec)
+  stage <- tempfile(paste0(".", location, "-"), dirname(file))
+  tryCatch(
+    .writeCerebroPayload(repertoire, stage, codec),
+    error = function(error) {
+      unlink(stage, force = TRUE)
+      stop(error)
+    }
+  )
+  payload$immune_repertoire <- list()
+  payload$immune_repertoire_backend <- list(
+    type = "file",
+    file = location,
+    md5 = unname(tools::md5sum(stage)),
+    samples = names(repertoire),
+    chains = .immuneRepertoireChains(repertoire)
+  )
+  list(payload = payload, stage = stage, location = location)
+}
+
+.removeRetiredSidecar <- function(path) {
+  if (!file.exists(path) && !dir.exists(path)) {
+    return(invisible(NULL))
+  }
+  if (.pathIsSymbolicLink(path)) {
+    warning(
+      "The previous sidecar is a symbolic link and was not removed: ",
+      path,
+      call. = FALSE
+    )
+  } else if (!identical(unlink(path, recursive = TRUE, force = TRUE), 0L)) {
+    warning(
+      "The new file was published, but the previous sidecar remains at: ",
+      path,
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
+.immuneSidecarOptions <- function(mode, threshold) {
+  mode <- match.arg(mode, c("auto", "always", "never"))
+  if (
+    !is.numeric(threshold) ||
+      length(threshold) != 1L ||
+      is.na(threshold) ||
+      threshold < 0
+  ) {
+    stop("`immune_sidecar_threshold` must be one non-negative number.", call. = FALSE)
+  }
+  list(mode = mode, threshold = threshold)
 }
 
 #' Save a Cerebro data file
 #'
-#' Saves a Cerebro object as a thin CRB when it uses a BPCells sidecar and
-#' stores spatial molecule tables in a sibling per-FOV sidecar. The input
-#' object and existing sidecars are not modified.
+#' Saves a Cerebro object. An object whose expression matrix sits in an H5
+#' sidecar is saved as a thin CRB: the cell names stay in the H5 file and the
+#' CRB keeps only their order and a checksum. Spatial molecule tables go to a
+#' sibling per-FOV sidecar, and a large immune repertoire to a sibling file (see
+#' \code{immune_sidecar}). The input object and existing sidecars are not
+#' modified.
 #'
 #' @param object A Cerebro object.
 #' @param file Output \code{.crb} path.
@@ -662,6 +865,19 @@
 #' for large datasets, \code{"always"}, or \code{"never"}.
 #' @param viewer_binary_threshold Dataset-level cell threshold used by
 #' \code{viewer_binary = "auto"}.
+#' @param immune_sidecar Store the immune repertoire in a sibling file
+#' \code{<stem>.immune.qs2} (\code{.rds} with \code{codec = "rds"}) instead of
+#' inside the CRB. \code{"auto"} does so for H5-backed CRBs whose repertoire has
+#' at least \code{immune_sidecar_threshold} rows; \code{"always"} and
+#' \code{"never"} override that. The Viewer then lists samples and chains
+#' without reading the repertoire, and loads it when the Immune repertoire page
+#' needs it. The sidecar must travel with the CRB. An object whose repertoire
+#' already sits in a sidecar keeps pointing to that file whatever the mode is (a
+#' copy saved under another name shares it); to move it back into the CRB, call
+#' \code{addImmuneRepertoire(object$getImmuneRepertoire())} first. A sidecar of
+#' the CRB being replaced that the new CRB no longer uses is removed.
+#' @param immune_sidecar_threshold Number of repertoire rows (cells with
+#' receptor data) used by \code{immune_sidecar = "auto"}.
 #' @return The output path, invisibly.
 #' @export
 saveCerebro <- function(
@@ -669,10 +885,16 @@ saveCerebro <- function(
   file,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
-  viewer_binary_threshold = 500000L
+  viewer_binary_threshold = 500000L,
+  immune_sidecar = c("auto", "always", "never"),
+  immune_sidecar_threshold = 100000L
 ) {
   codec <- match.arg(codec)
   viewer_options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
+  immune_options <- .immuneSidecarOptions(
+    match.arg(immune_sidecar),
+    immune_sidecar_threshold
+  )
   if (
     !is.character(file) || length(file) != 1L || is.na(file) || !nzchar(file)
   ) {
@@ -686,20 +908,50 @@ saveCerebro <- function(
     stop("Could not create the CRB output directory.", call. = FALSE)
   }
 
+  ## Only a CRB that sits next to one of its own sidecars needs to be read.
+  previous_immune <- if (
+    any(file.exists(file.path(
+      dirname(file),
+      c(
+        .immuneRepertoireSidecarName(file, "qs2"),
+        .immuneRepertoireSidecarName(file, "rds")
+      )
+    )))
+  ) {
+    .readPublishedImmuneBackend(file)
+  }
   payload <- .thinCerebroPayload(object, file)
-  spatial <- .stageSpatialMolecules(payload, file, codec)
-  payload <- spatial$payload
+  immune <- NULL
+  spatial <- NULL
   stage <- tempfile(paste0(".", basename(file), "-"), dirname(file))
+  ## Registered before the staging calls: a later step that fails must not
+  ## leave the staged sidecars behind.
   on.exit(
     {
       unlink(stage, force = TRUE)
+      unlink(immune$stage, force = TRUE)
       if (!is.null(spatial$stage)) {
         unlink(spatial$stage, recursive = TRUE, force = TRUE)
       }
     },
     add = TRUE
   )
+  immune <- .stageImmuneRepertoire(
+    payload,
+    file,
+    codec,
+    immune_options$mode,
+    immune_options$threshold
+  )
+  payload <- immune$payload
+  spatial <- .stageSpatialMolecules(payload, file, codec)
+  payload <- spatial$payload
   .writeCerebroPayload(payload, stage, codec)
+  retired_immune <- .retiredImmuneSidecar(
+    previous_immune,
+    file,
+    immune$location %||% payload$immune_repertoire_backend$file
+  )
   .installCerebroPayload(
     stage,
     file,
@@ -708,8 +960,19 @@ saveCerebro <- function(
       NULL
     } else {
       file.path(dirname(file), spatial$location)
+    },
+    immune_stage = immune$stage,
+    immune = if (is.null(immune$location)) {
+      NULL
+    } else {
+      file.path(dirname(file), immune$location)
     }
   )
+  ## The sidecar the saved CRB points to: a new one, or the one a file-backed
+  ## repertoire keeps.
+  if (!is.null(retired_immune)) {
+    .removeRetiredSidecar(retired_immune)
+  }
   n_cells <- tryCatch(
     length(.viewerPackCells(object)),
     error = function(error) {
@@ -738,9 +1001,12 @@ saveCerebro <- function(
 
 #' Read a Cerebro data file
 #'
-#' Auto-detects legacy RDS, thin RDS, and thin qs2 CRBs. Thin expression data
-#' are hydrated from their sibling sidecar; spatial molecule tables stay lazy
-#' until their FOV is requested.
+#' Reads a CRB written by \code{saveCerebro()} or the export functions, as RDS or
+#' qs2. An H5-backed expression matrix is attached lazily and a thin CRB gets
+#' its cell names back from the H5 file; spatial molecule tables stay lazy until
+#' their FOV is requested. A CRB from an older release that this version no
+#' longer reads (for example one without an expression-backend descriptor) is
+#' rejected with a pointer to \code{\link{convertCerebro}}.
 #'
 #' @param file Input \code{.crb} path.
 #' @return A current Cerebro object.
@@ -748,6 +1014,10 @@ saveCerebro <- function(
 readCerebro <- function(file) {
   file <- normalizePath(file, mustWork = TRUE)
   serialized <- .readCerebroPayload(file)
+  if (!.recognizedCerebroObject(serialized)) {
+    stop("`object` must be a serialized Cerebro object.", call. = FALSE)
+  }
+  .assertCurrentCerebroFile(serialized, file)
   backend <- .cerebroBackend(serialized)
   schema <- .readCrbSchema(serialized, file)
   object <- .currentCerebroCopy(serialized)
@@ -757,9 +1027,81 @@ readCerebro <- function(file) {
   .attachCerebroImmuneRepertoire(object, file)
 }
 
+## Reads a CRB from an older release into a current object, repairing what can
+## be repaired without the original data: a missing expression-backend
+## descriptor means the matrix is embedded, and receptors kept in `bcr_data` /
+## `tcr_data` are merged into the unified repertoire. A CRB whose expression
+## storage is older than the formats this version reads cannot be repaired.
+.readLegacyCerebro <- function(file) {
+  serialized <- .readCerebroPayload(file)
+  if (!.recognizedCerebroObject(serialized)) {
+    stop("`object` must be a serialized Cerebro object.", call. = FALSE)
+  }
+  stored <- function(field) {
+    if (.storedCerebroField(serialized, field)) serialized[[field]] else NULL
+  }
+  backend <- stored("expression_backend")
+  schema <- stored("crb_schema")
+  immune <- stored("immune_repertoire_backend")
+  if (!is.null(backend) && !is.list(backend)) {
+    stop(
+      "The Cerebro data file '",
+      basename(file),
+      "' has an unsupported expression-backend descriptor.",
+      call. = FALSE
+    )
+  }
+  unrepairable <- (is.list(backend) &&
+    !(is.character(backend$type) &&
+      length(backend$type) == 1L &&
+      backend$type %in% c("embedded", .cerebroExternalBackends))) ||
+    (is.list(schema) && !identical(schema$version, 3L)) ||
+    (is.list(immune) && !identical(immune$type, "file"))
+  if (unrepairable) {
+    stop(
+      "The Cerebro data file '",
+      basename(file),
+      "' stores its expression matrix in a layout this version cannot read ",
+      "or repair. Re-export it from the source object with ",
+      "exportFromSeurat(expression_matrix_mode = \"h5\").",
+      call. = FALSE
+    )
+  }
+  object <- .currentCerebroCopy(serialized)
+  if (is.null(backend)) {
+    object$setExpressionBackend("embedded")
+  }
+  if (!length(object$immune_repertoire)) {
+    receptors <- Filter(
+      function(part) is.list(part) && length(part) > 0L,
+      list(stored("tcr_data"), stored("bcr_data"))
+    )
+    if (length(receptors)) {
+      object$immune_repertoire <- do.call(.mergeRepertoiresBySample, receptors)
+    }
+  }
+  backend <- .cerebroBackend(object)
+  object <- .attachCerebroExpression(object, file, backend)
+  object <- .hydrateThinCerebro(
+    object,
+    file,
+    backend,
+    .readCrbSchema(serialized, file)
+  )
+  object <- .attachCerebroSpatialMolecules(object, file)
+  .attachCerebroImmuneRepertoire(object, file)
+}
+
 #' Convert a Cerebro data file
 #'
-#' Re-serializes a CRB while reusing its existing expression sidecar.
+#' Re-serializes a CRB while reusing its existing expression sidecar. This is
+#' also how a CRB from an older release is brought up to date: a missing
+#' expression-backend descriptor is set to embedded, receptor data in the retired
+#' \code{bcr_data} / \code{tcr_data} fields is merged into the unified immune
+#' repertoire, and an H5-backed CRB written without a thin schema is thinned.
+#' A CRB whose expression storage is older than the formats this version reads
+#' (an unknown expression backend, thin schema 1 or 2) cannot be converted;
+#' re-export it with \code{\link{exportFromSeurat}}.
 #'
 #' @param input Input \code{.crb} path.
 #' @param output Output \code{.crb} path in the same directory as \code{input}.
@@ -779,7 +1121,7 @@ convertCerebro <- function(input, output = input, codec = c("qs2", "rds")) {
   if (
     valid_output &&
       !identical(
-        dirname(input),
+        normalizePath(dirname(input), mustWork = FALSE),
         normalizePath(dirname(output), mustWork = FALSE)
       )
   ) {
@@ -789,5 +1131,5 @@ convertCerebro <- function(input, output = input, codec = c("qs2", "rds")) {
       call. = FALSE
     )
   }
-  saveCerebro(readCerebro(input), output, codec = codec)
+  saveCerebro(.readLegacyCerebro(input), output, codec = codec)
 }

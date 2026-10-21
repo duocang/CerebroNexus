@@ -13,14 +13,14 @@ tests/
 │   ├── test-exportFromSeurat.R
 │   ├── test-r-functions.R
 │   └── _snaps/            # testthat snapshot fixtures
-├── smoke/                 # local dev scratch (gitignored, see its own README)
-└── demo/                  # data preparation for run-demo.R and its tests
+└── smoke/                 # local dev scratch (gitignored, see its own README)
 ```
 
-The testthat suite is included in package builds. `tests/demo/`, Node modules
-and local browser artifacts are excluded. `tests/smoke/` is a local sandbox for
-hand-driven smoke tests; it does not run under `R CMD check`. `tests/demo/`
-holds only what `run-demo.R` and its tests source; benchmarks belong in
+The testthat suite is included in package builds. Node modules and local
+browser artifacts are excluded. `tests/smoke/` is a local sandbox for
+hand-driven smoke tests; it does not run under `R CMD check`. The data
+preparation that `run-demo.R` sources is in `data-raw/large-demo/`, not here;
+benchmarks belong in
 [CerebroNexus_paper_code](https://github.com/duocang/CerebroNexus_paper_code)
 (`viewer/` and `benchmark/`), not here. `_snaps/` contains expected test output
 and must not be treated as disposable logs.

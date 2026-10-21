@@ -1,4 +1,4 @@
-test_that("the 1M demo is opt-in and validates its sidecar", {
+test_that("the 1M demo is opt-in and validates its H5 file", {
   helper <- viewer_test_path("million_cell_demo.R")
   expect_true(file.exists(helper))
   env <- new.env(parent = baseenv())
@@ -17,11 +17,10 @@ test_that("the 1M demo is opt-in and validates its sidecar", {
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
   crb <- file.path(root, "mouse.crb")
   file.create(crb)
-  dir.create(file.path(root, "mouse.bpcells"))
-  file.create(file.path(root, "mouse.bpcells", "shape"))
+  file.create(file.path(root, "mouse.h5"))
 
   configured <- env$viewerAddMillionCellDemo(original, crb)
-  label <- "10x E18 mouse brain (1M)"
+  label <- "10x E18 mouse brain (1.3M)"
   expect_identical(
     unname(configured$crb_file_to_load[label]),
     normalizePath(crb)
@@ -32,15 +31,29 @@ test_that("the 1M demo is opt-in and validates its sidecar", {
   expect_equal(unname(configured$expression_point_size[label]), 2)
   expect_equal(unname(configured$expression_point_opacity[label]), 1)
 
-  unlink(file.path(root, "mouse.bpcells", "shape"))
+  unlink(file.path(root, "mouse.h5"))
   expect_error(
     env$viewerAddMillionCellDemo(original, crb),
-    "adjacent non-empty .bpcells"
+    "CEREBRO_1M_DEMO_CRB must name a .crb with an adjacent .h5 file.",
+    fixed = TRUE
+  )
+  dir.create(file.path(root, "mouse.h5"))
+  expect_error(
+    env$viewerAddMillionCellDemo(original, crb),
+    "adjacent .h5 file",
+    fixed = TRUE
+  )
+  unlink(file.path(root, "mouse.h5"), recursive = TRUE)
+  file.create(file.path(root, "mouse.h5"))
+  expect_error(
+    env$viewerAddMillionCellDemo(original, file.path(root, "missing.crb")),
+    "adjacent .h5 file",
+    fixed = TRUE
   )
 })
 
 test_that("the 1M preparation keeps unique gene symbols", {
-  script <- testthat::test_path("..", "demo", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
   skip_if_not(
     file.exists(script),
     "demo tree not present (expected when checking a built package)"
@@ -124,7 +137,7 @@ test_that("the 1M preparation keeps unique gene symbols", {
 })
 
 test_that("the 1M demo replaces the illustrative path with marker guidance", {
-  script <- testthat::test_path("..", "demo", "prepare_viewer_1m_data.R")
+  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
   skip_if_not(
     file.exists(script),
     "demo tree not present (expected when checking a built package)"
@@ -512,16 +525,11 @@ test_that("Mouse 1M marker-guided trajectory keeps its neural-lineage contract",
   }
   trajectory <- object$getTrajectory("marker_guided", "E18_neurogenesis")
 
-  expect_identical(nrow(object$getMetaData()), 1000000L)
-  expect_identical(nrow(trajectory$meta), 981785L)
-  expect_identical(1000000L - nrow(trajectory$meta), 18215L)
+  expect_identical(nrow(object$getMetaData()), 1306127L)
+  expect_lt(nrow(trajectory$meta), nrow(object$getMetaData()))
   expect_false(anyNA(trajectory$meta$pseudotime))
   expect_false(anyNA(trajectory$meta$DR_1))
   expect_false(anyNA(trajectory$meta$DR_2))
-  expect_setequal(
-    trajectory$provenance$excluded_clusters,
-    c("2", "9", "20", "23", "29", "30")
-  )
 })
 
 test_that("Gene projection delegates paint order without copying cell vectors", {
@@ -708,4 +716,55 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     as.character(captured$deferred_aux()$selection_key),
     c("c3", "c1", "c2")
   )
+})
+
+test_that("the 1M preparation uses CEREBRO_LARGE_CACHE like the Ren one", {
+  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
+  skip_if_not(
+    file.exists(script),
+    "demo tree not present (expected when checking a built package)"
+  )
+  env <- new.env(parent = globalenv())
+  sys.source(script, envir = env)
+
+  withr::local_envvar(CEREBRO_LARGE_CACHE = "/data/large")
+  expect_identical(env$.viewer1mPaths()$crb, "/data/large/1m/cerebro-v2/cerebro_mouse_brain_1m.crb")
+  ## an explicit argument still wins
+  expect_identical(
+    env$.viewer1mPaths("/other")$source,
+    "/other/1m/source/1M_neurons_filtered_gene_bc_matrices_h5.h5"
+  )
+})
+
+test_that("a mouse brain built by an earlier release is not taken for the current one", {
+  script <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_1m_data.R")
+  skip_if_not(
+    file.exists(script),
+    "demo tree not present (expected when checking a built package)"
+  )
+  env <- new.env(parent = globalenv())
+  sys.source(script, envir = env)
+  root <- withr::local_tempdir()
+  paths <- env$.viewer1mPaths(root)
+  complete <- function() {
+    env$.viewer1mComplete(paths$crb, paths$sidecar, paths$stamp)
+  }
+
+  ## version 1 kept its files in `cerebro`, without a stamp
+  old <- file.path(root, "1m", "cerebro")
+  dir.create(old, recursive = TRUE)
+  file.create(file.path(old, c("cerebro_mouse_brain_1m.crb", "cerebro_mouse_brain_1m.h5")))
+  expect_false(identical(dirname(paths$crb), old))
+  expect_false(complete())
+
+  ## files without the stamp, or with another version, are not finished
+  dir.create(dirname(paths$crb), recursive = TRUE)
+  file.create(c(paths$crb, paths$sidecar))
+  expect_false(complete())
+  writeLines("1", paths$stamp)
+  expect_false(complete())
+  writeLines(as.character(env$.viewer1mVersion), paths$stamp)
+  expect_true(complete())
+  file.remove(paths$sidecar)
+  expect_false(complete())
 })

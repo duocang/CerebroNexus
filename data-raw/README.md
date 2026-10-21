@@ -12,6 +12,7 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 | understand or rebuild the **trajectory** demo | [`trajectory.md`](trajectory.md) |
 | understand or rebuild the **HLA & TCR motif** demos | [`hla.md`](hla.md) |
 | understand or rebuild the **Trekker** demo | [`trekker.md`](trekker.md) |
+| prepare the **large demo data sets** (1M mouse brain, Ren COVID-19 atlas) for `run-demo.R` | [`large-demo/README.md`](large-demo/README.md) |
 | know what a sub-directory here is | [Directory layout](#directory-layout) below |
 | add a **new** dataset | copy the template in [`DATASETS.md`](DATASETS.md), then add a build script + a per-type notes file |
 
@@ -19,33 +20,15 @@ This directory reproducibly rebuilds every demo `.crb` shipped in `inst/extdata/
 
 ## Demo gene budget
 
-The active builders call `save_demo_crb()` from `demo_gene_panel.R` before
-publishing their final artifacts. It caps embedded expression at **1,500 genes**;
-smaller panels are kept whole. Available neural, stromal and immune markers,
-the Trekker picker/myelination genes and its upstream Moran genes are protected.
-Remaining places are filled by variance of the stored normalized expression,
-with deterministic input-order ties. This is a demo policy, not a biological
-feature-selection method or a filter applied to users' data.
+The active builders call `save_demo_crb()` from `demo_gene_panel.R` before publishing their final artifacts. It caps embedded expression at **1,500 genes**; smaller panels are kept whole. Available neural, stromal and immune markers, the Trekker picker/myelination genes and its upstream Moran genes are protected. Remaining places are filled by variance of the stored normalized expression, with deterministic input-order ties. This is a demo policy, not a biological feature-selection method or a filter applied to users' data.
 
-Filtering happens after analysis. Retained values, sparse representation, cell
-identity/order, metadata (including full-input nUMI/nGene), groups, coordinates,
-trajectories, receptor/HLA data and images are preserved. Spatial expression is
-subset by the same genes without changing its cell order. The writer refuses
-to shrink objects carrying gene-analysis tables or gene lists until their
-references are explicitly reviewed. Panel provenance is stored in
-`parameters$demo_gene_panel`.
+Filtering happens after analysis. Retained values, sparse representation, cell identity/order, metadata (including full-input nUMI/nGene), groups, coordinates, trajectories, receptor/HLA data and images are preserved. Spatial expression is subset by the same genes without changing its cell order. The writer refuses to shrink objects carrying gene-analysis tables or gene lists until their references are explicitly reviewed. Panel provenance is stored in `parameters$demo_gene_panel`.
 
-Gene search and any *new* gene-set analysis are limited to the exported panel;
-these artifacts are not whole-transcriptome datasets. Full-input precomputed
-scores retain their original interpretation. The active builders use the public
-CRB I/O functions, and the final writer uses qs2 level 19 with an exact decoded
-payload check. There is no separate release-compaction CLI or runtime change.
+Gene search and any *new* gene-set analysis are limited to the exported panel; these artifacts are not whole-transcriptome datasets. Full-input precomputed scores retain their original interpretation. The active builders use the public CRB I/O functions, and the final writer uses qs2 level 19 with an exact decoded payload check. There is no separate release-compaction CLI or runtime change.
 
 ### Refreshing existing artifacts without recomputing their analyses
 
-Run from the repository root in the project R environment, using a fresh output
-directory. After validation, replace only the CRBs, preserving companion images
-and HDF5 files at their original locations:
+Run from the repository root in the project R environment, using a fresh output directory. After validation, replace only the CRBs, preserving companion images and HDF5 files at their original locations:
 
 ```r
 pkgload::load_all(".", quiet = TRUE)
@@ -58,13 +41,7 @@ for (input in list.files("inst/extdata/examples", "\\.crb$", full.names = TRUE))
 }
 ```
 
-The 2026-10-12 artifacts were derived this way from master `4d74a839`, without
-rerunning raw-data downloads, normalization, UMAP or cell sampling. All nine
-retain exactly their previous cells; four have fewer genes. The legacy synthetic
-Spatial fixture was transformed from its checked-in CRB, not regenerated from
-an original raw-data generator. Future active builder runs apply the same final
-export policy; full pipeline byte identity across dependency versions is not
-claimed.
+The 2026-10-12 artifacts were derived this way from master `4d74a839`, without rerunning raw-data downloads, normalization, UMAP or cell sampling. All nine retain exactly their previous cells; four have fewer genes. The legacy synthetic Spatial fixture was transformed from its checked-in CRB, not regenerated from an original raw-data generator. Future active builder runs apply the same final export policy; full pipeline byte identity across dependency versions is not claimed.
 
 ### Measured artifact sizes (2026-10-12)
 
@@ -86,20 +63,12 @@ Total: **30.26 → 21.22 MiB (29.9% smaller)** versus master. This includes both
 
 Validated with R 4.6.1 / qs2 0.3.1 in WSL on 2026-10-12:
 
-- All nine input CRB hashes matched master `4d74a839`. Before/after checks
-  compared every retained expression value and all non-expression data fields,
-  including metadata, projections, receptor/HLA data, Trekker scores/images and
-  spatial coordinates/images. Only expression rows and panel provenance changed.
-- The source test suite passed **14,468 assertions**, with no failures or errors
-  and two conditional skips for unavailable external artifacts. This includes
-  71 demo-panel assertions, covering the real Spatial post-export function.
-- `R CMD check --no-tests` passed with **0 errors, 0 warnings, 1 NOTE** (the existing
-  `.GlobalEnv` assignment in `launchCerebro`). Tests ran separately as above.
-- Both updated HLA and Trekker vignettes rendered successfully. Air formatting
-  checks passed for the changed builder/panel/Trekker R files and panel tests.
+- All nine input CRB hashes matched master `4d74a839`. Before/after checks compared every retained expression value and all non-expression data fields, including metadata, projections, receptor/HLA data, Trekker scores/images and spatial coordinates/images. Only expression rows and panel provenance changed.
+- The source test suite passed **14,468 assertions**, with no failures or errors and two conditional skips for unavailable external artifacts. This includes 71 demo-panel assertions, covering the real Spatial post-export function.
+- `R CMD check --no-tests` passed with **0 errors, 0 warnings, 1 NOTE** (the existing `.GlobalEnv` assignment in `launchCerebro`). Tests ran separately as above.
+- Both updated HLA and Trekker vignettes rendered successfully. Air formatting checks passed for the changed builder/panel/Trekker R files and panel tests.
 
-This is artifact/data-integrity and existing automated UI coverage, not a new
-Windows Brave acceptance run or a whole-application performance benchmark.
+This is artifact/data-integrity and existing automated UI coverage, not a new Windows Brave acceptance run or a whole-application performance benchmark.
 
 ## Data families
 
@@ -122,6 +91,7 @@ Only the scripts and the `.md` files are tracked. Every sub-directory here is a 
 | `*.R` | yes | — | the build scripts, one per data family |
 | `DATASETS.md` | yes | — | the provenance registry: source, citation, licence, acquire command, sampling — one entry per shipped `.crb` |
 | `*.md` (`spatial`, `immune_repertoire`, `trajectory`, `hla`, `trekker`) | yes | — | per-family design and rebuild notes: what to download, what each step does, and the code that does it. They link back to `DATASETS.md` rather than repeat it |
+| `large-demo/` | yes | `run-demo.R` | the scripts that download, convert and register the two large demo data sets (not shipped in `inst/extdata/examples/`). Their downloads go to the user cache directory, not into this tree; see [`large-demo/README.md`](large-demo/README.md) |
 | `vdj_10x/` | **no** (cache) | `build_ir_demos.R` | 10x PBMC VDJ contig CSVs (`pbmc3_t_contig.csv`, `pbmc3_b_contig.csv`) for the immune-repertoire demos |
 | `vdj_10x_dextramer/` | **no** (cache, ~2.7 GB) | `build_hla_tcr_dextramer_demo.R` | the 10x dextramer cohort: per-donor contig annotations, binarized dextramer matrices and expression matrices, plus a local copy of the paper's supplementary PDF (table S1 = the donor genotypes; the publisher's file is never committed — the URL is in [`hla.md`](hla.md#32-download)) |
 | `pubtcrs/` | **no** (cache, ~349 MB) | `build_hla_tcr_bulk_demo.R` | the Emerson/DeWitt cohort archive from Zenodo, plus a cached occurrence scan |

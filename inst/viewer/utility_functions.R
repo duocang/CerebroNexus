@@ -1080,64 +1080,10 @@ viewerExpressionCells <- function(data_set, cells) {
   if (is.null(cell_names)) cells else cell_names[as.integer(cells)]
 }
 
-## The Viewer already owns canonical cell indices and does not need expression
-## column names. Read small BPCells slices in storage order, then restore the
-## requested order on dense vectors. Reordering the lazy matrix first rebuilds
-## million-cell dimension names that the Viewer immediately discards.
-viewerBpcellsValues <- function(data_set, cells, genes) {
-  expression <- tryCatch(data_set$expression, error = function(e) NULL)
-  if (
-    !inherits(expression, "IterableMatrix") ||
-      !is.numeric(cells) ||
-      !length(cells) ||
-      anyNA(cells) ||
-      any(!is.finite(cells)) ||
-      any(cells < 1L) ||
-      any(cells > ncol(expression)) ||
-      any(cells != as.integer(cells)) ||
-      !is.character(genes) ||
-      !length(genes) ||
-      length(genes) > 9L ||
-      anyNA(genes)
-  ) {
-    return(NULL)
-  }
-  gene_indices <- match(genes, rownames(expression))
-  if (anyNA(gene_indices)) {
-    return(NULL)
-  }
-  indices <- as.integer(cells)
-  restore <- NULL
-  if (is.unsorted(indices)) {
-    read_order <- order(indices)
-    indices <- indices[read_order]
-    restore <- order(read_order)
-  }
-  if (is.unsorted(indices, strictly = TRUE)) {
-    return(NULL)
-  }
-  slice <- expression[gene_indices, indices, drop = FALSE]
-  dimnames(slice) <- list(NULL, NULL)
-  values <- as.matrix(slice)
-  stats::setNames(
-    lapply(seq_along(genes), function(index) {
-      value <- as.numeric(values[index, , drop = TRUE])
-      if (is.null(restore)) value else value[restore]
-    }),
-    genes
-  )
-}
-
 viewerExpressionRow <- function(data_set, cells, gene) {
   cells <- viewerExpressionCells(data_set, cells)
   all_cells <- is.null(cells)
   cell_indices <- is.numeric(cells)
-  if (is.character(gene) && length(gene) == 1L && !is.na(gene)) {
-    values <- viewerBpcellsValues(data_set, cells, gene)
-    if (!is.null(values)) {
-      return(values[[1L]])
-    }
-  }
   get_row <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
   if (is.function(get_row)) {
     return(as.numeric(get_row(gene = gene, cells = cells)))
@@ -1192,11 +1138,6 @@ viewerExpressionValues <- function(data_set, cells, genes) {
       return(list())
     }
     return(stats::setNames(list(value), genes))
-  }
-
-  values <- viewerBpcellsValues(data_set, cells, genes)
-  if (!is.null(values)) {
-    return(values)
   }
 
   expression_matrix <- data_set$getExpressionMatrix(
@@ -3576,7 +3517,7 @@ getMetaData <- function() {
   }
   if (
     is.list(schema) &&
-      identical(schema$version, 2L) &&
+      identical(schema$version, 3L) &&
       is.integer(schema$n_cells) &&
       length(schema$n_cells) == 1L &&
       !is.na(schema$n_cells)
@@ -3890,19 +3831,6 @@ read_cerebro_file <- function(file) {
   paste(parts, collapse = "/")
 }
 
-.runtimeAbsoluteBackendPath <- function(path) {
-  if (
-    !is.character(path) ||
-      length(path) != 1L ||
-      is.na(path) ||
-      !nzchar(path)
-  ) {
-    return(FALSE)
-  }
-  normalized <- gsub("\\\\", "/", path)
-  startsWith(normalized, "/") || grepl("^[A-Za-z]:/", normalized)
-}
-
 .validateRuntimeBackendEntry <- function(entry, crb_path) {
   entry_names <- names(entry)
   valid_shape <- is.list(entry) &&
@@ -3917,11 +3845,11 @@ read_cerebro_file <- function(file) {
   valid_type <- is.character(entry$type) &&
     length(entry$type) == 1L &&
     !is.na(entry$type) &&
-    entry$type %in% c("embedded", "h5", "bpcells")
+    entry$type %in% c("embedded", "h5")
   valid_mode <- is.character(entry$mode) &&
     length(entry$mode) == 1L &&
     !is.na(entry$mode) &&
-    entry$mode %in% c("embedded", "bundled", "host_override")
+    entry$mode %in% c("embedded", "bundled")
   if (!valid_type || !valid_mode) {
     .runtimeBackendPlanError("entry has an unsupported type or mode", crb_path)
   }
@@ -3929,7 +3857,7 @@ read_cerebro_file <- function(file) {
     if (!identical(entry$type, "embedded") || !is.null(entry$location)) {
       .runtimeBackendPlanError("embedded entry is inconsistent", crb_path)
     }
-  } else if (identical(entry$mode, "bundled")) {
+  } else {
     if (identical(entry$type, "embedded")) {
       .runtimeBackendPlanError("bundled entry is inconsistent", crb_path)
     }
@@ -3937,13 +3865,6 @@ read_cerebro_file <- function(file) {
       entry$location,
       "The backend plan bundled backend location"
     )
-  } else {
-    if (
-      identical(entry$type, "embedded") ||
-        !.runtimeAbsoluteBackendPath(entry$location)
-    ) {
-      .runtimeBackendPlanError("host override entry is inconsistent", crb_path)
-    }
   }
   list(type = entry$type, mode = entry$mode, location = entry$location)
 }
@@ -4003,12 +3924,7 @@ read_cerebro_file <- function(file) {
   if (!is.null(effective_backend)) {
     return(list(source = "configured", backend = effective_backend))
   }
-  options <- .runtimeCerebroOptions()
-  list(
-    source = "fallback",
-    expression_matrix_h5 = options[["expression_matrix_h5"]],
-    expression_matrix_BPCells = options[["expression_matrix_BPCells"]]
-  )
+  list(source = "fallback")
 }
 
 get_or_load_crb <- function(
@@ -4037,20 +3953,16 @@ get_or_load_crb <- function(
   }
 
   ## Clone the inert serialized prototype before installing delayed bindings.
-  ## R6 clone() forces delayed fields, which previously attached BPCells while
-  ## the user was still on Data Info and also mutated the shared prototype.
+  ## R6 clone() forces delayed fields, which would attach the H5 matrix while
+  ## the user was still on Data Info and also mutate the shared prototype.
   obj <- .cloneCachedCrb(prototype)
   obj <- .attachExternalExpression(obj, path, effective_backend)
-  obj <- .attachImmuneRepertoireBackend(obj, path, effective_backend)
+  obj <- .attachImmuneRepertoireBackend(obj, path)
   obj <- .attachSpatialMoleculeBackend(obj, path)
   obj
 }
 
-.attachImmuneRepertoireBackend <- function(
-  obj,
-  crb_path,
-  effective_backend = NULL
-) {
+.attachImmuneRepertoireBackend <- function(obj, crb_path) {
   field <- "immune_repertoire_backend"
   if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
     return(obj)
@@ -4066,7 +3978,7 @@ get_or_load_crb <- function(
     return(obj)
   }
   valid <- is.list(backend) &&
-    identical(backend$type, "bpcells-file") &&
+    identical(backend$type, "file") &&
     is.character(backend$file) &&
     length(backend$file) == 1L &&
     !is.na(backend$file) &&
@@ -4077,12 +3989,6 @@ get_or_load_crb <- function(
     length(backend$md5) == 1L &&
     !is.na(backend$md5) &&
     grepl("^[[:xdigit:]]{32}$", backend$md5)
-  expression_backend <- if (is.null(effective_backend)) {
-    .fallbackRuntimeBackendPlan(obj, crb_path)
-  } else {
-    .validateRuntimeBackendEntry(effective_backend, crb_path)
-  }
-  valid <- valid && identical(expression_backend$type, "bpcells")
   if (!valid) {
     stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
   }
@@ -4093,19 +3999,7 @@ get_or_load_crb <- function(
   }
   backend$samples <- backend$samples[nzchar(backend$samples)]
   backend$chains <- backend$chains[nzchar(backend$chains)]
-  root <- if (identical(expression_backend$mode, "host_override")) {
-    expression_backend$location
-  } else {
-    file.path(
-      dirname(normalizePath(crb_path, mustWork = FALSE)),
-      expression_backend$location
-    )
-  }
-  if (
-    !is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)
-  ) {
-    stop("The immune repertoire sidecar has no BPCells root.", call. = FALSE)
-  }
+  root <- dirname(normalizePath(crb_path, mustWork = FALSE))
   repertoire_file <- file.path(root, backend$file)
   if (!file.exists(repertoire_file) || dir.exists(repertoire_file)) {
     stop(
@@ -4160,10 +4054,8 @@ get_or_load_crb <- function(
 ##----------------------------------------------------------------------------##
 ## Resolve an external expression backend at load time (B3).
 ##
-## bpcells crbs ship a sibling <stem>.bpcells/ directory; the IterableMatrix
-## handle persisted into the crb carries the writer's absolute @dir, which
-## breaks once the crb is moved. This helper rebuilds the handle from a path
-## rooted at the caller's view of the filesystem.
+## H5 crbs ship a sibling <stem>.h5 file. This helper opens it lazily from a
+## path rooted at the caller's view of the filesystem.
 ##
 ## Configured bundle CRBs receive the build-validated effective backend entry.
 ## Direct launches and uploads read only the ordinary expression_backend field;
@@ -4190,40 +4082,31 @@ get_or_load_crb <- function(
     return(NULL)
   }
   schema_names <- names(schema)
-  expected_names <- if (identical(schema$version, 1L)) {
-    c("version", "cell_names", "cell_names_md5", "projection_rownames")
-  } else if (identical(schema$version, 2L)) {
-    c(
-      "version",
-      "cell_names",
-      "cell_names_md5",
-      "projection_rownames",
-      "n_cells"
-    )
-  } else {
-    character()
-  }
+  expected_names <- c(
+    "version",
+    "cell_names_hash",
+    "projection_rownames",
+    "n_cells"
+  )
   valid <- is.list(schema) &&
     !is.data.frame(schema) &&
-    length(expected_names) > 0L &&
     length(schema) == length(expected_names) &&
     !is.null(schema_names) &&
     !anyDuplicated(schema_names) &&
     setequal(schema_names, expected_names) &&
-    identical(schema$cell_names, "expression") &&
-    is.character(schema$cell_names_md5) &&
-    length(schema$cell_names_md5) == 1L &&
-    !is.na(schema$cell_names_md5) &&
-    grepl("^[[:xdigit:]]{32}$", schema$cell_names_md5) &&
+    identical(schema$version, 3L) &&
+    is.character(schema$cell_names_hash) &&
+    length(schema$cell_names_hash) == 1L &&
+    !is.na(schema$cell_names_hash) &&
+    grepl("^[[:xdigit:]]{32}$", schema$cell_names_hash) &&
     is.character(schema$projection_rownames) &&
     !anyNA(schema$projection_rownames) &&
     !any(!nzchar(schema$projection_rownames)) &&
     !anyDuplicated(schema$projection_rownames) &&
-    (identical(schema$version, 1L) ||
-      (is.integer(schema$n_cells) &&
-        length(schema$n_cells) == 1L &&
-        !is.na(schema$n_cells) &&
-        schema$n_cells >= 0L))
+    is.integer(schema$n_cells) &&
+    length(schema$n_cells) == 1L &&
+    !is.na(schema$n_cells) &&
+    schema$n_cells >= 0L
   if (!valid) {
     stop(
       "The Cerebro data file '",
@@ -4235,24 +4118,43 @@ get_or_load_crb <- function(
   schema
 }
 
-.bpcellsCellNamesChecksum <- function(sidecar) {
-  names_file <- file.path(sidecar, "col_names")
-  if (!file.exists(names_file) || dir.exists(names_file)) {
-    stop("The BPCells sidecar has no cell-name index.", call. = FALSE)
+## The H5 file stores the cell names under /expression/genes and the gene names
+## under /expression/barcodes (writeTENxMatrix() names the axes the 10x way
+## round for a cells x genes matrix). rhdf5 reads them without attaching
+## HDF5Array, whose namespace takes seconds to load.
+.runtimeH5Names <- function(sidecar, dataset) {
+  if (!requireNamespace("rhdf5", quietly = TRUE)) {
+    stop("An H5-backed crb requires the rhdf5 package.", call. = FALSE)
   }
-  checksum <- unname(tools::md5sum(names_file))
-  if (length(checksum) != 1L || is.na(checksum) || !nzchar(checksum)) {
-    stop("Could not checksum the BPCells cell-name index.", call. = FALSE)
+  as.character(as.vector(rhdf5::h5read(
+    sidecar,
+    paste0("expression/", dataset)
+  )))
+}
+
+.runtimeH5CellCount <- function(sidecar) {
+  if (!requireNamespace("rhdf5", quietly = TRUE)) {
+    stop("An H5-backed crb requires the rhdf5 package.", call. = FALSE)
   }
-  checksum
+  as.integer(as.vector(rhdf5::h5read(sidecar, "expression/shape")))[[1L]]
+}
+
+.checkThinCrbCells <- function(cells, schema, crb_path) {
+  if (
+    !identical(rlang::hash(enc2utf8(as.character(cells))), schema$cell_names_hash)
+  ) {
+    stop(
+      "The H5 cell names do not match CRB '",
+      basename(crb_path),
+      "'.",
+      call. = FALSE
+    )
+  }
+  invisible(cells)
 }
 
 .validateThinCrbShape <- function(metadata, projections, schema) {
-  expected_cells <- if (identical(schema$version, 2L)) {
-    schema$n_cells
-  } else {
-    nrow(metadata)
-  }
+  expected_cells <- schema$n_cells
   if (
     !is.data.frame(metadata) ||
       nrow(metadata) != expected_cells ||
@@ -4299,7 +4201,7 @@ get_or_load_crb <- function(
       nrow(metadata) != length(cells)
   ) {
     stop(
-      "The thin CRB and BPCells sidecar have incompatible cell metadata.",
+      "The thin CRB and H5 sidecar have incompatible cell metadata.",
       call. = FALSE
     )
   }
@@ -4320,59 +4222,44 @@ get_or_load_crb <- function(
   )
 }
 
-.hydrateThinCrb <- function(obj, crb_path, sidecar, schema, cells = NULL) {
-  if (!identical(.bpcellsCellNamesChecksum(sidecar), schema$cell_names_md5)) {
-    stop(
-      "The BPCells cell-name index does not match CRB '",
-      basename(crb_path),
-      "'.",
-      call. = FALSE
-    )
-  }
-  if (is.null(cells)) {
-    cells <- colnames(obj$expression)
-  }
-  metadata <- obj$meta_data
-  projections <- obj$projections
-  .validateThinCrbShape(metadata, projections, schema)
-  hydrated <- .hydrateThinCrbFields(metadata, projections, schema, cells)
-  obj$meta_data <- hydrated$meta_data
-  obj$projections <- hydrated$projections
-  obj
+## The H5 file's cell names, compared with the CRB's checksum. `state` is shared
+## by everything that reads them for one attach, so a data set that has been
+## hydrated is not read and hashed a second time before its expression.
+.thinCrbCellNames <- function(state, sidecar, schema, crb_path) {
+  cells <- .runtimeH5Names(sidecar, "genes")
+  .checkThinCrbCells(cells, schema, crb_path)
+  state$verified <- TRUE
+  cells
 }
 
-.deferThinCrbHydration <- function(obj, crb_path, sidecar, schema) {
-  if (!identical(.bpcellsCellNamesChecksum(sidecar), schema$cell_names_md5)) {
+.deferThinCrbHydration <- function(
+  obj,
+  crb_path,
+  sidecar,
+  schema,
+  state = new.env(parent = emptyenv())
+) {
+  if (!identical(.runtimeH5CellCount(sidecar), schema$n_cells)) {
     stop(
-      "The BPCells cell-name index does not match CRB '",
-      basename(crb_path),
-      "'.",
+      "The thin CRB cell count does not match its H5 sidecar.",
       call. = FALSE
     )
   }
   metadata <- obj$meta_data
   projections <- obj$projections
   .validateThinCrbShape(metadata, projections, schema)
-  gene_names_file <- file.path(sidecar, "row_names")
-  gene_names <- if (
-    file.exists(gene_names_file) && !dir.exists(gene_names_file)
-  ) {
-    readLines(gene_names_file, warn = FALSE)
-  } else {
-    NULL
-  }
   attr(obj, "cerebro_projection_first_frame") <- list(
     meta_data = metadata,
     projections = projections,
     canonical_projections = schema$projection_rownames,
     aligned_projections = new.env(parent = emptyenv()),
-    gene_names = gene_names
+    gene_names = .runtimeH5Names(sidecar, "barcodes")
   )
   hydrate <- local({
     hydrated <- NULL
     function() {
       if (is.null(hydrated)) {
-        cells <- readLines(file.path(sidecar, "col_names"), warn = FALSE)
+        cells <- .thinCrbCellNames(state, sidecar, schema, crb_path)
         hydrated <<- .hydrateThinCrbFields(
           metadata,
           projections,
@@ -4432,9 +4319,7 @@ get_or_load_crb <- function(
       call. = FALSE
     )
   }
-  if (!getter_exists && !field_exists) {
-    return(list(type = "embedded", location = NULL, legacy = TRUE))
-  }
+  .assertCurrentRuntimeCrb(obj, crb_path)
   getter <- get(getter_name, envir = obj, inherits = FALSE)
   if (!is.function(getter)) {
     stop(
@@ -4445,14 +4330,11 @@ get_or_load_crb <- function(
     )
   }
   backend <- get(field_name, envir = obj, inherits = FALSE)
-  if (is.null(backend)) {
-    return(list(type = "embedded", location = NULL, legacy = FALSE))
-  }
   valid_type <- is.list(backend) &&
     is.character(backend$type) &&
     length(backend$type) == 1L &&
     !is.na(backend$type) &&
-    backend$type %in% c("embedded", "h5", "bpcells")
+    backend$type %in% c("embedded", "h5")
   valid_location <- valid_type &&
     if (identical(backend$type, "embedded")) {
       is.null(backend$location)
@@ -4476,95 +4358,86 @@ get_or_load_crb <- function(
       paste0("The ", backend$type, " backend location")
     )
   }
-  list(type = backend$type, location = backend$location, legacy = FALSE)
+  list(type = backend$type, location = backend$location)
 }
 
-.runtimeCerebroOptions <- function() {
-  if (!exists("Cerebro.options", envir = .GlobalEnv, inherits = FALSE)) {
-    return(list())
+## CRBs written by older releases that this Viewer no longer opens. The package
+## names the same retired forms in .legacyCerebroReason(); a generated app has no
+## package, so the check is repeated here.
+.runtimeLegacyReason <- function(obj) {
+  is_stored <- function(field) {
+    exists(field, envir = obj, inherits = FALSE) &&
+      !bindingIsActive(field, obj) &&
+      !isTRUE(rlang::env_binding_are_lazy(obj, field))
   }
-  options <- get("Cerebro.options", envir = .GlobalEnv)
-  if (!is.list(options)) {
-    stop("Cerebro.options must be a list.", call. = FALSE)
+  stored <- function(field) {
+    if (is_stored(field)) obj[[field]] else NULL
   }
-  options
+  no_backend <- "it has no expression-backend descriptor"
+  if (!exists("expression_backend", envir = obj, inherits = FALSE)) {
+    return(no_backend)
+  }
+  backend <- stored("expression_backend")
+  if (is.null(backend)) {
+    ## An active or lazy binding is malformed, not old; the readers report it.
+    return(if (is_stored("expression_backend")) no_backend)
+  }
+  schema <- stored("crb_schema")
+  if (is.list(schema) && !identical(schema$version, 3L)) {
+    return(structure(
+      paste0("it uses thin-CRB schema version ", schema$version[1L]),
+      repairable = FALSE
+    ))
+  }
+  if (length(stored("bcr_data")) > 0L || length(stored("tcr_data")) > 0L) {
+    return("its receptors are stored in the retired bcr_data/tcr_data fields")
+  }
+  immune <- stored("immune_repertoire_backend")
+  if (is.list(immune) && !identical(immune$type, "file")) {
+    return(structure(
+      "its immune repertoire sidecar uses a retired layout",
+      repairable = FALSE
+    ))
+  }
+  if (!exists("availableSpatial", envir = obj, inherits = FALSE)) {
+    return("it predates spatial support")
+  }
+  NULL
 }
 
-.normalizeRuntimeOverride <- function(path, key) {
-  if (
-    !is.character(path) ||
-      length(path) != 1L ||
-      is.na(path) ||
-      !nzchar(path)
-  ) {
-    stop("Cerebro.options[['", key, "']] must be a path.", call. = FALSE)
+.assertCurrentRuntimeCrb <- function(obj, crb_path) {
+  reason <- .runtimeLegacyReason(obj)
+  if (!is.null(reason)) {
+    stop(
+      "The Cerebro data file '",
+      basename(crb_path),
+      "' uses a retired format: ",
+      reason,
+      ". ",
+      if (isFALSE(attr(reason, "repairable"))) {
+        paste0(
+          "convertCerebro() cannot repair it; re-export it from the source ",
+          "object with exportFromSeurat(expression_matrix_mode = \"h5\")."
+        )
+      } else {
+        "Convert it once with CerebroNexus::convertCerebro()."
+      },
+      call. = FALSE
+    )
   }
-  normalizePath(path.expand(path), winslash = "/", mustWork = FALSE)
+  invisible(obj)
 }
 
 .fallbackRuntimeBackendPlan <- function(obj, crb_path) {
   backend <- .readRuntimeBackendDescriptor(obj, crb_path)
-  options <- .runtimeCerebroOptions()
-  override_key <- NULL
-  if (isTRUE(backend$legacy)) {
-    if (!is.null(options[["expression_matrix_h5"]])) {
-      override_key <- "expression_matrix_h5"
-      backend$type <- "h5"
-    } else if (!is.null(options[["expression_matrix_BPCells"]])) {
-      override_key <- "expression_matrix_BPCells"
-      backend$type <- "bpcells"
-    }
-  } else if (!identical(backend$type, "embedded")) {
-    candidate <- switch(
-      backend$type,
-      h5 = "expression_matrix_h5",
-      bpcells = "expression_matrix_BPCells"
-    )
-    if (!is.null(options[[candidate]])) {
-      override_key <- candidate
-    }
-  }
-  if (!is.null(override_key)) {
-    return(list(
-      type = backend$type,
-      mode = "host_override",
-      location = .normalizeRuntimeOverride(
-        options[[override_key]],
-        override_key
-      )
-    ))
-  }
-  if (isTRUE(backend$legacy) || identical(backend$type, "embedded")) {
+  if (identical(backend$type, "embedded")) {
     return(list(type = "embedded", mode = "embedded", location = NULL))
   }
   list(type = backend$type, mode = "bundled", location = backend$location)
 }
 
-.runtimeBackendRecoveryAdvice <- function(backend, configured) {
-  key <- switch(
-    backend$type,
-    h5 = "expression_matrix_h5",
-    bpcells = "expression_matrix_BPCells"
-  )
-  if (identical(backend$mode, "host_override")) {
-    if (configured) {
-      return(paste0(
-        "Rebuild the app with a valid cerebro_options[['",
-        key,
-        "']] host override."
-      ))
-    }
-    return(paste0(
-      "Set Cerebro.options[['",
-      key,
-      "']] to a valid host path before loading the CRB."
-    ))
-  }
-  paste0(
-    "Did the .",
-    if (identical(backend$type, "h5")) "h5" else "bpcells/",
-    " sibling get moved or dropped when the CRB was copied?"
-  )
+.runtimeBackendRecoveryAdvice <- function() {
+  "Did the .h5 sibling get moved or dropped when the CRB was copied?"
 }
 
 .attachExternalExpression <- function(
@@ -4575,9 +4448,9 @@ get_or_load_crb <- function(
   if (!any(grepl("Cerebro", class(obj)))) {
     return(obj)
   }
+  .assertCurrentRuntimeCrb(obj, crb_path)
   crb_schema <- .readRuntimeCrbSchema(obj, crb_path)
-  configured <- !is.null(effective_backend)
-  if (!configured) {
+  if (is.null(effective_backend)) {
     be <- .fallbackRuntimeBackendPlan(obj, crb_path)
   } else {
     be <- .validateRuntimeBackendEntry(effective_backend, crb_path)
@@ -4585,128 +4458,81 @@ get_or_load_crb <- function(
 
   if (identical(be$mode, "embedded")) {
     if (!is.null(crb_schema)) {
-      stop("A thin CRB requires a BPCells expression backend.", call. = FALSE)
+      stop("A thin CRB requires an H5 expression backend.", call. = FALSE)
     }
     return(obj)
   }
 
-  if (!is.null(crb_schema) && !identical(be$type, "bpcells")) {
-    stop("A thin CRB requires a BPCells expression backend.", call. = FALSE)
-  }
+  loc_abs <- file.path(
+    dirname(normalizePath(crb_path, mustWork = FALSE)),
+    be$location
+  )
 
-  if (identical(be$mode, "host_override")) {
-    loc_abs <- be$location
-  } else {
-    crb_dir <- dirname(normalizePath(crb_path, mustWork = FALSE))
-    loc_abs <- file.path(crb_dir, be$location)
-  }
-
-  if (be$type == "bpcells") {
-    if (!dir.exists(loc_abs)) {
-      stop(
-        sprintf(
-          paste0(
-            "Expected BPCells matrix directory at '%s' for crb '%s' ",
-            "(backend location '%s'), but the directory does not exist. "
-          ),
-          loc_abs,
-          crb_path,
-          be$location
-        ),
-        .runtimeBackendRecoveryAdvice(be, configured),
-        call. = FALSE
-      )
-    }
-    if (!is.null(crb_schema)) {
-      if (identical(crb_schema$version, 2L)) {
-        obj <- .deferThinCrbHydration(obj, crb_path, loc_abs, crb_schema)
-      } else {
-        cells <- readLines(file.path(loc_abs, "col_names"), warn = FALSE)
-        obj <- .hydrateThinCrb(obj, crb_path, loc_abs, crb_schema, cells)
-      }
-      delayedAssign(
-        "expression",
-        {
-          if (!requireNamespace("BPCells", quietly = TRUE)) {
-            stop(
-              paste(
-                "bpcells-backed crb requires the BPCells package;",
-                "please install it."
-              ),
-              call. = FALSE
-            )
-          }
-          print(glue::glue(
-            "[{Sys.time()}] Attaching bpcells backend: {loc_abs}"
-          ))
-          BPCells::open_matrix_dir(dir = loc_abs)
-        },
-        eval.env = environment(),
-        assign.env = obj
-      )
-    } else {
-      if (!requireNamespace("BPCells", quietly = TRUE)) {
-        stop(
-          "bpcells-backed crb requires the BPCells package; please install it.",
-          call. = FALSE
-        )
-      }
-      print(glue::glue("[{Sys.time()}] Attaching bpcells backend: {loc_abs}"))
-      obj$expression <- BPCells::open_matrix_dir(dir = loc_abs)
-    }
-  } else if (be$type == "h5") {
-    ## Check installation without loading the namespace (seconds when cold);
-    ## pages that never read expression must not pay for it.
-    if (!nzchar(system.file(package = "HDF5Array"))) {
-      stop(
-        "h5-backed crb requires the HDF5Array package; please install it ",
-        "via BiocManager::install(\"HDF5Array\").",
-        call. = FALSE
-      )
-    }
-    if (!file.exists(loc_abs) || dir.exists(loc_abs)) {
-      stop(
-        sprintf(
-          paste0(
-            "Expected h5 file at '%s' for crb '%s' ",
-            "(backend location '%s'), but it is missing or not a file. "
-          ),
-          loc_abs,
-          crb_path,
-          be$location
-        ),
-        .runtimeBackendRecoveryAdvice(be, configured),
-        call. = FALSE
-      )
-    }
-    ## On-disk layout is cells x genes (TENxMatrix orientation, optimised for
-    ## per-gene column reads). Cerebro's internal layout is genes x cells, so
-    ## we transpose lazily — DelayedArray::t() is O(1), no data is read.
-    ## The matrix is never materialised into a dgCMatrix at attach time;
-    ## queries stream from disk through the DelayedMatrix path in
-    ## getExpressionRow / getExpressionBlock. Attach on first expression use.
-    delayedAssign(
-      "expression",
-      {
-        print(glue::glue(
-          "[{Sys.time()}] Attaching h5 backend (lazy TENxMatrix): {loc_abs}"
-        ))
-        t(HDF5Array::TENxMatrix(loc_abs, group = "expression"))
-      },
-      eval.env = environment(),
-      assign.env = obj
-    )
-  } else {
+  ## Check installation without loading the namespace (seconds when cold);
+  ## pages that never read expression must not pay for it.
+  if (!nzchar(system.file(package = "HDF5Array"))) {
     stop(
-      sprintf(
-        "Unknown expression backend type '%s' in crb '%s'.",
-        be$type,
-        crb_path
-      ),
+      "h5-backed crb requires the HDF5Array package; please install it ",
+      "via BiocManager::install(\"HDF5Array\").",
       call. = FALSE
     )
   }
-
+  if (!file.exists(loc_abs) || dir.exists(loc_abs)) {
+    stop(
+      sprintf(
+        paste0(
+          "Expected h5 file at '%s' for crb '%s' ",
+          "(backend location '%s'), but it is missing or not a file. "
+        ),
+        loc_abs,
+        crb_path,
+        be$location
+      ),
+      .runtimeBackendRecoveryAdvice(),
+      call. = FALSE
+    )
+  }
+  cell_names_state <- new.env(parent = emptyenv())
+  if (!is.null(crb_schema)) {
+    obj <- .deferThinCrbHydration(
+      obj,
+      crb_path,
+      loc_abs,
+      crb_schema,
+      cell_names_state
+    )
+  }
+  ## On-disk layout is cells x genes (TENxMatrix orientation, optimised for
+  ## per-gene column reads). Cerebro's internal layout is genes x cells, so
+  ## we transpose lazily — DelayedArray::t() is O(1), no data is read.
+  ## The matrix is never materialised into a dgCMatrix at attach time;
+  ## queries stream from disk through the DelayedMatrix path in
+  ## getExpressionRow / getExpressionBlock. Attach on first expression use.
+  ## A thin CRB stores no cell names, so the H5 file's names are compared with
+  ## its checksum here: the attach above only compared the cell count, and
+  ## expression of another data set with as many cells must not be painted.
+  delayedAssign(
+    "expression",
+    {
+      if (!is.null(crb_schema) && !isTRUE(cell_names_state$verified)) {
+        ## Callers often wrap the first expression access in tryCatch(), so the
+        ## refusal is also logged.
+        tryCatch(
+          .thinCrbCellNames(cell_names_state, loc_abs, crb_schema, crb_path),
+          error = function(error) {
+            print(glue::glue("[{Sys.time()}] {conditionMessage(error)}"))
+            stop(error)
+          }
+        )
+      }
+      print(glue::glue(
+        "[{Sys.time()}] Attaching h5 backend (lazy TENxMatrix): {loc_abs}"
+      ))
+      t(HDF5Array::TENxMatrix(loc_abs, group = "expression"))
+    },
+    eval.env = environment(),
+    assign.env = obj
+  )
   obj
 }
 
@@ -5057,7 +4883,7 @@ viewerImmuneRepertoireSummary <- function(ds) {
     return(list(available = FALSE, samples = character(), chains = character()))
   }
   backend <- tryCatch(ds$immune_repertoire_backend, error = function(e) NULL)
-  if (is.list(backend) && identical(backend$type, "bpcells-file")) {
+  if (is.list(backend) && identical(backend$type, "file")) {
     return(list(
       available = TRUE,
       samples = as.character(backend$samples %||% character()),

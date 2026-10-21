@@ -50,10 +50,6 @@ createShinyApp(
 (or \code{.rds}) file paths. Names must be non-missing and unique and are
 used as stable dataset identities. Paths must resolve to distinct files.}
 
-\item{dataset_labels}{Optional named character vector mapping every dataset
-identity in \code{cerebro_data} to its display label. Values must be non-empty
-but may repeat. When omitted, dataset identities are also used as labels.}
-
 \item{result_dir}{Output directory. Its basename must be portable, its path
 must not use the reserved build-lock namespace, and its final target must
 not be a symbolic link or unresolved filesystem entry.}
@@ -79,12 +75,9 @@ to FALSE.}
 \item{colors}{Optional named list of colour palettes per dataset.}
 
 \item{cerebro_options}{Extra entries merged into \code{Cerebro.options} in
-the generated app. Matrix overrides must be absolute host paths and make
-the resulting app host-dependent. Native paths must resolve outside
-\code{result_dir}; non-native paths cannot be compared with the local app
-tree during the build. Duplicate internal entries are removed, and the
-keys \code{.bundle_backend_plan} and \code{.bundle_run_options} are written
-by the function.}
+the generated app. Duplicate internal entries are removed, and the keys
+\code{.bundle_backend_plan} and \code{.bundle_run_options} are written by
+the function.}
 
 \item{overwrite}{If \code{TRUE} (default), replace \code{result_dir} only
 after a complete staged build succeeds. Publication failures attempt to
@@ -98,22 +91,6 @@ directory is rejected before any files are written.}
 
 \item{show_upload_ui}{One non-missing logical controlling whether users may
 upload their own data; defaults to \code{FALSE}.}
-
-\item{initial_dataset}{Optional exact dataset identity to load initially. This
-does not change the order of \code{cerebro_data}. URL selection and a
-session's current selection take precedence.}
-
-\item{initial_page}{Optional initial Viewer page. Supported stable IDs are
-\code{"data_info"}, \code{"projection"}, \code{"linked_views"},
-\code{"groups"}, \code{"marker_genes"}, \code{"most_expressed_genes"},
-\code{"enriched_pathways"}, \code{"extra_material"},
-\code{"immune_repertoire"}, \code{"trajectory"}, \code{"spatial"},
-\code{"trekker"}, \code{"hla_tcr_motifs"}, \code{"gene_expression"},
-\code{"gene_id_conversion"}, \code{"color_management"}, and
-\code{"about"}. A conditional page is selected only when it is available for
-the first loaded dataset. Initial routing is attempted only once, so switching
-datasets later never triggers a delayed redirect. Shared links take precedence
-after restoration.}
 
 \item{welcome_message}{Welcome message shown in the Load Data tab.}
 
@@ -132,19 +109,6 @@ Supply one number for every dataset, or a named numeric vector/list whose
 names exactly match \code{cerebro_data}. The value initializes every cell
 projection view. Viewer edits are shared by projection pages for the current
 dataset; Spatial uses its own coordinate settings.}
-
-\item{spatial_point_appearance}{Optional named list in
-\code{dataset -> FOV -> list(point_size, point_opacity)} form. Point size
-is from 1 to 20 and opacity from 0 to 1. Used by Spatial and spatial panels
-in Linked views, independently of projection appearance.}
-
-\item{spatial_roi_settings}{Optional named list in
-\code{dataset -> FOV -> ROI -> list(rotation_degrees, point_size, point_opacity)}
-form, matching Builder Coordinate settings. Rotation is a Viewer rotation
-after any coordinate transform baked into the exported CRB.}
-
-\item{spatial_percentage_cells_to_show}{Independent spatial sampling percentage
-from 10 to 100; one number or a numeric vector named by dataset. Defaults to 100.}
 
 \item{variable_to_compare}{Forwarded to \code{Cerebro.options}.}
 
@@ -194,6 +158,7 @@ list with \code{credentials}, the path to an encrypted SQLite database
 created by \code{shinymanager::create_db()}, and \code{passphrase_env},
 the name of the environment variable containing its passphrase. Optional
 \code{timeout_minutes} defaults to 15.}
+
 \item{extra_tables}{Optional named collection of CSV, TSV, TXT, XLS, XLSX,
 or XLSM files to bundle as private Extra material tables. Workbook sheets
 are listed separately and loaded only when selected in the Viewer.}
@@ -202,10 +167,45 @@ are listed separately and loaded only when selected in the Viewer.}
 by \code{extra_tables} labels. Each entry maps displayed names to source
 sheet names; unmapped sheets remain available.}
 
+\item{dataset_labels}{Optional named character vector mapping every dataset
+identity in \code{cerebro_data} to its display label. Values must be
+non-empty but may repeat. When omitted, the dataset identities are also
+used as display labels for backward compatibility.}
+
+\item{initial_dataset}{Optional exact dataset identity to load initially. This
+does not change the order of \code{cerebro_data}. URL selection and a
+session's current selection take precedence.}
+
+\item{initial_page}{Optional initial Viewer page. Supported stable IDs are
+\code{"data_info"}, \code{"projection"}, \code{"linked_views"},
+\code{"groups"}, \code{"marker_genes"},
+\code{"most_expressed_genes"}, \code{"enriched_pathways"},
+\code{"extra_material"}, \code{"immune_repertoire"},
+\code{"trajectory"}, \code{"spatial"}, \code{"trekker"},
+\code{"hla_tcr_motifs"}, \code{"gene_expression"},
+\code{"gene_id_conversion"}, \code{"color_management"}, and
+\code{"about"}. A conditional page is selected only when it is available
+for the first loaded dataset. Initial routing is attempted only once, so
+switching datasets later never triggers a delayed redirect. Shared links
+take precedence after restoration.}
+
 \item{initial_projections}{Optional projection names to show when Linked
 views first opens. A character vector applies to every data set. A named
 list configures individual \code{cerebro_data} labels; omitted labels keep
 the Viewer's default single-projection behavior.}
+
+\item{spatial_point_appearance}{Optional named list in
+\code{dataset -> FOV -> list(point_size, point_opacity)} form. Point size
+is from 1 to 20 and opacity from 0 to 1. Used by Spatial and spatial panels
+in Linked views, independently of projection appearance.}
+
+\item{spatial_roi_settings}{Optional named list in
+\code{dataset -> FOV -> ROI -> list(rotation_degrees, point_size, point_opacity)}
+form, matching Builder Coordinate settings. Rotation is a Viewer rotation
+after any coordinate transform baked into the exported CRB.}
+
+\item{spatial_percentage_cells_to_show}{Independent spatial sampling percentage
+from 10 to 100; one number or a numeric vector named by dataset. Defaults to 100.}
 }
 \value{
 Invisibly returns \code{result_dir}. If that path changes resolution
@@ -219,13 +219,13 @@ UI/server. The output directory can be served directly by shiny-server or
 run with \code{shiny::runApp(result_dir)}.
 }
 \details{
-Supports external expression backends (\code{bpcells}, \code{h5}) in
-addition to the embedded mode. Each \code{.crb} descriptor names a portable
-relative file or directory, which is copied to the same private location
-under \code{private-data/}. The historical \code{data/} name is deliberately
+Supports the external H5 expression backend in addition to the embedded
+mode. Each \code{.crb} descriptor names a portable relative file, and so
+does an immune repertoire sidecar; both are copied to the same private
+location under \code{private-data/}. The historical \code{data/} name is deliberately
 not reused: a still-running older generated app may retain its former
 \code{/data} HTTP resource mapping during an in-place replacement. Raw
-\code{.crb}, H5, and BPCells artifacts are not registered as HTTP resources.
+\code{.crb}, H5, and sidecar files are not registered as HTTP resources.
 Spatial background images are the deliberate exception: files explicitly
 supplied through \code{spatial_images} are copied verbatim under
 \code{spatial-assets/}. The server-side renderer reads these files and embeds
@@ -233,17 +233,18 @@ them as data URIs; the directory is not registered as an HTTP resource.
 Callers must provide trusted image files. Preflight requires a minimum
 stable runtime API and reads the ordinary \code{expression_backend} field
 without invoking serialized methods or its getter. The generated
-configuration stores the effective per-CRB attachment plan after applying
-any deployment override, and configured CRBs consume that exact plan at
-runtime. Direct launches and uploads also read and validate the ordinary
-field without invoking the getter. A historical CRB may omit both field and
-getter; an object containing only one is rejected as an unsupported mixed
-format.
+configuration stores the effective per-CRB attachment plan, and configured
+CRBs consume that exact plan at runtime. Direct launches and uploads also
+read and validate the ordinary field without invoking the getter. A CRB
+from an older release that is no longer read (see
+\code{\link{convertCerebro}}) is rejected, as is an object containing only
+one of field and getter.
 Dataset labels and canonical CRB sources are both unique: two labels cannot
 select the same resolved input file.
 Generated bundles follow the standard deployment model of one app per R
 process; process-global \code{Cerebro.options} does not provide same-process
 isolation between separately sourced apps.
+
 Launch settings are validated and frozen in a typed internal manifest before
 target preparation. The generated \code{app.R} reads that manifest instead of
 interpolating user values into source, and the staged source is parsed before
@@ -251,15 +252,7 @@ publication. The upload limit is installed as
 \code{shiny.maxRequestSize} while the app is running and the previous process
 option is restored when the app stops.
 
-A configured runtime matrix override keeps its existing precedence and skips
-the descriptor sidecar copy. It must be an absolute path. Native paths are
-resolved component by component and rejected if they resolve inside
-\code{result_dir}. Unresolved filesystem entries, unsafe Windows aliases,
-and Windows device namespaces fail closed; a truly absent ordinary target is
-allowed for later provisioning. Non-native absolute paths intended for
-another host are preserved lexically and cannot be compared with that host's
-app tree. Such a bundle depends on that host-managed path and is therefore
-not self-contained. Treat
+Treat
 input \code{.crb}/\code{.rds} files as trusted serialized R objects;
 structural validation is not a sandbox for untrusted RDS input.
 

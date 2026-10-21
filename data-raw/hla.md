@@ -354,7 +354,7 @@ The analysis still uses 2,000 variable genes. The final `save_demo_crb()` step r
 
 ## 3.9 Step 6 — assembling the `.crb`
 
-A `.crb` is an R6 `Cerebro` object written with `saveRDS()`. Building one from scratch means assigning its fields directly; there is no converter to go through.
+A `.crb` is an R6 `Cerebro` object written with `saveCerebro()` (or, in these builders, `save_demo_crb()`, which calls it). Building one from scratch means assigning its fields directly; there is no converter to go through. `saveCerebro()` tags an object that has no expression-backend descriptor as `embedded`; an object written with plain `saveRDS()` must call `crb$setExpressionBackend("embedded")` first, because a `.crb` without a descriptor is rejected as a retired format.
 
 ```r
 # Three states, not two: absence from the published table is only evidence of

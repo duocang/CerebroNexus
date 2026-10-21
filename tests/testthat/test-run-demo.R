@@ -90,7 +90,7 @@ test_that("run-demo loads the worktree and avoids a busy default port", {
 })
 
 test_that("demo preparation reuses valid packs and rebuilds missing or stale first frames", {
-  helper <- testthat::test_path("..", "demo", "prepare_viewer_pack.R")
+  helper <- testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_pack.R")
   skip_if_not(file.exists(helper))
   env <- new.env(parent = globalenv())
   sys.source(helper, env)

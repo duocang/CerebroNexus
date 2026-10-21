@@ -56,7 +56,7 @@ FULL_CRB=/tmp/full.crb Rscript data-raw/build_trajectory_demo.R
 ## 2.2 Step 1 — subset the B cells
 
 ```r
-crb <- readRDS(crb_path)
+crb <- readCerebro(crb_path)
 md  <- crb$getMetaData()
 b_idx      <- which(md$cell_type == "B cells")
 stopifnot(length(b_idx) > 50)              # a trajectory on a handful of cells is noise
@@ -161,7 +161,7 @@ stopifnot(
 )
 
 crb$addTrajectory("monocle2", "B_cell_maturation", list(meta = meta, edges = edges))
-saveRDS(crb, crb_path)
+save_demo_crb(crb, crb_path)
 ```
 
 The assertions catch a degenerate re-run: an all-`NA` pseudotime or an empty edge table would still save and still open in the app, just showing nothing.

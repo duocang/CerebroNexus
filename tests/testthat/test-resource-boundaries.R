@@ -44,7 +44,9 @@ test_that("catalogue construction retains only two launch prototypes", {
   paths <- vapply(1:4, function(i) tempfile(fileext = ".crb"), character(1))
   on.exit(unlink(paths))
   for (i in seq_along(paths)) {
-    saveRDS(Cerebro$new(), paths[i])
+    object <- Cerebro$new()
+    object$setExpressionBackend("embedded")
+    saveRDS(object, paths[i])
   }
   catalog <- .datasetCatalogFromFiles(paths, retain_prototypes = TRUE)
   expect_length(catalog, 4)
@@ -236,7 +238,6 @@ test_that("Enrichr applies timeout and rejects HTTP errors before parsing", {
 
 test_that("delayed exports round-trip without whole-matrix as.matrix", {
   skip_if_not_installed("HDF5Array")
-  skip_if_not_installed("BPCells")
   skip_if_not_installed("Seurat")
   suppressPackageStartupMessages(requireNamespace("DelayedArray"))
   class_name <- "CerebroNoDenseDelayedMatrix"
@@ -288,43 +289,31 @@ test_that("delayed exports round-trip without whole-matrix as.matrix", {
       joined = FALSE,
       fallback = FALSE
     )
-    for (backend in c("h5", "bpcells")) {
-      directory <- withr::local_tempdir()
-      file <- file.path(directory, "test.crb")
-      expect_no_error(exportFromSeurat(
-        obj,
-        file = file,
-        experiment_name = "test",
-        organism = "hg",
-        groups = "sample",
-        nUMI = "nCount_RNA",
-        nGene = "nFeature_RNA",
-        codec = "rds",
-        expression_matrix_mode = backend,
-        .expression_resolution = resolution,
-        verbose = FALSE
-      ))
-      result <- if (backend == "h5") {
-        t(HDF5Array::TENxMatrix(
-          file.path(directory, "test.h5"),
-          group = "expression"
-        ))
-      } else {
-        BPCells::open_matrix_dir(file.path(directory, "test.bpcells"))
-      }
-      expect_identical(dimnames(result), dimnames(case$expected))
-      expect_equal(as.matrix(result), case$expected, tolerance = 0)
-      if (backend == "bpcells") {
-        expect_identical(BPCells::storage_order(result), "row")
-        expect_identical(
-          BPCells::matrix_type(result),
-          if (identical(case$expected, counts)) "uint32_t" else "double"
-        )
-      }
-      expect_length(
-        list.files(directory, pattern = "delayed-expression", recursive = TRUE),
-        0
-      )
-    }
+    directory <- withr::local_tempdir()
+    file <- file.path(directory, "test.crb")
+    expect_no_error(exportFromSeurat(
+      obj,
+      file = file,
+      experiment_name = "test",
+      organism = "hg",
+      groups = "sample",
+      nUMI = "nCount_RNA",
+      nGene = "nFeature_RNA",
+      codec = "rds",
+      expression_matrix_mode = "h5",
+      .expression_resolution = resolution,
+      verbose = FALSE
+    ))
+    result <- t(HDF5Array::TENxMatrix(
+      file.path(directory, "test.h5"),
+      group = "expression"
+    ))
+    expect_identical(dimnames(result), dimnames(case$expected))
+    expect_equal(as.matrix(result), case$expected, tolerance = 0)
+    expect_length(
+      list.files(directory, pattern = "delayed-expression", recursive = TRUE),
+      0
+    )
   }
 })
+

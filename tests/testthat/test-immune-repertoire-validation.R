@@ -183,9 +183,12 @@ test_that("a valid unified repertoire outranks stale legacy slots", {
   object@misc$bcr_data <- "stale"
 
   crb_path <- export_ir(object)
-  loaded <- readRDS(crb_path)$getImmuneRepertoire()
+  exported <- readRDS(crb_path)
+  loaded <- exported$getImmuneRepertoire()
 
   expect_identical(loaded, unified)
+  expect_false(exists("tcr_data", envir = exported, inherits = FALSE))
+  expect_false(exists("bcr_data", envir = exported, inherits = FALSE))
 })
 
 ## ---------------------------------------------------------------------------
@@ -193,8 +196,9 @@ test_that("a valid unified repertoire outranks stale legacy slots", {
 ## ---------------------------------------------------------------------------
 
 test_that("the legacy tcr_data slot is held to the same shape", {
-  ## `getImmuneRepertoire()` falls back to merging `bcr_data` and `tcr_data`,
-  ## so a legacy slot that skipped validation would be a way around it.
+  ## `@misc$tcr_data` is still accepted as input and merged into the unified
+  ## repertoire, so a legacy slot that skipped validation would be a way around
+  ## the check.
   object <- make_ir_seurat()
   object@misc$tcr_data <- lapply(make_ir_repertoire(object), function(df) {
     df$barcode <- NULL
@@ -215,10 +219,9 @@ test_that("the legacy bcr_data slot is held to the same shape", {
 })
 
 test_that("legacy BCR and TCR are unified per sample at export", {
-  ## R6 methods are serialized into a .crb, so changing the class getter later
-  ## does not repair an object already written. The export boundary has to put
-  ## new files into the one-entry-per-sample shape that their serialized getter
-  ## already prefers.
+  ## The Cerebro class no longer has bcr_data / tcr_data fields: the export
+  ## boundary merges the two inputs into the one-entry-per-sample unified
+  ## repertoire and getTCR() / getBCR() split it again by chain.
   object <- make_ir_seurat()
   combined <- make_ir_repertoire(object)
   tcr <- lapply(combined, function(df) {
@@ -240,9 +243,19 @@ test_that("legacy BCR and TCR are unified per sample at export", {
   expect_false(anyDuplicated(names(repertoire)) > 0)
   expect_true(any(grepl("^TRAV", repertoire[["donorA"]]$CTgene)))
   expect_true(any(grepl("^IGHV", repertoire[["donorA"]]$CTgene)))
-  ## Keep the legacy fields for callers of getTCR()/getBCR().
-  expect_equal(loaded$getTCR(), tcr)
-  expect_equal(loaded$getBCR(), bcr)
+  for (sample in names(combined)) {
+    expect_setequal(
+      repertoire[[sample]]$barcode,
+      c(tcr[[sample]]$barcode, bcr[[sample]]$barcode)
+    )
+  }
+  ## The retired fields are not stored; the getters derive from the repertoire.
+  expect_false(exists("tcr_data", envir = loaded, inherits = FALSE))
+  expect_false(exists("bcr_data", envir = loaded, inherits = FALSE))
+  expect_false(is.function(loaded$addTCRData))
+  expect_false(is.function(loaded$addBCRData))
+  expect_equal(loaded$getTCR(), tcr, ignore_attr = "row.names")
+  expect_equal(loaded$getBCR(), bcr, ignore_attr = "row.names")
 })
 
 test_that("merged legacy slots reject one barcode assigned to two samples", {

@@ -50,18 +50,10 @@ privacy_test_sources <- function(root) {
   saveRDS(h5, h5_crb)
   writeLines("H5 PAYLOAD", file.path(source_dir, "matrix.h5"))
 
-  bpcells <- Cerebro$new()
-  bpcells$setExpressionBackend(
-    type = "bpcells",
-    location = "matrix.bpcells"
-  )
-  bpcells_crb <- file.path(source_dir, "bpcells-data.crb")
-  saveRDS(bpcells, bpcells_crb)
-  dir.create(file.path(source_dir, "matrix.bpcells"))
-  writeLines(
-    "BPCELLS PAYLOAD",
-    file.path(source_dir, "matrix.bpcells", "payload")
-  )
+  embedded <- Cerebro$new()
+  embedded$setExpressionBackend(type = "embedded")
+  embedded_crb <- file.path(source_dir, "embedded-data.crb")
+  saveRDS(embedded, embedded_crb)
 
   image <- write_dummy_png(file.path(root, "histology.png"))
   image_bytes <- readBin(
@@ -71,7 +63,7 @@ privacy_test_sources <- function(root) {
   )
 
   list(
-    cerebro_data = c("H5" = h5_crb, "BPCells" = bpcells_crb),
+    cerebro_data = c("H5" = h5_crb, "Embedded" = embedded_crb),
     image = image,
     image_bytes = image_bytes
   )
@@ -217,9 +209,8 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
 
   private_paths <- c(
     file.path(app_dir, "private-data", "h5-data.crb"),
-    file.path(app_dir, "private-data", "bpcells-data.crb"),
-    file.path(app_dir, "private-data", "matrix.h5"),
-    file.path(app_dir, "private-data", "matrix.bpcells", "payload")
+    file.path(app_dir, "private-data", "embedded-data.crb"),
+    file.path(app_dir, "private-data", "matrix.h5")
   )
   expect_true(all(file.exists(private_paths)))
   expect_false(dir.exists(file.path(app_dir, "data")))
@@ -238,13 +229,11 @@ test_that("generated apps expose no bundled artifacts over HTTP", {
 
   private_urls <- c(
     "/data/h5-data.crb",
-    "/data/bpcells-data.crb",
+    "/data/embedded-data.crb",
     "/data/matrix.h5",
-    "/data/matrix.bpcells/payload",
     "/private-data/h5-data.crb",
-    "/private-data/bpcells-data.crb",
+    "/private-data/embedded-data.crb",
     "/private-data/matrix.h5",
-    "/private-data/matrix.bpcells/payload",
     paste0("/", spatial_image_target)
   )
   statuses <- vapply(
@@ -289,9 +278,8 @@ test_that("a running legacy data mapping cannot expose replacement data", {
 
   legacy_private_urls <- c(
     "/data/h5-data.crb",
-    "/data/bpcells-data.crb",
-    "/data/matrix.h5",
-    "/data/matrix.bpcells/payload"
+    "/data/embedded-data.crb",
+    "/data/matrix.h5"
   )
   statuses <- vapply(
     legacy_private_urls,

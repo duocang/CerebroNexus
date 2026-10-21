@@ -652,29 +652,21 @@ test_that("primary bundle reuses thin CRB first-frame fields", {
 
 test_that("thin preloaded primary and supplement align unverified projections once", {
   skip_if_not(have_bundle)
-  skip_if_not_installed("BPCells")
-  root <- withr::local_tempdir()
+  skip_if_not_installed("HDF5Array")
   cells <- c("3", "1", "2") # Numeric-looking barcodes are not row indices.
-  counts <- Matrix::Matrix(
-    matrix(1:6, 2, dimnames = list(c("g1", "g2"), cells)),
-    sparse = TRUE
+  shuffled <- data.frame(x = c(30, 20, 10), y = 3:1, row.names = rev(cells))
+  fixture <- viewer_h5_fixture(
+    withr::local_tempdir(),
+    values = matrix(1:6, 2, dimnames = list(c("g1", "g2"), cells)),
+    stem = "test",
+    metadata = data.frame(
+      cell_barcode = cells,
+      sample = factor("s"),
+      row.names = cells
+    ),
+    projections = list(umap = shuffled, tsne = shuffled)
   )
-  object <- Cerebro$new()
-  object$setExpression(BPCells::write_matrix_dir(
-    counts,
-    file.path(root, "matrix.bpcells")
-  ))
-  object$setExpressionBackend("bpcells", "matrix.bpcells")
-  object$setMetaData(data.frame(cell_barcode = cells, sample = "s"))
-  object$addGroup("sample", "s")
-  for (name in c("umap", "tsne")) {
-    object$addProjection(
-      name,
-      data.frame(x = c(30, 20, 10), y = 3:1, row.names = rev(cells))
-    )
-  }
-  path <- file.path(root, "test.crb")
-  saveCerebro(object, path, viewer_binary = "never")
+  path <- fixture$crb
   scope <- new.env(parent = globalenv())
   sys.source(file.path(dirname(utility_file), "crb_cache.R"), scope)
   sys.source(utility_file, scope)

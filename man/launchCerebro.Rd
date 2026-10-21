@@ -8,9 +8,6 @@ launchCerebro(
   mode = "open",
   maxFileSize = 800,
   crb_file_to_load = NULL,
-  expression_matrix_mode = "crb",
-  expression_matrix_h5 = NULL,
-  expression_matrix_BPCells = NULL,
   welcome_message = NULL,
   point_size = 5,
   point_opacity = 1,
@@ -31,29 +28,6 @@ data set (\code{closed}, removes the "Load data" element); defaults to
 \item{crb_file_to_load}{Path to \code{.crb} file to load on launch of
 Cerebro. Useful when using/hosting Cerebro in \code{closed} mode. Defaults to
 \code{NULL}.}
-
-\item{expression_matrix_mode}{Mode of expression matrix. Can be either
-crb, h5, or BPCells. Default is crb.}
-
-\item{expression_matrix_h5}{Optional: Path to \code{.h5} file containing an expression
-matrix created with \code{HDF5Array::writeTENxMatrix()}, with genes as
-columns and cells as rows, contrary to the conventional format of genes as
-rows and cells as columns. This format greatly favors performance for
-extracting expression values for a gene (column), rather than a cell (row),
-which is the primary action in Cerebro. Importantly, the matrix should be
-stored with "expression" as group name (see parameters of the
-\code{HDF5Array::writeTENxMatrix()} function). Saving the expression matrix
-in \code{TENxMatrix} format has the benefit of a low memory footprint since
-the expression values are directly read from disk. This is particularly
-useful when working with very large data sets and/or when startup of the
-CerebroNexus app is a priority (which is shorter because only the rest of the data
-that needs to be loaded tends to be very small). By default, this value is
-set to \code{NULL}, meaning that the expression matrix is expected to be part
-of the \code{.crb} file.}
-
-\item{expression_matrix_BPCells}{Optional: Path to BPCells directory created with
-\code{BPCells::write_matrix_dir()}. This is a hopefully faster alternative to h5
-with a similar approach.}
 
 \item{welcome_message}{\code{string} with custom welcome message to display
 in the "Load data" tab. Can contain HTML formatting, e.g.

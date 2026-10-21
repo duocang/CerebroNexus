@@ -44,22 +44,10 @@
 }
 
 .exportSidecarName <- function(final_file, expression_matrix_mode) {
-  suffix <- switch(
-    expression_matrix_mode,
-    h5 = ".h5",
-    bpcells = ".bpcells",
+  if (!identical(expression_matrix_mode, "h5")) {
     stop("Only external backends have a sidecar name.", call. = FALSE)
-  )
-  stem <- tools::file_path_sans_ext(basename(final_file))
-  paste0(stem, suffix)
-}
-
-.writeBpcellsGeneMajor <- function(matrix, dir) {
-  if (identical(BPCells::storage_order(matrix), "row")) {
-    BPCells::write_matrix_dir(matrix, dir = dir)
-    return(BPCells::open_matrix_dir(dir))
   }
-  BPCells::transpose_storage_order(matrix, outdir = dir)
+  paste0(tools::file_path_sans_ext(basename(final_file)), ".h5")
 }
 
 .validatePortableExportBasename <- function(final_file) {
@@ -108,16 +96,27 @@
   invisible(location)
 }
 
-.readPublishedExportBackend <- function(final_file) {
+## The CRB that an export is about to replace, read once for the three
+## ownership checks below; NULL when there is none or it is not a Cerebro file.
+.readPublishedObject <- function(final_file) {
   if (!file.exists(final_file) || dir.exists(final_file)) {
     return(NULL)
   }
   object <- tryCatch(.readCerebroPayload(final_file), error = function(error) {
     NULL
   })
+  if (!is.environment(object) || !any(grepl("^Cerebro", class(object)))) {
+    return(NULL)
+  }
+  object
+}
+
+.readPublishedExportBackend <- function(
+  final_file,
+  object = .readPublishedObject(final_file)
+) {
   if (
-    !is.environment(object) ||
-      !any(grepl("^Cerebro", class(object))) ||
+    is.null(object) ||
       !exists("expression_backend", envir = object, inherits = FALSE) ||
       bindingIsActive("expression_backend", object) ||
       isTRUE(rlang::env_binding_are_lazy(object, "expression_backend"))
@@ -131,7 +130,7 @@
       !is.character(backend$type) ||
       length(backend$type) != 1L ||
       is.na(backend$type) ||
-      !(backend$type %in% c("embedded", "h5", "bpcells"))
+      !(backend$type %in% c("embedded", "h5"))
   ) {
     return(NULL)
   }
@@ -151,15 +150,12 @@
   list(type = backend$type, location = backend$location)
 }
 
-.readPublishedSpatialBackend <- function(final_file) {
-  if (!file.exists(final_file) || dir.exists(final_file)) {
-    return(NULL)
-  }
-  object <- tryCatch(.readCerebroPayload(final_file), error = function(error) {
-    NULL
-  })
+.readPublishedSpatialBackend <- function(
+  final_file,
+  object = .readPublishedObject(final_file)
+) {
   if (
-    !is.environment(object) ||
+    is.null(object) ||
       !exists("spatial_molecule_backend", envir = object, inherits = FALSE) ||
       bindingIsActive("spatial_molecule_backend", object) ||
       isTRUE(rlang::env_binding_are_lazy(object, "spatial_molecule_backend"))
@@ -178,12 +174,59 @@
   if (!valid) NULL else backend[c("type", "location")]
 }
 
+.readPublishedImmuneBackend <- function(
+  final_file,
+  object = .readPublishedObject(final_file)
+) {
+  if (
+    is.null(object) ||
+      !exists("immune_repertoire_backend", envir = object, inherits = FALSE) ||
+      bindingIsActive("immune_repertoire_backend", object) ||
+      isTRUE(rlang::env_binding_are_lazy(object, "immune_repertoire_backend"))
+  ) {
+    return(NULL)
+  }
+  backend <- object[["immune_repertoire_backend"]]
+  valid <- is.list(backend) &&
+    identical(backend$type, "file") &&
+    .cerebroSiblingName(backend$file)
+  if (!valid) NULL else backend[c("type", "file")]
+}
+
+## The immune repertoire sidecar of the CRB being replaced that the new CRB no
+## longer uses, or NULL. Only the canonical sidecar names of this CRB qualify,
+## and a file that another CRB in the directory still points to stays.
+.retiredImmuneSidecar <- function(previous, final_file, location) {
+  canonical <- c(
+    .immuneRepertoireSidecarName(final_file, "qs2"),
+    .immuneRepertoireSidecarName(final_file, "rds")
+  )
+  if (
+    is.null(previous) ||
+      identical(previous$file, location) ||
+      !previous$file %in% canonical
+  ) {
+    return(NULL)
+  }
+  others <- list.files(dirname(final_file), "[.]crb$", full.names = TRUE)
+  others <- others[basename(others) != basename(final_file)]
+  for (other in others) {
+    shared <- .readPublishedImmuneBackend(other)
+    if (!is.null(shared) && identical(shared$file, previous$file)) {
+      return(NULL)
+    }
+  }
+  file.path(dirname(final_file), previous$file)
+}
+
 .publishCerebroExport <- function(
   export,
   final_file,
   stage_dir,
   expression_matrix_mode,
-  codec = "rds"
+  codec = "rds",
+  immune_sidecar = "auto",
+  immune_sidecar_threshold = 100000L
 ) {
   final_dir <- dirname(final_file)
   if (!dir.exists(final_dir)) {
@@ -207,12 +250,17 @@
       call. = FALSE
     )
   }
-  previous_backend <- .readPublishedExportBackend(final_file)
-  previous_spatial_backend <- .readPublishedSpatialBackend(final_file)
+  previous <- .readPublishedObject(final_file)
+  previous_backend <- .readPublishedExportBackend(final_file, previous)
+  previous_spatial_backend <- .readPublishedSpatialBackend(final_file, previous)
+  previous_immune_backend <- .readPublishedImmuneBackend(final_file, previous)
+  rm(previous)
   stage_sidecar <- NULL
   final_sidecar <- NULL
   stage_spatial <- NULL
   final_spatial <- NULL
+  stage_immune <- NULL
+  final_immune <- NULL
   if (!identical(backend$type, "embedded")) {
     .validateExportSidecarName(backend$location)
     expected_location <- .exportSidecarName(final_file, backend$type)
@@ -245,10 +293,12 @@
   old_crb_backup <- NULL
   old_sidecar_backup <- NULL
   old_spatial_backup <- NULL
+  old_immune_backup <- NULL
   retired_sidecar <- NULL
+  retired_immune <- NULL
   if (
     !is.null(previous_backend) &&
-      previous_backend$type %in% c("h5", "bpcells") &&
+      identical(previous_backend$type, "h5") &&
       (identical(backend$type, "embedded") ||
         !identical(previous_backend$location, backend$location)) &&
       identical(
@@ -266,6 +316,7 @@
   installed_crb <- FALSE
   installed_sidecar <- FALSE
   installed_spatial <- FALSE
+  installed_immune <- FALSE
   committed <- FALSE
   on.exit(
     {
@@ -315,6 +366,19 @@
             )
           }
         }
+        if (installed_immune && file.exists(final_immune)) {
+          unlink(final_immune, force = TRUE)
+        }
+        if (!is.null(old_immune_backup) && file.exists(old_immune_backup)) {
+          if (!file.rename(old_immune_backup, final_immune)) {
+            warning(
+              "Export rollback could not restore the previous immune ",
+              "repertoire sidecar from: ",
+              old_immune_backup,
+              call. = FALSE
+            )
+          }
+        }
       }
     },
     add = TRUE
@@ -336,11 +400,8 @@
         call. = FALSE
       )
     }
-    if (identical(backend$type, "h5") && dir.exists(stage_sidecar)) {
+    if (dir.exists(stage_sidecar)) {
       stop("The staged h5 sidecar must be a regular file.", call. = FALSE)
-    }
-    if (identical(backend$type, "bpcells") && !dir.exists(stage_sidecar)) {
-      stop("The staged bpcells sidecar must be a directory.", call. = FALSE)
     }
     if (.pathIsSymbolicLink(final_sidecar)) {
       stop(
@@ -373,36 +434,73 @@
         )
       }
     }
-    sidecar_mode <- if (dir.exists(stage_sidecar)) "0700" else "0600"
     .setExportArtifactMode(
       stage_sidecar,
-      sidecar_mode,
+      "0600",
       "the staged expression sidecar"
     )
     if (!file.rename(stage_sidecar, final_sidecar)) {
       stop("Failed to install the staged expression sidecar.", call. = FALSE)
     }
     installed_sidecar <- TRUE
-
-    ## A BPCells handle serialises its absolute directory. Reopen it only after
-    ## the staged directory has reached its published path, then serialise the
-    ## CRB. H5 stores no live handle and needs no equivalent step.
-    if (identical(expression_matrix_mode, "bpcells")) {
-      export$setExpression(
-        BPCells::open_matrix_dir(dir = final_sidecar),
-        backend = "external"
-      )
-    }
   }
 
   payload <- if (.recognizedCerebroObject(export)) {
-    .thinCerebroPayload(
-      export,
-      final_file,
-      sidecar = if (identical(backend$type, "bpcells")) final_sidecar else NULL
-    )
+    .thinCerebroPayload(export, final_file, sidecar = final_sidecar)
   } else {
     export
+  }
+  immune <- .stageImmuneRepertoire(
+    payload,
+    stage_crb,
+    codec,
+    immune_sidecar,
+    immune_sidecar_threshold
+  )
+  payload <- immune$payload
+  stage_immune <- immune$stage
+  ## A sidecar this export no longer uses (the repertoire moved back into the
+  ## CRB, or the codec changed) is removed after the new CRB is committed.
+  retired_immune <- .retiredImmuneSidecar(
+    previous_immune_backend,
+    final_file,
+    immune$location
+  )
+  if (!is.null(immune$location)) {
+    final_immune <- file.path(final_dir, immune$location)
+    if (.pathIsSymbolicLink(final_immune)) {
+      stop(
+        "Refusing to replace a symbolic-link immune repertoire sidecar.",
+        call. = FALSE
+      )
+    }
+    if (file.exists(final_immune)) {
+      owns_target <- !is.null(previous_immune_backend) &&
+        identical(previous_immune_backend$file, immune$location)
+      if (!owns_target) {
+        stop(
+          "Refusing to replace an existing immune repertoire sidecar that is ",
+          "not owned by the published CRB: ",
+          final_immune,
+          call. = FALSE
+        )
+      }
+      old_immune_backup <- tempfile(
+        pattern = paste0(".", basename(final_immune), "-backup-"),
+        tmpdir = final_dir
+      )
+      if (!file.rename(final_immune, old_immune_backup)) {
+        stop(
+          "Failed to preserve the previous immune repertoire sidecar.",
+          call. = FALSE
+        )
+      }
+    }
+    .setExportArtifactMode(stage_immune, "0600", "the immune repertoire sidecar")
+    if (!file.rename(stage_immune, final_immune)) {
+      stop("Failed to install the staged immune repertoire sidecar.", call. = FALSE)
+    }
+    installed_immune <- TRUE
   }
   spatial <- .stageSpatialMolecules(payload, stage_crb, codec)
   payload <- spatial$payload
@@ -466,7 +564,12 @@
   )
   committed <- TRUE
 
-  for (backup in c(old_crb_backup, old_sidecar_backup, old_spatial_backup)) {
+  for (backup in c(
+    old_crb_backup,
+    old_sidecar_backup,
+    old_spatial_backup,
+    old_immune_backup
+  )) {
     if (
       !is.null(backup) &&
         (file.exists(backup) || dir.exists(backup))
@@ -481,25 +584,9 @@
       }
     }
   }
-  if (
-    !is.null(retired_sidecar) &&
-      (file.exists(retired_sidecar) || dir.exists(retired_sidecar))
-  ) {
-    if (.pathIsSymbolicLink(retired_sidecar)) {
-      warning(
-        "The previous sidecar is a symbolic link and was not removed: ",
-        retired_sidecar,
-        call. = FALSE
-      )
-    } else {
-      status <- unlink(retired_sidecar, recursive = TRUE, force = TRUE)
-      if (!identical(status, 0L)) {
-        warning(
-          "The new export was published, but the previous sidecar remains at: ",
-          retired_sidecar,
-          call. = FALSE
-        )
-      }
+  for (retired in list(retired_sidecar, retired_immune)) {
+    if (!is.null(retired)) {
+      .removeRetiredSidecar(retired)
     }
   }
   invisible(final_file)
@@ -547,32 +634,25 @@
 #' such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
 #' \code{expression_matrix_mode} is set to an external backend.
 #' @param expression_matrix_mode How to persist the expression matrix. One of
-#' \code{"embedded"} (default), \code{"bpcells"}, or \code{"h5"}.
+#' \code{"embedded"} (default) or \code{"h5"}.
 #' \itemize{
-#'   \item \code{"embedded"} stores the matrix inside the \code{.crb} file, as
-#'   before. Compatible with all existing \code{.crb} readers.
-#'   \item \code{"bpcells"} writes the matrix to a BPCells on-disk directory
-#'   next to the \code{.crb} and keeps only a lightweight handle in the
-#'   serialised object. Recommended for large sparse matrices. The resulting
-#'   \code{.crb} is portable as long as the sibling \code{.bpcells/} directory
-#'   travels with it; the Shiny runtime re-resolves paths via
-#'   \code{getExpressionBackend()$location} relative to the \code{.crb}'s
-#'   parent directory (step 7.3 runtime attach).
-#'   Delayed/Rle matrix inputs additionally require \pkg{HDF5Array}; they use
-#'   a temporary block-written HDF5 file instead of a full dense realization.
+#'   \item \code{"embedded"} stores the matrix inside the \code{.crb} file.
 #'   \item \code{"h5"} writes the matrix via \code{HDF5Array::writeTENxMatrix()}
 #'   to a TENx-format sparse HDF5 file next to the \code{.crb} (sibling
-#'   \code{<stem>.h5}) and tags the backend with that relative location. The
-#'   on-disk layout matches \code{inst/extdata/examples/example.h5}: a single
-#'   \code{/expression} group with \code{data}, \code{indices}, \code{indptr},
-#'   \code{shape}, \code{genes}, and \code{barcodes} datasets. The matrix is
-#'   stored cells x genes (TENx column-favoured, optimised for per-gene
-#'   reads); the Shiny runtime attach reads it back as a lazy
-#'   \code{HDF5Array::TENxMatrix} seed and transposes it lazily to Cerebro's
-#'   internal genes x cells layout via \code{DelayedArray::t()} (free). The
-#'   in-memory \code{dgCMatrix} is never materialised on attach, so RAM stays
-#'   close to the \code{.crb} metadata size. The gzip level is set by
-#'   \code{h5_compression_level}. Requires the \pkg{HDF5Array} package.
+#'   \code{<stem>.h5}) and tags the backend with that file name. The
+#'   file holds a single \code{/expression} group with \code{data},
+#'   \code{indices}, \code{indptr}, \code{shape}, \code{genes}, and
+#'   \code{barcodes} datasets. The matrix is stored cells x genes (TENx
+#'   column-favoured, optimised for per-gene reads); the Viewer reads it back as
+#'   a lazy \code{HDF5Array::TENxMatrix} seed and transposes it lazily to
+#'   Cerebro's internal genes x cells layout via \code{DelayedArray::t()}
+#'   (free). The in-memory \code{dgCMatrix} is never materialised on attach, so
+#'   RAM stays close to the \code{.crb} metadata size. The \code{.crb} is thin:
+#'   the cell names are kept once, in the H5 file, and the \code{.crb} records
+#'   their order and a checksum. The gzip level is set by
+#'   \code{h5_compression_level}; the default (no compression) is several
+#'   times larger than a compressed file but builds and reads faster.
+#'   Requires the \pkg{HDF5Array} package.
 #' }
 #' The CRB and any sidecar are built and validated in a private sibling stage.
 #' On POSIX systems, new stages and external matrices are owner-only; replacing
@@ -600,6 +680,14 @@
 #' for large datasets, \code{"always"}, or \code{"never"}.
 #' @param viewer_binary_threshold Dataset-level cell threshold used by
 #' \code{viewer_binary = "auto"}.
+#' @param immune_sidecar Store the immune repertoire in a sibling file
+#' \code{<stem>.immune.qs2} (\code{.rds} with \code{codec = "rds"}) instead of
+#' inside the \code{.crb}. \code{"auto"} does so for \code{"h5"} exports whose
+#' repertoire has at least \code{immune_sidecar_threshold} rows; \code{"always"}
+#' and \code{"never"} override that. The sidecar must travel with the
+#' \code{.crb}.
+#' @param immune_sidecar_threshold Number of repertoire rows (cells with
+#' receptor data) used by \code{immune_sidecar = "auto"}.
 #' @param spatial_images Optional named list mapping Seurat image names to named
 #'   image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
 #'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
@@ -614,9 +702,9 @@
 #' If \code{object@misc$immune_repertoire} contains a named list of
 #' data.frames (one per sample, with \code{barcode}, \code{CTgene},
 #' \code{CTnt}, \code{CTaa}, and \code{CTstrict}), it will be automatically
-#' exported into the Cerebro object via \code{addImmuneRepertoire()}. Legacy
-#' \code{bcr_data} /
-#' \code{tcr_data} slots are also supported as a fallback.
+#' exported into the Cerebro object via \code{addImmuneRepertoire()}. When that
+#' slot is empty, receptors kept apart in \code{object@misc$tcr_data} and
+#' \code{object@misc$bcr_data} are merged into it.
 #'
 #' @section HLA typing:
 #' If \code{object@misc$hla_typing} holds an HLA genotype table -- a canonical
@@ -666,13 +754,15 @@ exportFromSeurat <- function(
   nGene = 'nGene',
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
-  expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  expression_matrix_mode = c("embedded", "h5"),
   h5_compression_level = 0L,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
   spatial_images = NULL,
   verbose = FALSE,
+  immune_sidecar = c("auto", "always", "never"),
+  immune_sidecar_threshold = 100000L,
   .expression_resolution = NULL
 ) {
   ##--------------------------------------------------------------------------##
@@ -694,6 +784,10 @@ exportFromSeurat <- function(
   h5_compression_level <- as.integer(h5_compression_level)
   codec <- match.arg(codec)
   viewer_options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
+  immune_options <- .immuneSidecarOptions(
+    match.arg(immune_sidecar),
+    immune_sidecar_threshold
+  )
   if (
     !is.character(file) ||
       length(file) != 1L ||
@@ -723,17 +817,7 @@ exportFromSeurat <- function(
     stop(
       "expression_matrix_mode = \"h5\" requires the HDF5Array package. ",
       "Install it via BiocManager::install(\"HDF5Array\") and re-run, or ",
-      "switch to expression_matrix_mode = \"bpcells\" / \"embedded\".",
-      call. = FALSE
-    )
-  }
-  if (
-    expression_matrix_mode == "bpcells" &&
-      !requireNamespace("BPCells", quietly = TRUE)
-  ) {
-    stop(
-      "expression_matrix_mode = \"bpcells\" requires the BPCells package. ",
-      "Install it and re-run, or switch to expression_matrix_mode = \"embedded\".",
+      "switch to expression_matrix_mode = \"embedded\".",
       call. = FALSE
     )
   }
@@ -936,8 +1020,8 @@ exportFromSeurat <- function(
   ## Split (layered) Seurat v5 objects are joined first, matching
   ## `convertSeuratToCerebro()`. Without it only the first sample's layer is
   ## read: the meta data still describes every cell while the matrix describes
-  ## one sample, and the two are never compared again in the `h5` and `bpcells`
-  ## modes. `JoinLayers()` materialises the merged matrix, so a very large split
+  ## one sample, and the two are never compared again in the `h5` mode.
+  ## `JoinLayers()` materialises the merged matrix, so a very large split
   ## object pays one memory peak here -- the price of exporting all of it.
   if (is.null(.expression_resolution)) {
     expression_resolution <- .getExpressionMatrix(
@@ -946,7 +1030,6 @@ exportFromSeurat <- function(
       slot = slot,
       join_samples = TRUE,
       allow_cross_semantic_fallback = TRUE,
-      allow_iterable_matrix = identical(expression_matrix_mode, "bpcells"),
       verbose = verbose,
       return_resolution = TRUE
     )
@@ -1017,110 +1100,6 @@ exportFromSeurat <- function(
       )
     )
     export$setExpression(expression_data)
-  } else if (expression_matrix_mode == "bpcells") {
-    ## Write the expression matrix to a BPCells on-disk directory sitting next
-    ## to the target .crb. Keep a BPCells IterableMatrix handle on the object
-    ## so that the in-place session (crb + sibling .bpcells dir on the same
-    ## machine, same paths) can use it immediately. Step 7.3's runtime attach
-    ## will additionally re-resolve the relative location when the crb has
-    ## been moved to a different machine or layout.
-    crb_dir <- export_stage_dir
-    bpc_dirname <- .exportSidecarName(final_file, expression_matrix_mode)
-    bpc_abs <- file.path(crb_dir, bpc_dirname)
-
-    ## BPCells writes an error if the directory already exists; clean first
-    ## so the exporter is idempotent.
-    if (dir.exists(bpc_abs)) {
-      unlink(bpc_abs, recursive = TRUE)
-    }
-
-    ## Delayed inputs go through a block-written disk bridge. Never realize
-    ## the complete delayed matrix just to convert it back to sparse storage.
-    delayed_bridge <- NULL
-    if (!inherits(expression_data, "dgCMatrix")) {
-      if (inherits(expression_data, "matrix")) {
-        expression_data <- methods::as(expression_data, "CsparseMatrix")
-      } else if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
-        if (!requireNamespace("HDF5Array", quietly = TRUE)) {
-          stop(
-            "Exporting delayed expression to BPCells requires HDF5Array.",
-            call. = FALSE
-          )
-        }
-        integer_counts <- all(unlist(
-          DelayedArray::blockApply(expression_data, function(block) {
-            all(is.finite(block)) &&
-              all(block >= 0) &&
-              all(block <= .Machine$integer.max) &&
-              all(block == floor(block))
-          }),
-          use.names = FALSE
-        ))
-        delayed_bridge <- tempfile(
-          "delayed-expression-",
-          tmpdir = crb_dir,
-          fileext = ".h5"
-        )
-        HDF5Array::writeTENxMatrix(
-          DelayedArray::t(expression_data),
-          delayed_bridge,
-          group = "matrix"
-        )
-        expression_data <- t(BPCells::open_matrix_10x_hdf5(delayed_bridge))
-        if (integer_counts) {
-          expression_data <- BPCells::convert_matrix_type(
-            expression_data,
-            type = "uint32_t"
-          )
-        }
-      }
-    }
-
-    ## BPCells's on-disk format only bit-packs when the matrix's storage
-    ## type is integer. dgCMatrix always stores values as double, even when
-    ## every nonzero is an integer count (the typical scRNA-seq case), so
-    ## we explicitly convert to "uint32_t" when the values are losslessly
-    ## representable as non-negative integers. This shrinks the BPCells
-    ## sibling ~5x on integer counts (e.g. 50k cells x 20k genes: 440 MB
-    ## raw double -> 78 MB bit-packed). Normalised data (slot = "data" or
-    ## "scale.data") stays as double — bit-packing would silently truncate.
-    if (inherits(expression_data, "IterableMatrix")) {
-      bpc_iter <- expression_data
-      bpc_storage_msg <- paste0(BPCells::matrix_type(bpc_iter), " (source)")
-    } else {
-      nnz_int_ok <- length(expression_data@x) > 0L &&
-        all(expression_data@x >= 0) &&
-        all(expression_data@x == as.integer(expression_data@x)) &&
-        all(expression_data@x <= .Machine$integer.max)
-      bpc_iter <- methods::as(expression_data, "IterableMatrix")
-      if (nnz_int_ok) {
-        bpc_iter <- BPCells::convert_matrix_type(bpc_iter, type = "uint32_t")
-        bpc_storage_msg <- "uint32_t (bit-packed)"
-      } else {
-        bpc_storage_msg <- "double (raw, non-integer values detected)"
-      }
-    }
-
-    if (verbose) {
-      message(sprintf(
-        "[%s] Writing expression matrix to BPCells directory: %s [%s]",
-        format(Sys.time(), "%H:%M:%S"),
-        bpc_abs,
-        bpc_storage_msg
-      ))
-    }
-    ## Keep Cerebro's genes x cells dimensions, but physically store rows
-    ## contiguously so per-gene and small gene-set queries avoid a full scan.
-    mat_handle <- .writeBpcellsGeneMajor(bpc_iter, bpc_abs)
-    if (!is.null(delayed_bridge)) {
-      unlink(delayed_bridge)
-    }
-
-    ## Carry the live handle (absolute path inside @dir -- BPCells normalises
-    ## it on open_matrix_dir()) AND the portable relative location tag. Step
-    ## 7.3's attach reads the tag, not @dir, so the crb stays portable.
-    export$setExpression(mat_handle, backend = "external")
-    export$setExpressionBackend(type = "bpcells", location = bpc_dirname)
   } else if (expression_matrix_mode == "h5") {
     ## Write the expression matrix to a TENxMatrix-format sparse HDF5 file
     ## sitting next to the target .crb. The on-disk orientation is cells x
@@ -1595,73 +1574,44 @@ exportFromSeurat <- function(
   }
 
   ##--------------------------------------------------------------------------##
-  ## BCR data (legacy)
+  ## Receptors kept apart in @misc$tcr_data / @misc$bcr_data
   ##--------------------------------------------------------------------------##
-  if (!has_unified_repertoire && !is.null(object@misc$bcr_data)) {
-    bcr_data <- .dropEmptyRepertoireSamples(object@misc$bcr_data)
-    ## Same check as the unified slot: `getImmuneRepertoire()` falls back to
-    ## merging the legacy slots, so leaving them unchecked would just move the
-    ## way around it rather than close it.
-    bcr_data <- .normalizeImmuneRepertoire(
-      bcr_data,
-      cell_barcodes = Seurat::Cells(object),
-      source_label = "`@misc$bcr_data`"
-    )
-    if (verbose) {
-      message(
-        paste0(
-          '[',
-          format(Sys.time(), '%H:%M:%S'),
-          '] Extracting tables of BCR data...'
-        )
-      )
-    }
-    if (length(bcr_data) > 0L) {
-      export$addBCRData(bcr_data)
-    }
-  }
-
-  ##--------------------------------------------------------------------------##
-  ## TCR data (legacy)
-  ##--------------------------------------------------------------------------##
-  if (!has_unified_repertoire && !is.null(object@misc$tcr_data)) {
-    tcr_data <- .dropEmptyRepertoireSamples(object@misc$tcr_data)
-    tcr_data <- .normalizeImmuneRepertoire(
-      tcr_data,
-      cell_barcodes = Seurat::Cells(object),
-      source_label = "`@misc$tcr_data`"
-    )
-    if (verbose) {
-      message(
-        paste0(
-          '[',
-          format(Sys.time(), '%H:%M:%S'),
-          '] Extracting tables of TCR data...'
-        )
-      )
-    }
-    if (length(tcr_data) > 0L) {
-      export$addTCRData(tcr_data)
-    }
-  }
-
-  ## R6 methods are serialized into the .crb, so changing the class getter does
-  ## not repair files that were already written. For new exports that only use
-  ## the two legacy slots, populate the unified field that the serialized getter
-  ## already prefers. Keep the legacy fields above for getBCR()/getTCR().
+  ## Seurat objects prepared by older workflows hold TCR and BCR in two slots.
+  ## They are checked like the unified slot and merged into the one repertoire
+  ## the .crb stores.
   if (!has_unified_repertoire) {
-    legacy_repertoire <- .mergeRepertoiresBySample(
-      if (exists("tcr_data", inherits = FALSE)) tcr_data else NULL,
-      if (exists("bcr_data", inherits = FALSE)) bcr_data else NULL
-    )
-    legacy_repertoire <- .dropEmptyRepertoireSamples(legacy_repertoire)
-    if (!is.null(legacy_repertoire) && length(legacy_repertoire) > 0) {
-      legacy_repertoire <- .normalizeImmuneRepertoire(
-        legacy_repertoire,
+    receptor_slots <- list(tcr_data = "TCR", bcr_data = "BCR")
+    receptors <- lapply(names(receptor_slots), function(slot) {
+      data <- .dropEmptyRepertoireSamples(object@misc[[slot]])
+      if (is.null(data)) {
+        return(NULL)
+      }
+      if (verbose) {
+        message(
+          paste0(
+            '[',
+            format(Sys.time(), '%H:%M:%S'),
+            '] Extracting tables of ',
+            receptor_slots[[slot]],
+            ' data...'
+          )
+        )
+      }
+      .normalizeImmuneRepertoire(
+        data,
         cell_barcodes = Seurat::Cells(object),
-        source_label = "the merged legacy immune repertoire"
+        source_label = paste0("`@misc$", slot, "`")
       )
-      export$addImmuneRepertoire(legacy_repertoire)
+    })
+    merged_repertoire <- .dropEmptyRepertoireSamples(
+      do.call(.mergeRepertoiresBySample, receptors)
+    )
+    if (!is.null(merged_repertoire) && length(merged_repertoire) > 0) {
+      export$addImmuneRepertoire(.normalizeImmuneRepertoire(
+        merged_repertoire,
+        cell_barcodes = Seurat::Cells(object),
+        source_label = "the merged TCR and BCR repertoire"
+      ))
     }
   }
 
@@ -2022,7 +1972,9 @@ exportFromSeurat <- function(
     final_file = final_file,
     stage_dir = export_stage_dir,
     expression_matrix_mode = expression_matrix_mode,
-    codec = codec
+    codec = codec,
+    immune_sidecar = immune_options$mode,
+    immune_sidecar_threshold = immune_options$threshold
   )
   if (
     .viewerPackEnabled(

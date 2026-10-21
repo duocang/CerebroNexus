@@ -37,10 +37,10 @@
     ),
     clinical = file.path(root, "source", "GSE158055_sample_metadata.xlsx"),
     crb = file.path(prepared, "cerebro_ren_covid_1.46m.crb"),
-    sidecar = file.path(
-      prepared,
-      "cerebro_ren_covid_1.46m.bpcells"
-    ),
+    ## Expression sidecar (cells x genes) and immune repertoire sidecar, both
+    ## next to the CRB.
+    sidecar = file.path(prepared, "cerebro_ren_covid_1.46m.h5"),
+    immune = file.path(prepared, "cerebro_ren_covid_1.46m.immune.qs2"),
     stamp = file.path(prepared, "demo-version")
   )
 }
@@ -618,28 +618,70 @@
   sub("^/", "", selected[[1L]])
 }
 
-.viewerRenWriteSidecar <- function(h5ad, sidecar) {
-  if (dir.exists(sidecar)) {
-    unlink(sidecar, recursive = TRUE, force = TRUE)
+.viewerRenH5adNames <- function(h5ad, group, axis) {
+  ## `raw/X` pairs with the `raw/var` feature names; every other matrix with
+  ## `var`. Cells are always `obs`.
+  parent <- if (axis == "var" && startsWith(group, "raw/")) "raw/var" else axis
+  listing <- rhdf5::h5ls(h5ad, recursive = TRUE)
+  paths <- paste0(
+    ifelse(listing$group == "/", "", listing$group),
+    "/",
+    listing$name
+  )
+  index <- paste0("/", parent, c("/_index", "/index"))
+  index <- index[index %in% paths]
+  if (!length(index)) {
+    stop("The Ren h5ad has no /", parent, " names.", call. = FALSE)
+  }
+  as.character(as.vector(rhdf5::h5read(h5ad, index[[1L]])))
+}
+
+## Writes the Ren counts as the `<stem>.h5` expression sidecar: cells x genes,
+## group "expression", uncompressed, like exportFromSeurat(). Returns the
+## lazily read genes x cells view the Cerebro object would attach at runtime.
+.viewerRenWriteSidecar <- function(h5ad, sidecar, expected_cells = 1462702L) {
+  if (file.exists(sidecar)) {
+    unlink(sidecar, force = TRUE)
   }
   dir.create(dirname(sidecar), recursive = TRUE, showWarnings = FALSE)
-  message("Converting the Ren count matrix to a BPCells sidecar...")
-  matrix <- BPCells::open_matrix_anndata_hdf5(
-    h5ad,
-    group = .viewerRenMatrixGroup(h5ad)
-  )
-  if (ncol(matrix) != 1462702L) {
+  message("Converting the Ren count matrix to an H5 sidecar...")
+  group <- .viewerRenMatrixGroup(h5ad)
+  ## H5SparseMatrix presents the AnnData cells x genes matrix as genes x cells.
+  matrix <- HDF5Array::H5SparseMatrix(h5ad, group)
+  if (ncol(matrix) != expected_cells) {
     stop(
-      "The Ren expression matrix must contain 1,462,702 cells.",
+      "The Ren expression matrix must contain ",
+      format(expected_cells, big.mark = ","),
+      " cells.",
       call. = FALSE
     )
   }
-  if (identical(BPCells::storage_order(matrix), "row")) {
-    BPCells::write_matrix_dir(matrix, dir = sidecar)
-  } else {
-    BPCells::transpose_storage_order(matrix, outdir = sidecar)
+  genes <- .viewerRenH5adNames(h5ad, group, "var")
+  cells <- .viewerRenH5adNames(h5ad, group, "obs")
+  if (
+    length(genes) != nrow(matrix) ||
+      length(cells) != ncol(matrix) ||
+      anyNA(genes) ||
+      any(!nzchar(genes)) ||
+      anyDuplicated(genes)
+  ) {
+    stop("The Ren expression matrix needs unique gene names.", call. = FALSE)
   }
-  BPCells::open_matrix_dir(sidecar)
+  dimnames(matrix) <- list(genes, cells)
+  ## writeTENxMatrix() would scan the whole source once per block of genes.
+  if (!exists(".demoWriteH5Transposed", mode = "function")) {
+    stop(
+      "Source data-raw/large-demo/h5_transposed_write.R before building the demo data.",
+      call. = FALSE
+    )
+  }
+  ## `group` is read directly (CSR arrays) when the file stores it that way.
+  .demoWriteH5Transposed(
+    matrix,
+    sidecar,
+    source = .demoAnnDataCsrSource(h5ad, group)
+  )
+  DelayedArray::t(HDF5Array::TENxMatrix(sidecar, group = "expression"))
 }
 
 .viewerRenBuildObject <- function(paths) {
@@ -664,8 +706,7 @@
   projection <- .viewerRenProjection(paths$h5ad, cells)
   message("Reading 503,432 published paired TCR/BCR records...")
   repertoire <- .viewerRenRepertoire(paths$tcr, paths$bcr, cells)
-  repertoire_file <- file.path(paths$sidecar, "immune_repertoire.qs2")
-  qs2::qs_save(repertoire, repertoire_file)
+  qs2::qs_save(repertoire, paths$immune)
 
   object <- Cerebro$new()
   object$setVersion(utils::packageVersion("CerebroNexus"))
@@ -682,8 +723,7 @@
     "hca_project",
     "5f607e50-ba22-4598-b1e9-f3d9d7a35dcc"
   )
-  object$setExpression(matrix)
-  object$setExpressionBackend("bpcells", basename(paths$sidecar))
+  object$setExpressionBackend("h5", basename(paths$sidecar))
   object$setMetaData(metadata)
   for (group in c(
     "major_type",
@@ -705,9 +745,9 @@
   }
   object$addProjection(.viewerRenProjectionName(projection), projection)
   object$immune_repertoire_backend <- list(
-    type = "bpcells-file",
-    file = basename(repertoire_file),
-    md5 = unname(tools::md5sum(repertoire_file)),
+    type = "file",
+    file = basename(paths$immune),
+    md5 = unname(tools::md5sum(paths$immune)),
     samples = names(repertoire),
     chains = .viewerRenRepertoireChains(repertoire)
   )
@@ -743,9 +783,9 @@
 .viewerRenComplete <- function(paths) {
   file.exists(paths$crb) &&
     !dir.exists(paths$crb) &&
-    dir.exists(paths$sidecar) &&
-    length(list.files(paths$sidecar, all.files = TRUE, no.. = TRUE)) > 0L &&
-    file.exists(file.path(paths$sidecar, "immune_repertoire.qs2")) &&
+    file.exists(paths$sidecar) &&
+    !dir.exists(paths$sidecar) &&
+    file.exists(paths$immune) &&
     file.exists(paths$stamp) &&
     identical(
       readLines(paths$stamp, warn = FALSE),
@@ -758,7 +798,7 @@ prepareViewerRenDemoData <- function(cache_dir = NULL) {
   if (.viewerRenComplete(paths)) {
     return(paths$crb)
   }
-  .viewerRenRequire(c("BPCells", "rhdf5", "readxl"))
+  .viewerRenRequire(c("HDF5Array", "DelayedArray", "rhdf5", "readxl", "qs2"))
   manifest <- .viewerRenFiles()
   for (name in names(manifest)) {
     message("Preparing Ren source: ", basename(paths[[name]]))
@@ -774,7 +814,7 @@ prepareViewerRenDemoData <- function(cache_dir = NULL) {
   dir.create(stage)
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
   staged <- paths
-  for (name in c("crb", "sidecar", "stamp")) {
+  for (name in c("crb", "sidecar", "immune", "stamp")) {
     staged[[name]] <- file.path(stage, basename(paths[[name]]))
   }
   .viewerRenBuildObject(staged)

@@ -1,5 +1,5 @@
 ren_demo_script <- function() {
-  testthat::test_path("..", "demo", "prepare_viewer_ren_data.R")
+  testthat::test_path("..", "..", "data-raw", "large-demo", "prepare_viewer_ren_data.R")
 }
 
 test_that("the Ren demo registers the full published atlas", {
@@ -20,8 +20,7 @@ test_that("the Ren demo registers the full published atlas", {
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
   crb <- file.path(root, "ren.crb")
   file.create(crb)
-  dir.create(file.path(root, "ren.bpcells"))
-  file.create(file.path(root, "ren.bpcells", "shape"))
+  file.create(file.path(root, "ren.h5"))
 
   configured <- env$viewerAddRenDemo(original, crb)
   label <- "Ren et al. COVID-19 atlas (1.46M + TCR/BCR)"
@@ -32,6 +31,13 @@ test_that("the Ren demo registers the full published atlas", {
   expect_equal(unname(configured$percentage_cells_to_show[label]), 100)
   expect_equal(unname(configured$expression_point_size[label]), 2)
   expect_equal(unname(configured$expression_point_opacity[label]), 1)
+
+  unlink(file.path(root, "ren.h5"))
+  expect_error(
+    env$viewerAddRenDemo(original, crb),
+    "CEREBRO_REN_DEMO_CRB must name a .crb with an adjacent .h5 file.",
+    fixed = TRUE
+  )
 })
 
 test_that("the Ren preparation preserves published counts and paired chains", {
@@ -157,7 +163,6 @@ test_that("the Ren preparation keeps large categorical and repertoire data lazy"
   root <- withr::local_tempdir()
   paths <- env$.viewerRenPaths(root)
   dir.create(dirname(paths$crb), recursive = TRUE)
-  dir.create(paths$sidecar)
   env$.viewerRenWriteSidecar <- function(...) {
     matrix(numeric(), 0, length(cells), dimnames = list(NULL, cells))
   }
@@ -201,10 +206,13 @@ test_that("the Ren preparation keeps large categorical and repertoire data lazy"
   expect_identical(env$.viewerRenBuildObject(paths), paths$crb)
   expect_identical(saved, object)
   backend <- object$immune_repertoire_backend
-  expect_identical(backend$type, "bpcells-file")
+  expect_identical(backend$type, "file")
+  expect_identical(backend$file, "cerebro_ren_covid_1.46m.immune.qs2")
   expect_identical(backend$samples, "sample")
   expect_setequal(backend$chains, c("TRA", "TRB"))
-  sidecar <- file.path(paths$sidecar, backend$file)
+  ## The repertoire sidecar sits next to the CRB and the H5 file.
+  sidecar <- file.path(dirname(paths$crb), backend$file)
+  expect_identical(normalizePath(sidecar), normalizePath(paths$immune))
   expect_identical(qs2::qs_read(sidecar), repertoire)
   expect_identical(backend$md5, unname(tools::md5sum(sidecar)))
   expect_null(object$immune_repertoire)
@@ -239,8 +247,8 @@ test_that("Ren preparation preserves prior datasets on failure and upgrade", {
   expect_length(list.files(paths$root, pattern = "stage-"), 0L)
   env$.viewerRenBuildObject <- function(paths) {
     writeLines("new data", paths$crb)
-    dir.create(paths$sidecar)
-    file.create(file.path(paths$sidecar, "immune_repertoire.qs2"))
+    file.create(paths$sidecar)
+    file.create(paths$immune)
     writeLines("2", paths$stamp)
   }
   expect_identical(env$prepareViewerRenDemoData(root), paths$crb)

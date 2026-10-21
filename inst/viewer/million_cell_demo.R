@@ -1,3 +1,22 @@
+## A demo CRB keeps its expression matrix in the sibling <stem>.h5.
+viewerDemoCheckSidecar <- function(path, variable) {
+  sidecar <- sub("[.]crb$", ".h5", path)
+  if (
+    identical(sidecar, path) ||
+      !file.exists(path) ||
+      dir.exists(path) ||
+      !file.exists(sidecar) ||
+      dir.exists(sidecar)
+  ) {
+    stop(
+      variable,
+      " must name a .crb with an adjacent .h5 file.",
+      call. = FALSE
+    )
+  }
+  invisible(sidecar)
+}
+
 viewerAddMillionCellDemo <- function(
   options,
   path = Sys.getenv("CEREBRO_1M_DEMO_CRB", unset = "")
@@ -6,21 +25,9 @@ viewerAddMillionCellDemo <- function(
     return(options)
   }
   path <- normalizePath(path, mustWork = FALSE)
-  sidecar <- sub("[.]crb$", ".bpcells", path)
-  if (
-    identical(sidecar, path) ||
-      !file.exists(path) ||
-      dir.exists(path) ||
-      !dir.exists(sidecar) ||
-      !length(list.files(sidecar, all.files = TRUE, no.. = TRUE))
-  ) {
-    stop(
-      "CEREBRO_1M_DEMO_CRB must name a .crb with an adjacent non-empty .bpcells directory.",
-      call. = FALSE
-    )
-  }
+  viewerDemoCheckSidecar(path, "CEREBRO_1M_DEMO_CRB")
 
-  label <- "10x E18 mouse brain (1M)"
+  label <- "10x E18 mouse brain (1.3M)"
   datasets <- options[["crb_file_to_load"]]
   old_names <- names(datasets)
   add_setting <- function(key, value) {
@@ -53,19 +60,7 @@ viewerAddRenDemo <- function(
     return(options)
   }
   path <- normalizePath(path, mustWork = FALSE)
-  sidecar <- sub("[.]crb$", ".bpcells", path)
-  if (
-    identical(sidecar, path) ||
-      !file.exists(path) ||
-      dir.exists(path) ||
-      !dir.exists(sidecar) ||
-      !length(list.files(sidecar, all.files = TRUE, no.. = TRUE))
-  ) {
-    stop(
-      "CEREBRO_REN_DEMO_CRB must name a .crb with an adjacent non-empty .bpcells directory.",
-      call. = FALSE
-    )
-  }
+  viewerDemoCheckSidecar(path, "CEREBRO_REN_DEMO_CRB")
 
   label <- "Ren et al. COVID-19 atlas (1.46M + TCR/BCR)"
   datasets <- options[["crb_file_to_load"]]

@@ -277,3 +277,98 @@ test_that("cell fingerprints are computed once per CRB file version", {
   expect_identical(cached(path, compute)$fingerprint, 2L)
   expect_identical(cached(NULL, compute)$fingerprint, 3L)
 })
+
+test_that("a background read that never finishes does not stall the dataset switch", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      sys.source(viewer_test_path("utility_functions.R"), scope)
+      sys.source(viewer_test_path("crb_cache.R"), scope)
+      session$sendCustomMessage <- function(type, message) NULL
+      reads <- 0L
+      dataset_load_requested <- reactiveVal(TRUE)
+      context <- list(epoch = "session", dataset_key = "tiny", generation = 1L)
+      available_crb_files <- reactiveValues(
+        files = c(tiny = "tiny.crb"),
+        selected = "tiny",
+        names = "tiny",
+        labels = NULL
+      )
+      viewer_dataset_request <- reactive(
+        list(target = "tiny.crb", dataset_context = context)
+      )
+      get_or_load_crb <- function(...) {
+        reads <<- reads + 1L
+        list(print = function() "tiny dataset", expression = matrix(1:6, 2))
+      }
+      viewerDatasetIdentity <- function() {
+        list(cell_count = 3L, fingerprint = "f", order_fingerprint = "o")
+      }
+      ## A daemon that never starts leaves the task running forever.
+      key <- normalizePath("tiny.crb", winslash = "/", mustWork = FALSE)
+      crb_prefetch_tasks[[key]] <- list(
+        status = function() "running",
+        result = function() shiny::req(FALSE)
+      )
+      crb_prefetch_started[[key]] <- as.numeric(Sys.time()) -
+        crb_prefetch_timeout_seconds - 1
+      viewer_server_load(
+        viewer_server_statements("shiny_server.R", server = TRUE),
+        scope,
+        names = c("datasetLoadProgress", "viewer_dataset_snapshot", "data_set")
+      )
+    },
+    {
+      expect_warning(
+        snapshot <- viewer_dataset_snapshot(),
+        "did not finish within 30 s"
+      )
+      expect_true(snapshot$ok)
+      expect_identical(scope$reads, 1L)
+      expect_false(exists(
+        normalizePath("tiny.crb", winslash = "/", mustWork = FALSE),
+        envir = scope$crb_prefetch_tasks,
+        inherits = FALSE
+      ))
+    }
+  )
+})
+
+test_that("the prefetch time limit counts from when a switch starts to wait", {
+  cache <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("crb_cache.R"), cache)
+  key <- "a.crb"
+
+  ## a read that began earlier has not been waited for yet
+  expect_identical(cache$crb_prefetch_waited(key), 0)
+  cache$crb_prefetch_begin_wait(key)
+  expect_lt(cache$crb_prefetch_waited(key), 5)
+
+  ## the clock is not restarted by a second look
+  cache$crb_prefetch_started[[key]] <- as.numeric(Sys.time()) - 40
+  cache$crb_prefetch_begin_wait(key)
+  expect_gte(cache$crb_prefetch_waited(key), 40)
+  expect_gte(cache$crb_prefetch_waited(key), cache$crb_prefetch_timeout_seconds)
+
+  cache$crb_prefetch_abandon(key)
+  expect_identical(cache$crb_prefetch_waited(key), 0)
+})
+
+test_that("a user who left and came back starts a new wait", {
+  cache <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("crb_cache.R"), cache)
+  key <- "b.crb"
+  now <- as.numeric(Sys.time())
+
+  ## waiting without a break keeps the clock
+  cache$crb_prefetch_started[[key]] <- now - 20
+  cache$crb_prefetch_seen[[key]] <- now - 1
+  cache$crb_prefetch_begin_wait(key)
+  expect_gte(cache$crb_prefetch_waited(key), 20)
+
+  ## an hour away is not an hour of waiting
+  cache$crb_prefetch_started[[key]] <- now - 3600
+  cache$crb_prefetch_seen[[key]] <- now - 3590
+  cache$crb_prefetch_begin_wait(key)
+  expect_lt(cache$crb_prefetch_waited(key), 5)
+})

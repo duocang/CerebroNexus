@@ -21,28 +21,6 @@ if (length(latest_date) == 0 || is.na(latest_date)) {
 }
 cat("Using latest_date:", latest_date, "\n")
 
-# Use the BPCells revision built by the osmzhlab Attic cache, not GitHub main.
-pins_json <- readLines(
-  sprintf(
-    "https://raw.githubusercontent.com/mihem/attic/main/reports/%s/pins.json",
-    latest_date
-  ),
-  warn = FALSE
-)
-pin_value <- function(name) {
-  line <- grep(sprintf('"%s"', name), pins_json, value = TRUE)
-  sub(sprintf('.*"%s"[[:space:]]*:[[:space:]]*"([^"]+)".*', name), "\\1", line)
-}
-pins_date <- pin_value("r_nixpkgs_date")
-if (!identical(pins_date, latest_date)) {
-  stop("pins.json date does not match selected osmzhlab cache date")
-}
-bpcells_sha <- pin_value("bp_cells_rev")
-if (length(bpcells_sha) != 1 || !grepl("^[0-9a-f]{40}$", bpcells_sha)) {
-  stop("Could not determine BPCells revision from osmzhlab Attic pins.json")
-}
-cat("Using BPCells revision:", bpcells_sha, "\n")
-
 
 rix(
   date = latest_date,
@@ -111,80 +89,11 @@ rix(
     "nodejs", # complete-script JavaScript tests
     "pandoc" # required for building vignettes
   ),
-  git_pkgs = list(
-    # BPCells is not on CRAN, install from GitHub
-    list(
-      package_name = "BPCells",
-      repo_url = "https://github.com/bnprks/BPCells/r",
-      commit = bpcells_sha
-    )
-  ),
   ide = "none",
   project_path = ".",
   overwrite = TRUE
 )
 
-# --- BPCells block fix ---
-nix_file <- "default.nix"
-nix_lines <- readLines(nix_file)
-
-bp_start <- grep("BPCells = \\(pkgs.rPackages.buildRPackage \\{", nix_lines)
-bp_end <- grep("^\\s*\\}\\);", nix_lines)
-bp_end <- bp_end[bp_end > bp_start][1]
-
-if (length(bp_start) == 1 && !is.na(bp_end)) {
-  # Extract repo URL, rev, sha256 from BPCells block
-  url_line <- grep("url = ", nix_lines[bp_start:bp_end], fixed = TRUE) +
-    bp_start -
-    1
-  rev_line <- grep("rev = ", nix_lines[bp_start:bp_end], fixed = TRUE) +
-    bp_start -
-    1
-  sha_line <- grep("sha256 = ", nix_lines[bp_start:bp_end], fixed = TRUE) +
-    bp_start -
-    1
-
-  url <- sub(".*url = \"(.*)\";.*", "\\1", nix_lines[url_line])
-  url_src <- sub("/r$", "", url) # Remove trailing /r for BPCells-src
-  rev <- sub(".*rev = \"(.*)\";.*", "\\1", nix_lines[rev_line])
-  sha <- sub(".*sha256 = \"(.*)\";.*", "\\1", nix_lines[sha_line])
-
-  # Create complete replacement block
-  replacement_block <- c(
-    "    BPCells-src = pkgs.fetchgit {",
-    sprintf("      url = \"%s\";", url_src),
-    sprintf("      rev = \"%s\";", rev),
-    sprintf("      sha256 = \"%s\";", sha),
-    "    };",
-    "",
-    "    BPCells = (pkgs.rPackages.buildRPackage {",
-    "      pname = \"BPCells\";",
-    "      name = \"BPCells\";",
-    "      src = \"${BPCells-src}/r\";",
-    "      postPatch = \"patchShebangs configure\";",
-    "      nativeBuildInputs = [ pkgs.pkg-config ];",
-    "      buildInputs = [ pkgs.hdf5 ];"
-  )
-
-  propagatedBuildInputs <- grep(
-    "propagatedBuildInputs = ",
-    nix_lines[bp_start:bp_end],
-    fixed = TRUE
-  ) +
-    bp_start -
-    1
-
-  # Replace BPCells block with corrected version
-  nix_lines <- c(
-    nix_lines[1:(bp_start - 1)],
-    replacement_block,
-    nix_lines[propagatedBuildInputs:bp_end],
-    nix_lines[(bp_end + 1):length(nix_lines)]
-  )
-
-  writeLines(nix_lines, nix_file)
-}
-
 cat(
   "###################################################################################################\n"
 )
@@ -194,5 +103,4 @@ cat(
 cat(
   "###################################################################################################\n"
 )
-cat("Updated nix files successfully:\n")
-print(nix_lines)
+cat("Updated default.nix successfully\n")
