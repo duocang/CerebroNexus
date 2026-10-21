@@ -168,9 +168,9 @@ Seurat uses the same named image collection for several platform-specific
 structures: a name can identify a Visium slice, Xenium or MERFISH field of
 view (FOV), or another Seurat v5 spatial image. It is a structural
 spatial-entry key, not necessarily a donor or sample name. An entry can carry
-multiple user-named backgrounds, or coordinates only. Seurat v4 image classes
-(\code{VisiumV1}, \code{SlideSeq}, \code{STARmap}) are rejected with guidance
-to rebuild them as v5 images.
+multiple user-named backgrounds, or coordinates only. Seurat v4
+\code{VisiumV1} images are rejected with guidance to rebuild them as
+\code{VisiumV2} images.
 }
 \examples{
 \dontrun{

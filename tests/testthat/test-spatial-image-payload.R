@@ -335,7 +335,7 @@ test_that("convertSeuratToCerebro forwards spatial_images without mutation", {
   expect_identical(object@misc, original_misc)
 })
 
-test_that("exportFromSeurat rejects Seurat v4 spatial image classes", {
+test_that("exportFromSeurat rejects Seurat v4 VisiumV1 images only", {
   skip_if_not_installed("Seurat")
   skip_if_not_installed("SeuratObject")
 
@@ -373,7 +373,32 @@ test_that("exportFromSeurat rejects Seurat v4 spatial image classes", {
     )
   )
 
-  for (class_name in names(v4_images)) {
+  ## Seurat 5 still builds SlideSeq (ReadSlideSeq, LoadCurioSeeker) and
+  ## STARmap images, so only VisiumV1 is rejected.
+  slide_seq <- object
+  slide_seq@images <- list(puck = v4_images$SlideSeq)
+  expect_no_error(.assertCurrentSpatialImages(slide_seq))
+  slide_seq_file <- tempfile(fileext = ".crb")
+  on.exit(unlink(slide_seq_file), add = TRUE)
+  exportFromSeurat(
+    codec = "rds",
+    object = slide_seq,
+    assay = "Spatial",
+    slot = "data",
+    file = slide_seq_file,
+    experiment_name = "Seurat SlideSeq image",
+    organism = "mouse",
+    groups = c("seurat_clusters", "cell_type_final"),
+    nUMI = "nCount_Spatial",
+    nGene = "nFeature_Spatial",
+    verbose = FALSE
+  )
+  exported <- readCerebro(slide_seq_file)
+  expect_true("puck" %in% exported$availableSpatial())
+  puck <- exported$getSpatialData("puck", hydrate_molecules = FALSE)
+  expect_setequal(rownames(puck$coordinates), colnames(object))
+
+  for (class_name in "VisiumV1") {
     v4_object <- object
     v4_object@images <- list(legacy = v4_images[[class_name]])
     output <- tempfile(fileext = ".crb")

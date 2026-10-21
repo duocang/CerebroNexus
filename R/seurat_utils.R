@@ -1090,12 +1090,13 @@
   slot_name %in% methods::slotNames(obj)
 }
 
-## Seurat v4 spatial image classes keep their coordinates in a `@coordinates`
-## slot; v5 images (FOV, VisiumV2) keep them in `@boundaries`. Only the v5 form
-## is exported.
+## Seurat v4 `VisiumV1` images keep their spots in a `@coordinates` slot with
+## `imagerow`/`imagecol`; Seurat 5 builds Visium data as `VisiumV2`. `SlideSeq`
+## and `STARmap` are not v4-only: Seurat 5 still builds them in `ReadSlideSeq()`,
+## `LoadCurioSeeker()` and `LoadSTARmap()`, so they stay exportable.
 .assertCurrentSpatialImages <- function(object) {
   images <- if (.spx_has_slot(object, "images")) object@images
-  v4_classes <- c("VisiumV1", "SlideSeq", "STARmap")
+  v4_classes <- "VisiumV1"
   for (name in names(images)) {
     v4 <- intersect(v4_classes, methods::is(images[[name]]))
     if (length(v4)) {
@@ -1591,6 +1592,7 @@
       sn <- methods::slotNames(image_obj)
       direct_slots <- intersect(
         c(
+          "coordinates",
           "coords",
           "centroids",
           "cells",

@@ -698,10 +698,9 @@
 #' @param spatial_images Optional named list mapping Seurat image names to named
 #'   image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
 #'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
-#'   derived from the exported x/y coordinate range. Only Seurat v5 spatial
-#'   images (\code{FOV}, \code{VisiumV2}) are exported; an object whose
-#'   \code{@images} hold a Seurat v4 \code{VisiumV1}, \code{SlideSeq}, or
-#'   \code{STARmap} image is rejected.
+#'   derived from the exported x/y coordinate range. An object whose
+#'   \code{@images} hold a Seurat v4 \code{VisiumV1} image is rejected;
+#'   rebuild it as \code{VisiumV2} with \code{Seurat::Load10X_Spatial()}.
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;
 #' defaults to \code{FALSE}.
 #' @param .expression_resolution Internal handoff used by
@@ -1823,8 +1822,8 @@ exportFromSeurat <- function(
     )
   }
 
-  ## Spatial images live in the `@images` slot. Only Seurat v5 images (VisiumV2,
-  ## FOV) are exported; v4 image classes were rejected above.
+  ## Spatial images live in the `@images` slot. A v4 `VisiumV1` image was
+  ## rejected above; every other image class is exported.
   ## `.getSpatialData()` resolves their coordinates through GetTissueCoordinates
   ## + S4 slot access.
   has_images <- .spx_has_slot(object, "images") &&
