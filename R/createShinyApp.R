@@ -1009,10 +1009,11 @@ dedent <- function(string) {
             names(cerebro_data)[[index]],
             cerebro_data[[index]]
           ))
-          spatial_backends[[index]] <- .spatialMoleculeBackend(
+          ## `[<-` with list(): `[[<-` NULL would delete the slot.
+          spatial_backends[index] <- list(.spatialMoleculeBackend(
             object,
             cerebro_data[[index]]
-          )
+          ))
           immune_backends[index] <- list(.immuneRepertoireBackend(
             object,
             cerebro_data[[index]]
@@ -2641,13 +2642,6 @@ createShinyApp <- function(
     !is.list(immune_backends) || length(immune_backends) != length(cerebro_data)
   ) {
     immune_backends <- vector("list", length(cerebro_data))
-  }
-  if (
-    !is.list(spatial_backends) ||
-      length(spatial_backends) != length(cerebro_data)
-  ) {
-    spatial_backends <- vector("list", length(cerebro_data))
-    names(spatial_backends) <- names(cerebro_data)
   }
   spatial_catalogs <- preflight_data$spatial_catalogs
   spatial_point_appearance <- .normalizeAppSpatialPointSettings(
