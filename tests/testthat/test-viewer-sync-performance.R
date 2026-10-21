@@ -16,6 +16,7 @@ run_projection_indices <- function(
       list()
     }
   )
+  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
   sys.source(viewer_test_path("utility_functions.R"), envir = scope)
   scope$getGroups <- function() groups
   scope$getGroupLevels <- function(group) unique(metadata[[group]])
@@ -221,6 +222,7 @@ test_that("projection filtering and sampling preserve original row indices", {
 
 test_that("the first reactive value bypasses debounce", {
   utility_env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "crb_contract.R"), envir = utility_env)
   sys.source(viewer_test_path("utility_functions.R"), envir = utility_env)
   compute_count <- 0L
   server <- function(input, output, session) {
@@ -244,6 +246,7 @@ test_that("the first reactive value bypasses debounce", {
 
 test_that("page-gated debounced values stay idle off the page", {
   utility_env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "crb_contract.R"), envir = utility_env)
   sys.source(viewer_test_path("utility_functions.R"), envir = utility_env)
   compute_count <- 0L
   server <- function(input, output, session) {
@@ -273,6 +276,7 @@ test_that("page-gated debounced values stay idle off the page", {
 
 test_that("hidden outputs resolve to their owning sidebar tabs", {
   utility_env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "crb_contract.R"), envir = utility_env)
   sys.source(viewer_test_path("utility_functions.R"), envir = utility_env)
 
   expect_identical(

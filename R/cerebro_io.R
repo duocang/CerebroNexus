@@ -1,3 +1,24 @@
+## The CRB reading contract shared with the Viewer runtime; load it once per
+## R process.
+.crbContract <- local({
+  contract <- NULL
+  function() {
+    if (is.null(contract)) {
+      contract <<- new.env(parent = baseenv())
+      sys.source(
+        system.file(
+          "viewer",
+          "core",
+          "crb_contract.R",
+          package = "CerebroNexus"
+        ),
+        contract
+      )
+    }
+    contract
+  }
+})
+
 .storedCerebroField <- function(object, field) {
   is.environment(object) &&
     exists(field, envir = object, inherits = FALSE) &&
@@ -84,137 +105,6 @@
     )
   }
   sidecar
-}
-
-## ---- Retired formats ----------------------------------------------------- ##
-## Older CerebroNexus releases wrote CRBs that the readers no longer open. Each
-## retired form is named here once, so readCerebro(), createShinyApp() and the
-## Viewer reject it with one message and convertCerebro() knows what to repair.
-
-.legacyCerebroReason <- function(object) {
-  stored <- function(field) {
-    if (.storedCerebroField(object, field)) object[[field]] else NULL
-  }
-  no_backend <- "it has no expression-backend descriptor"
-  if (!exists("expression_backend", envir = object, inherits = FALSE)) {
-    return(no_backend)
-  }
-  backend <- stored("expression_backend")
-  if (is.null(backend)) {
-    ## An active or lazy binding is malformed, not old; the readers report it.
-    return(if (.storedCerebroField(object, "expression_backend")) no_backend)
-  }
-  schema <- stored("crb_schema")
-  if (is.list(schema) && !identical(schema$version, 3L)) {
-    return(structure(
-      paste0("it uses thin-CRB schema version ", schema$version[1L]),
-      repairable = FALSE
-    ))
-  }
-  if (length(stored("bcr_data")) > 0L || length(stored("tcr_data")) > 0L) {
-    return("its receptors are stored in the retired bcr_data/tcr_data fields")
-  }
-  immune <- stored("immune_repertoire_backend")
-  if (is.list(immune) && !identical(immune$type, "file")) {
-    return(structure(
-      "its immune repertoire sidecar uses a retired layout",
-      repairable = FALSE
-    ))
-  }
-  ## Accessors the Viewer calls without a guard; an object that lacks one was
-  ## written before it existed (see `.requiredCerebroMethods`).
-  absent <- !vapply(
-    names(.requiredCerebroMethods),
-    exists,
-    logical(1),
-    envir = object,
-    inherits = FALSE
-  )
-  if (any(absent)) {
-    return(paste0(
-      "it predates ",
-      .requiredCerebroMethods[[which(absent)[[1L]]]]
-    ))
-  }
-  ## Spatial entries written in a form that is no longer read.
-  .legacySpatialReason(object)
-}
-
-## Accessor -> the feature that introduced it.
-.requiredCerebroMethods <- c(
-  availableSpatial = "spatial support",
-  getHLATyping = "HLA typing support",
-  getTrekker = "Trekker support",
-  getMethodsForEnrichedPathways = "the enriched-pathways page"
-)
-
-## Reason for a spatial entry in a retired form, or NULL: the singular
-## `histology_image` / `histology_image_bounds` fields (now `histology_images`), a
-## molecule table embedded in the CRB (now a per-FOV sidecar reference), or a
-## `getSpatialData()` that cannot defer the molecules. The Viewer repeats this in
-## `.runtimeLegacySpatialReason()`.
-.legacySpatialReason <- function(object) {
-  spatial <- if (.storedCerebroField(object, "spatial")) object[["spatial"]]
-  if (!is.list(spatial) || !length(spatial)) {
-    return(NULL)
-  }
-  entry_names <- names(spatial)
-  for (index in seq_along(spatial)) {
-    entry <- spatial[[index]]
-    if (!is.list(entry)) {
-      next
-    }
-    label <- if (is.null(entry_names)) index else entry_names[[index]]
-    if (any(c("histology_image", "histology_image_bounds") %in% names(entry))) {
-      return(paste0(
-        "its spatial entry '",
-        label,
-        "' stores a singular histology_image instead of histology_images"
-      ))
-    }
-    molecules <- entry[["molecules"]]
-    if (
-      !is.null(molecules) && !inherits(molecules, "CerebroSpatialMoleculeRef")
-    ) {
-      return(paste0(
-        "its spatial entry '",
-        label,
-        "' embeds its molecule table instead of using the spatial sidecar"
-      ))
-    }
-  }
-  getter <- if (.storedCerebroField(object, "getSpatialData")) {
-    object[["getSpatialData"]]
-  }
-  if (
-    !is.function(getter) || !"hydrate_molecules" %in% names(formals(getter))
-  ) {
-    return("it predates deferred spatial molecule loading")
-  }
-  NULL
-}
-
-.assertCurrentCerebroFile <- function(object, file) {
-  reason <- .legacyCerebroReason(object)
-  if (!is.null(reason)) {
-    stop(
-      "The Cerebro data file '",
-      basename(file),
-      "' uses a retired format: ",
-      reason,
-      ". ",
-      if (isFALSE(attr(reason, "repairable"))) {
-        paste0(
-          "convertCerebro() cannot repair it; re-export it from the source ",
-          "object with exportFromSeurat(expression_matrix_mode = \"h5\")."
-        )
-      } else {
-        "Convert it once with CerebroNexus::convertCerebro()."
-      },
-      call. = FALSE
-    )
-  }
-  invisible(object)
 }
 
 ## ---- H5 expression sidecar ------------------------------------------------ ##
@@ -426,59 +316,6 @@
     n_cells = length(cells)
   )
   payload
-}
-
-.readCrbSchema <- function(object, file) {
-  if (!exists("crb_schema", envir = object, inherits = FALSE)) {
-    return(NULL)
-  }
-  if (!.storedCerebroField(object, "crb_schema")) {
-    stop(
-      "The Cerebro data file '",
-      basename(file),
-      "' has an unsupported CRB schema descriptor.",
-      call. = FALSE
-    )
-  }
-  schema <- object[["crb_schema"]]
-  if (is.null(schema)) {
-    return(NULL)
-  }
-  schema_names <- names(schema)
-  expected_names <- c(
-    "version",
-    "cell_names_hash",
-    "projection_rownames",
-    "n_cells"
-  )
-  valid <- is.list(schema) &&
-    !is.data.frame(schema) &&
-    length(schema) == length(expected_names) &&
-    !is.null(schema_names) &&
-    !anyDuplicated(schema_names) &&
-    setequal(schema_names, expected_names) &&
-    identical(schema$version, 3L) &&
-    is.character(schema$cell_names_hash) &&
-    length(schema$cell_names_hash) == 1L &&
-    !is.na(schema$cell_names_hash) &&
-    grepl("^[[:xdigit:]]{32}$", schema$cell_names_hash) &&
-    is.character(schema$projection_rownames) &&
-    !anyNA(schema$projection_rownames) &&
-    !any(!nzchar(schema$projection_rownames)) &&
-    !anyDuplicated(schema$projection_rownames) &&
-    is.integer(schema$n_cells) &&
-    length(schema$n_cells) == 1L &&
-    !is.na(schema$n_cells) &&
-    schema$n_cells >= 0L
-  if (!valid) {
-    stop(
-      "The Cerebro data file '",
-      basename(file),
-      "' has an unsupported CRB schema descriptor.",
-      call. = FALSE
-    )
-  }
-  schema
 }
 
 .attachCerebroExpression <- function(object, file, backend) {
@@ -1088,9 +925,9 @@ readCerebro <- function(file) {
   if (!.recognizedCerebroObject(serialized)) {
     stop("`object` must be a serialized Cerebro object.", call. = FALSE)
   }
-  .assertCurrentCerebroFile(serialized, file)
+  .crbContract()$.assertCurrentRuntimeCrb(serialized, file)
   backend <- .cerebroBackend(serialized)
-  schema <- .readCrbSchema(serialized, file)
+  schema <- .crbContract()$.readRuntimeCrbSchema(serialized, file)
   object <- .currentCerebroCopy(serialized)
   object <- .attachCerebroExpression(object, file, backend)
   object <- .hydrateThinCerebro(object, file, backend, schema)
@@ -1193,7 +1030,7 @@ readCerebro <- function(file) {
     object,
     file,
     backend,
-    .readCrbSchema(serialized, file)
+    .crbContract()$.readRuntimeCrbSchema(serialized, file)
   )
   object <- .attachCerebroSpatialMolecules(object, file)
   .attachCerebroImmuneRepertoire(object, file)

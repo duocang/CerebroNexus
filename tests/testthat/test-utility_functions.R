@@ -30,6 +30,10 @@ skip_if_not(file.exists(utils_file), "utility_functions.R not found")
 utils_env <- new.env()
 sys.source(file.path(dirname(utils_file), "crb_cache.R"), envir = utils_env)
 sys.source(file.path(dirname(utils_file), "msigdb.R"), envir = utils_env)
+sys.source(
+  file.path(dirname(utils_file), "core", "crb_contract.R"),
+  envir = utils_env
+)
 source(utils_file, local = utils_env)
 ## The fixtures below use a single mocked collection ("H"); the per-collection
 ## catalogue walk is covered separately in test-resource-boundaries.R.
@@ -493,16 +497,19 @@ test_that("duplicate Extra material labels identify the embedded source", {
   )
 })
 
-test_that("CRB cache log labels omit directory paths", {
-  label <- get0(".crbLogLabel", envir = utils_env, inherits = FALSE)
-  expect_true(is.function(label))
-  if (!is.function(label)) {
-    return(invisible(NULL))
-  }
-  expect_identical(
-    label("/private/shiny/session/uploaded-dataset.crb"),
-    "uploaded-dataset.crb"
-  )
+test_that("CRB cache log lines omit directory paths", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, "uploaded-dataset.crb")
+  object <- Cerebro$new()
+  object$setExpressionBackend(type = "embedded")
+  saveRDS(object, path)
+  output <- capture.output({
+    utils_env$get_or_load_crb(path)
+    utils_env$get_or_load_crb(path)
+  })
+  expect_match(output[[1L]], "CRB cache miss, loading: uploaded-dataset.crb$")
+  expect_match(output[[2L]], "CRB cache hit: uploaded-dataset.crb$")
+  expect_false(any(grepl(basename(root), output, fixed = TRUE)))
 })
 
 test_that("Viewer uploads require explicit open mode", {

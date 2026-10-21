@@ -569,6 +569,10 @@ source_bundle_runtime <- function(app = NULL) {
   stopifnot(file.exists(utility))
   runtime <- new.env(parent = globalenv())
   sys.source(file.path(dirname(utility), "crb_cache.R"), envir = runtime)
+  sys.source(
+    file.path(dirname(utility), "core", "crb_contract.R"),
+    envir = runtime
+  )
   sys.source(utility, envir = runtime)
   runtime
 }
@@ -978,7 +982,7 @@ test_that("build and runtime share the backend plan decision contract", {
   for (case_name in names(cases)) {
     backend <- cases[[case_name]]
     object <- new_backend_contract_object(backend[c("type", "location")])
-    build <- .effectiveBundleBackendPlan(backend)
+    build <- .crbContract()$.effectiveRuntimeBackendPlan(backend)
     app_runtime <- runtime$.fallbackRuntimeBackendPlan(
       object,
       file.path(root, paste0(case_name, ".crb"))
@@ -987,11 +991,11 @@ test_that("build and runtime share the backend plan decision contract", {
     expect_identical(app_runtime, build, info = case_name)
   }
   expect_identical(
-    .effectiveBundleBackendPlan(cases$embedded),
+    .crbContract()$.effectiveRuntimeBackendPlan(cases$embedded),
     list(type = "embedded", mode = "embedded", location = NULL)
   )
   expect_identical(
-    .effectiveBundleBackendPlan(cases$h5),
+    .crbContract()$.effectiveRuntimeBackendPlan(cases$h5),
     list(type = "h5", mode = "bundled", location = "matrix.h5")
   )
 })
@@ -3393,23 +3397,7 @@ test_that("a bundled real H5 backend attaches with exact data", {
 
 test_that("the runtime rejects an H5 backend that is a directory", {
   skip_if_not_installed("HDF5Array")
-  runtime <- new.env(parent = globalenv())
-  source_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
-    "viewer",
-    "utility_functions.R"
-  )
-  if (!file.exists(source_path)) {
-    source_path <- system.file(
-      "viewer",
-      "utility_functions.R",
-      package = "CerebroNexus"
-    )
-  }
-  expect_true(file.exists(source_path))
-  sys.source(source_path, envir = runtime)
+  runtime <- source_bundle_runtime()
   root <- withr::local_tempdir()
   dir.create(file.path(root, "matrix.h5"))
   object <- new.env(parent = emptyenv())
