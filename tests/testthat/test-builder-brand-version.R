@@ -41,5 +41,5 @@ test_that("Builder brand renders the runtime version without hardcoding it", {
 
   expect_match(app, "builder_runtime_package_version()", fixed = TRUE)
   expect_match(app, 'paste0("v", builder_runtime_version)', fixed = TRUE)
-  expect_false(grepl('"v5.0.0"', app, fixed = TRUE))
+  expect_false(grepl('"v6.0.0"', app, fixed = TRUE))
 })

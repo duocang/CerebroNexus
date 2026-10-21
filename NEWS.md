@@ -1,4 +1,4 @@
-# CerebroNexus 5.0.0
+# CerebroNexus 6.0.0
 
 ## Input formats
 
@@ -139,7 +139,7 @@
 
 - Removes application-specific container recipes and the direct OpenSSL package
   dependency. Dataset bundle filenames remain unchanged.
-- Consolidates this PR's development NEWS entries into one 5.0.0 release; earlier
+- Consolidates this PR's development NEWS entries into one 6.0.0 release; earlier
   released versions below are unchanged. Nix remains the CI environment.
 
 # CerebroNexus 4.4.3
