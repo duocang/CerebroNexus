@@ -124,6 +124,9 @@ current `.crb` is the only supported input.
   with more than 12 groups among the cells shown is not drawn (filter its groups
   or choose another column); a notice says so, and also when no cell or only
   some cells have a value in the column.
+- Share is offered on the grouped Clonal projection too. An opened view comes
+  back grouped by its column, and its selection and brush return to the panel
+  they were made in once the panels are drawn.
 
 ## Example data
 
