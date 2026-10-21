@@ -22,7 +22,7 @@
       "source",
       "1M_neurons_filtered_gene_bc_matrices_h5.h5"
     ),
-    analysis = file.path(root, "analysis", "mouse_brain_1m_sketch.rds"),
+    analysis = file.path(root, "analysis", "mouse_brain_e18_sketch.rds"),
     crb = file.path(root, "cerebro", "cerebro_mouse_brain_1m.crb"),
     ## Expression sidecar (cells x genes), next to the CRB.
     sidecar = file.path(root, "cerebro", "cerebro_mouse_brain_1m.h5")
@@ -706,7 +706,7 @@
   metadata <- data.frame(
     cell_barcode = cells,
     orig.ident = factor(rep("mouse_brain_1m", length(cells))),
-    sample = factor(rep("10x E18 mouse brain (1M subset)", length(cells))),
+    sample = factor(rep("10x E18 mouse brain (1.3M)", length(cells))),
     seurat_clusters = factor(analysis$clusters, levels = cluster_levels),
     nUMI = analysis$nUMI,
     nGene = analysis$nGene,
@@ -722,7 +722,7 @@
 
   object <- Cerebro$new()
   object$setVersion(utils::packageVersion("CerebroNexus"))
-  object$addExperiment("experiment_name", "10x E18 mouse brain (1M subset)")
+  object$addExperiment("experiment_name", "10x E18 mouse brain (1.3M)")
   object$addExperiment("organism", "Mouse")
   object$addExperiment("date_of_export", as.character(Sys.Date()))
   object$addParameters("main_group", "seurat_clusters")
@@ -734,15 +734,10 @@
   saveCerebro(object, paths$crb)
 }
 
-## Subsamples 1,000,000 evenly spaced cells of the 10x source, analyses a
-## sketch of them and writes the CRB with its H5 sidecar.
-.viewer1mBuild <- function(paths, n_cells = 1000000L, sketch_cells = 50000L) {
+## Uses all cells of the 10x source, analyses a sketch of them and writes the
+## CRB with its H5 sidecar.
+.viewer1mBuild <- function(paths, sketch_cells = 50000L) {
   matrix <- .viewer1mOpenSource(paths$source)
-  if (ncol(matrix) < n_cells) {
-    stop("The 10x source must contain at least 1M unique cells.", call. = FALSE)
-  }
-  selected <- floor(seq(0, ncol(matrix) - 1, length.out = n_cells)) + 1L
-  matrix <- matrix[, selected]
   if (file.exists(paths$analysis)) {
     analysis <- readRDS(paths$analysis)
   } else {

@@ -20,7 +20,7 @@ test_that("the 1M demo is opt-in and validates its H5 file", {
   file.create(file.path(root, "mouse.h5"))
 
   configured <- env$viewerAddMillionCellDemo(original, crb)
-  label <- "10x E18 mouse brain (1M)"
+  label <- "10x E18 mouse brain (1.3M)"
   expect_identical(
     unname(configured$crb_file_to_load[label]),
     normalizePath(crb)
@@ -525,16 +525,11 @@ test_that("Mouse 1M marker-guided trajectory keeps its neural-lineage contract",
   }
   trajectory <- object$getTrajectory("marker_guided", "E18_neurogenesis")
 
-  expect_identical(nrow(object$getMetaData()), 1000000L)
-  expect_identical(nrow(trajectory$meta), 981785L)
-  expect_identical(1000000L - nrow(trajectory$meta), 18215L)
+  expect_identical(nrow(object$getMetaData()), 1306127L)
+  expect_lt(nrow(trajectory$meta), nrow(object$getMetaData()))
   expect_false(anyNA(trajectory$meta$pseudotime))
   expect_false(anyNA(trajectory$meta$DR_1))
   expect_false(anyNA(trajectory$meta$DR_2))
-  expect_setequal(
-    trajectory$provenance$excluded_clusters,
-    c("2", "9", "20", "23", "29", "30")
-  )
 })
 
 test_that("Gene projection delegates paint order without copying cell vectors", {

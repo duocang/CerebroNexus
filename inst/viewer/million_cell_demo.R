@@ -27,7 +27,7 @@ viewerAddMillionCellDemo <- function(
   path <- normalizePath(path, mustWork = FALSE)
   viewerDemoCheckSidecar(path, "CEREBRO_1M_DEMO_CRB")
 
-  label <- "10x E18 mouse brain (1M)"
+  label <- "10x E18 mouse brain (1.3M)"
   datasets <- options[["crb_file_to_load"]]
   old_names <- names(datasets)
   add_setting <- function(key, value) {

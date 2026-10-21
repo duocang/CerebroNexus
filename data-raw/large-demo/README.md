@@ -1,6 +1,6 @@
 # Large demo data sets
 
-These scripts download and prepare the two large demo data sets that `run-demo.R` opens in the Viewer: the one-million-cell mouse brain E18 data set and the Ren et al. COVID-19 atlas (1.46M cells with paired TCR/BCR data). They are not shipped in `inst/extdata/examples/`, `data-raw/` is excluded from package builds, and they are not part of the test suite. `tests/testthat/test-run-demo.R`, `test-ren-demo.R`, `test-million-cell-viewer.R` and `test-demo-h5-transpose.R` test them with small synthetic data.
+These scripts download and prepare the two large demo data sets that `run-demo.R` opens in the Viewer: the mouse brain E18 data set (all 1,306,127 cells of the 10x 1M neurons matrix) and the Ren et al. COVID-19 atlas (1.46M cells with paired TCR/BCR data). They are not shipped in `inst/extdata/examples/`, `data-raw/` is excluded from package builds, and they are not part of the test suite. `tests/testthat/test-run-demo.R`, `test-ren-demo.R`, `test-million-cell-viewer.R` and `test-demo-h5-transpose.R` test them with small synthetic data.
 
 ## How to run
 
@@ -43,7 +43,7 @@ crb <- prepareViewerRenDemoData()   # returns the path of the prepared .crb
 
 ## Files
 
-- `prepare_viewer_1m_data.R`: downloads the 10x 1M neurons matrix and builds the one-million-cell mouse brain E18 `.crb`. Entry function: `prepareViewer1mBenchmarkData()`.
+- `prepare_viewer_1m_data.R`: downloads the 10x 1M neurons matrix and builds the mouse brain E18 `.crb` from all 1,306,127 cells. Entry function: `prepareViewer1mBenchmarkData()`.
 - `prepare_viewer_ren_data.R`: downloads the Ren et al. atlas (about 61 GB as `.h5ad`), the cell annotation, the clinical sample table and the TCR/BCR tables, and builds the Ren `.crb` with its immune repertoire. Entry function: `prepareViewerRenDemoData()`.
 - `prepare_viewer_pack.R`: builds or reuses the Viewer Pack of a prepared `.crb`. Entry function: `prepareDemoViewerPack()`.
 - `h5_transposed_write.R`: a helper, not a script to run. Both `prepare_viewer_*_data.R` scripts call its `.demoWriteH5Transposed()` to write the expression matrix as the cells x genes H5 sidecar, so it has to be sourced before them (`run-demo.R` does this). It exists because `HDF5Array::writeTENxMatrix()` can only write one gene after the other, and a source stored by cells is then scanned from start to end for every block of genes, which takes days for these atlases. The helper reads the cells once in chunks (directly from the CSR arrays for an AnnData file) on several processes, then assembles blocks of genes from the chunk files and appends each block to the H5 file. It is kept in its own file because two scripts share it.
