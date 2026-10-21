@@ -311,11 +311,72 @@ ir_umap_grouped_data <- function(df, group_by) {
     !is.na(group_levels) & nzchar(group_levels) & group_levels %in% group_values
   ]
   df$.umap_group <- factor(group_values, levels = group_levels)
+  ungrouped <- sum(is.na(df$.umap_group))
   df <- df[!is.na(df$.umap_group), , drop = FALSE]
   if (nrow(df) == 0) {
     return(NULL)
   }
+  attr(df, "ungrouped_cells") <- ungrouped
   df
+}
+
+## Every group is a panel with its own canvas and full-length arrays, so the
+## grouped Clonal projection draws at most as many panels as the gene panels.
+IR_CLONAL_UMAP_MAX_PANELS <- 12L
+
+## Decides whether grouped data (from ir_umap_grouped_data) can be drawn as
+## panels. `df` is NULL when it cannot; the projection is then drawn without
+## grouping, so no earlier picture stays on screen. `notice` (or NULL) says
+## why, or how many cells have no group.
+ir_clonal_umap_grouping <- function(
+  df,
+  group_by,
+  max_panels = IR_CLONAL_UMAP_MAX_PANELS
+) {
+  if (is.null(df) || nrow(df) == 0L) {
+    return(list(
+      df = NULL,
+      type = "warning",
+      notice = paste0(
+        "No cells shown have a value in `",
+        group_by,
+        "`, so the projection is drawn without grouping."
+      )
+    ))
+  }
+  n_groups <- nlevels(droplevels(df$.umap_group))
+  if (n_groups > max_panels) {
+    return(list(
+      df = NULL,
+      type = "warning",
+      notice = paste0(
+        "`",
+        group_by,
+        "` has ",
+        n_groups,
+        " groups among the cells shown, more than the ",
+        max_panels,
+        " panels the Clonal projection draws, so it is drawn without ",
+        "grouping. Filter the groups in the settings or group by another column."
+      )
+    ))
+  }
+  ungrouped <- attr(df, "ungrouped_cells") %||% 0L
+  list(
+    df = df,
+    type = "message",
+    notice = if (ungrouped > 0L) {
+      paste0(
+        format(ungrouped, big.mark = ","),
+        if (ungrouped == 1L) " cell has" else " cells have",
+        " no value in `",
+        group_by,
+        "` and ",
+        if (ungrouped == 1L) "is" else "are",
+        " not drawn."
+      )
+    }
+  )
 }
 
 ir_projection_display_name <- function(projection) {
@@ -420,7 +481,8 @@ ir_clonal_umap_panels <- function(df, projection) {
         levels(groups)[[index]],
         "  ·  ",
         format(carriers, big.mark = ","),
-        " cells"
+        if (carriers == 1L) " cell" else " cells",
+        " with receptor"
       ),
       selection_key = keys[rows],
       x = as.numeric(df$x[rows]),
@@ -532,8 +594,26 @@ observe(
         cells = cells,
         percentage = percentage
       )
-      df <- if (is.null(df)) NULL else ir_umap_grouped_data(df, group_by)
-      req(!is.null(df), nrow(df) > 0L)
+      req(!is.null(df))
+      grouping <- ir_clonal_umap_grouping(
+        ir_umap_grouped_data(df, group_by),
+        group_by
+      )
+      if (is.null(grouping$notice)) {
+        removeNotification("ir-clonal-umap-grouping")
+      } else {
+        showNotification(
+          grouping$notice,
+          type = grouping$type,
+          id = "ir-clonal-umap-grouping"
+        )
+      }
+      grouped <- !is.null(grouping$df)
+    } else {
+      removeNotification("ir-clonal-umap-grouping")
+    }
+    if (grouped) {
+      df <- grouping$df
       grouped_view <- ir_clonal_umap_panels(df, projection)
       isolate(
         cerebroCellViewRender(

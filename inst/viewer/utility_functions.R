@@ -1730,11 +1730,15 @@ cerebroCellViewRender <- function(
     } else {
       sum(vapply(key_groups, length, integer(1)))
     }
-    shared_projection <- viewerSharedProjectionName(
-      meta$space_label,
-      n_cells,
-      dataset_context = dataset_context
-    )
+    ## Per-group panels hold only their own cells, so they neither reuse nor
+    ## stand in for the dataset-wide coordinates of a projection.
+    shared_projection <- if (is.null(message$data$panels)) {
+      viewerSharedProjectionName(
+        meta$space_label,
+        n_cells,
+        dataset_context = dataset_context
+      )
+    }
     shared_zero_color <- isTRUE(message$data$shared_zero_color)
     message$data$shared_zero_color <- NULL
     if (isTRUE(shared_zero_color)) {

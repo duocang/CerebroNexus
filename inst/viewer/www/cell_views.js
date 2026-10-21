@@ -8516,7 +8516,10 @@
     var buildStarted = performance.now();
     var built = buildSingleSpaces(id, payload);
     timing.buildSpacesMs = performance.now() - buildStarted;
-    if (built.spaces.length && payload.meta && payload.meta.space_label) {
+    // A per-group panel holds one group's cells; caching it as the shared
+    // projection would hand those coordinates to the next ungrouped render.
+    if (built.spaces.length && payload.meta && payload.meta.space_label &&
+        !Array.isArray(payload.data && payload.data.panels)) {
       cacheSharedProjection(
         String(payload.meta.space_label),
         spaceById[built.spaces[0]],
