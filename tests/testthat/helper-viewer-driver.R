@@ -25,7 +25,8 @@ local_app_support <- function(app_dir, envir = rlang::caller_env()) {
 viewer_shared_app <- function(
   name,
   app_dir = viewer_app_test_path(),
-  envir = parent.frame()
+  envir = parent.frame(),
+  width = 1619
 ) {
   driver <- NULL
   function() {
@@ -35,7 +36,7 @@ viewer_shared_app <- function(
         app_dir,
         name = name,
         height = 950,
-        width = 1619,
+        width = width,
         load_timeout = 120000
       )
       withr::defer(driver$stop(), envir = envir)
@@ -47,6 +48,38 @@ viewer_shared_app <- function(
     driver$get_chromote_session()$Page$bringToFront()
     driver
   }
+}
+
+## Starts a new Shiny session in the app process and Chrome tab of `app`, so a
+## test that needs fresh session state does not boot another app. AppDriver
+## injects its page helper and records the session's test URL (which
+## get_value() reads) once, at start; both are redone here the way
+## AppDriver$new() does them.
+viewer_new_session <- function(app, timeout = 60000) {
+  private <- app$.__enclos_env__$private
+  stopifnot(exists("shiny_test_url", envir = private, inherits = FALSE))
+  session <- app$get_chromote_session()
+  session$Page$navigate(app$get_url())
+  tracer <- system.file(
+    "internal",
+    "js",
+    "shiny-tracer.js",
+    package = "shinytest2"
+  )
+  stopifnot(nzchar(tracer))
+  session$Runtime$evaluate(paste(
+    readLines(tracer, warn = FALSE),
+    collapse = "\n"
+  ))
+  app$wait_for_js(
+    "window.shinytest2 && window.shinytest2.ready === true",
+    timeout = timeout
+  )
+  app$wait_for_idle(duration = 200, timeout = timeout)
+  private$shiny_test_url <- app$get_js(
+    "Shiny.shinyapp.getTestSnapshotBaseUrl({fullUrl:true})"
+  )
+  invisible(app)
 }
 
 viewer_drag_mouse <- function(app, x1, y1, x2, y2) {
