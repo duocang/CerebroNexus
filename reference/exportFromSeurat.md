@@ -187,7 +187,10 @@ exportFromSeurat(
   Optional named list mapping Seurat image names to named image paths or
   descriptors of the form `list(path = ..., bounds = ...)`. Supported
   file extensions are png, jpg, jpeg, and svg. Missing bounds are
-  derived from the exported x/y coordinate range.
+  derived from the exported x/y coordinate range. An object whose
+  `@images` hold a Seurat v4 `VisiumV1` image is rejected; rebuild it as
+  `VisiumV2` with
+  [`Seurat::Load10X_Spatial()`](https://satijalab.org/seurat/reference/Load10X_Spatial.html).
 
 - verbose:
 
@@ -242,22 +245,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [23:39:50] Initializing Cerebro object...
-#> [23:39:50] Adding expression data (embedded)...
-#> [23:39:50] Collecting available meta data...
-#> [23:39:50] Extracting all meta data columns...
-#> [23:39:50] Extracting dimensional reductions...
-#> [23:39:50] Will export the following dimensional reductions: umap
-#> [23:39:50] Extracting marker genes table...
-#> [23:39:50] No trajectories to extract...
-#> [23:39:50] Checking for spatial data...
-#> [23:39:50] Overview of Cerebro object:
+#> [19:32:26] Initializing Cerebro object...
+#> [19:32:26] Adding expression data (embedded)...
+#> [19:32:26] Collecting available meta data...
+#> [19:32:26] Extracting all meta data columns...
+#> [19:32:26] Extracting dimensional reductions...
+#> [19:32:26] Will export the following dimensional reductions: umap
+#> [19:32:26] Extracting marker genes table...
+#> [19:32:26] No trajectories to extract...
+#> [19:32:26] Checking for spatial data...
+#> [19:32:26] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 5.2.0
+#> exporter package version: 5.3.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-10-21
+#> date of export: 2026-10-22
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -273,6 +276,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [23:39:50] Saving Cerebro object to: /tmp/nix-shell-4487-2368066448/Rtmpjpk4NP/pbmc_Seurat.crb
-#> [23:39:50] Done!
+#> [19:32:26] Saving Cerebro object to: /tmp/nix-shell-4436-3526646566/Rtmpt7Lb9G/pbmc_Seurat.crb
+#> [19:32:26] Done!
 ```
