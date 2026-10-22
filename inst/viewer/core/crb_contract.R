@@ -2,6 +2,10 @@
 ## createShinyApp) and the Viewer runtime. Pure functions only: the package
 ## loads this file into its own environment, the Viewer once per process.
 
+## Expression backend types a CRB may declare; the one list for the package and
+## the Viewer.
+.runtimeBackendTypes <- c("embedded", "h5")
+
 .runtimeWindowsPathSegmentInvalid <- function(parts) {
   grepl("[[:cntrl:]<>:\"|?*]", parts) |
     grepl("[. ]$", parts) |
@@ -283,7 +287,7 @@
     is.character(backend$type) &&
     length(backend$type) == 1L &&
     !is.na(backend$type) &&
-    backend$type %in% c("embedded", "h5")
+    backend$type %in% .runtimeBackendTypes
   valid_location <- valid_type &&
     if (identical(backend$type, "embedded")) {
       is.null(backend$location)

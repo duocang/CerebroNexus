@@ -4,7 +4,9 @@
   contract <- NULL
   function() {
     if (is.null(contract)) {
-      contract <<- new.env(parent = baseenv())
+      ## Cache only after the file has been sourced: a failed load must not
+      ## leave an empty environment behind for later calls.
+      loaded <- new.env(parent = baseenv())
       sys.source(
         system.file(
           "viewer",
@@ -12,8 +14,9 @@
           "crb_contract.R",
           package = "CerebroNexus"
         ),
-        contract
+        loaded
       )
+      contract <<- loaded
     }
     contract
   }
@@ -58,9 +61,6 @@
   copy
 }
 
-## Every expression matrix kept outside the CRB lives in one H5 file.
-.cerebroExternalBackends <- c("h5")
-
 .cerebroBackend <- function(object) {
   if (!.recognizedCerebroObject(object)) {
     stop("`object` must be a serialized Cerebro object.", call. = FALSE)
@@ -75,7 +75,7 @@
     is.character(backend$type) &&
     length(backend$type) == 1L &&
     !is.na(backend$type) &&
-    backend$type %in% c("embedded", .cerebroExternalBackends)
+    backend$type %in% .crbContract()$.runtimeBackendTypes
   valid_location <- valid_type &&
     if (identical(backend$type, "embedded")) {
       is.null(backend$location)
@@ -994,7 +994,7 @@ readCerebro <- function(file) {
   unrepairable <- (is.list(backend) &&
     !(is.character(backend$type) &&
       length(backend$type) == 1L &&
-      backend$type %in% c("embedded", .cerebroExternalBackends))) ||
+      backend$type %in% .crbContract()$.runtimeBackendTypes)) ||
     (is.list(schema) && !identical(schema$version, 3L)) ||
     (is.list(immune) && !identical(immune$type, "file"))
   if (unrepairable) {

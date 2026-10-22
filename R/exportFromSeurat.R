@@ -43,19 +43,23 @@
   stage
 }
 
+## Not tools::file_path_sans_ext(), which keeps ".crb" whole, so its stem is
+## never empty. Only R >= 4.6 rejects ".crb" earlier, because its
+## tools::file_ext() no longer reads a leading dot as an extension.
+.exportStem <- function(name) {
+  sub("[.][[:alnum:]]+$", "", name)
+}
+
 .exportSidecarName <- function(final_file, expression_matrix_mode) {
   if (!identical(expression_matrix_mode, "h5")) {
     stop("Only external backends have a sidecar name.", call. = FALSE)
   }
-  paste0(tools::file_path_sans_ext(basename(final_file)), ".h5")
+  paste0(.exportStem(basename(final_file)), ".h5")
 }
 
 .validatePortableExportBasename <- function(final_file) {
   name <- basename(final_file)
-  ## Not tools::file_path_sans_ext(), which keeps ".crb" whole, so its stem is
-  ## never empty. Only R >= 4.6 rejects ".crb" earlier, because its
-  ## tools::file_ext() no longer reads a leading dot as an extension.
-  stem <- sub("[.][[:alnum:]]+$", "", name)
+  stem <- .exportStem(name)
   windows_stem <- toupper(trimws(
     sub("\\..*$", "", name),
     which = "right"
@@ -133,7 +137,7 @@
       !is.character(backend$type) ||
       length(backend$type) != 1L ||
       is.na(backend$type) ||
-      !(backend$type %in% c("embedded", "h5"))
+      !(backend$type %in% .crbContract()$.runtimeBackendTypes)
   ) {
     return(NULL)
   }

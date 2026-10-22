@@ -3503,7 +3503,7 @@ read_cerebro_file <- function(file) {
   valid_type <- is.character(entry$type) &&
     length(entry$type) == 1L &&
     !is.na(entry$type) &&
-    entry$type %in% c("embedded", "h5")
+    entry$type %in% .runtimeBackendTypes
   valid_mode <- is.character(entry$mode) &&
     length(entry$mode) == 1L &&
     !is.na(entry$mode) &&

@@ -21,6 +21,10 @@
 - Internal clean-up with no change in behaviour: `exportFromSCE()` and
   `exportFromSeurat()` share their builders, and repeated code in the analysis
   helpers, `createShinyApp()` and the `Cerebro` class is merged.
+- The expression backend types are listed once, in
+  `inst/viewer/core/crb_contract.R`, and the export file-name stem is computed
+  by one helper. A failed first load of the shared CRB contract is no longer
+  cached as an empty environment.
 
 # CerebroNexus 5.3.0
 
