@@ -5,7 +5,6 @@ test_that("projection defaults are canonical and spatial defaults independent", 
     point_size = c(a = 3, b = 8),
     point_opacity = c(a = .4, b = .9),
     percentage_cells_to_show = c(a = 70, b = 100),
-    expression_point_size = c(a = 10, b = 12),
     spatial_percentage_cells_to_show = c(a = 50, b = 80)
   )
   for (id in c("a", "b")) {

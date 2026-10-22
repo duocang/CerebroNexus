@@ -698,7 +698,9 @@
 #' @param spatial_images Optional named list mapping Seurat image names to named
 #'   image paths or descriptors of the form \code{list(path = ..., bounds = ...)}.
 #'   Supported file extensions are png, jpg, jpeg, and svg. Missing bounds are
-#'   derived from the exported x/y coordinate range.
+#'   derived from the exported x/y coordinate range. An object whose
+#'   \code{@images} hold a Seurat v4 \code{VisiumV1} image is rejected;
+#'   rebuild it as \code{VisiumV2} with \code{Seurat::Load10X_Spatial()}.
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;
 #' defaults to \code{FALSE}.
 #' @param .expression_resolution Internal handoff used by
@@ -884,6 +886,9 @@ exportFromSeurat <- function(
     )
   }
 
+  ## spatial images must be Seurat v5 images
+  .assertCurrentSpatialImages(object)
+
   ## `groups`
   if (any(groups %in% names(object@meta.data) == FALSE)) {
     stop(
@@ -1017,13 +1022,9 @@ exportFromSeurat <- function(
   ## add transcript counts
   ##--------------------------------------------------------------------------##
 
-  ## get expression data using shared utility function. This is a top-level,
-  ## user-facing export entry point whose job is to get the object out to a
-  ## .crb, so it opts into legacy cross-semantic layer fallback (e.g. a
-  ## Seurat v5 RNA assay with only a `counts` layer, requested at the default
-  ## slot = "data"). Without this the export would hard-stop here — before even
-  ## reaching the spatial block — on objects that exported fine on master. The
-  ## fallback itself warns, so the substitution is never silent.
+  ## get expression data using shared utility function. A requested layer that
+  ## does not exist is an error naming the layers that do (no other layer is
+  ## substituted).
   ## Split (layered) Seurat v5 objects are joined first, matching
   ## `convertSeuratToCerebro()`. Without it only the first sample's layer is
   ## read: the meta data still describes every cell while the matrix describes
@@ -1036,7 +1037,7 @@ exportFromSeurat <- function(
       assay = assay,
       slot = slot,
       join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE,
+      layer_argument = "slot",
       verbose = verbose,
       return_resolution = TRUE
     )
@@ -1046,8 +1047,7 @@ exportFromSeurat <- function(
       "assay",
       "requested",
       "resolved",
-      "joined",
-      "fallback"
+      "joined"
     )
     if (
       !is.list(.expression_resolution) ||
@@ -1822,10 +1822,10 @@ exportFromSeurat <- function(
     )
   }
 
-  ## Spatial images live in the `@images` slot on Seurat v3+ objects, so this
-  ## path handles both Seurat v4 (VisiumV1, SlideSeq) and v5 (VisiumV2, FOV)
-  ## objects. `.getSpatialData()` resolves coordinates version-agnostically via
-  ## GetTissueCoordinates + S4 slot access, so no version branch is needed here.
+  ## Spatial images live in the `@images` slot. A v4 `VisiumV1` image was
+  ## rejected above; every other image class is exported.
+  ## `.getSpatialData()` resolves their coordinates through GetTissueCoordinates
+  ## + S4 slot access.
   has_images <- .spx_has_slot(object, "images") &&
     !is.null(object@images) &&
     length(object@images) > 0
@@ -1872,10 +1872,7 @@ exportFromSeurat <- function(
           # Identify coordinate columns to use for projection (2D)
           proj_cols <- character(0)
 
-          # Standard Visium
-          if (all(c("imagerow", "imagecol") %in% colnames(coords_df))) {
-            proj_cols <- c("imagerow", "imagecol")
-          } else if (all(c("x", "y") %in% colnames(coords_df))) {
+          if (all(c("x", "y") %in% colnames(coords_df))) {
             # Standard FOV/Xenium/Other
             proj_cols <- c("x", "y")
           } else if (ncol(coords_df) >= 2) {

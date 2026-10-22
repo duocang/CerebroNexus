@@ -449,6 +449,31 @@ test_that("specialist views can reference validated shared coordinates", {
   expect_null(unshared$data$color)
   expect_true(unshared$data$zero_color)
   expect_identical(unshared$data$n, 4096L)
+
+  ## Per-group panels hold one group's cells each, so they never take the
+  ## dataset-wide coordinates of a projection with the same label.
+  sent <- list()
+  runtime$input$coordviews_shared_base <- shared
+  half <- seq_len(2048L)
+  runtime$cerebroCellViewRender(
+    "ir_clonalUMAP_projection",
+    meta = list(color_type = "categorical", space_label = "umap"),
+    data = list(
+      selection_key = keys,
+      group = rep("Other cells", 4096L),
+      panels = list(
+        list(id = "group1", selection_key = keys[half], x = half, y = half),
+        list(id = "group2", selection_key = keys[-half], x = half, y = half)
+      )
+    ),
+    dataset_context = list(
+      epoch = "wire-test",
+      dataset_key = "A",
+      generation = 1
+    )
+  )
+  grouped <- wire_header(sent[[1L]]$payload)
+  expect_null(grouped$shared_projection)
 })
 
 test_that("core auxiliary identities precede full metadata and reject duplicate stages", {

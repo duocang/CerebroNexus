@@ -260,7 +260,7 @@ test_that("specialist configuration is validated and round-trips", {
       )
     ),
     view = list(
-      viewport = list(x0 = 0, x1 = 1, y0 = 0, y1 = 1),
+      viewport = NULL,
       rotation = list(x = 0, y = 0),
       mode = "lasso",
       zoomed = FALSE,
@@ -306,6 +306,13 @@ test_that("specialist configuration is validated and round-trips", {
       cells = c("cell-1", "cell-2")
     )$config$view$viewport,
     list(cx = 0.5, cy = 0.4, span = 0.75)
+  )
+
+  corner_form <- zoomed
+  corner_form$view$viewport <- list(x0 = 0, x1 = 1, y0 = 0, y1 = 1)
+  expect_error(
+    helpers$cv_config_prepare(corner_form, cells = c("cell-1", "cell-2")),
+    class = "cv_config_error"
   )
 
   hla <- config

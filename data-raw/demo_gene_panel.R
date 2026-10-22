@@ -1,6 +1,37 @@
 # Build-time policy for small demonstration datasets, not a production filter.
 # Run after analysis so cell identities, embeddings and full-input QC stay fixed.
-demo_gene_panel <- function(object, max_genes = 1500L) {
+# Genes that the object's analysis tables and gene lists name. A demo keeps the
+# ones its matrix has, so a marker or most-expressed row can still be opened.
+demo_referenced_genes <- function(object, genes) {
+  named <- character()
+  collect <- function(x) {
+    if (is.data.frame(x)) {
+      for (column in intersect(c("gene", "Gene", "genes"), names(x))) {
+        named <<- c(named, as.character(x[[column]]))
+      }
+      if ("Genes" %in% names(x)) {
+        named <<- c(named, unlist(strsplit(as.character(x[["Genes"]]), ";", fixed = TRUE)))
+      }
+    } else if (is.character(x)) {
+      named <<- c(named, x)
+    } else if (is.list(x)) {
+      lapply(x, collect)
+    }
+    invisible(NULL)
+  }
+  for (field in c(
+    "gene_lists",
+    "marker_genes",
+    "most_expressed_genes",
+    "mean_expression",
+    "enriched_pathways"
+  )) {
+    collect(object[[field]])
+  }
+  intersect(genes, unique(named))
+}
+
+demo_gene_panel <- function(object, max_genes = 100L) {
   m <- object$expression
   stopifnot(
     inherits(m, "sparseMatrix"),
@@ -22,19 +53,6 @@ demo_gene_panel <- function(object, max_genes = 1500L) {
     return(object)
   }
 
-  # These builders have no gene-level analysis tables. Refuse future additions
-  # rather than silently orphaning marker, enrichment or gene-list references.
-  for (field in c(
-    "gene_lists",
-    "marker_genes",
-    "most_expressed_genes",
-    "mean_expression",
-    "enriched_pathways"
-  )) {
-    if (length(object[[field]])) {
-      stop("Review gene references before reducing a demo with ", field)
-    }
-  }
   # Preserve the Trekker picker, myelination signature and representative
   # neural, stromal and immune markers, including rare-cell markers.
   markers <- c(
@@ -97,6 +115,11 @@ demo_gene_panel <- function(object, max_genes = 1500L) {
   squared <- m
   squared@x <- squared@x^2
   variance <- pmax(0, Matrix::rowMeans(squared) - Matrix::rowMeans(m)^2)
+  # Genes named by analysis tables come next, the most variable first, until
+  # the budget is used.
+  referenced <- setdiff(demo_referenced_genes(object, genes), protected)
+  referenced <- referenced[order(-variance[match(referenced, genes)], match(referenced, genes))]
+  protected <- genes[genes %in% c(protected, head(referenced, max_genes - length(protected)))]
   detected <- Matrix::rowSums(m != 0) > 0L
   # Stable ties use input order; retain that order in the final sparse matrix.
   ranked <- genes[order(-variance, seq_along(genes))]
@@ -126,7 +149,7 @@ demo_gene_panel <- function(object, max_genes = 1500L) {
     input_genes = nrow(m),
     retained_genes = length(keep),
     protected_genes = protected,
-    method = "protected markers and Moran genes, then normalized-expression variance",
+    method = "protected markers, Moran genes and genes named by analysis tables, then normalized-expression variance",
     scope = "Expression subset only; cells, full-input QC and analyses retained"
   )
   result

@@ -26,12 +26,6 @@ createShinyApp(
   variable_to_compare = NULL,
   spatial_images = NULL,
   spatial_image_settings = NULL,
-  spatial_images_flip_x = NULL,
-  spatial_images_flip_y = NULL,
-  spatial_images_scale_x = NULL,
-  spatial_images_scale_y = NULL,
-  spatial_images_offset_x = NULL,
-  spatial_images_offset_y = NULL,
   spatial_plot_rotation = NULL,
   auth = NULL,
   extra_tables = NULL,
@@ -118,9 +112,9 @@ must match \code{cerebro_data}; spatial names must match the corresponding
 CRB's \code{availableSpatial()}, and image labels must be unique and
 non-empty within an entry. A leaf may instead be a descriptor containing
 \code{path} and optional coordinate \code{bounds}. Supplied files are
-copied to opaque, safe relative paths under \code{spatial-assets/}. The
-legacy \code{c(Dataset = path)} form is accepted only
-when that CRB has exactly one spatial entry.}
+copied to opaque, safe relative paths under \code{spatial-assets/}. A
+plain \code{c(Dataset = path)} vector is rejected; write
+\code{list(Dataset = list(<spatial entry> = c(label = path)))}.}
 
 \item{spatial_image_settings}{Optional nested settings in
 \code{dataset -> spatial entry -> image label -> settings} form. Settings
@@ -133,24 +127,11 @@ dataset and spatial entry. The image label must exist in the union of the
 CRB's embedded images and this call's \code{spatial_images}; unknown
 identities are rejected. Labels are user-facing names, not protocol names.}
 
-\item{spatial_images_flip_x}{Legacy named per-dataset horizontal flip values.}
-
-\item{spatial_images_flip_y}{Legacy named per-dataset vertical flip values.}
-
-\item{spatial_images_scale_x}{Legacy named per-dataset X scale values.}
-
-\item{spatial_images_scale_y}{Legacy named per-dataset Y scale values.}
-
-\item{spatial_images_offset_x}{Legacy named per-dataset horizontal offsets.}
-
-\item{spatial_images_offset_y}{Legacy named per-dataset vertical offsets.}
-
 \item{spatial_plot_rotation}{Optional nested rotations in
 \code{dataset -> spatial entry -> degrees} form, applied only to spatial
-cell coordinates. The legacy named per-dataset vector form remains
-supported and applies one rotation to every spatial entry in that dataset.
-Dataset names must match \code{cerebro_data}; spatial names must match the
-corresponding CRB's \code{availableSpatial()}.}
+cell coordinates. Dataset names must match \code{cerebro_data}; spatial
+names must match the corresponding CRB's \code{availableSpatial()}. A
+per-dataset numeric vector is rejected.}
 
 \item{auth}{Optional authentication settings. \code{NULL}, the default,
 leaves the generated Viewer public. To require a login, provide a named
@@ -170,7 +151,7 @@ sheet names; unmapped sheets remain available.}
 \item{dataset_labels}{Optional named character vector mapping every dataset
 identity in \code{cerebro_data} to its display label. Values must be
 non-empty but may repeat. When omitted, the dataset identities are also
-used as display labels for backward compatibility.}
+used as display labels.}
 
 \item{initial_dataset}{Optional exact dataset identity to load initially. This
 does not change the order of \code{cerebro_data}. URL selection and a

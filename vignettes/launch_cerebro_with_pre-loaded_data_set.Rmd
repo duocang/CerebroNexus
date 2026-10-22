@@ -41,6 +41,16 @@ launchCerebro(
 
 That's it.
 
+To offer several data sets in one launch, give every file a unique, non-empty name.
+The name is the data set identity used in links (`?dataset=sampleA`) and saved state; `launchCerebro()` stops with an error when more than one unnamed file is given.
+
+```{r eval=FALSE}
+launchCerebro(
+  crb_file_to_load = c(sampleA = "~/Cerebro/a.crb", sampleB = "~/Cerebro/b.crb"),
+  mode = "closed"
+)
+```
+
 <a target="_blank" href="launch_cerebro_with_pre-loaded_data_set_files/landing_page.png"><img src="launch_cerebro_with_pre-loaded_data_set_files/landing_page.png" alt="Load data" width="100%" height="auto" /></a>
 
 # Modify welcome page

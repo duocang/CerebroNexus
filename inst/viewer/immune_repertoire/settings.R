@@ -190,9 +190,7 @@ output$ir_appearance_section_UI <- renderUI({
   tab <- input$ir_tabs
   has_display <- exists("ir_display_params_for") &&
     length(ir_display_params_for(tab)) > 0
-  group_by <- ir_param("ir_p_umap_group_by", "")
-  has_cell_options <- identical(tab, "Clonal UMAP") &&
-    (is.null(group_by) || !nzchar(group_by))
+  has_cell_options <- identical(tab, "Clonal UMAP")
   if (!has_display && !has_cell_options) {
     return(NULL)
   }
@@ -600,16 +598,17 @@ output$ir_cell_view_options_UI <- renderUI({
   if (!identical(input$ir_tabs, "Clonal UMAP")) {
     return(NULL)
   }
+  ## Grouped panels draw no group labels; border and square apply to both.
   group_by <- ir_param("ir_p_umap_group_by", "")
-  if (!is.null(group_by) && nzchar(group_by)) {
-    return(NULL)
-  }
+  grouped <- !is.null(group_by) && nzchar(group_by)
   tagList(
-    checkboxInput(
-      "ir_clonalUMAP_group_labels",
-      "Group labels",
-      value = current_page_display_defaults("ir")$group_labels
-    ),
+    if (!grouped) {
+      checkboxInput(
+        "ir_clonalUMAP_group_labels",
+        "Group labels",
+        value = current_page_display_defaults("ir")$group_labels
+      )
+    },
     checkboxInput(
       "ir_clonalUMAP_point_border",
       "Draw border around cells",

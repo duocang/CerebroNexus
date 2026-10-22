@@ -61,7 +61,21 @@ test_that("mounted gene selections and completion survive a dataset round trip",
   )
   withr::defer(app$stop())
   app$click(selector = 'a[href="#shiny-tab-geneExpression"]')
-  genes <- c("AAK1", "ABCB9", "AC004687.1", "AC009123.1")
+  ## Genes that both example data sets carry, whatever panel each one keeps.
+  example_genes <- function(file) {
+    readCerebro(system.file(
+      file.path("extdata/examples", file),
+      package = "CerebroNexus"
+    ))$getGeneNames()
+  }
+  pbmc_genes <- example_genes("demo_full_tcr_bcr.crb")
+  shared <- pbmc_genes[
+    tolower(pbmc_genes) %in% tolower(example_genes("demo_spatial_visium.crb"))
+  ]
+  ## Up to four shared genes, one panel each; the round trip needs at least three.
+  ## Fail clearly if a panel change leaves fewer.
+  expect_gte(length(shared), 3L)
+  genes <- sort(shared)[seq_len(min(4L, length(shared)))]
   viewer_set_selectize(app, "expression_genes_input", genes)
   app$set_inputs(
     expression_projection_genes_in_separate_panels = "separate",
@@ -98,20 +112,21 @@ test_that("mounted gene selections and completion survive a dataset round trip",
       tolower(genes)
     )
   }
-  expect_true(all(lengths(app$get_js("geneChanges")) == 4L))
+  expect_true(all(lengths(app$get_js("geneChanges")) == length(genes)))
   expect_equal(
     app$get_js(
       "document.querySelectorAll('#expression_projection_cell_view_host .cv-pane:not(.cv-hidden)').length"
     ),
-    4
+    length(genes)
   )
   expect_length(app$get_js("geneErrors"), 0L)
   ## Summary work follows current visibility, including after a previous visit.
-  app$run_js(
-    "document.getElementById('expression_summary_gate').scrollIntoView()"
-  )
+  ## Scroll on every poll: panels above the gate may still change height.
   app$wait_for_js(
-    "Shiny.shinyapp.$inputValues.expression_summary_viewport_request === true",
+    paste0(
+      "(() => {document.getElementById('expression_summary_gate').scrollIntoView();",
+      "return Shiny.shinyapp.$inputValues.expression_summary_viewport_request === true;})()"
+    ),
     timeout = 30000
   )
   app$run_js(

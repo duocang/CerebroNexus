@@ -75,8 +75,7 @@ viewerDatasetOverview <- function(
       levels = length(distinct),
       total = sum(tally),
       missing = missing,
-      counts = stats::setNames(as.numeric(tally[by_size]), distinct[by_size]),
-      remaining = 0
+      counts = stats::setNames(as.numeric(tally[by_size]), distinct[by_size])
     )
   }
   sample <- if (!is.null(sample_column)) summarize(sample_column) else NULL
@@ -113,17 +112,4 @@ viewerDatasetOverview <- function(
     sample = sample,
     annotations = annotations
   )
-}
-
-viewerOverviewTruncated <- function(overview) {
-  summaries <- c(list(overview$sample), overview$annotations)
-  any(vapply(
-    summaries,
-    function(summary) {
-      !is.null(summary) &&
-        (isTRUE(summary$remaining > 0) ||
-          isTRUE(length(summary$counts) < summary$levels))
-    },
-    logical(1)
-  ))
 }

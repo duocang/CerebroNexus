@@ -182,6 +182,19 @@ test_that("MSigDB catalogue queries collections separately and shares compact ge
   )
 })
 
+test_that("MSigDB catalogue needs the msigdbr collection metadata and warns otherwise", {
+  env <- boundary_utils()
+  env$.msigdbCollectionsFunction <- function() data.frame(gs_cat = "H")
+  env$.msigdbFunction <- function() {
+    function(species, collection) stop("must not be queried")
+  }
+  expect_warning(
+    catalogue <- env$getMsigdbCatalogue(),
+    "unexpected columns"
+  )
+  expect_equal(nrow(catalogue), 0L)
+})
+
 test_that("Enrichr applies timeout and rejects HTTP errors before parsing", {
   requests <- list()
   fail_at <- Inf
@@ -286,8 +299,7 @@ test_that("delayed exports round-trip without whole-matrix as.matrix", {
       assay = "RNA",
       requested = "data",
       resolved = "data",
-      joined = FALSE,
-      fallback = FALSE
+      joined = FALSE
     )
     directory <- withr::local_tempdir()
     file <- file.path(directory, "test.crb")

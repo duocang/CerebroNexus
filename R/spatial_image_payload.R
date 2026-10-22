@@ -2,48 +2,6 @@
 #'
 #' @keywords internal
 #' @noRd
-.isLegacySpatialImagePayload <- function(payload) {
-  if (!is.list(payload) || is.null(names(payload))) {
-    return(FALSE)
-  }
-  valid_fields <- c("histology_image", "histology_image_bounds")
-  image <- payload[["histology_image"]]
-  bounds <- payload[["histology_image_bounds"]]
-  valid_image <- is.character(image) && length(image) == 1L && !is.na(image)
-  valid_list_bounds <- is.list(bounds) &&
-    length(bounds) == 4L &&
-    !is.null(names(bounds)) &&
-    setequal(names(bounds), c("xmin", "xmax", "ymin", "ymax")) &&
-    !anyDuplicated(names(bounds)) &&
-    all(vapply(
-      bounds,
-      function(value) {
-        is.numeric(value) && length(value) == 1L && is.finite(value)
-      },
-      logical(1)
-    ))
-  valid_bounds <- is.null(bounds) ||
-    (is.numeric(bounds) && length(bounds) == 4L) ||
-    valid_list_bounds
-  !anyDuplicated(names(payload)) &&
-    all(names(payload) %in% valid_fields) &&
-    "histology_image" %in% names(payload) &&
-    valid_image &&
-    valid_bounds
-}
-
-#' @keywords internal
-#' @noRd
-.canonicalizeLegacySpatialImagePayload <- function(payload, context) {
-  payload[["histology_image_bounds"]] <- .legacySpatialImageBounds(
-    payload[["histology_image_bounds"]],
-    context
-  )
-  payload
-}
-
-#' @keywords internal
-#' @noRd
 .validateCerebroSpatialImages <- function(payloads, available_images) {
   if (is.null(payloads)) {
     return(NULL)
@@ -80,22 +38,21 @@
       call. = FALSE
     )
   }
-  normalized <- lapply(seq_along(payloads), function(i) {
+  for (i in seq_along(payloads)) {
     images <- payloads[[i]]
-    if (.isLegacySpatialImagePayload(images)) {
-      spatial_name <- payload_names[[i]]
-      images <- .canonicalizeLegacySpatialImagePayload(
-        images,
-        paste0(
-          "Spatial image payload `",
-          spatial_name,
-          "` image `Tissue background`"
-        )
+    if (is.list(images) && is.character(images[["histology_image"]])) {
+      stop(
+        "Spatial image payload `",
+        payload_names[[i]],
+        "` uses the singular `histology_image` / `histology_image_bounds` ",
+        "fields, which are no longer accepted. Declare each image under a ",
+        "label: `object@misc$cerebro_spatial_images$",
+        payload_names[[i]],
+        " <- list(<label> = list(histology_image = <data URI>, ",
+        "histology_image_bounds = <bounds>))`.",
+        call. = FALSE
       )
-      return(list(`Tissue background` = images))
     }
-    images
-  })
-  names(normalized) <- payload_names
-  normalized
+  }
+  payloads
 }

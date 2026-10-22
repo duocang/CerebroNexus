@@ -66,7 +66,7 @@ An entry with no image remains a valid coordinates-only spatial view.
    - [3.2 Run the build](#32-run-the-build)
    - [3.3 The shared spine: four steps every platform goes through](#33-the-shared-spine-four-steps-every-platform-goes-through)
    - [3.4 Visium — external image, harder gene trim](#34-visium--external-image-harder-gene-trim)
-   - [3.5 Slide-seq v2 — the Seurat v4 path](#35-slide-seq-v2--the-seurat-v4-path)
+   - [3.5 Slide-seq v2 — a v4 object rebuilt as a v5 FOV](#35-slide-seq-v2--a-v4-object-rebuilt-as-a-v5-fov)
    - [3.6 MERFISH — a real DAPI mosaic, coordinates already in pixel space](#36-merfish--a-real-dapi-mosaic-coordinates-already-in-pixel-space)
    - [3.7 Xenium — raw outs, microns vs pixels, JPEG2000](#37-xenium--raw-outs-microns-vs-pixels-jpeg2000)
 4. [Image ↔ point alignment](#4-image--point-alignment)
@@ -81,12 +81,14 @@ An entry with no image remains a valid coordinates-only spatial view.
 
 Genuinely measured, public spatial-transcriptomics demos. Each is a down-sampled subset of a **different** technology, so the dropdown demonstrates that one platform-agnostic extraction pipeline (`.getSpatialData`, `R/seurat_utils.R`) ingests them all — there is no per-platform loader.
 
-| File | Technology (dropdown label) | Public source | Cells | Real tissue image |
+| File | Technology (dropdown label) | Public source | Cells shipped (built) | Real tissue image |
 |---|---|---|---|---|
-| `demo_spatial_visium.crb` | Mouse brain (Visium) | `SeuratData::stxBrain` (anterior1) | 2,696 | ✅ H&E, **external** PNG |
-| `demo_spatial_slideseq.crb` | Mouse hippocampus (Slide-seq v2) | `SeuratData::ssHippo` | 5,000 | — (structural, see §5) |
-| `demo_spatial_merfish.crb` | Mouse ileum (MERFISH) | `MerfishData::MouseIleumPetukhov2021` | 5,000 | ✅ DAPI mosaic, **embedded** |
-| `demo_spatial_xenium.crb` | Mouse brain (Xenium) | 10x `Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP` | 5,000 | ✅ DAPI + 2 colour variants, **external** PNG |
+| `demo_spatial_visium.crb` | Mouse brain (Visium) | `SeuratData::stxBrain` (anterior1) | 1,000 (2,696) | ✅ H&E, **external** PNG |
+| `demo_spatial_slideseq.crb` | Mouse hippocampus (Slide-seq v2) | `SeuratData::ssHippo` | 3,000 (5,000) | — (structural, see §5) |
+| `demo_spatial_merfish.crb` | Mouse ileum (MERFISH) | `MerfishData::MouseIleumPetukhov2021` | 1,000 (5,000) | ✅ DAPI mosaic, **embedded** |
+| `demo_spatial_xenium.crb` | Mouse brain (Xenium) | 10x `Xenium_V1_FF_Mouse_Brain_Coronal_Subset_CTX_HP` | 2,000 (5,000) | ✅ DAPI + 2 colour variants, **external** PNG |
+
+`build_spatial_demos.R` produces the built cell counts with 100 genes; the shipped files are then cut to a random subset of cells with `subsample_demos.R` (see [`README.md`](README.md)).
 
 They deliberately exercise **both** background-image paths the app supports:
 
@@ -108,7 +110,7 @@ They span the structural axes that decide whether the extraction pipeline copes 
 | MERFISH | single cells | `GetTissueCoordinates` on an `FOV` with `Centroids` |
 | Xenium | single cells | same `FOV`/`Centroids` route, but built from raw outs; cells in **microns** while the raster is in **pixels** |
 
-**Seurat v4 vs v5**: `ssHippo` ships as a Seurat v3.1.4-era `SlideSeq` object. It is the end-to-end proof that `exportFromSeurat` handles non-v5 spatial objects — an old blanket `is_seurat_v5 &&` gate used to drop these entirely.
+**Seurat v4 vs v5**: `ssHippo` ships as a Seurat v3.1.4-era `SlideSeq` object. `exportFromSeurat` only reads Seurat v5 spatial images and rejects a `VisiumV1`, `SlideSeq` or `STARmap` image, so the builder rebuilds the beads as a v5 `FOV` first (§3.5).
 
 **Package-shipped vs network-fetched**: Visium / Slide-seq / MERFISH come from R packages; Xenium fetches a 3.5 GB zip from the 10x CDN, auto-downloaded on first run.
 
@@ -212,7 +214,7 @@ Every embedded image is stored in its **native** orientation (row 0 = image top)
 callers should pass image files through `exportFromSeurat(spatial_images = ...)`
 or `convertSeuratToCerebro(spatial_images = ...)`. This older demo builder
 already holds decoded data URIs, so it writes the canonical named
-`histology_images` list directly. The final writer caps expression at 1,500 genes
+`histology_images` list directly. The final writer caps expression at 100 genes
 after analysis, including every spatial expression copy, without changing cells,
 coordinates or images:
 
@@ -267,17 +269,25 @@ export_and_verify(obj, "Spatial", groups = c("cluster"), ...)   # note: no image
 
 The stored raster is the full-res image scaled by the `lowres` factor, so it covers full-res px `[0, W/lowres] × [0, H/lowres]` — **that**, not the spot bounding box, is its extent in coordinate space.
 
-## 3.5 Slide-seq v2 — the Seurat v4 path
+## 3.5 Slide-seq v2 — a v4 object rebuilt as a v5 FOV
 
 ```r
 data("ssHippo", package = "ssHippo.SeuratData")
 obj <- get("ssHippo")
 obj <- UpdateSeuratObject(obj)          # REQUIRED before any subset/validObject
 obj <- subset(obj, cells = sample(colnames(obj), min(MAX_CELLS, ncol(obj))))
+bead_xy <- GetTissueCoordinates(obj[[Images(obj)[1]]])
+obj@images <- list()                    # drop the v4 SlideSeq image
+obj[["image"]] <- SeuratObject::CreateFOV(
+  coords = list(centroids = SeuratObject::CreateCentroids(
+    data.frame(x = bead_xy$x, y = bead_xy$y, cell = rownames(bead_xy))
+  )),
+  type = "centroids", assay = "Spatial"
+)
 obj <- process_seurat(obj, "Spatial")
 ```
 
-`ssHippo` is a Seurat v3.1.4 object whose `SlideSeq` image predates the current class definition (it is missing the `misc` slot), so any `subset()` or `validObject()` fails before the repair. After `UpdateSeuratObject()` it stays a v4-era `SlideSeq` image — which is the point: it exercises the non-v5 extraction path.
+`ssHippo` is a Seurat v3.1.4 object whose `SlideSeq` image predates the current class definition (it is missing the `misc` slot), so any `subset()` or `validObject()` fails before the repair. After `UpdateSeuratObject()` it stays a v4-era `SlideSeq` image, which `exportFromSeurat` rejects, so the bead positions are rebuilt as a Seurat v5 `FOV` before export.
 
 Also note the down-sample happens **first** here, not after clustering: 53k unclustered beads are expensive to process and there is no cluster structure to stratify on yet.
 
@@ -361,9 +371,7 @@ its image rows, which differs by platform (`GetTissueCoordinates` vs a raw
 There is **no global per-`.crb` flip flag**. The user can align an image with the
 Spatial tab controls, or configure one exact
 `dataset -> spatial entry -> image label` leaf through
-`spatial_image_settings` when calling `createShinyApp()`. Legacy
-`spatial_images_flip_y` remains available only for an unambiguous single-image
-target.
+`spatial_image_settings` when calling `createShinyApp()`.
 
 Correct orientation is judged by **visual comparison against a native ground-truth reference**: overlay the real centroids on the source raster in its native frame, pick an unambiguous anatomical landmark, then flip in the app until it matches.
 

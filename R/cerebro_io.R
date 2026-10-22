@@ -121,8 +121,70 @@
       repairable = FALSE
     ))
   }
-  if (!exists("availableSpatial", envir = object, inherits = FALSE)) {
-    return("it predates spatial support")
+  ## Accessors the Viewer calls without a guard; an object that lacks one was
+  ## written before it existed (see `.requiredCerebroMethods`).
+  absent <- !vapply(
+    names(.requiredCerebroMethods),
+    exists,
+    logical(1),
+    envir = object,
+    inherits = FALSE
+  )
+  if (any(absent)) {
+    return(paste0("it predates ", .requiredCerebroMethods[[which(absent)[[1L]]]]))
+  }
+  ## Spatial entries written in a form that is no longer read.
+  .legacySpatialReason(object)
+}
+
+## Accessor -> the feature that introduced it.
+.requiredCerebroMethods <- c(
+  availableSpatial = "spatial support",
+  getHLATyping = "HLA typing support",
+  getTrekker = "Trekker support",
+  getMethodsForEnrichedPathways = "the enriched-pathways page"
+)
+
+## Reason for a spatial entry in a retired form, or NULL: the singular
+## `histology_image` / `histology_image_bounds` fields (now `histology_images`), a
+## molecule table embedded in the CRB (now a per-FOV sidecar reference), or a
+## `getSpatialData()` that cannot defer the molecules. The Viewer repeats this in
+## `.runtimeLegacySpatialReason()`.
+.legacySpatialReason <- function(object) {
+  spatial <- if (.storedCerebroField(object, "spatial")) object[["spatial"]]
+  if (!is.list(spatial) || !length(spatial)) {
+    return(NULL)
+  }
+  entry_names <- names(spatial)
+  for (index in seq_along(spatial)) {
+    entry <- spatial[[index]]
+    if (!is.list(entry)) {
+      next
+    }
+    label <- if (is.null(entry_names)) index else entry_names[[index]]
+    if (any(c("histology_image", "histology_image_bounds") %in% names(entry))) {
+      return(paste0(
+        "its spatial entry '",
+        label,
+        "' stores a singular histology_image instead of histology_images"
+      ))
+    }
+    molecules <- entry[["molecules"]]
+    if (
+      !is.null(molecules) && !inherits(molecules, "CerebroSpatialMoleculeRef")
+    ) {
+      return(paste0(
+        "its spatial entry '",
+        label,
+        "' embeds its molecule table instead of using the spatial sidecar"
+      ))
+    }
+  }
+  getter <- if (.storedCerebroField(object, "getSpatialData")) {
+    object[["getSpatialData"]]
+  }
+  if (!is.function(getter) || !"hydrate_molecules" %in% names(formals(getter))) {
+    return("it predates deferred spatial molecule loading")
   }
   NULL
 }
@@ -1008,8 +1070,9 @@ saveCerebro <- function(
 #' qs2. An H5-backed expression matrix is attached lazily and a thin CRB gets
 #' its cell names back from the H5 file; spatial molecule tables stay lazy until
 #' their FOV is requested. A CRB from an older release that this version no
-#' longer reads (for example one without an expression-backend descriptor) is
-#' rejected with a pointer to \code{\link{convertCerebro}}.
+#' longer reads (for example one without an expression-backend descriptor,
+#' or one with a singular spatial image or an embedded spatial molecule table)
+#' is rejected with a pointer to \code{\link{convertCerebro}}.
 #'
 #' @param file Input \code{.crb} path.
 #' @return A current Cerebro object.
@@ -1030,10 +1093,39 @@ readCerebro <- function(file) {
   .attachCerebroImmuneRepertoire(object, file)
 }
 
+## The one place that still knows the singular spatial image form: one
+## `histology_image` (+ `histology_image_bounds`) becomes the image `Tissue
+## background` of `histology_images`, which the current normalizer then checks.
+## Bounds that were stored as a named list become the numeric vector it expects.
+.upgradeLegacySpatialEntry <- function(entry) {
+  singular <- c("histology_image", "histology_image_bounds")
+  if (!is.list(entry) || !any(singular %in% names(entry))) {
+    return(entry)
+  }
+  if (
+    is.null(entry[["histology_images"]]) && !is.null(entry[["histology_image"]])
+  ) {
+    bounds <- entry[["histology_image_bounds"]]
+    if (is.list(bounds)) {
+      bounds <- unlist(bounds)
+    }
+    entry[["histology_images"]] <- list(
+      `Tissue background` = list(
+        histology_image = entry[["histology_image"]],
+        histology_image_bounds = bounds
+      )
+    )
+  }
+  entry[singular] <- NULL
+  entry
+}
+
 ## Reads a CRB from an older release into a current object, repairing what can
 ## be repaired without the original data: a missing expression-backend
-## descriptor means the matrix is embedded, and receptors kept in `bcr_data` /
-## `tcr_data` are merged into the unified repertoire. A CRB whose expression
+## descriptor means the matrix is embedded, receptors kept in `bcr_data` /
+## `tcr_data` are merged into the unified repertoire, and a singular spatial
+## image becomes `histology_images`. Molecule tables embedded in a spatial entry
+## move into the sidecar when the object is saved again. A CRB whose expression
 ## storage is older than the formats this version reads cannot be repaired.
 .readLegacyCerebro <- function(file) {
   serialized <- .readCerebroPayload(file)
@@ -1083,6 +1175,13 @@ readCerebro <- function(file) {
       object$immune_repertoire <- do.call(.mergeRepertoiresBySample, receptors)
     }
   }
+  for (name in names(object$spatial)) {
+    entry <- object$spatial[[name]]
+    upgraded <- .upgradeLegacySpatialEntry(entry)
+    if (!identical(upgraded, entry)) {
+      object$addSpatialData(name, upgraded)
+    }
+  }
   backend <- .cerebroBackend(object)
   object <- .attachCerebroExpression(object, file, backend)
   object <- .hydrateThinCerebro(
@@ -1102,6 +1201,11 @@ readCerebro <- function(file) {
 #' expression-backend descriptor is set to embedded, receptor data in the retired
 #' \code{bcr_data} / \code{tcr_data} fields is merged into the unified immune
 #' repertoire, and an H5-backed CRB written without a thin schema is thinned.
+#' An object written before spatial, HLA typing, Trekker or enriched-pathways
+#' support is rebuilt on the current class, so the accessors it lacked exist.
+#' A spatial entry with the singular \code{histology_image} fields becomes
+#' \code{histology_images}, and a molecule table embedded in a spatial entry
+#' moves into the per-FOV sidecar next to the CRB.
 #' A CRB whose expression storage is older than the formats this version reads
 #' (an unknown expression backend, thin schema 1 or 2) cannot be converted;
 #' re-export it with \code{\link{exportFromSeurat}}.

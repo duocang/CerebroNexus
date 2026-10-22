@@ -1,5 +1,4 @@
-# Tests for the Cerebro hla_typing slot + getter/setter round-trip and
-# backward compatibility with objects that predate the field.
+# Tests for the Cerebro hla_typing slot + getter/setter round-trip.
 
 make_minimal_cerebro <- function() {
   # A minimal object is enough to exercise the HLA slot: the getter/setter do
@@ -73,17 +72,6 @@ test_that("getHLATyping returns an empty canonical table when none is set", {
   # so it survives a package-free createShinyApp() bundle where the namespace is
   # absent. Pin it to the canonical empty table so the two cannot drift apart.
   expect_equal(t, hla_normalize_typing(list(), source_type = "unknown"))
-})
-
-test_that("an object predating the field still returns an empty table", {
-  crb <- make_minimal_cerebro()
-  # Simulate an older object by removing the field from the instance.
-  # R6 fields cannot be `rm`'d, so emulate the deserialization gap by forcing
-  # NULL — getHLATyping() must still yield an empty canonical table, not error.
-  crb$hla_typing <- NULL
-  expect_silent(t <- crb$getHLATyping())
-  expect_true(hla_is_typing_table(t))
-  expect_equal(nrow(t), 0L)
 })
 
 test_that("stored typing is queryable by carrier index", {

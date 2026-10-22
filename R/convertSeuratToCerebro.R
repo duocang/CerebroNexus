@@ -414,9 +414,11 @@
 #'
 #' Seurat uses the same named image collection for several platform-specific
 #' structures: a name can identify a Visium slice, Xenium or MERFISH field of
-#' view (FOV), Slide-seq puck, or another SpatialImage subclass. It is a
-#' structural spatial-entry key, not necessarily a donor or sample name. An
-#' entry can carry multiple user-named backgrounds, or coordinates only.
+#' view (FOV), or another Seurat v5 spatial image. It is a structural
+#' spatial-entry key, not necessarily a donor or sample name. An entry can carry
+#' multiple user-named backgrounds, or coordinates only. Seurat v4
+#' \code{VisiumV1} images are rejected with guidance to rebuild them as
+#' \code{VisiumV2} images.
 #'
 #' @examples
 #' \dontrun{
@@ -857,16 +859,13 @@ convertSeuratToCerebro <- function(
       ))
     }
 
-    # Get expression matrix. Top-level conversion entry point: opt into legacy
-    # cross-semantic layer fallback so a Seurat v5 counts-only assay requested
-    # at the default slot = "data" still converts (as it did on master) instead
-    # of hard-stopping. The fallback warns, so it is never silent.
+    # Get expression matrix (a missing layer is an error, never substituted).
     expr_resolution <- .getExpressionMatrix(
       seurat,
       assay = assay,
       slot = slot,
       join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE,
+      layer_argument = "slot",
       return_resolution = TRUE
     )
     expr_matrix <- .validate_expression_cells(

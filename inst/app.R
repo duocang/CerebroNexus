@@ -20,7 +20,7 @@ Cerebro.options <<- list(
   ## Keep the source demo runnable directly from inst/ without requiring an
   ## installed CerebroNexus package. Exported apps receive this value in
   ## cerebro_config.rds when createShinyApp() builds them.
-  "cerebro_version" = "5.2.1",
+  "cerebro_version" = "5.3.0",
   ## This bundled app ships several distinct demo data sets so the sidebar
   ## "Select dataset:" switcher is visible out of the box: switching changes
   ## the UMAP, the cell-type composition, and the conditional tabs (Immune
@@ -35,8 +35,8 @@ Cerebro.options <<- list(
     ## REAL public spatial data, one per technology (down-sampled). The bracketed
     ## label states the platform. All four flow through the same platform-
     ## agnostic .getSpatialData extraction, spanning spot / bead / in-situ-imaging
-    ## capture and Seurat v4 vs v5 objects: Slide-seq v2 is a
-    ## Seurat v4 object, the others are v5. The demos deliberately show BOTH
+    ## capture. Slide-seq v2 started as a Seurat v4 object and
+    ## is rebuilt as a v5 FOV before export, the others are v5. The demos deliberately show BOTH
     ## background-image paths: MERFISH embeds its DAPI in the .crb; Visium and
     ## Xenium load external files via `spatial_images` below. Slide-seq has no
     ## tissue photo by design (bead scatter is the complete spatial view).
@@ -57,8 +57,9 @@ Cerebro.options <<- list(
     ## The HLA & TCR demo: REAL single cells with REAL paired TCR, from 10x's
     ## dextramer cohort. The repertoire is ANTIGEN-SELECTED (cells were sorted
     ## for binding a pMHC dextramer), which is precisely why its motif network is
-    ## legible where an unselected repertoire's is not -- 12,000 cells give 169
-    ## TRB nodes in 39 motifs on measured sequences. Donor genotypes are the
+    ## legible where an unselected repertoire's is not -- the shipped 2,000 cells
+    ## give 38 TRB nodes in 8 motifs on measured sequences (169 in 39 for the
+    ## full 12,000-cell build). Donor genotypes are the
     ## PUBLISHED ones (table S1 of the source paper), measured independently of
     ## these cells, so the carrier contrasts are real; the repertoire is still
     ## antigen-selected and says so, since the reagent panel decided which

@@ -24,6 +24,11 @@ also how a CRB from an older release is brought up to date: a missing
 expression-backend descriptor is set to embedded, receptor data in the retired
 \code{bcr_data} / \code{tcr_data} fields is merged into the unified immune
 repertoire, and an H5-backed CRB written without a thin schema is thinned.
+An object written before spatial, HLA typing, Trekker or enriched-pathways
+support is rebuilt on the current class, so the accessors it lacked exist.
+A spatial entry with the singular \code{histology_image} fields becomes
+\code{histology_images}, and a molecule table embedded in a spatial entry
+moves into the per-FOV sidecar next to the CRB.
 A CRB whose expression storage is older than the formats this version reads
 (an unknown expression backend, thin schema 1 or 2) cannot be converted;
 re-export it with \code{\link{exportFromSeurat}}.

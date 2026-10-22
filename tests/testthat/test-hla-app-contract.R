@@ -133,17 +133,18 @@ test_that("shipped demo carries donor ids, so counting is donor-level", {
 test_that("shipped demo yields a readable TRB motif network on real sequences", {
   # The whole argument for the page: a Hamming-1 CDR3 network is legible on an
   # ANTIGEN-SELECTED repertoire. An unselected one is sparse -- the real-sequence
-  # predecessor gave 4 nodes in 2 motifs. Measured here: 157 nodes in 31 motifs,
-  # largest 36. Assert well under those so a rebuild is not brittle, but far
-  # above the near-empty scatter this replaced.
+  # predecessor gave 4 nodes in 2 motifs. Measured on the shipped random 2,000
+  # cells: 38 nodes in 8 motifs, largest 12 (157 / 31 / 36 on all 12,000).
+  # Assert well under those so a rebuild is not brittle, but far above the
+  # near-empty scatter this replaced.
   crb <- hla_sc_demo()
   seg <- hla_parse_ir_segments(crb$getImmuneRepertoire(), "TRB")
   nodes <- hla_aggregate_cdr3_nodes(seg, by_v = TRUE)
   m <- hla_build_motif_groups(nodes, by_v = TRUE)$motif_df
   in_motif <- m[m$motif_size >= 2L, ]
-  expect_gt(nrow(in_motif), 100L)
-  expect_gte(length(unique(in_motif$motif_group)), 20L)
-  expect_gte(max(in_motif$motif_size), 10L)
+  expect_gt(nrow(in_motif), 25L)
+  expect_gte(length(unique(in_motif$motif_group)), 6L)
+  expect_gte(max(in_motif$motif_size), 5L)
   # Isolated CDR3s must still dominate: a repertoire where everything clusters
   # would be its own kind of lie.
   expect_gt(nrow(m) - nrow(in_motif), nrow(in_motif))

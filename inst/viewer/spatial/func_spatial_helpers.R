@@ -138,8 +138,7 @@ configured_spatial_images <- function(
   )
 }
 
-## Canonical .crb files carry histology_images; older files carry one singular
-## histology_image. Prefer the canonical manifest when both happen to exist.
+## Embedded images travel in the entry's `histology_images` manifest.
 embedded_spatial_images <- function(spatial_data, roi_value = NULL) {
   manifest <- spatial_data[["histology_images"]]
   if (is.list(manifest) && length(manifest) > 0L && !is.null(names(manifest))) {
@@ -163,14 +162,6 @@ embedded_spatial_images <- function(spatial_data, roi_value = NULL) {
     return(spatial_images_for_roi(
       images[!vapply(images, is.null, logical(1))],
       roi_value
-    ))
-  }
-  if (!is.null(spatial_data[["histology_image"]])) {
-    return(list(
-      "Tissue background" = list(
-        image = spatial_data[["histology_image"]],
-        bounds = spatial_data[["histology_image_bounds"]]
-      )
     ))
   }
   list()

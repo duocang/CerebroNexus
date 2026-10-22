@@ -6,3 +6,7 @@
 ## - `Cerebro.options` is assigned in .GlobalEnv intentionally (global option
 ##   store used by the sourced Viewer modules).
 utils::globalVariables(c("ui", "server", "group", ".", "Cerebro.options"))
+
+#' @importFrom rlang %||%
+#' @noRd
+NULL

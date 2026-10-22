@@ -64,8 +64,8 @@ Cerebro <- R6::R6Class(
 
     #' @field spatial_molecule_backend Descriptor for molecule tables stored in
     #' a sibling spatial sidecar. The runtime-only `root` member is populated
-    #' by `readCerebro()` or the generated Viewer and is never required for
-    #' legacy CRBs with embedded molecule tables.
+    #' by `readCerebro()` or the generated Viewer. A stored CRB keeps its
+    #' molecule tables only in this sidecar.
     spatial_molecule_backend = NULL,
 
     #' @field immune_repertoire_backend Descriptor for a large immune
@@ -75,7 +75,8 @@ Cerebro <- R6::R6Class(
     immune_repertoire_backend = NULL,
 
     #' @field cell_fingerprint Stable identity of the cell population used by
-    #' portable saved views. Older CRBs leave this as \code{NULL}.
+    #' portable saved views. Embedded CRBs leave this as \code{NULL}; the Viewer
+    #' then derives it from the cell names.
     cell_fingerprint = NULL,
 
     #' @field meta_data \code{data.frame} that contains cell meta data.
@@ -128,8 +129,7 @@ Cerebro <- R6::R6Class(
 
     #' @field hla_typing canonical HLA typing \code{data.frame} (long: one row
     #'   per sample x locus x copy) with data provenance, or NULL. Consumed by
-    #'   the HLA & TCR Motifs page for donor-level HLA context. Optional; older
-    #'   .crb files simply lack it.
+    #'   the HLA & TCR Motifs page for donor-level HLA context. Optional.
     hla_typing = NULL,
 
     #' @field spatial \code{list} that contains spatial data (coordinates and expression).
@@ -140,7 +140,7 @@ Cerebro <- R6::R6Class(
     #'   UMAP coordinates, per-nucleus cluster/cell-type, positioning QC in the
     #'   vendor's original field names, the upstream (vendor) Moran's I table,
     #'   and per-nucleus positioning-evidence images (base64 \code{data:} URIs).
-    #'   Consumed by the Trekker page. Optional; older .crb files simply lack it.
+    #'   Consumed by the Trekker page. Optional.
     trekker = NULL,
 
     ##------------------------------------------------------------------------##
@@ -930,18 +930,8 @@ Cerebro <- R6::R6Class(
     #'
     #' @return
     #' \code{vector} of methods for which enriched pathways are available.
-    getMethodsWithEnrichedPathways = function() {
-      return(names(self$enriched_pathways))
-    },
-
-    #' @description
-    #' Alias of \code{getMethodsWithEnrichedPathways()}, kept for backwards
-    #' compatibility with the Shiny app, which calls this name.
-    #'
-    #' @return
-    #' \code{vector} of methods for which enriched pathways are available.
     getMethodsForEnrichedPathways = function() {
-      return(self$getMethodsWithEnrichedPathways())
+      return(names(self$enriched_pathways))
     },
 
     #' @description
@@ -954,7 +944,7 @@ Cerebro <- R6::R6Class(
     #' \code{vector} of grouping variables for which enriched pathways are
     #' available.
     getGroupsWithEnrichedPathways = function(method) {
-      if (method %in% self$getMethodsWithEnrichedPathways() == FALSE) {
+      if (method %in% self$getMethodsForEnrichedPathways() == FALSE) {
         stop(glue::glue('Method `{method}` is not available.'), call. = FALSE)
       } else {
         return(names(self$enriched_pathways[[method]]))
@@ -972,7 +962,7 @@ Cerebro <- R6::R6Class(
     #' @return
     #' \code{data.frame} containing the enriched pathways.
     getEnrichedPathways = function(method, group_name) {
-      if (method %in% self$getMethodsWithEnrichedPathways() == FALSE) {
+      if (method %in% self$getMethodsForEnrichedPathways() == FALSE) {
         stop(glue::glue('Method `{method}` is not available.'), call. = FALSE)
       } else {
         if (
@@ -1147,18 +1137,15 @@ Cerebro <- R6::R6Class(
 
     #' @description
     #' Get HLA typing data (canonical long \code{data.frame}), or an empty
-    #' table when none is stored. Safe on older objects that predate the field.
+    #' table when none is stored.
     #'
     #' @return A canonical HLA typing \code{data.frame} (possibly zero-row).
     getHLATyping = function() {
-      # `hla_typing` may be absent on objects deserialized from older .crb
-      # files; guard with a tryCatch so the getter never errors.
-      ht <- tryCatch(self$hla_typing, error = function(e) NULL)
+      ht <- self$hla_typing
       if (is.data.frame(ht)) {
         return(ht)
       }
-      # Nothing stored (or an older object predating the field): return a
-      # canonical EMPTY table built with base R only.
+      # Nothing stored: return a canonical EMPTY table built with base R only.
       #
       # This must NOT call a package-internal helper (e.g. hla_normalize_typing)
       # to synthesise the empty table. A .crb is an R6 object whose methods are
@@ -1234,9 +1221,9 @@ Cerebro <- R6::R6Class(
     #'   'histology_images', a uniquely named list of image payloads. Each
     #'   payload contains 'histology_image' (a base64 \code{data:} URI) and
     #'   'histology_image_bounds' (xmin/xmax/ymin/ymax in coordinate space).
-    #'   Bounds omitted from a payload are derived from the coordinates. Legacy
-    #'   singular image fields are accepted and normalized as 'Tissue
-    #'   background'.
+    #'   Bounds omitted from a payload are derived from the coordinates. The
+    #'   singular 'histology_image' / 'histology_image_bounds' fields are
+    #'   rejected.
     addSpatialData = function(name, data) {
       if (
         !is.list(data) || !all(c("coordinates", "expression") %in% names(data))
@@ -1258,8 +1245,7 @@ Cerebro <- R6::R6Class(
     #'
     #' @return
     #' A canonical spatial-data \code{list} containing 'coordinates',
-    #' 'expression', and 'histology_images'. Legacy singular image fields are
-    #' normalized on read.
+    #' 'expression', and 'histology_images'.
     getSpatialData = function(name, hydrate_molecules = TRUE) {
       if (
         !is.logical(hydrate_molecules) ||
@@ -1402,44 +1388,6 @@ Cerebro <- R6::R6Class(
       }
       if ("histology_images" %in% names(data)) {
         images <- data[["histology_images"]]
-      } else if ("histology_image" %in% names(data)) {
-        legacy_bounds <- data[["histology_image_bounds"]]
-        if (is.list(legacy_bounds)) {
-          required <- c("xmin", "xmax", "ymin", "ymax")
-          valid_legacy_bounds <- length(legacy_bounds) == 4L &&
-            !is.null(names(legacy_bounds)) &&
-            setequal(names(legacy_bounds), required) &&
-            !anyDuplicated(names(legacy_bounds)) &&
-            all(vapply(
-              legacy_bounds,
-              function(value) {
-                is.numeric(value) &&
-                  length(value) == 1L &&
-                  is.finite(value)
-              },
-              logical(1)
-            ))
-          if (!valid_legacy_bounds) {
-            stop(
-              context,
-              " image `Tissue background` legacy bounds must be a named ",
-              "list of finite numeric scalar xmin, xmax, ymin, and ymax ",
-              "values.",
-              call. = FALSE
-            )
-          }
-          legacy_bounds <- as.numeric(unlist(
-            legacy_bounds[required],
-            use.names = FALSE
-          ))
-          names(legacy_bounds) <- required
-        }
-        images <- list(
-          `Tissue background` = list(
-            histology_image = data[["histology_image"]],
-            histology_image_bounds = legacy_bounds
-          )
-        )
       } else {
         images <- list()
       }
@@ -1529,8 +1477,6 @@ Cerebro <- R6::R6Class(
         images <- normalized
       }
       data[["histology_images"]] <- images
-      data[["histology_image"]] <- NULL
-      data[["histology_image_bounds"]] <- NULL
       data
     },
 
@@ -1545,12 +1491,11 @@ Cerebro <- R6::R6Class(
 
     #' @description
     #' Get Trekker single-cell spatial-mapping data, or \code{NULL} when none is
-    #' stored. Safe on older objects that predate the field (the slot is read
-    #' through a \code{tryCatch} so the getter never errors on a legacy .crb).
+    #' stored.
     #'
     #' @return A \code{list} with the Trekker page's content, or \code{NULL}.
     getTrekker = function() {
-      tryCatch(self$trekker, error = function(e) NULL)
+      self$trekker
     },
 
     #' @description

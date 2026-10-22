@@ -26,7 +26,10 @@ data set (\code{closed}, removes the "Load data" element); defaults to
 (800 MB).}
 
 \item{crb_file_to_load}{Path to \code{.crb} file to load on launch of
-Cerebro. Useful when using/hosting Cerebro in \code{closed} mode. Defaults to
+Cerebro. Useful when using/hosting Cerebro in \code{closed} mode. To offer
+several data sets, pass a \emph{named} character vector, e.g.
+\code{c(sampleA = "a.crb", sampleB = "b.crb")}: every name is the stable,
+unique data set identity used in links and saved state. Defaults to
 \code{NULL}.}
 
 \item{welcome_message}{\code{string} with custom welcome message to display

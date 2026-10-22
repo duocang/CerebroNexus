@@ -5,8 +5,8 @@
 ## analysis, display, and filtering controls share the app-wide settings drawer.
 ##----------------------------------------------------------------------------##
 
-## Only the NON-FACETED Clonal UMAP renders through the shared renderer; the
-## faceted variant stays on the static ggplot renderPlot (see visualizations.R).
+## The Clonal UMAP renders through the shared renderer, grouped or not: a
+## grouping column only turns its single canvas into one panel per group.
 tab_immune_repertoire <- tabItem(
   tabName = "immune_repertoire",
   cerebroVizPageHeader(
@@ -60,10 +60,7 @@ tab_immune_repertoire <- tabItem(
       uiOutput("ir_help_panel"),
       uiOutput("ir_visualizations_UI"),
       conditionalPanel(
-        condition = paste0(
-          "!input.ir_tabs || (input.ir_tabs == 'Clonal UMAP' && ",
-          "(!input.ir_p_umap_group_by || input.ir_p_umap_group_by == ''))"
-        ),
+        condition = "!input.ir_tabs || input.ir_tabs == 'Clonal UMAP'",
         cerebroCellViewOutput("ir_clonalUMAP_projection")
       )
     )

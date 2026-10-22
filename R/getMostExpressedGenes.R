@@ -102,7 +102,6 @@ getMostExpressedGenes <- function(
     assay = assay,
     slot = "counts",
     join_samples = TRUE,
-    allow_cross_semantic_fallback = FALSE,
     return_resolution = TRUE
   )
   counts_matrix <- .validate_expression_cells(

@@ -8,10 +8,10 @@
 
 # ---- R6 slot: addTrekker / getTrekker round-trip -------------------------- ##
 
-test_that("getTrekker defaults to NULL so the tab stays hidden for old .crb", {
+test_that("getTrekker defaults to NULL so the tab stays hidden", {
   obj <- Cerebro$new()
-  # An object that predates the feature carries no trekker slot; the tab is
-  # inserted only when getTrekker() is non-NULL, so this is what keeps it hidden.
+  # The tab is inserted only when getTrekker() is non-NULL, so a data set
+  # without Trekker content keeps it hidden.
   expect_null(obj$getTrekker())
 })
 

@@ -460,12 +460,6 @@ test_that("example.crb sample levels are as expected", {
   expect_true(is.character(lvls))
 })
 
-test_that("example.h5 file exists and is non-empty", {
-  path <- system.file("extdata/examples/example.h5", package = "CerebroNexus")
-  expect_true(file.exists(path))
-  expect_gt(file.size(path), 0)
-})
-
 ## ---------------------------------------------------------------------------
 ## calculatePercentGenes input validation (without Seurat)
 ## ---------------------------------------------------------------------------
@@ -547,6 +541,22 @@ test_that("launchCerebro rejects non-logical projections_show_hover_info", {
   expect_error(
     launchCerebro(projections_show_hover_info = "yes"),
     regexp = "projections_show_hover_info"
+  )
+})
+
+test_that("launchCerebro requires named files when several are given", {
+  files <- c("a.crb", "b.crb")
+  expect_error(
+    launchCerebro(crb_file_to_load = files),
+    "needs unique, non-empty names.*sampleA"
+  )
+  expect_error(
+    launchCerebro(crb_file_to_load = c(x = "a.crb", "b.crb")),
+    "needs unique, non-empty names"
+  )
+  expect_error(
+    launchCerebro(crb_file_to_load = c(x = "a.crb", x = "b.crb")),
+    "needs unique, non-empty names"
   )
 })
 
@@ -676,15 +686,13 @@ test_that("launchCerebro builds dataset information for configured files", {
 ## ---------------------------------------------------------------------------
 ## .getExpressionMatrix on a counts-only Seurat v5 object
 ##
-## A common real object — v5 RNA assay with only a `counts` layer (NormalizeData
-## not run) — requested at the default slot = "data" must still export via the
-## top-level callers, which opt into cross-semantic fallback. In v5 a missing
-## layer is not an error but an EMPTY matrix, so the fallback must trigger on
-## that too, warn (never a silent normalised-vs-raw swap), and return counts.
-## Without allow_cross_semantic_fallback = TRUE it must hard-stop.
+## A v5 RNA assay with only a `counts` layer (NormalizeData not run) requested
+## at the default slot = "data" is an error everywhere: no other layer is
+## substituted. The message names the requested layer, lists the layers that
+## exist and says which argument to change.
 ## ---------------------------------------------------------------------------
 
-test_that(".getExpressionMatrix falls back counts-only v5 with a warning", {
+test_that(".getExpressionMatrix errors on a missing layer and says how to fix it", {
   skip_if_not_installed("Seurat")
   skip_if_not(
     utils::compareVersion(
@@ -704,31 +712,31 @@ test_that(".getExpressionMatrix falls back counts-only v5 with a warning", {
   so <- suppressWarnings(Seurat::CreateSeuratObject(counts = counts))
   expect_setequal(SeuratObject::Layers(so[["RNA"]]), "counts")
 
-  # default slot = "data", opted in: falls back to counts and WARNS
-  expect_warning(
-    mat <- .getExpressionMatrix(
-      so,
-      assay = "RNA",
-      slot = "data",
-      join_samples = FALSE,
-      allow_cross_semantic_fallback = TRUE
-    ),
-    "falling back to `counts`"
-  )
-  expect_equal(dim(mat), c(20, 8))
-  expect_equal(
-    as.matrix(mat),
-    as.matrix(Seurat::GetAssayData(so, assay = "RNA", layer = "counts"))
-  )
-
-  # without opting in, the same request must hard-stop rather than guess
-  expect_error(
+  err <- tryCatch(
     .getExpressionMatrix(
       so,
       assay = "RNA",
       slot = "data",
-      join_samples = FALSE
+      join_samples = FALSE,
+      layer_argument = "slot"
     ),
-    "no same-semantic fallback"
+    error = function(e) conditionMessage(e)
+  )
+  expect_match(err, "Layer `data` does not exist in the `RNA` assay", fixed = TRUE)
+  expect_match(err, "Available layers: counts", fixed = TRUE)
+  expect_match(err, "`slot = \"counts\"`", fixed = TRUE)
+
+  ## A function that fixes the layer itself has no argument to point at.
+  err_fixed <- tryCatch(
+    .getExpressionMatrix(so, assay = "RNA", slot = "data"),
+    error = function(e) conditionMessage(e)
+  )
+  expect_match(err_fixed, "This function needs the `data` layer", fixed = TRUE)
+  expect_no_match(err_fixed, "slot =", fixed = TRUE)
+
+  ## The layer that does exist is read as requested.
+  expect_equal(
+    as.matrix(.getExpressionMatrix(so, assay = "RNA", slot = "counts")),
+    as.matrix(Seurat::GetAssayData(so, assay = "RNA", layer = "counts"))
   )
 })

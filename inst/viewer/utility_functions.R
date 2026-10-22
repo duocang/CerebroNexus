@@ -39,8 +39,9 @@ viewerInitialPageDecision <- function(
   )
 }
 
-## NULL means an older catalog does not describe its projections yet. Never
-## interpret an incomplete catalog or the first progressive frame as absence.
+## NULL means there is no catalog entry (an upload) or it does not describe its
+## projections yet. Never interpret an incomplete catalog or the first
+## progressive frame as absence.
 viewerLinkedViewsAvailable <- function(info = NULL, object = NULL) {
   if (!is.null(object)) {
     read <- function(value) tryCatch(force(value), error = function(e) NULL)
@@ -385,8 +386,7 @@ viewerScatterDefaults <- function(options, dataset = NULL, page = NULL) {
       100
     )
   )
-  # Ordinary projection views share one author configuration. Legacy page
-  # overrides (e.g. expression_point_size) must not shadow it.
+  # Ordinary projection views share one author configuration.
   if (!identical(page, "spatial")) {
     return(defaults)
   }
@@ -658,11 +658,9 @@ rotateSpatialCoordinatesByRoi <- function(
 }
 
 ##----------------------------------------------------------------------------##
-## Guarded bindCache wrapper for plot/reactive outputs.
+## bindCache wrapper for plot/reactive outputs.
 ##
 ## Mirrors the immune_repertoire module's ir_bindCache():
-##   - no-op on shiny < 1.6.0, where renderPlotly() %>% bindCache() is not
-##     supported (DESCRIPTION only requires shiny >= 1.3.2);
 ##   - cache = "session" so caches are never shared across users/sessions.
 ## Pass every cache key via `...`, including the dataset identifier
 ## (available_crb_files$selected) so switching datasets invalidates the cache.
@@ -1040,15 +1038,12 @@ viewerProjectionSubsetRows <- function(
 }
 
 ## Prefer the R6 row accessor so a single-gene request never needs a temporary
-## 1 x cells matrix. Older serialized objects fall back to the matrix method.
+## 1 x cells matrix.
 viewerExpressionCells <- function(data_set, cells) {
   if (!is.numeric(cells)) {
     return(cells)
   }
   accessor <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
-  if (!is.function(accessor)) {
-    accessor <- tryCatch(data_set$getExpressionMatrix, error = function(e) NULL)
-  }
   method_env <- if (is.function(accessor)) environment(accessor) else NULL
   if (
     is.null(method_env) ||
@@ -1082,42 +1077,7 @@ viewerExpressionCells <- function(data_set, cells) {
 
 viewerExpressionRow <- function(data_set, cells, gene) {
   cells <- viewerExpressionCells(data_set, cells)
-  all_cells <- is.null(cells)
-  cell_indices <- is.numeric(cells)
-  get_row <- tryCatch(data_set$getExpressionRow, error = function(e) NULL)
-  if (is.function(get_row)) {
-    return(as.numeric(get_row(gene = gene, cells = cells)))
-  }
-  expression_matrix <- data_set$getExpressionMatrix(
-    cells = cells,
-    genes = gene
-  )
-  if (is.null(expression_matrix)) {
-    return(NULL)
-  }
-  if (is.null(dim(expression_matrix))) {
-    return(as.numeric(expression_matrix))
-  }
-  row_index <- if (is.null(rownames(expression_matrix))) {
-    1L
-  } else {
-    match(gene, rownames(expression_matrix))
-  }
-  if (is.na(row_index)) {
-    return(NULL)
-  }
-  cell_names <- colnames(expression_matrix)
-  cell_index <- if (
-    all_cells ||
-      cell_indices ||
-      is.null(cell_names) ||
-      identical(cells, cell_names)
-  ) {
-    seq_len(ncol(expression_matrix))
-  } else {
-    match(cells, cell_names)
-  }
-  as.numeric(expression_matrix[row_index, cell_index, drop = TRUE])
+  as.numeric(data_set$getExpressionRow(gene = gene, cells = cells))
 }
 
 ## Fetch several genes in one backend call and align every returned vector to
@@ -1770,11 +1730,15 @@ cerebroCellViewRender <- function(
     } else {
       sum(vapply(key_groups, length, integer(1)))
     }
-    shared_projection <- viewerSharedProjectionName(
-      meta$space_label,
-      n_cells,
-      dataset_context = dataset_context
-    )
+    ## Per-group panels hold only their own cells, so they neither reuse nor
+    ## stand in for the dataset-wide coordinates of a projection.
+    shared_projection <- if (is.null(message$data$panels)) {
+      viewerSharedProjectionName(
+        meta$space_label,
+        n_cells,
+        dataset_context = dataset_context
+      )
+    }
     shared_zero_color <- isTRUE(message$data$shared_zero_color)
     message$data$shared_zero_color <- NULL
     if (isTRUE(shared_zero_color)) {
@@ -3396,27 +3360,15 @@ getGenesForGeneSet <- function(gene_set) {
 }
 
 ##----------------------------------------------------------------------------##
-## Helper: match a URL dataset token against available .crb files.
+## Helper: match a URL dataset token against the stable dataset ids (the names
+## of the configured .crb files).
 ##
-## Returns the matched file path or '' if no match.
+## Returns the matched id or '' if no match.
 ##----------------------------------------------------------------------------##
-match_dataset_by_url <- function(url_dataset, files, file_names = NULL) {
-  ## Case A: Match by Name (if names exist)
-  if (!is.null(file_names) && url_dataset %in% file_names) {
-    return(files[[url_dataset]])
-  }
-  ## Case B: Match by Filename (basename)
-  basenames <- basename(files)
-  idx <- which(basenames == url_dataset)
-  if (length(idx) == 0) {
-    basenames_no_ext <- tools::file_path_sans_ext(basenames)
-    idx <- which(basenames_no_ext == url_dataset)
-  }
-  if (length(idx) > 0) {
-    return(files[[idx[1]]])
-  }
-  ## No match
-  return('')
+## Dataset ids are the names of the configured files: all present, non-empty
+## and unique.
+viewerDatasetIdsValid <- function(ids) {
+  is.character(ids) && !anyNA(ids) && all(nzchar(ids)) && !anyDuplicated(ids)
 }
 
 match_dataset_id_by_url <- function(url_dataset, files) {
@@ -3426,19 +3378,12 @@ match_dataset_id_by_url <- function(url_dataset, files) {
       length(url_dataset) != 1L ||
       is.na(url_dataset) ||
       !nzchar(url_dataset) ||
-      is.null(ids)
+      is.null(ids) ||
+      !url_dataset %in% ids
   ) {
     return("")
   }
-  if (url_dataset %in% ids) {
-    return(url_dataset)
-  }
-  basenames <- basename(files)
-  index <- which(basenames == url_dataset)
-  if (!length(index)) {
-    index <- which(tools::file_path_sans_ext(basenames) == url_dataset)
-  }
-  if (length(index)) ids[[index[[1L]]]] else ""
+  url_dataset
 }
 
 ##----------------------------------------------------------------------------##
@@ -4402,8 +4347,77 @@ get_or_load_crb <- function(
       repairable = FALSE
     ))
   }
-  if (!exists("availableSpatial", envir = obj, inherits = FALSE)) {
-    return("it predates spatial support")
+  required <- .runtimeRequiredCerebroMethods()
+  absent <- !vapply(
+    names(required),
+    exists,
+    logical(1),
+    envir = obj,
+    inherits = FALSE
+  )
+  if (any(absent)) {
+    return(paste0("it predates ", required[[which(absent)[[1L]]]]))
+  }
+  .runtimeLegacySpatialReason(obj)
+}
+
+## Accessor -> the feature that introduced it (`.requiredCerebroMethods` in the
+## package). A function, so it is shared with .runtimeLegacyReason() through the
+## process-wide function cache in source_cache.R.
+.runtimeRequiredCerebroMethods <- function() {
+  c(
+    availableSpatial = "spatial support",
+    getHLATyping = "HLA typing support",
+    getTrekker = "Trekker support",
+    getMethodsForEnrichedPathways = "the enriched-pathways page"
+  )
+}
+
+## Same checks as .legacySpatialReason() in the package.
+.runtimeLegacySpatialReason <- function(obj) {
+  stored <- function(field) {
+    if (
+      exists(field, envir = obj, inherits = FALSE) &&
+        !bindingIsActive(field, obj) &&
+        !isTRUE(rlang::env_binding_are_lazy(obj, field))
+    ) {
+      obj[[field]]
+    } else {
+      NULL
+    }
+  }
+  spatial <- stored("spatial")
+  if (!is.list(spatial) || !length(spatial)) {
+    return(NULL)
+  }
+  entry_names <- names(spatial)
+  for (index in seq_along(spatial)) {
+    entry <- spatial[[index]]
+    if (!is.list(entry)) {
+      next
+    }
+    label <- if (is.null(entry_names)) index else entry_names[[index]]
+    if (any(c("histology_image", "histology_image_bounds") %in% names(entry))) {
+      return(paste0(
+        "its spatial entry '",
+        label,
+        "' stores a singular histology_image instead of histology_images"
+      ))
+    }
+    molecules <- entry[["molecules"]]
+    if (
+      !is.null(molecules) && !inherits(molecules, "CerebroSpatialMoleculeRef")
+    ) {
+      return(paste0(
+        "its spatial entry '",
+        label,
+        "' embeds its molecule table instead of using the spatial sidecar"
+      ))
+    }
+  }
+  getter <- stored("getSpatialData")
+  if (!is.function(getter) || !"hydrate_molecules" %in% names(formals(getter))) {
+    return("it predates deferred spatial molecule loading")
   }
   NULL
 }
@@ -4885,7 +4899,7 @@ viewerImmuneRepertoireSummary <- function(ds) {
   if (is.null(ds)) {
     return(list(available = FALSE, samples = character(), chains = character()))
   }
-  backend <- tryCatch(ds$immune_repertoire_backend, error = function(e) NULL)
+  backend <- ds$immune_repertoire_backend
   if (is.list(backend) && identical(backend$type, "file")) {
     return(list(
       available = TRUE,
@@ -4952,19 +4966,14 @@ getObservationUnit <- function() {
   )
 }
 
-## Wrapper for the HLA & TCR Motifs module. Older .crb objects predate the
-## getHLATyping() method / hla_typing field, so the wrapper checks the method
-## exists and falls back to an empty canonical table, never erroring.
+## Wrapper for the HLA & TCR Motifs module: the stored typing table, or an empty
+## canonical one when the data set carries none.
 getHLATyping <- function() {
   ds <- data_set()
   if (!any(grepl("Cerebro", class(ds)))) {
     return(hla_normalize_typing(list(), source_type = "unknown"))
   }
-  empty <- hla_normalize_typing(list(), source_type = "unknown")
-  if (!is.function(ds$getHLATyping)) {
-    return(empty)
-  }
-  tryCatch(ds$getHLATyping(), error = function(e) empty)
+  ds$getHLATyping()
 }
 
 ## Wrappers for spatial module.
@@ -5002,21 +5011,8 @@ getSpatialData <- function(name) {
   value
 }
 viewerReadSpatialData <- function(ds, name) {
-  getter <- ds$getSpatialData
   tryCatch(
-    {
-      if ("hydrate_molecules" %in% names(formals(getter))) {
-        return(getter(name, hydrate_molecules = FALSE))
-      }
-      stored <- tryCatch(ds$spatial[[name]], error = function(error) NULL)
-      if (
-        is.list(stored) &&
-          inherits(stored[["molecules"]], "CerebroSpatialMoleculeRef")
-      ) {
-        return(stored)
-      }
-      getter(name)
-    },
+    ds$getSpatialData(name, hydrate_molecules = FALSE),
     error = function(e) NULL
   )
 }
@@ -5024,7 +5020,7 @@ viewerReadSpatialData <- function(ds, name) {
 ## The first Spatial frame only needs coordinates and embedded-image metadata.
 ## Read those fields directly from canonical storage so a tab click does not
 ## normalize or copy molecule payloads and other unrelated Spatial content.
-## Legacy or malformed entries retain the validated public accessor fallback.
+## Malformed entries retain the validated public accessor fallback.
 viewerSpatialFirstFrameData <- function(name) {
   ds <- data_set()
   if (!any(grepl("Cerebro", class(ds)))) {
@@ -5042,17 +5038,15 @@ viewerSpatialFirstFrameData <- function(name) {
   }
   list(
     coordinates = coordinates,
-    histology_images = stored[["histology_images"]],
-    histology_image = stored[["histology_image"]],
-    histology_image_bounds = stored[["histology_image_bounds"]]
+    histology_images = stored[["histology_images"]]
   )
 }
 
 ## Coordinate-only Spatial consumers run after spatial_projection_parameters_plot
 ## has validated the exact current dataset + entry through getSpatialData().
 ## Reuse the canonical stored coordinate reference there instead of invoking the
-## legacy getter's image/bounds normalization for every downstream reactive.
-## Malformed or legacy storage keeps the fully validated fallback path.
+## getter's image/bounds normalization for every downstream reactive.
+## Malformed storage keeps the fully validated fallback path.
 viewerSpatialCoordinates <- function(name) {
   ds <- data_set()
   if (!any(grepl("Cerebro", class(ds)))) {

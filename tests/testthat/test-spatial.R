@@ -289,26 +289,84 @@ test_that("spatial UI defines correct tabName", {
 ## Spatial background image: createShinyApp production channel + demo wiring.
 ##----------------------------------------------------------------------------##
 
-test_that("createShinyApp preserves legacy and nested spatial settings APIs", {
+test_that("createShinyApp exposes only the nested spatial settings API", {
   args <- names(formals(createShinyApp))
-  expect_true("spatial_images" %in% args)
-  expect_true("spatial_image_settings" %in% args)
-  expect_true("spatial_plot_rotation" %in% args)
-  expect_false("..." %in% args)
   expect_true(all(
-    c(
-      "spatial_images_flip_x",
-      "spatial_images_flip_y",
-      "spatial_images_scale_x",
-      "spatial_images_scale_y",
-      "spatial_images_offset_x",
-      "spatial_images_offset_y"
-    ) %in%
+    c("spatial_images", "spatial_image_settings", "spatial_plot_rotation") %in%
       args
   ))
+  expect_false("..." %in% args)
+  expect_false(any(grepl("^spatial_images_(flip|scale|offset)_", args)))
 })
 
-test_that("createShinyApp migrates legacy spatial settings into its bundle", {
+test_that("createShinyApp rejects the removed per-dataset spatial arguments", {
+  for (argument in c(
+    "spatial_images_flip_x",
+    "spatial_images_flip_y",
+    "spatial_images_scale_x",
+    "spatial_images_scale_y",
+    "spatial_images_offset_x",
+    "spatial_images_offset_y"
+  )) {
+    call <- as.call(c(
+      list(
+        quote(createShinyApp),
+        cerebro_data = c(Dataset = "missing.crb"),
+        launch_browser = FALSE
+      ),
+      stats::setNames(list(c(Dataset = 1)), argument)
+    ))
+    expect_error(eval(call), "unused argument", info = argument)
+  }
+  ## the same keys are not silently accepted through cerebro_options either
+  skip_if_not(file.exists(spatial_crb))
+  expect_error(
+    createShinyApp(
+      cerebro_data = c(Dataset = spatial_crb),
+      cerebro_options = list(spatial_images_flip_x = c(Dataset = TRUE)),
+      launch_browser = FALSE
+    ),
+    "spatial_images_flip_x.*spatial_image_settings = list[(]Dataset"
+  )
+})
+
+test_that("createShinyApp rejects the old spatial_images and rotation forms", {
+  skip_if_not(file.exists(spatial_crb))
+  img <- system.file(
+    "extdata/examples/demo_spatial_visium_he.png",
+    package = "CerebroNexus"
+  )
+  skip_if_not(file.exists(img))
+  out_dir <- file.path(tempdir(), paste0("cerebro_spatial_old_", Sys.getpid()))
+  on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
+  build <- function(...) {
+    suppressWarnings(suppressMessages(
+      createShinyApp(
+        cerebro_data = c("Old spatial" = spatial_crb),
+        result_dir = out_dir,
+        launch_browser = FALSE,
+        verbose = FALSE,
+        ...
+      )
+    ))
+  }
+
+  expect_error(
+    build(spatial_images = c("Old spatial" = img)),
+    "list[(]Dataset = list[(]<spatial entry> = c[(]label = path[)][)][)].*no longer accepted"
+  )
+  expect_error(
+    build(spatial_images = list("Old spatial" = img)),
+    "list[(]<spatial entry> = c[(]label = path[)][)].*no longer accepted"
+  )
+  expect_error(
+    build(spatial_plot_rotation = c("Old spatial" = 37)),
+    "list[(]Dataset = list[(]<spatial entry> = 90[)][)].*no longer accepted"
+  )
+  expect_false(dir.exists(out_dir))
+})
+
+test_that("createShinyApp bundles nested spatial image settings", {
   skip_if_not(file.exists(spatial_crb))
   img <- system.file(
     "extdata/examples/demo_spatial_visium_he.png",
@@ -317,30 +375,46 @@ test_that("createShinyApp migrates legacy spatial settings into its bundle", {
   skip_if_not(file.exists(img))
   out_dir <- file.path(
     tempdir(),
-    paste0("cerebro_spatial_legacy_", Sys.getpid())
+    paste0("cerebro_spatial_settings_", Sys.getpid())
   )
   on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
+  spatial_name <- readCerebro(spatial_crb)$availableSpatial()[[1L]]
 
   suppressWarnings(suppressMessages(
     createShinyApp(
-      cerebro_data = c("Legacy spatial" = spatial_crb),
+      cerebro_data = c("Nested spatial" = spatial_crb),
       result_dir = out_dir,
-      spatial_images = c("Legacy spatial" = img),
-      spatial_images_flip_x = c("Legacy spatial" = TRUE),
-      spatial_images_flip_y = c("Legacy spatial" = FALSE),
-      spatial_images_scale_x = c("Legacy spatial" = 0.9),
-      spatial_images_scale_y = c("Legacy spatial" = 1.1),
-      spatial_images_offset_x = c("Legacy spatial" = 12),
-      spatial_images_offset_y = c("Legacy spatial" = -8),
-      spatial_plot_rotation = c("Legacy spatial" = 37),
+      spatial_images = list(
+        "Nested spatial" = stats::setNames(
+          list(c("Tissue background" = img)),
+          spatial_name
+        )
+      ),
+      spatial_image_settings = list(
+        "Nested spatial" = stats::setNames(
+          list(list(
+            "Tissue background" = list(
+              flip_x = TRUE,
+              flip_y = FALSE,
+              scale_x = 0.9,
+              scale_y = 1.1,
+              offset_x = 12,
+              offset_y = -8
+            )
+          )),
+          spatial_name
+        )
+      ),
+      spatial_plot_rotation = list(
+        "Nested spatial" = stats::setNames(list(37), spatial_name)
+      ),
       launch_browser = FALSE,
       verbose = FALSE
     )
   ))
 
-  spatial_name <- readCerebro(spatial_crb)$availableSpatial()[[1L]]
   cfg <- readRDS(file.path(out_dir, "cerebro_config.rds"))
-  preset <- cfg[["spatial_image_settings"]][["Legacy spatial"]][[
+  preset <- cfg[["spatial_image_settings"]][["Nested spatial"]][[
     spatial_name
   ]][["Tissue background"]]
   expect_identical(preset[["flip_x"]], TRUE)
@@ -350,7 +424,7 @@ test_that("createShinyApp migrates legacy spatial settings into its bundle", {
   expect_equal(preset[["offset_x"]], 12)
   expect_equal(preset[["offset_y"]], -8)
   expect_equal(
-    cfg[["spatial_plot_rotation"]][["Legacy spatial"]][[spatial_name]],
+    cfg[["spatial_plot_rotation"]][["Nested spatial"]][[spatial_name]],
     37
   )
 })
@@ -441,7 +515,12 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
     createShinyApp(
       cerebro_data = c("Xenium demo" = spatial_crb),
       result_dir = out_dir,
-      spatial_images = c("Xenium demo" = img),
+      spatial_images = list(
+        "Xenium demo" = stats::setNames(
+          list(c("Tissue background" = img)),
+          readCerebro(spatial_crb)$availableSpatial()[[1L]]
+        )
+      ),
       launch_browser = FALSE,
       verbose = FALSE
     )
@@ -476,7 +555,9 @@ test_that("createShinyApp rejects unmatched spatial_images", {
       createShinyApp(
         cerebro_data = c("Xenium demo" = spatial_crb),
         result_dir = out_dir,
-        spatial_images = c("no_such_dataset" = img),
+        spatial_images = list(
+          "no_such_dataset" = list(fov = c(stain = img))
+        ),
         launch_browser = FALSE,
         verbose = FALSE
       )
@@ -1213,37 +1294,33 @@ test_that("app.R ships the Visium H&E overlay pre-aligned", {
 
 ##----------------------------------------------------------------------------##
 ## Regression: .getSpatialData must tolerate a coordinate source that carries an
-## NA-named / blank-named column (Slide-seq GetTissueCoordinates returns such a
-## frame). Before the as_df sanitiser this crashed with
+## NA-named / blank-named column. Before the as_df sanitiser this crashed with
 ## "undefined columns selected".
 ##----------------------------------------------------------------------------##
 
-test_that(".getSpatialData tolerates a real Slide-seq object (NA-named coord col)", {
-  # The ssHippo GetTissueCoordinates frame carries a column literally named NA,
-  # which used to crash the extractor with "undefined columns selected". This is
-  # the exact object behind demo_spatial_slideseq.crb. Skipped unless the source
-  # data package is installed (it is not a hard test dependency).
+test_that(".getSpatialData tolerates an NA-named coordinate source column", {
   skip_if_not_installed("Seurat")
-  skip_if_not_installed("ssHippo.SeuratData")
+  skip_if_not_installed("SeuratObject")
 
-  suppressWarnings(suppressMessages(
-    utils::data("ssHippo", package = "ssHippo.SeuratData")
-  ))
-  obj <- get("ssHippo")
-  obj <- suppressWarnings(Seurat::UpdateSeuratObject(obj))
-  set.seed(1)
-  obj <- suppressWarnings(subset(obj, cells = sample(colnames(obj), 200)))
+  object <- make_synthetic_spatial_seurat(n_cells = 12, n_genes = 10, seed = 7)
+  object$x <- seq_len(12)
+  object$y <- rev(seq_len(12))
+  object$stray <- 1
+  metadata <- object@meta.data
+  names(metadata)[names(metadata) == "stray"] <- NA
+  object@meta.data <- metadata
+  expect_true(any(is.na(colnames(object@meta.data))))
 
-  # confirm the pathological column really is present in the raw source
-  tc <- Seurat::GetTissueCoordinates(obj)
-  expect_true(any(is.na(colnames(tc))))
-
-  extractor <- getFromNamespace(".getSpatialData", "CerebroNexus")
-  res <- extractor(obj, image = "image", layer = "counts", assay = "Spatial")
-  expect_true(all(c("x", "y") %in% colnames(res$coordinates)))
-  expect_true(nrow(res$coordinates) > 0)
-  # the NA-named column must not have leaked through the sanitiser
-  expect_false(any(is.na(colnames(res$coordinates))))
+  result <- .getSpatialData(
+    object,
+    assay = "Spatial",
+    layer = "data",
+    coord_source = "metadata",
+    coord_cols = c("x", "y")
+  )
+  expect_true(all(c("x", "y") %in% colnames(result$coordinates)))
+  expect_equal(nrow(result$coordinates), 12L)
+  expect_false(any(is.na(colnames(result$coordinates))))
 })
 
 test_that("standalone Viewer utilities provide their null fallback operator", {

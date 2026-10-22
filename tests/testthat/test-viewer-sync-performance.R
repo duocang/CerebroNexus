@@ -56,7 +56,7 @@ test_that("expression rows are fetched once and aligned by cell", {
   expect_identical(values, list(B = c(4, 3), A = c(2, 1)))
 })
 
-test_that("single-gene expression uses row access with a matrix fallback", {
+test_that("single-gene expression uses row access, not a matrix read", {
   utility_env <- new.env(parent = globalenv())
   sys.source(
     viewer_test_path("utility_functions.R"),
@@ -79,11 +79,6 @@ test_that("single-gene expression uses row access with a matrix fallback", {
   expect_identical(row_calls, 1L)
   expect_identical(matrix_calls, 0L)
   expect_identical(values, list(A = c(1, 2)))
-
-  data_set$getExpressionRow <- NULL
-  values <- utility_env$viewerExpressionValues(data_set, c("c1", "c2"), "A")
-  expect_identical(matrix_calls, 1L)
-  expect_identical(values, list(A = c(2, 1)))
 })
 
 test_that("expression helpers preserve canonical cell indices", {

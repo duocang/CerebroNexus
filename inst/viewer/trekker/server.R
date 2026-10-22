@@ -18,7 +18,7 @@ source(
 
 trekker_slot <- reactive({
   req(data_set())
-  tryCatch(data_set()$getTrekker(), error = function(e) NULL)
+  data_set()$getTrekker()
 })
 
 trekker_gene_names <- reactive({
@@ -322,7 +322,7 @@ observeEvent(input[["trekker_parameters_info"]], {
           (any gene stored in the dataset; demos may use a selected panel).</li>
         <li><b>Point size / Niche radius:</b> display size, and the radius (in um)
           used for the physical-neighbour counts in the Cell inspector.</li>
-        <li><b>Mark nuclei with positioning evidence:</b> ring the 50 nuclei that
+        <li><b>Mark nuclei with positioning evidence:</b> ring the nuclei that
           carry an official positioning-evidence image.</li>
       </ul>"
     )

@@ -77,7 +77,7 @@ BASE <- Sys.getenv(
 OUT_DIR <- "inst/extdata/examples"
 CRB <- file.path(OUT_DIR, "demo_trekker.crb")
 
-N_CELLS <- 2500L # existing cell sampling; final export has <= 1,500 genes
+N_CELLS <- 2500L # existing cell sampling; final export has <= 100 genes
 source("data-raw/demo_gene_panel.R")
 EV_MAX_PX <- 620L # evidence JPEG long-edge after down-scaling
 EV_QUALITY <- 68L # evidence JPEG quality

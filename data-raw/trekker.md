@@ -16,7 +16,7 @@ down-sampled `.crb` ships.
 3. [What is inside the bundle](#3-what-is-inside-the-bundle)
    - [The three coordinate orientations](#the-three-coordinate-orientations-measured-not-assumed)
 4. [Extraction (which files, why)](#4-extraction-which-files-why)
-5. [Sub-sampling (whole genes, fewer nuclei)](#5-sub-sampling-whole-genes-fewer-nuclei)
+5. [Cell sampling and the 100-gene demo panel](#5-cell-sampling-and-the-100-gene-demo-panel)
 6. [How `demo_trekker.crb` is generated](#6-how-demo_trekkercrb-is-generated)
 7. [Honesty the page enforces](#7-honesty-the-page-enforces)
 8. [Registry](#8-registry)
@@ -146,14 +146,16 @@ Slide-seq demo in [`spatial.md`](spatial.md).
 
 ---
 
-## 5. Cell sampling and the 1,500-gene demo panel
+## 5. Cell sampling and the 100-gene demo panel
 
-The source has **21,374 genes × 7,420 nuclei**. The shipped demo preserves all
-**2,536 nuclei** from the previous artifact, including the evidence-image cells.
+The source has **21,374 genes × 7,420 nuclei**. The builder keeps
+**2,536 nuclei**, including the 50 evidence-image cells.
 The existing seeded, stratified cell-sampling code below is unchanged.
+The shipped file is then cut to 1,000 of these nuclei with
+`subsample_demos.R`: the 50 evidence nuclei and a random 950 others.
 
 After computing the full-input scores and attaching the Trekker slot, the builder
-exports at most **1,500 genes** through `demo_gene_panel.R`. It protects the
+exports at most **100 genes** through `demo_gene_panel.R`. It protects the
 Trekker picker markers, myelination signature and upstream Moran genes present in
 the matrix, then fills the budget by normalized-expression variance. The matrix
 stays sparse; retained values and cell/gene order do not change. This is a selected
@@ -177,7 +179,7 @@ sub$nUMI <- sub$nCount_SCT;  sub$nGene <- sub$nFeature_SCT
 sub <- DietSeurat(sub, assays = "SCT", dimreducs = "umap")
 ```
 
-The union with `force_idx` is why the shipped count exceeds a round
+The union with `force_idx` is why the built count exceeds a round
 `N_CELLS` — a stratified draw would not reliably include all 50 evidence nuclei,
 and without them the page's drill-down would break on a rebuild.
 
@@ -203,7 +205,7 @@ Two stages in `build_trekker_demo.R`:
 
 **(a) a proper Cerebro object** — the down-sampled Seurat (SCT `data` + UMAP +
 `cluster`/`celltype` groups) goes through `exportFromSeurat()`, giving a normal
-`Cerebro` object. The final writer retains the selected 1,500-gene panel. This
+`Cerebro` object. The final writer retains the selected 100-gene panel. This
 powers gene colouring on the page: the gene picker lists the stored
 genes, and on selection the server slices one gene, quantises it 0–255, and
 sends it to the client aligned to the page's nuclei.
@@ -254,12 +256,15 @@ base64-embedded, following the same "image as a `data:` URI in the slot"
 convention the spatial demos use for histology. So the **whole** demo —
 expression + evidence — is one self-contained `.crb`.
 
-Build + size (measured):
+Build:
 
 ```
 TREKKER_OUTPUT_DIR=/path/to/.../output Rscript data-raw/build_trekker_demo.R
-# → inst/extdata/examples/demo_trekker.crb  (4.70 MB, 2532 nuclei × 21374 genes, 50 evidence imgs)
+# → inst/extdata/examples/demo_trekker.crb  (2,536 nuclei × 100 genes, 50 evidence imgs)
 ```
+
+The shipped file is then cut to 1,000 nuclei with `subsample_demos.R`
+(~931 KiB, see [`README.md`](README.md)).
 
 `magick` and `base64enc` are **build-time only** (data-raw is `.Rbuildignore`d);
 they are not package Imports.

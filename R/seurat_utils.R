@@ -1,11 +1,3 @@
-## Standard Seurat expression classes. They define deterministic compatibility
-## fallback order and legacy semantic descriptions only; request-driven split
-## resolution supports arbitrary roots and does not use this list as a gate.
-## Ordered longest first where prefix parsing is needed: `scale.data` must be
-## recognised before `data`.
-.cerebro_layer_roots <- c("scale.data", "counts", "data")
-.cerebro_fallback_roots <- c("data", "counts", "scale.data")
-
 #' Find a unique Seurat v5 layer partition
 #'
 #' The normal `split.Assay5()` case is linear in the number of cells and layer
@@ -425,8 +417,8 @@
 #'
 #' Exact physical layers are authoritative. If an exact root is absent,
 #' prefix candidates are accepted only when their cell memberships form one
-#' unique complete partition. This function never performs cross-semantic
-#' fallback; the facade applies that policy after same-root resolution.
+#' unique complete partition. This function never substitutes a different
+#' layer: a requested layer that cannot be resolved is an error in the caller.
 #'
 #' @keywords internal
 #' @noRd
@@ -768,7 +760,7 @@
   assay = "RNA",
   slot = "data",
   join_samples = TRUE,
-  allow_cross_semantic_fallback = FALSE,
+  layer_argument = NULL,
   verbose = FALSE,
   return_resolution = FALSE
 ) {
@@ -843,61 +835,6 @@
       verbose = verbose
     )
 
-    ## Cross-semantic fallback is deliberately narrow and deterministic.
-    ## Arbitrary requested roots never silently turn into a standard expression
-    ## class. Standard roots are tried in a fixed compatibility order, and a
-    ## replacement is accepted only if it covers every assay cell.
-    if (
-      is.null(resolution$data) &&
-        isTRUE(allow_cross_semantic_fallback) &&
-        layer_name %in% .cerebro_fallback_roots
-    ) {
-      assay_cells <- SeuratObject::Cells(seurat[[assay]])
-      fallback_roots <- base::setdiff(
-        .cerebro_fallback_roots,
-        layer_name
-      )
-      for (fallback_root in fallback_roots) {
-        fallback <- .resolve_seurat_v5_layer(
-          seurat = seurat,
-          assay = assay,
-          requested_layer = fallback_root,
-          join_samples = join_samples,
-          verbose = verbose
-        )
-        if (is.null(fallback$data)) {
-          next
-        }
-
-        fallback_is_disk_backed <- .disk_backed_expression_matrix(
-          fallback$data
-        )
-        fallback_is_complete <- fallback_is_disk_backed ||
-          (.supported_expression_matrix(fallback$data) &&
-            setequal(colnames(fallback$data), assay_cells))
-        if (!fallback_is_complete) {
-          next
-        }
-
-        warning(
-          "Requested layer `",
-          layer_name,
-          "` not found in `",
-          assay,
-          "` assay; falling back to `",
-          fallback_root,
-          "`. Values now reflect `",
-          fallback_root,
-          "`, not `",
-          layer_name,
-          "`.",
-          call. = FALSE
-        )
-        resolution <- fallback
-        break
-      }
-    }
-
     if (
       is.null(resolution$data) &&
         !is.null(resolution$failure)
@@ -922,25 +859,57 @@
       } else {
         ""
       }
+      ## Suggest a layer that will resolve: a standard full layer if present,
+      ## else the root of a split family, else the first layer.
+      example_layer <- NULL
+      if (length(available_layers) > 0L) {
+        roots <- sub("\\..*$", "", available_layers)
+        example_layer <- if (any(c("counts", "data") %in% available_layers)) {
+          intersect(c("counts", "data"), available_layers)[[1L]]
+        } else if (any(duplicated(roots))) {
+          roots[duplicated(roots)][[1L]]
+        } else {
+          available_layers[[1L]]
+        }
+      }
+      fix <- if (!is.null(layer_argument) && !is.null(example_layer)) {
+        paste0(
+          "Pass an existing layer, e.g. `",
+          layer_argument,
+          " = \"",
+          example_layer,
+          "\"`. No other layer is substituted for `",
+          layer_name,
+          "`.\n"
+        )
+      } else {
+        paste0(
+          "This function needs the `",
+          layer_name,
+          "` layer; add it to the assay first (for example ",
+          "`Seurat::NormalizeData()` creates `data`). No other layer is ",
+          "substituted for it.\n"
+        )
+      }
       stop(
         paste0(
           prefix_detail,
           "Layer `",
           layer_name,
-          "` could not be found in `",
+          "` does not exist in the `",
           assay,
-          "` assay, and no same-semantic fallback layer is available.\n",
+          "` assay.\n",
           "Available layers: ",
-          paste(available_layers, collapse = ", "),
+          if (length(available_layers) > 0L) {
+            paste(available_layers, collapse = ", ")
+          } else {
+            "none"
+          },
           "\n",
-          "Suggestions:\n",
-          "  1. Use one of the available layers listed above\n",
-          "  2. Check if the assay has been properly initialized\n",
-          "  3. Verify the assay structure using: Layers(seurat[[\"",
+          fix,
+          "Inspect the assay with: SeuratObject::Layers(object[[\"",
           assay,
-          "\"]])\n",
-          "  4. To allow cross-semantic fallback (e.g. data -> counts), call ",
-          ".getExpressionMatrix(..., allow_cross_semantic_fallback = TRUE)"
+          "\"]])"
         ),
         call. = FALSE
       )
@@ -1084,8 +1053,7 @@
       assay = as.character(assay),
       requested = requested_layer,
       resolved = resolved_layer,
-      joined = joined_layers,
-      fallback = !identical(requested_layer, resolved_layer)
+      joined = joined_layers
     ))
   }
   return(expr_matrix)
@@ -1118,7 +1086,32 @@
   slot_name %in% methods::slotNames(obj)
 }
 
-`%||%` <- function(a, b) if (is.null(a)) b else a
+## Seurat v4 `VisiumV1` images keep their spots in a `@coordinates` slot with
+## `imagerow`/`imagecol`; Seurat 5 builds Visium data as `VisiumV2`. `SlideSeq`
+## and `STARmap` are not v4-only: Seurat 5 still builds them in `ReadSlideSeq()`,
+## `LoadCurioSeeker()` and `LoadSTARmap()`, so they stay exportable.
+.assertCurrentSpatialImages <- function(object) {
+  images <- if (.spx_has_slot(object, "images")) object@images
+  v4_classes <- "VisiumV1"
+  for (name in names(images)) {
+    v4 <- intersect(v4_classes, methods::is(images[[name]]))
+    if (length(v4)) {
+      stop(
+        "Spatial image `",
+        name,
+        "` is a Seurat v4 `",
+        v4[[1L]],
+        "` image, which is no longer exported. Update the object with ",
+        "SeuratObject::UpdateSeuratObject(); if the image keeps its v4 class, ",
+        "rebuild it as a Seurat v5 image (for example with ",
+        "Seurat::Load10X_Spatial() or SeuratObject::CreateFOV()) or drop it ",
+        "from `object@images`.",
+        call. = FALSE
+      )
+    }
+  }
+  invisible(object)
+}
 
 # Extract spatial coordinates and expression from a Seurat object --------------
 #

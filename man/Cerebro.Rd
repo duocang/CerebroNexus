@@ -48,8 +48,8 @@ restored from its H5 expression sidecar. Embedded CRBs leave this as
 
     \item{\code{spatial_molecule_backend}}{Descriptor for molecule tables stored in
 a sibling spatial sidecar. The runtime-only `root` member is populated
-by `readCerebro()` or the generated Viewer and is never required for
-legacy CRBs with embedded molecule tables.}
+by `readCerebro()` or the generated Viewer. A stored CRB keeps its
+molecule tables only in this sidecar.}
 
     \item{\code{immune_repertoire_backend}}{Descriptor for a large immune
 repertoire stored in a sibling file (\code{type = "file"}). The
@@ -57,7 +57,8 @@ runtime-only `root` member is attached when the CRB is opened; without a
 descriptor the repertoire is the embedded `immune_repertoire` field.}
 
     \item{\code{cell_fingerprint}}{Stable identity of the cell population used by
-portable saved views. Older CRBs leave this as \code{NULL}.}
+portable saved views. Embedded CRBs leave this as \code{NULL}; the Viewer
+then derives it from the cell names.}
 
     \item{\code{meta_data}}{\code{data.frame} that contains cell meta data.}
 
@@ -99,8 +100,7 @@ containing scRepertoire columns (CTgene, CTnt, CTaa, CTstrict, etc.).}
 
     \item{\code{hla_typing}}{canonical HLA typing \code{data.frame} (long: one row
 per sample x locus x copy) with data provenance, or NULL. Consumed by
-the HLA & TCR Motifs page for donor-level HLA context. Optional; older
-.crb files simply lack it.}
+the HLA & TCR Motifs page for donor-level HLA context. Optional.}
 
     \item{\code{spatial}}{\code{list} that contains spatial data (coordinates and expression).}
 
@@ -109,7 +109,7 @@ content: canonical and variant (transposed / y-mirrored) coordinates,
 UMAP coordinates, per-nucleus cluster/cell-type, positioning QC in the
 vendor's original field names, the upstream (vendor) Moran's I table,
 and per-nucleus positioning-evidence images (base64 \code{data:} URIs).
-Consumed by the Trekker page. Optional; older .crb files simply lack it.}
+Consumed by the Trekker page. Optional.}
   }
   \if{html}{\out{</div>}}
 }
@@ -162,7 +162,6 @@ Consumed by the Trekker page. Optional; older .crb files simply lack it.}
     \item \href{#method-Cerebro-getGroupsWithMarkerGenes}{\code{Cerebro$getGroupsWithMarkerGenes()}}
     \item \href{#method-Cerebro-getMarkerGenes}{\code{Cerebro$getMarkerGenes()}}
     \item \href{#method-Cerebro-addEnrichedPathways}{\code{Cerebro$addEnrichedPathways()}}
-    \item \href{#method-Cerebro-getMethodsWithEnrichedPathways}{\code{Cerebro$getMethodsWithEnrichedPathways()}}
     \item \href{#method-Cerebro-getMethodsForEnrichedPathways}{\code{Cerebro$getMethodsForEnrichedPathways()}}
     \item \href{#method-Cerebro-getGroupsWithEnrichedPathways}{\code{Cerebro$getGroupsWithEnrichedPathways()}}
     \item \href{#method-Cerebro-getEnrichedPathways}{\code{Cerebro$getEnrichedPathways()}}
@@ -1115,26 +1114,10 @@ belong to. Must be registered in the \code{groups} field.}
 }
 
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-Cerebro-getMethodsWithEnrichedPathways"></a>}}
-\if{latex}{\out{\hypertarget{method-Cerebro-getMethodsWithEnrichedPathways}{}}}
-\subsection{\code{Cerebro$getMethodsWithEnrichedPathways()}}{
-  Retrieve names of methods for which enriched pathways are available.
-  \subsection{Usage}{
-    \if{html}{\out{<div class="r">}}
-    \preformatted{Cerebro$getMethodsWithEnrichedPathways()}
-    \if{html}{\out{</div>}}
-  }
-  \subsection{Returns}{
-    \code{vector} of methods for which enriched pathways are available.
-  }
-}
-
-\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Cerebro-getMethodsForEnrichedPathways"></a>}}
 \if{latex}{\out{\hypertarget{method-Cerebro-getMethodsForEnrichedPathways}{}}}
 \subsection{\code{Cerebro$getMethodsForEnrichedPathways()}}{
-  Alias of \code{getMethodsWithEnrichedPathways()}, kept for backwards
-compatibility with the Shiny app, which calls this name.
+  Retrieve names of methods for which enriched pathways are available.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Cerebro$getMethodsForEnrichedPathways()}
@@ -1351,7 +1334,7 @@ scRepertoire columns.}
 \if{latex}{\out{\hypertarget{method-Cerebro-getHLATyping}{}}}
 \subsection{\code{Cerebro$getHLATyping()}}{
   Get HLA typing data (canonical long \code{data.frame}), or an empty
-table when none is stored. Safe on older objects that predate the field.
+table when none is stored.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Cerebro$getHLATyping()}
@@ -1416,9 +1399,9 @@ Cerebro spatial entry).}
 'histology_images', a uniquely named list of image payloads. Each
 payload contains 'histology_image' (a base64 \code{data:} URI) and
 'histology_image_bounds' (xmin/xmax/ymin/ymax in coordinate space).
-Bounds omitted from a payload are derived from the coordinates. Legacy
-singular image fields are accepted and normalized as 'Tissue
-background'.}
+Bounds omitted from a payload are derived from the coordinates. The
+singular 'histology_image' / 'histology_image_bounds' fields are
+rejected.}
     }
     \if{html}{\out{</div>}}
   }
@@ -1446,8 +1429,7 @@ expression, or images.}
   }
   \subsection{Returns}{
     A canonical spatial-data \code{list} containing 'coordinates',
-'expression', and 'histology_images'. Legacy singular image fields are
-normalized on read.
+'expression', and 'histology_images'.
   }
 }
 
@@ -1471,8 +1453,7 @@ normalized on read.
 \if{latex}{\out{\hypertarget{method-Cerebro-getTrekker}{}}}
 \subsection{\code{Cerebro$getTrekker()}}{
   Get Trekker single-cell spatial-mapping data, or \code{NULL} when none is
-stored. Safe on older objects that predate the field (the slot is read
-through a \code{tryCatch} so the getter never errors on a legacy .crb).
+stored.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{Cerebro$getTrekker()}

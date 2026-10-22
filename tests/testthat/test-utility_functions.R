@@ -31,9 +31,11 @@ utils_env <- new.env()
 sys.source(file.path(dirname(utils_file), "crb_cache.R"), envir = utils_env)
 sys.source(file.path(dirname(utils_file), "msigdb.R"), envir = utils_env)
 source(utils_file, local = utils_env)
-## These legacy-response fixtures exercise the older public API fallback.
-## Collection-wise queries are covered separately with explicit mock metadata.
-utils_env$.msigdbCollectionsFunction <- function() NULL
+## The fixtures below use a single mocked collection ("H"); the per-collection
+## catalogue walk is covered separately in test-resource-boundaries.R.
+utils_env$.msigdbCollectionsFunction <- function() {
+  data.frame(gs_collection = "H")
+}
 prettifyTable <- utils_env$prettifyTable
 cachePlot <- utils_env$cachePlot
 viewerUploadsEnabled <- utils_env$viewerUploadsEnabled
@@ -296,7 +298,7 @@ test_that("MSigDB catalogue retries failures and malformed responses", {
 
   calls <- 0L
   utils_env$.msigdbFunction <- function() {
-    function(species) {
+    function(species, collection) {
       calls <<- calls + 1L
       if (calls == 1L) {
         stop("temporary catalogue failure")
@@ -345,9 +347,10 @@ test_that("MSigDB catalogue rejects empty and invalid results", {
   )
 
   calls <- 0L
+  phase <- "catalogue"
   utils_env$.msigdbFunction <- function() {
-    function(species, collection = NULL) {
-      if (!is.null(collection)) {
+    function(species, collection) {
+      if (identical(phase, "genes")) {
         return(data.frame(
           gs_name = c(" SET_A ", "SET_A", "SET_B"),
           gene_symbol = c(" GENE_B ", "GENE_A", "OTHER")
@@ -385,6 +388,7 @@ test_that("MSigDB catalogue rejects empty and invalid results", {
   )
   expect_true(exists("catalogue", envir = cache, inherits = FALSE))
   expect_identical(calls, 2L)
+  phase <- "genes"
   expect_identical(
     utils_env$getMsigdbGenes("Homo sapiens", "SET_A"),
     c("GENE_A", "GENE_B")
@@ -410,7 +414,7 @@ test_that("MSigDB gene queries retry failures and ignore invalid names", {
 
   calls <- 0L
   utils_env$.msigdbFunction <- function() {
-    function(species, collection = NULL) {
+    function(species, collection) {
       calls <<- calls + 1L
       if (calls == 1L) {
         stop("temporary gene failure")

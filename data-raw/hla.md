@@ -305,7 +305,7 @@ sel <- sel[is_paired(sel$CTaa), , drop = FALSE]
 
 # The deterministic per-donor subsample (set.seed(20260721) at the top of the
 # script) runs LATER, in step 5, once the expression join is done -- so the
-# shipped object is exactly 3,000 x 4 = 12,000 cells rather than however many
+# built object is exactly 3,000 x 4 = 12,000 cells rather than however many
 # survived the join.
 ```
 
@@ -350,7 +350,7 @@ umap       <- as.data.frame(Seurat::Embeddings(so, "umap"))
 colnames(umap) <- c("UMAP_1", "UMAP_2")
 ```
 
-The analysis still uses 2,000 variable genes. The final `save_demo_crb()` step retains at most 1,500 genes, protecting available immune markers and filling by normalized-expression variance. All 12,000 cells, donor genotypes, receptors, dextramer calls and UMAP coordinates are preserved. Gene search is restricted to the exported panel.
+The analysis still uses 2,000 variable genes. The final `save_demo_crb()` step retains at most 100 genes, protecting available immune markers and filling by normalized-expression variance. The builder keeps all 12,000 cells with their donor genotypes, receptors, dextramer calls and UMAP coordinates. The shipped file is then cut to a random 2,000 of these cells (473–525 per donor) with `subsample_demos.R` (see `README.md`). Gene search is restricted to the exported panel.
 
 ## 3.9 Step 6 — assembling the `.crb`
 

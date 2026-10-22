@@ -125,7 +125,6 @@ test_that("spatial extraction can reuse an already resolved matrix", {
     assay = "RNA",
     slot = "data",
     join_samples = TRUE,
-    allow_cross_semantic_fallback = FALSE,
     return_resolution = TRUE
   )
 
@@ -148,49 +147,6 @@ test_that("spatial extraction can reuse an already resolved matrix", {
   expect_identical(spatial$layer, resolution$resolved)
 })
 
-test_that("spatial payload records a cross-semantic fallback honestly", {
-  skip_if_no_layered_seurat()
-  counts <- matrix(
-    seq_len(24),
-    nrow = 4,
-    dimnames = list(
-      paste0("g", seq_len(4)),
-      paste0("c", seq_len(6))
-    )
-  )
-  object <- suppressWarnings(
-    Seurat::CreateSeuratObject(counts = counts)
-  )
-  object$x <- seq_len(ncol(object))
-  object$y <- rev(seq_len(ncol(object)))
-
-  expect_warning(
-    resolution <- .getExpressionMatrix(
-      seurat = object,
-      assay = "RNA",
-      slot = "data",
-      join_samples = TRUE,
-      allow_cross_semantic_fallback = TRUE,
-      return_resolution = TRUE
-    ),
-    "falling back to `counts`",
-    fixed = TRUE
-  )
-
-  spatial <- .getSpatialData(
-    object = object,
-    layer = resolution$requested,
-    assay = "RNA",
-    coord_source = "metadata",
-    coord_cols = c("x", "y"),
-    expression_data = resolution$data,
-    expression_layer = resolution$resolved
-  )
-
-  expect_identical(spatial$requested_layer, "data")
-  expect_identical(spatial$layer, "counts")
-})
-
 test_that("public consumers do not cross semantic classes", {
   object <- make_public_layered_object()
   for (layer in grep(
@@ -209,48 +165,26 @@ test_that("public consumers do not cross semantic classes", {
       assay = "RNA",
       genes = list(marker = "Gene1")
     ),
-    "no same-semantic fallback",
+    "Layer `counts` does not exist in the `RNA` assay",
     fixed = TRUE
   )
 })
 
-test_that("resolution records distinguish requested and physical layers", {
-  skip_if_no_layered_seurat()
-  counts <- matrix(
-    seq_len(24),
-    nrow = 4,
-    dimnames = list(
-      paste0("g", seq_len(4)),
-      paste0("c", seq_len(6))
-    )
-  )
-  object <- suppressWarnings(
-    Seurat::CreateSeuratObject(counts = counts)
+test_that("a resolution record names the layer that was read", {
+  object <- make_public_layered_object()
+
+  resolution <- .getExpressionMatrix(
+    seurat = object,
+    assay = "RNA",
+    slot = "data",
+    join_samples = TRUE,
+    return_resolution = TRUE
   )
 
-  expect_warning(
-    resolution <- .getExpressionMatrix(
-      seurat = object,
-      assay = "RNA",
-      slot = "data",
-      join_samples = FALSE,
-      allow_cross_semantic_fallback = TRUE,
-      return_resolution = TRUE
-    ),
-    "falling back to `counts`",
-    fixed = TRUE
-  )
-
-  expect_type(resolution, "list")
   expect_identical(resolution$requested, "data")
-  expect_identical(resolution$resolved, "counts")
-  expect_equal(
-    resolution$data,
-    SeuratObject::LayerData(
-      object[["RNA"]],
-      layer = "counts"
-    )
-  )
+  expect_identical(resolution$resolved, "data")
+  expect_true(resolution$joined)
+  expect_setequal(colnames(resolution$data), colnames(object))
 })
 
 test_that("expression-cell validation preserves or restores object order", {

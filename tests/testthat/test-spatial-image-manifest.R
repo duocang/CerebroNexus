@@ -45,23 +45,38 @@ test_that("Cerebro accepts coordinates-only spatial entries", {
   expect_identical(crb$getSpatialData("coordinates")$histology_images, list())
 })
 
-test_that("legacy multi-path app spatial images receive distinct labels", {
+test_that("app spatial images keep the dataset -> spatial entry -> label form", {
   catalogs <- list(Dataset = list(section = character()))
   root <- withr::local_tempdir()
   paths <- file.path(root, c("first.png", "second.png"))
   lapply(paths, writeLines, text = "IMAGE")
   normalized <- .normalizeAppSpatialImages(
-    list(Dataset = paths),
+    list(Dataset = list(section = c(first = paths[[1L]], second = paths[[2L]]))),
     catalogs
   )
 
-  expect_named(
-    normalized$Dataset$section,
-    c("Tissue background 1", "Tissue background 2")
+  expect_named(normalized$Dataset$section, c("first", "second"))
+  expect_identical(normalized$Dataset$section$second, list(path = paths[[2L]]))
+  expect_null(attr(normalized, "legacy_external_targets"))
+})
+
+test_that("the old c(Dataset = path) spatial_images form names the current one", {
+  catalogs <- list(Dataset = list(section = character()))
+  root <- withr::local_tempdir()
+  path <- file.path(root, "tissue.png")
+  writeLines("IMAGE", path)
+
+  expect_error(
+    .normalizeAppSpatialImages(c(Dataset = path), catalogs),
+    "list\\(Dataset = list\\(<spatial entry> = c\\(label = path\\)\\)\\).*no longer"
   )
-  expect_identical(
-    unname(unlist(normalized$Dataset$section, use.names = FALSE)),
-    paths
+  expect_error(
+    .normalizeAppSpatialImages(list(Dataset = path), catalogs),
+    "list\\(<spatial entry> = c\\(label = path\\)\\).*no longer accepted"
+  )
+  expect_error(
+    .normalizeAppSpatialImages(list(Dataset = c(a = path, b = path)), catalogs),
+    "no longer accepted"
   )
 })
 
@@ -85,17 +100,6 @@ test_that("spatial image labels must be non-empty and unique", {
 
 test_that("serialized spatial getter is self-contained without package helpers", {
   crb <- Cerebro$new()
-  crb$spatial$legacy <- list(
-    coordinates = spatial_manifest_coordinates(),
-    expression = matrix(1:4, nrow = 2),
-    histology_image = "data:image/png;base64,AA==",
-    histology_image_bounds = list(
-      ymax = 80,
-      xmin = 0,
-      ymin = 0,
-      xmax = 100
-    )
-  )
   crb$spatial$canonical <- spatial_manifest_data(
     list(DAPI = spatial_manifest_payload())
   )
@@ -105,18 +109,8 @@ test_that("serialized spatial getter is self-contained without package helpers",
   saveRDS(crb, path)
 
   isolated <- readRDS(path)
-  legacy <- isolated$getSpatialData("legacy")
   canonical <- isolated$getSpatialData("canonical")
 
-  expect_named(legacy$histology_images, "Tissue background")
-  expect_identical(
-    legacy$histology_images[["Tissue background"]]$histology_image,
-    "data:image/png;base64,AA=="
-  )
-  expect_identical(
-    legacy$histology_images[["Tissue background"]]$histology_image_bounds,
-    c(xmin = 0, xmax = 100, ymin = 0, ymax = 80)
-  )
   expect_named(canonical$histology_images, "DAPI")
   expect_identical(canonical$histology_images$DAPI, spatial_manifest_payload())
 })
@@ -169,56 +163,50 @@ test_that("missing spatial image bounds are derived from coordinates", {
   )
 })
 
-test_that("legacy singular spatial images normalize on read", {
+test_that("singular spatial image fields are rejected and name histology_images", {
   crb <- Cerebro$new()
-  crb$spatial$legacy <- list(
+  singular <- list(
     coordinates = spatial_manifest_coordinates(),
     expression = matrix(1:4, nrow = 2),
     histology_image = "data:image/png;base64,AA==",
     histology_image_bounds = c(xmin = 0, xmax = 100, ymin = 0, ymax = 80)
   )
 
-  normalized <- crb$getSpatialData("legacy")
-
-  expect_named(normalized$histology_images, "Tissue background")
-  expect_identical(
-    normalized$histology_images[["Tissue background"]]$histology_image,
-    "data:image/png;base64,AA=="
+  expect_error(
+    crb$addSpatialData("legacy", singular),
+    "Spatial data `legacy`.*singular `histology_image`.*histology_images = list\\(<label>"
   )
-  expect_null(normalized[["histology_image"]])
-  expect_null(normalized[["histology_image_bounds"]])
+  expect_error(
+    crb$addSpatialData("legacy", singular[setdiff(names(singular), "histology_image_bounds")]),
+    "no longer accepted"
+  )
+  ## even next to a canonical manifest
+  both <- c(spatial_manifest_data(list(DAPI = spatial_manifest_payload())), singular[3:4])
+  expect_error(crb$addSpatialData("both", both), "no longer accepted")
+  expect_length(crb$spatial, 0L)
 })
 
-test_that("legacy fixture list bounds normalize to a numeric vector", {
-  for (fixture in "demo_spatial_merfish.crb") {
-    path <- system.file(
-      "extdata",
-      "examples",
-      fixture,
-      package = "CerebroNexus"
-    )
-    skip_if(
-      path == "" || !file.exists(path),
-      message = paste(fixture, "missing")
-    )
-    crb <- readCerebro(path)
-    spatial_name <- crb$availableSpatial()[[1L]]
+test_that("the bundled MERFISH demo stores its image as histology_images", {
+  path <- system.file(
+    "extdata",
+    "examples",
+    "demo_spatial_merfish.crb",
+    package = "CerebroNexus"
+  )
+  skip_if(path == "" || !file.exists(path), message = "MERFISH fixture missing")
+  crb <- readCerebro(path)
+  spatial_name <- crb$availableSpatial()[[1L]]
+  stored <- crb$spatial[[spatial_name]]
 
-    normalized <- .normalizeSpatialDataImages(
-      crb$spatial[[spatial_name]],
-      spatial_name
-    )
-    bounds <- normalized$histology_images[["Tissue background"]][[
-      "histology_image_bounds"
-    ]]
-
-    expect_identical(typeof(bounds), "double", info = fixture)
-    expect_identical(
-      names(bounds),
-      c("xmin", "xmax", "ymin", "ymax"),
-      info = fixture
-    )
-  }
+  expect_false(any(
+    c("histology_image", "histology_image_bounds") %in% names(stored)
+  ))
+  expect_named(stored$histology_images, "Tissue background")
+  bounds <- stored$histology_images[["Tissue background"]][[
+    "histology_image_bounds"
+  ]]
+  expect_identical(typeof(bounds), "double")
+  expect_identical(names(bounds), c("xmin", "xmax", "ymin", "ymax"))
 })
 
 test_that("Xenium colour demo loads images from files", {
@@ -268,7 +256,7 @@ test_that("Xenium colour demo loads images from files", {
   expect_identical(dim(yellow), dim(pink))
 })
 
-test_that("canonical manifests reject legacy list bounds", {
+test_that("canonical manifests reject list bounds", {
   payload <- spatial_manifest_payload()
   payload$histology_image_bounds <- as.list(payload$histology_image_bounds)
 
@@ -282,46 +270,20 @@ test_that("canonical manifests reject legacy list bounds", {
   )
 })
 
-test_that("canonical spatial image manifests take precedence over legacy fields", {
-  data <- spatial_manifest_data(list(DAPI = spatial_manifest_payload()))
-  data$histology_image <- "not-a-data-uri"
-  data$histology_image_bounds <- c(xmin = 0, xmax = 1, ymin = 0, ymax = 1)
-
-  normalized <- .normalizeSpatialDataImages(data, "section 1")
-
-  expect_named(normalized$histology_images, "DAPI")
-  expect_null(normalized[["histology_image"]])
-  expect_null(normalized[["histology_image_bounds"]])
-})
-
-test_that("flat spatial rotations remain a supported public API", {
+test_that("a per-dataset numeric spatial_plot_rotation is rejected", {
   catalogs <- list(
     Atlas = list(sliceA = "H&E", sliceB = "DAPI"),
     Other = list(sliceA = "H&E")
   )
 
-  normalized <- .normalizeAppSpatialPlotRotation(
-    c(Atlas = 90, Other = -45),
-    catalogs
+  expect_error(
+    .normalizeAppSpatialPlotRotation(c(Atlas = 90, Other = -45), catalogs),
+    "list\\(Dataset = list\\(<spatial entry> = 90\\)\\).*no longer accepted"
   )
-
-  expect_identical(normalized$Atlas, c(sliceA = 90, sliceB = 90))
-  expect_identical(normalized$Other, c(sliceA = -45))
-})
-
-test_that("legacy image alignment maps to the canonical image setting", {
-  catalogs <- list(Atlas = list(sliceA = "H&E"))
-  images <- list()
-
-  normalized <- .normalizeLegacyAppSpatialSetting(
-    c(Atlas = 0.9),
-    "spatial_images_scale_x",
-    "scale_x",
-    catalogs,
-    images
+  expect_error(
+    .normalizeAppSpatialPlotRotation(90, catalogs),
+    "no longer accepted"
   )
-
-  expect_identical(normalized$Atlas$sliceA[["H&E"]]$scale_x, 0.9)
 })
 
 test_that("spatial image paths normalize labels, descriptors, and file errors", {

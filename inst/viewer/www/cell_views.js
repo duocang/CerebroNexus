@@ -8516,7 +8516,10 @@
     var buildStarted = performance.now();
     var built = buildSingleSpaces(id, payload);
     timing.buildSpacesMs = performance.now() - buildStarted;
-    if (built.spaces.length && payload.meta && payload.meta.space_label) {
+    // A per-group panel holds one group's cells; caching it as the shared
+    // projection would hand those coordinates to the next ungrouped render.
+    if (built.spaces.length && payload.meta && payload.meta.space_label &&
+        !Array.isArray(payload.data && payload.data.panels)) {
       cacheSharedProjection(
         String(payload.meta.space_label),
         spaceById[built.spaces[0]],
@@ -8983,14 +8986,6 @@
     var selection = saved && saved.selection || {};
     var view = saved && saved.view || {};
     var viewport = view.zoomed === false ? null : view.viewport;
-    if (viewport && viewport.cx == null && viewport.x0 != null) {
-      viewport = {
-        cx: (Number(viewport.x0) + Number(viewport.x1)) / 2,
-        cy: (Number(viewport.y0) + Number(viewport.y1)) / 2,
-        span: Math.max(Number(viewport.x1) - Number(viewport.x0),
-          Number(viewport.y1) - Number(viewport.y0))
-      };
-    }
     target.selection = (selection.cells || []).map(String);
     target.hiddenGroups = (view.hidden_groups || []).map(String);
     target.mode = view.mode || 'lasso';

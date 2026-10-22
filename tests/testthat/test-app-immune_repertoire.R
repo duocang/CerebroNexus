@@ -329,7 +329,7 @@ test_that("immune_repertoire module loads without breaking main app", {
 
   # Data info tab should still render normally (1476 cells in the new example)
   cells_box <- app$get_value(output = "load_data_overview")
-  expect_true(grepl("1,?476", cells_box$html))
+  expect_true(grepl("1,?000", cells_box$html))
 })
 
 test_that("Clonal UMAP tab renders with receptor + projection selectors", {
@@ -566,11 +566,11 @@ test_that("Clonal UMAP has Show-all toggle and group filters", {
   )))
 })
 
-test_that("Clonal UMAP switches to static facets only when grouped", {
+test_that("Clonal UMAP groups into interactive panels that brush their own cells", {
   local_app_support(inst_dir)
   app <- AppDriver$new(
     inst_dir,
-    name = "ir_umap_grouped_static",
+    name = "ir_umap_grouped_panels",
     height = 950,
     width = 1619,
     load_timeout = 60000
@@ -578,86 +578,77 @@ test_that("Clonal UMAP switches to static facets only when grouped", {
   withr::defer(app$stop())
   activate_ir_tab(app)
 
-  exists_el <- function(sel) {
-    app$get_js(sprintf("document.querySelector('%s') !== null;", sel))
-  }
+  host <- "#ir_clonalUMAP_projection_cell_view_host"
+  state <- "window.cerebroSpecialistViews.get('ir_clonalUMAP_projection')"
+  visible_boxes <- paste0(
+    "Array.from(document.querySelectorAll('",
+    host,
+    " .cv-tbtn[data-act=\"box\"]')).filter(b=>b.getClientRects().length>0)"
+  )
 
-  # Ungrouped uses the shared Canvas host; grouping swaps in the static facet.
   app$wait_for_js(
     paste0(
-      "(function(){",
-      "var group=document.querySelector('#ir_p_umap_group_by');",
-      "var canvas=document.querySelector('",
+      "(function(){var group=document.querySelector('#ir_p_umap_group_by');",
+      "return !!group && group.value==='' && ",
+      "document.querySelector('",
       ir_canvas_selector,
-      "');",
-      "var img=document.querySelector('#ir_plot_clonalUMAP_static img');",
-      "return !!group && group.value==='' && !!canvas && !img;",
-      "})()"
+      "')!==null;})()"
     ),
     timeout = 60000
   )
+  expect_equal(app$get_js(paste0(visible_boxes, ".length")), 1L)
 
+  ## Grouping keeps the interactive canvas: one panel per group, no static image.
   app$set_inputs(ir_p_umap_group_by = "sample", wait_ = FALSE)
-  app$wait_for_idle(timeout = 20000)
-  app$wait_for_js(
-    paste0(
-      "(function(){",
-      "var canvas=document.querySelector('",
-      ir_canvas_selector,
-      "');",
-      "var group=document.querySelector('#ir_p_umap_group_by');",
-      "var img=document.querySelector('#ir_plot_clonalUMAP_static img');",
-      "return !!group && group.value==='sample' && canvas===null && ",
-      "!!img && img.complete && img.naturalWidth>0;",
-      "})()"
-    ),
-    timeout = 45000
-  )
-
-  expect_false(isTRUE(exists_el(
-    ir_canvas_selector
+  app$wait_for_js(paste0(visible_boxes, ".length >= 2"), timeout = 45000)
+  expect_false(isTRUE(app$get_js(
+    "document.querySelector('#ir_plot_clonalUMAP_static') !== null"
   )))
-  expect_false(app$get_js(
-    "document.querySelector('#shiny-tab-immune_repertoire .cerebro-toolbar-share').getClientRects().length > 0"
-  ))
-  expect_true(isTRUE(exists_el("#ir_plot_clonalUMAP_static img")))
-  static_size <- app$get_js(
-    paste0(
-      "(function(){",
-      "var e=document.querySelector('#ir_plot_clonalUMAP_static');",
-      "var img=e?e.querySelector('img'):null;",
-      "return e?{",
-      "w:e.clientWidth,h:e.clientHeight,",
-      "imgW:img?img.naturalWidth:0,imgH:img?img.naturalHeight:0",
-      "}:null;",
-      "})();"
+  panels <- app$get_js(paste0(visible_boxes, ".length"))
+  groups <- readCerebro(
+    system.file(
+      "extdata/examples/demo_full_tcr_bcr.crb",
+      package = "CerebroNexus"
     )
   )
-  expect_gte(as.numeric(static_size$w), 300)
-  expect_gte(as.numeric(static_size$h), 300)
-  expect_gte(as.numeric(static_size$imgW), as.numeric(static_size$w) * 0.9)
-  expect_gte(as.numeric(static_size$imgH), 300)
+  metadata <- groups$getMetaData()
+  expect_equal(panels, length(unique(metadata$sample)))
+
+  ## A brush in the second panel selects only cells of the second group, and the
+  ## cells below the plot are those.
+  app$run_js(paste0(visible_boxes, "[1].click()"))
+  canvases <- app$get_js(paste0(
+    "Array.from(document.querySelectorAll('",
+    host,
+    " canvas:not(.cv-mini)')).filter(c=>c.getClientRects().length>0)",
+    ".map(c=>{const r=c.getBoundingClientRect();",
+    "return {x:r.x,y:r.y,w:r.width,h:r.height};})"
+  ))
+  ## Each panel owns two stacked canvases; the second panel starts at index 3.
+  box <- canvases[[3]]
+  viewer_drag_mouse(
+    app,
+    box$x + box$w * .02,
+    box$y + box$h * .02,
+    box$x + box$w * .98,
+    box$y + box$h * .98
+  )
+  app$wait_for_js(paste0(state, ".capture().selection.cells.length > 0"))
+  selected <- unlist(app$get_js(paste0(state, ".capture().selection.cells")))
+  chosen <- unique(metadata$sample[match(selected, metadata$cell_barcode)])
+  expect_length(chosen, 1L)
+  expect_identical(
+    as.character(chosen),
+    levels(factor(metadata$sample))[[2L]]
+  )
+  app$wait_for_js(
+    "document.getElementById('ir_clonalUMAP_number_of_selected_cells').textContent.includes('Selected')"
+  )
 
   app$set_inputs(ir_p_umap_group_by = "", wait_ = FALSE)
-  app$wait_for_idle(timeout = 20000)
-
-  expect_true(isTRUE(exists_el(ir_canvas_selector)))
-  expect_false(isTRUE(exists_el("#ir_plot_clonalUMAP_static img")))
-  app$wait_for_js(
-    "document.querySelector('#shiny-tab-immune_repertoire .cerebro-toolbar-share').getClientRects().length > 0"
-  )
+  app$wait_for_js(paste0(visible_boxes, ".length === 1"), timeout = 45000)
   logs <- app$get_logs()
-  bad_logs <- grepl(
-    "figure margins too large|Invalid IHDR|could not write",
-    logs$message
-  )
-  expect_false(
-    any(bad_logs),
-    info = paste(
-      capture.output(print(logs[bad_logs, , drop = FALSE])),
-      collapse = "\n"
-    )
-  )
+  expect_false(any(grepl("Error in|Invalid IHDR", logs$message)))
 })
 
 test_that("Clone call is hidden on the Clonal UMAP tab", {

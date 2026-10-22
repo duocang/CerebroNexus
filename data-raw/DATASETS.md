@@ -80,12 +80,12 @@ Built by `data-raw/build_spatial_demos.R` (see [`spatial.md`](spatial.md) for de
   obj <- SeuratData::LoadData("stxBrain", type = "anterior1")
   ```
 - **object type**: Seurat v5, image class `VisiumV2` (auto-upgraded on load)
-- **sampling**: `set.seed(42)`; ≤ 5,000 spots stratified by Louvain cluster (here 2,696 spots, the full anterior1 section); expression trimmed to 1,200 genes (variable features + top-expressed) to keep the `.crb` small.
+- **sampling**: `set.seed(42)`; ≤ 5,000 spots stratified by Louvain cluster (here 2,696 spots, the full anterior1 section); expression trimmed to 1,200 genes (variable features + top-expressed) for analysis and capped at 100 genes on export. The shipped file keeps a random 1,000 of the 2,696 spots (`subsample_demos.R`).
 - **cell-type field**: `cluster` (Louvain, `FindClusters(resolution = 0.5)`, since the source ships no cell-type labels)
-- **embedded image**: **none — uses an EXTERNAL image instead.** The real low-res H&E (`slot(image, "image")`, 599×600×3) is written to a standalone PNG, `inst/extdata/examples/demo_spatial_visium_he.png`, and loaded via `spatial_images` in `inst/app.R` rather than embedded in the `.crb`. This is the deliberate live example of the external-image path (the other image demos embed); it also keeps the Visium `.crb` smaller. Displayed with `spatial_images_flip_y = TRUE` (ground-truth verified against Seurat's `SpatialPlot`).
+- **embedded image**: **none — uses an EXTERNAL image instead.** The real low-res H&E (`slot(image, "image")`, 599×600×3) is written to a standalone PNG, `inst/extdata/examples/demo_spatial_visium_he.png`, and loaded via `spatial_images` in `inst/app.R` rather than embedded in the `.crb`. This is the deliberate live example of the external-image path (the other image demos embed); it also keeps the Visium `.crb` smaller. Displayed with `flip_y = TRUE` in `spatial_image_settings` (ground-truth verified against Seurat's `SpatialPlot`).
 - **license**: 10x Genomics public dataset terms (freely redistributable).
 - **build**: `data-raw/build_spatial_demos.R` → `build_visium()` (writes both the `.crb` and `demo_spatial_visium_he.png`)
-- **output**: `inst/extdata/examples/demo_spatial_visium.crb` (~6.1 MB) + `demo_spatial_visium_he.png` (~0.5 MB)
+- **output**: `inst/extdata/examples/demo_spatial_visium.crb` (~742 KiB) + `demo_spatial_visium_he.png` (~0.5 MB)
 
 ### demo_spatial_slideseq.crb
 - **type**: spatial
@@ -99,13 +99,13 @@ Built by `data-raw/build_spatial_demos.R` (see [`spatial.md`](spatial.md) for de
   data("ssHippo", package = "ssHippo.SeuratData")
   obj <- SeuratObject::UpdateSeuratObject(get("ssHippo"))
   ```
-- **object type**: Seurat **v4-era** object, image class `SlideSeq`. `ssHippo` ships as a v3.1.4 object whose `SlideSeq` image predates the current class (missing the `misc` slot), so `UpdateSeuratObject()` is required before any `subset`/`validObject`. This dataset is the end-to-end proof that `exportFromSeurat` handles non-v5 spatial objects.
-- **sampling**: `set.seed(42)`; 5,000 beads sampled from ~53,173; no gene trim needed at that cell count.
+- **object type**: Seurat **v4-era** object, image class `SlideSeq`. `ssHippo` ships as a v3.1.4 object whose `SlideSeq` image predates the current class (missing the `misc` slot), so `UpdateSeuratObject()` is required before any `subset`/`validObject`. `exportFromSeurat` only reads Seurat v5 images, so the build replaces the `SlideSeq` image by a v5 `FOV` of the same bead positions.
+- **sampling**: `set.seed(42)`; 5,000 beads sampled from ~53,173; expression capped at 100 genes on export. The shipped file keeps a random 3,000 of the 5,000 beads (`subsample_demos.R`).
 - **cell-type field**: `cluster` (Louvain; the source ships no cell-type labels)
 - **embedded image**: **none — and this is correct, not an omission.** The `SlideSeq` S4 class has only a `coordinates` slot; it structurally carries no tissue raster (unlike `VisiumV2`/`FOV`). Slide-seq images beads to recover positions but the public object stores only bead coordinates, no H&E/DAPI photo. The scatter of beads is therefore the complete spatial view.
 - **license**: distributed under the SeuratData terms; original data CC-BY (Broad Institute / Macosko lab).
 - **build**: `data-raw/build_spatial_demos.R` → `build_slideseq()`
-- **output**: `inst/extdata/examples/demo_spatial_slideseq.crb` (~1.6 MB)
+- **output**: `inst/extdata/examples/demo_spatial_slideseq.crb` (~460 KiB)
 
 ### demo_spatial_merfish.crb
 - **type**: spatial
@@ -119,12 +119,12 @@ Built by `data-raw/build_spatial_demos.R` (see [`spatial.md`](spatial.md) for de
   spe <- MerfishData::MouseIleumPetukhov2021()   # SpatialExperiment, 241 genes × 5,800 cells
   ```
 - **object type**: `SpatialExperiment` (converted to a Seurat `FOV`+`Centroids` object at build time so extraction runs via `GetTissueCoordinates`, exactly as `LoadVizgen`/`LoadXenium` would). The SPE ships with **no cell names**, so the builder mints stable `cell%05d` ids and applies them to matrix/metadata/coords.
-- **sampling**: `set.seed(42)`; cells with `leiden_final == "Removed"` dropped, then ≤ 5,000 stratified by cell type (here 5,000 of 5,800); 241-gene panel kept whole.
+- **sampling**: `set.seed(42)`; cells with `leiden_final == "Removed"` dropped, then ≤ 5,000 stratified by cell type (here 5,000 of 5,800); the 241-gene panel is analysed whole and capped at 100 genes on export. The shipped file keeps a random 1,000 cells (`subsample_demos.R`, see `README.md`).
 - **cell-type field**: `cell_type` (from the source's `leiden_final` labels: Enterocyte tiers, Goblet, Paneth, Smooth Muscle, Myenteric Plexus, ICC, Telocyte, Stromal, Endothelial, immune subsets, …)
 - **embedded image**: **real DAPI mosaic** (`imgRaster(getImg(spe, "dapi"))`, 9392×5721), stored natively as `histology_image` with `histology_image_bounds = [0, W] × [0, H]` (cells already sit in DAPI pixel space). Display alignment remains a Viewer setting; the builder does not bake a flip into the raster.
 - **license**: Bioconductor `MerfishData` / original Petukhov et al. terms (public reference data).
 - **build**: `data-raw/build_spatial_demos.R` → `build_merfish()`
-- **output**: `inst/extdata/examples/demo_spatial_merfish.crb` (~2.0 MB)
+- **output**: `inst/extdata/examples/demo_spatial_merfish.crb` (~1,066 KiB)
 
 ### demo_spatial_xenium.crb
 - **type**: spatial
@@ -141,12 +141,12 @@ Built by `data-raw/build_spatial_demos.R` (see [`spatial.md`](spatial.md) for de
   unzip -oq data-raw/xenium/brain.zip -d data-raw/xenium/brain
   ```
 - **object type**: raw 10x Xenium outs (`cell_feature_matrix.h5` + `cells.csv.gz` + `morphology_focus.ome.tif`), assembled into a Seurat `FOV`+`Centroids` object at build time. `LoadXenium` is not used: the public bundle ships the `.h5` matrix (not the mtx directory `LoadXenium` expects) and stores transcripts as `.parquet` (needs `arrow`); reading the matrix + `cells.csv.gz` directly is smaller and dependency-free.
-- **sampling**: `set.seed(42)`; ≤ 5,000 cells stratified by Louvain cluster (here 5,000 of 36,602); 248-gene brain panel kept whole.
+- **sampling**: `set.seed(42)`; ≤ 5,000 cells stratified by Louvain cluster (here 5,000 of 36,602); the 248-gene brain panel is analysed whole and capped at 100 genes on export. The shipped file keeps a random 2,000 cells (`subsample_demos.R`, see `README.md`).
 - **cell-type field**: `cluster` (Louvain; the source ships no cell-type labels)
 - **embedded image**: **none**. The real DAPI morphology is written to `inst/extdata/examples/spatial/xenium/dapi.png`; pink and fluorescent-yellow 90° variants live beside it. `inst/app.R` loads them with `spatial_images`. The CRB contains `fov` and the matching rotated-coordinate `fov_colour`, keeping image bytes out of the data object. The OME-TIFF is JPEG2000-compressed and read with `RBioFormats` during the reproducible build.
 - **license**: 10x Genomics public dataset terms (freely redistributable).
 - **build**: `data-raw/build_spatial_demos.R` → `build_xenium()`
-- **output**: `inst/extdata/examples/demo_spatial_xenium.crb` plus `inst/extdata/examples/spatial/xenium/*.png`
+- **output**: `inst/extdata/examples/demo_spatial_xenium.crb` (~726 KiB) plus `inst/extdata/examples/spatial/xenium/*.png`
 
 ### Spatial — evaluated, not yet shipped
 
@@ -180,7 +180,7 @@ Public data (mouse embryo / brain) lives at the STOmics MOSTA portal.
 
 ## Immune repertoire
 
-A cell subset of `example.crb` with lineage-constrained clonotypes.
+Built from a cell subset of `example.crb` with lineage-constrained clonotypes.
 Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repertoire.md)).
 
 ### demo_full_tcr_bcr.crb
@@ -198,13 +198,13 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
   curl -fL -o data-raw/vdj_10x/pbmc3_b_contig.csv \
     "$BASE/vdj_v1_hs_pbmc3_b_filtered_contig_annotations.csv"
   ```
-- **object type**: `Cerebro` cell subset of `example.crb` (T + B + Mono, 1,476 cells)
+- **object type**: `Cerebro`, built from a cell subset of `example.crb` (T + B + Mono, 1,476 cells). The shipped file keeps a random 1,000 of them (950 repertoire rows). `example.crb` was cut independently, so the two shipped files share only 685 cells and 97 genes: the shipped demo is no longer a subset of the shipped `example.crb`.
 - **sampling**: `set.seed()`-pinned cell subset; TCR clonotypes assigned only to T cells, BCR only to B cells.
 - **cell-type field**: existing `cell_type` from `example.crb`
 - **embedded image**: none (n/a for immune repertoire)
 - **license**: 10x Genomics public dataset terms
 - **build**: `data-raw/build_ir_demos.R` (also carries the monocle2 trajectory — see the Trajectory section)
-- **output**: `inst/extdata/examples/demo_full_tcr_bcr.crb` (~1.0 MB)
+- **output**: `inst/extdata/examples/demo_full_tcr_bcr.crb` (~466 KiB)
 
 > `build_ir_demos.R` can also emit two narrower subsets — `demo_healthy_t.crb` (T + Mono, TCR only) and `demo_bcell_rich.crb` (B + few T, BCR only) — as a multi-sample switcher demo. They are **not shipped** by default; the Full set is their superset.
 
@@ -282,14 +282,14 @@ Built by `data-raw/build_ir_demos.R` (see [`immune_repertoire.md`](immune_repert
   ```
   `-C -` resumes a partial transfer: the expression matrices are ~283 MB each. The donor genotypes are **not** in these files — see the HLA typing entry below.
 - **object type**: `Cerebro` built from scratch (Seurat used only for normalisation/PCA/UMAP).
-- **sampling**: **everything is real measured data.** Cells are kept only if they carry a clonotype with **both** chains resolved **and** bound exactly **one** dextramer (multi-binders are dropped, not guessed at). The paired test is stricter than "has a `CTaa`": `combineTCR()` writes the literal string `NA` on a side it could not resolve, so an earlier build shipped 1,493 single-chain cells under a "paired" label. Deterministically subsampled to **3,000 cells per donor = 12,000 cells**, `set.seed(20260721)`, **after** the expression join so the balance is exact; analysis uses 2,000 variable genes, with the final demo export capped at 1,500 protected/variable genes and kept **sparse** (`dgCMatrix`, like every other demo here — densifying it cost 184 MiB of memory and 4.5 MiB of installed package). Measured with the package's own motif core on the shipped object: **TRB 3,270 unique CDR3 → 169 nodes in 39 motifs (largest 30, 3,112 isolated); TRA 3,189 → 396 nodes in 141 motifs**.
+- **sampling**: **everything is real measured data.** Cells are kept only if they carry a clonotype with **both** chains resolved **and** bound exactly **one** dextramer (multi-binders are dropped, not guessed at). The paired test is stricter than "has a `CTaa`": `combineTCR()` writes the literal string `NA` on a side it could not resolve, so an earlier build shipped 1,493 single-chain cells under a "paired" label. Deterministically subsampled to **3,000 cells per donor = 12,000 cells**, `set.seed(20260721)`, **after** the expression join so the balance is exact; the shipped file keeps a random 2,000 of them (473–525 per donor). Analysis uses 2,000 variable genes, with the final demo export capped at 100 protected/variable genes and kept **sparse** (`dgCMatrix`, like every other demo here — densifying it cost 184 MiB of memory and 4.5 MiB of installed package). Measured with the package's own motif core on the full 12,000-cell build: **TRB 3,270 unique CDR3 → 169 nodes in 39 motifs (largest 30, 3,112 isolated); TRA 3,189 → 396 nodes in 141 motifs**. On the shipped 2,000-cell object, TRB gives **38 nodes in 8 motifs (largest 12)**.
 - **why this data set exists**: it answers the fair objection that the motif network is only legible on synthetic data. A CDR3 Hamming-1 network needs an **antigen-selected** repertoire; an unselected one is sparse in CDR3 space and no amount of cells fixes it. Measured on this same source: all cells unselected = 26,449 unique CDR3 → trips the size guard; dextramer-binding cells = 2,910 → 308 nodes in 75 motifs; the single Flu-MP `GILGFVFTL` epitope = 267 → **121 nodes in 7 motifs**, i.e. 45 % of the CDR3s against one immunodominant epitope collapse into seven families. That is measured convergence, not a designed fixture.
 - **cell-type field**: `cell_type` (single level, `CD8 T` — the cells were sorted CD8+). Declared via `technical_info$lineage_column`, so the app never has to infer it.
 - **embedded image**: none (n/a for immune repertoire)
 - **HLA typing**: **real, `source_type = "genotyped"`** — the donors' published haplotypes, transcribed from **table S1** of the paper's supplementary PDF and kept inline in the build script as `DONOR_HLA`. Donor 1 A\*02:01/A\*11:01, B\*35:01 · Donor 2 A\*02:01/A\*01:01, B\*08:01 · Donor 3 A\*24:02/A\*29:02, B\*35:02/B\*44:03 · Donor 4 A\*03:01 homozygous, B\*07:02/B\*57:01. Because they were measured independently of these cells, the carrier / non-carrier contrasts here are real comparisons, not artefacts of the sorting. The PDF is not committed; the link printed inside the paper is dead (the `advances.sciencemag.org` domain was retired), the working one is `https://www.science.org/doi/suppl/10.1126/sciadv.abf5835/suppl_file/abf5835_sm.pdf` — **open it in a browser, not `curl`**: science.org is behind Cloudflare and 403s every command-line client (verified). It is not needed to rebuild, since the values are inline in the build script.
 - **⚠️ antigen-selected, so not an unbiased repertoire**: cells were sorted for dextramer binding, so which receptors are present was decided by the reagent panel. Declared in `technical_info$tcr_selection = "antigen-selected"`; the app prints the detail above the Associations tables. This is a statement about how the cells were chosen, not about the genotypes — but it is not a free pass either. Independent genotypes remove *circularity*; they do not remove **ascertainment**. The repertoire being compared was captured by the panel, the panel's reagents are restricted by particular alleles, and there are four donors, so donor and panel stay confounded with genotype. A carrier contrast here is suggestive, not a test, and the caveat above the tables says so. (Until this round `"antigen-selected"` was not a recognised key in `HLA_SELECTION_CAVEATS`, so the object declared a selection and the page showed nothing.)
 - **inference was tried and rejected**: an earlier build derived the genotypes from binding and was wrong — donor3 has 25,674 cells (92.8 % of its specific cells) binding A\*03:01-restricted dextramers and carries no A\*03:01. See [`hla.md` §4.1](hla.md#41-inferring-the-genotypes-from-binding-was-wrong).
-- **⚠️ the `dextramer_*` columns are raw binder calls, not specificity**: 10x's binarized flags say a cell was *called a binder of a reagent* — not that it is specific for that peptide, nor that the reagent's allele presents it in that donor. The same cross-reactivity that sank the genotype inference applies per cell: for a majority of the shipped cells the bound reagent's restriction is **not** among the alleles that donor carries — measured on what ships: **6,654 off-genotype and 75 undecidable of 12,000 cells**, i.e. only 5,271 (44 %) bound a reagent restricted by an allele their donor actually has. Per donor (yes / no / unknown of 3,000): donor1 2,046 / 879 / 75 · donor2 2,532 / 468 / 0 · donor3 3 / 2,997 / 0 · donor4 690 / 2,310 / 0. Donor 1's 75 undecidable calls are all `HLA-B*08:01`, at the locus table S1 leaves half-called. Hence the deliberately reagent-flavoured names `dextramer_antigen` / `dextramer_peptide` / `dextramer_allele` (never `antigen` / `restricting_allele`), plus a `restriction_in_genotype` column shipped as a declared group so the noise is colourable in the app instead of living in a footnote. That column has **three** states, because absence from the published table is only evidence of absence when the locus was called completely: `yes` = the reagent's restriction is one of the donor's published alleles; `no` = it is not, and that locus has both copies published; `unknown` = it is not listed but the locus was published at one copy only, so the second copy could be it. Table S1 gives donors 1 and 2 a single HLA-B allele, so their B-restricted binder calls are undecidable rather than off-genotype — collapsing them into `no` would manufacture a confirmed negative out of missing data, the same false-negative bias `hla_allele_status_by_unit()` refuses when building carrier groups. The rule is the package's own (`hla_locus_call_state()`: complete at two copies). **No HLA-association claim rests on these calls** — the contrasts use the published genotypes.
+- **⚠️ the `dextramer_*` columns are raw binder calls, not specificity**: 10x's binarized flags say a cell was *called a binder of a reagent* — not that it is specific for that peptide, nor that the reagent's allele presents it in that donor. The same cross-reactivity that sank the genotype inference applies per cell: for a majority of the shipped cells the bound reagent's restriction is **not** among the alleles that donor carries — measured on the full 12,000-cell build (the shipped file keeps a random 2,000 of these cells): **6,654 off-genotype and 75 undecidable of 12,000 cells**, i.e. only 5,271 (44 %) bound a reagent restricted by an allele their donor actually has. Per donor (yes / no / unknown of 3,000): donor1 2,046 / 879 / 75 · donor2 2,532 / 468 / 0 · donor3 3 / 2,997 / 0 · donor4 690 / 2,310 / 0. Donor 1's 75 undecidable calls are all `HLA-B*08:01`, at the locus table S1 leaves half-called. Hence the deliberately reagent-flavoured names `dextramer_antigen` / `dextramer_peptide` / `dextramer_allele` (never `antigen` / `restricting_allele`), plus a `restriction_in_genotype` column shipped as a declared group so the noise is colourable in the app instead of living in a footnote. That column has **three** states, because absence from the published table is only evidence of absence when the locus was called completely: `yes` = the reagent's restriction is one of the donor's published alleles; `no` = it is not, and that locus has both copies published; `unknown` = it is not listed but the locus was published at one copy only, so the second copy could be it. Table S1 gives donors 1 and 2 a single HLA-B allele, so their B-restricted binder calls are undecidable rather than off-genotype — collapsing them into `no` would manufacture a confirmed negative out of missing data, the same false-negative bias `hla_allele_status_by_unit()` refuses when building carrier groups. The rule is the package's own (`hla_locus_call_state()`: complete at two copies). **No HLA-association claim rests on these calls** — the contrasts use the published genotypes.
 - **declared contracts**: `observation_unit = "cell"`, `receptor_key = "v_gene+cdr3"`, `tcr_selection = "antigen-selected"`, `lineage_column = "cell_type"`.
 - **license**: CC BY 4.0 (10x Genomics datasets)
 - **build**: `data-raw/build_hla_tcr_dextramer_demo.R`. The verification block is a **gate, not a report**: the object is written to a staging path, re-read, re-measured with the package's own motif core, and every number asserted (donor balance, all-paired, sparse block, projection alignment, motif thresholds, genotypes equal to table S1, provenance, and the honesty columns) before `file.rename()` publishes it. A drifted input therefore stops the script and leaves the shipped `.crb` untouched, instead of replacing it and exiting 0.
@@ -312,10 +312,10 @@ Built by `data-raw/build_trajectory_demo.R` (see [`trajectory.md`](trajectory.md
 - **technology**: monocle2 `DDRTree` pseudotime (`monocle2 / B_cell_maturation`)
 - **dropdown label**: same as the IR demo — `PBMC - Full (T+B)` (the Trajectory tab appears when trajectory data is present)
 - **organism / tissue**: human (hg) / PBMC B cells, healthy donor
-- **source**: derived entirely from `demo_full_tcr_bcr.crb` itself — no new download. The trajectory is computed on that demo's 915 B cells.
+- **source**: derived entirely from `demo_full_tcr_bcr.crb` itself — no new download. The trajectory was computed on the 915 B cells of the full build; the shipped file keeps 603 of them after the random cell cut.
 - **acquire**: none (input is the already-built IR demo `.crb`)
 - **object type**: `monocle` `CellDataSet`, ordered by `DDRTree`; stored via `Cerebro$addTrajectory("monocle2", "B_cell_maturation", trajectory)`.
-- **sampling**: `set.seed(42)`; all 915 B cells of the demo; ordering filter on high-variance genes. The stored `meta` has `DR_1`, `DR_2`, `pseudotime`, `state`.
+- **sampling**: `set.seed(42)`; all B cells of the demo (915 in the full build, 603 in the shipped file); ordering filter on high-variance genes. The stored `meta` has `DR_1`, `DR_2`, `pseudotime`, `state`.
 - **cell-type field**: `state` (monocle2 DDRTree state) / continuous `pseudotime`
 - **embedded image**: none (n/a for trajectory)
 - **license**: 10x Genomics public dataset terms (inherited from the IR demo)
@@ -330,7 +330,7 @@ Built by `data-raw/build_trajectory_demo.R` (see [`trajectory.md`](trajectory.md
 
 Real, measured, down-sampled Trekker single-cell spatial-mapping output (Curio
 Bioscience / Takara Bio). Drives the bespoke **Trekker** tab, not the generic
-Spatial tab: real single nuclei with a selected 1,500-gene demo panel, positions inferred from
+Spatial tab: real single nuclei with a selected 100-gene demo panel, positions inferred from
 bead spatial barcodes, no histology image. Built by
 `data-raw/build_trekker_demo.R` (see [`trekker.md`](trekker.md) for the full
 download → extract → subsample → build walk-through).
@@ -350,9 +350,9 @@ download → extract → subsample → build walk-through).
   export TREKKER_OUTPUT_DIR=/path/to/Mouse_Brain_TrekkerU_C_Sept2025/output
   ```
 - **object type**: vendor Seurat v5 RDS (`..._ConfPositioned_seurat_spatial.rds`, `SCT` assay, `umap`/`pca`/`SPATIAL` reductions, a legacy `SlideSeq` @images entry). Coordinates are taken from the vendor **Location CSV** (`..._Location_ConfPositionedNuclei.csv`), the coordinate authority — never from `@images` (which is transposed) or the `SPATIAL` reduction (which is y-mirrored). The three orientations are surfaced side by side on the page's "坐标来源" switch.
-- **sampling**: existing `set.seed(42)` cluster-stratified cell sampling and forced evidence-cell inclusion are unchanged. The current shipped artifact retains all **2,536 nuclei** from the pre-panel demo. The final export selects at most **1,500 genes** (protected markers, myelination and upstream Moran genes, then normalized-expression variance); this is a demo subset of the 21,374-gene source. Full-input QC, coordinates, scores and images are preserved.
+- **sampling**: existing `set.seed(42)` cluster-stratified cell sampling and forced evidence-cell inclusion are unchanged. The builder produces **2,536 nuclei**, including the 50 with evidence images; the shipped file keeps 1,000 of them (`subsample_demos.R`): the 50 evidence nuclei and a random 950 others. The final export selects at most **100 genes** (protected markers, myelination and upstream Moran genes, then normalized-expression variance); this is a demo subset of the 21,374-gene source. Full-input QC, coordinates, scores and images are preserved.
 - **cell-type field**: `celltype` (18 Louvain clusters labelled once by marker z-score argmax: Snap25/Slc17a7→ExN, Gad1→InN, Plp1/Mbp→Oligo, Aqp4/Gfap→Astro, Cx3cr1/C1qa/Csf1r→Micro, Pdgfra→OPC, Prox1→DG; ambiguous clusters honestly left `Neuron`) plus `cluster`
-- **embedded image**: **none — Trekker carries no matched histology image** (positions come from bead barcodes, not a tissue photo). Instead the `.crb` embeds, in its `trekker` slot, the 50 official per-nucleus positioning-evidence JPEGs + 3 excluded-class example JPEGs as base64 `data:` URIs (down-scaled to 620 px, quality 68), so the whole demo — expression + evidence — is self-contained in one file.
+- **embedded image**: **none — Trekker carries no matched histology image** (positions come from bead barcodes, not a tissue photo). Instead the `.crb` embeds, in its `trekker` slot, the 50 official per-nucleus positioning-evidence JPEGs + 3 excluded-class example JPEGs as base64 `data:` URIs (down-scaled to 620 px, quality 68; only 16 of those 50 nuclei remain among the shipped cells), so the whole demo — expression + evidence — is self-contained in one file.
 - **license**: Curio/Takara example data, access-gated (registration). Raw bundle **not redistributable**; the shipped `.crb` is a small derived subset for demonstration.
 - **build**: `data-raw/build_trekker_demo.R` (needs `magick` + `base64enc` at build time only, not a package Import)
 - **output**: `inst/extdata/examples/demo_trekker.crb` (self-contained incl. evidence images; see README for current measured size)
