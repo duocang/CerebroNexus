@@ -2233,6 +2233,9 @@ server <- function(input, output, session) {
     ) {
       return(invisible(FALSE))
     }
+    ## Marked before sourcing: a file that fails halfway has already registered
+    ## some observers, and sourcing it again would register them a second time.
+    assign(server_file, TRUE, envir = deferred_viewer_server_loaded)
     viewerSource(
       file.path(
         Cerebro.options[["cerebro_root"]],
@@ -2241,16 +2244,28 @@ server <- function(input, output, session) {
       ),
       envir = server_scope
     )
-    assign(server_file, TRUE, envir = deferred_viewer_server_loaded)
     invisible(TRUE)
+  }
+  load_coordinated_views_server <- function() {
+    load_deferred_viewer_server("coordinated_views/server.R")
   }
   observeEvent(
     input[["coordviews_visible"]],
     {
       if (isTRUE(input[["coordviews_visible"]])) {
-        load_deferred_viewer_server("coordinated_views/server.R")
+        load_coordinated_views_server()
       }
     },
+    ignoreInit = TRUE
+  )
+  ## Share requests from any page are answered by the Linked views server. The
+  ## input ids are the ones coordviews-config.js sends and that server observes.
+  observeEvent(
+    list(
+      input[["coordviews_config_request"]],
+      input[["coordviews_config_upload_request"]]
+    ),
+    load_coordinated_views_server(),
     ignoreInit = TRUE
   )
   observeEvent(

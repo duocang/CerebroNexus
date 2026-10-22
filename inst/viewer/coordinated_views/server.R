@@ -656,6 +656,9 @@ cv_config_materialize_selection <- function(config, cells) {
   config
 }
 
+## The Share dialog of every page sends these two requests, and the first one
+## sources this file (shiny_server.R). Without ignoreInit, the observers then
+## answer that request instead of waiting for a second one.
 observeEvent(
   input[["coordviews_config_request"]],
   {
@@ -755,8 +758,7 @@ observeEvent(
         )
       }
     )
-  },
-  ignoreInit = TRUE
+  }
 )
 
 observeEvent(
@@ -846,8 +848,7 @@ observeEvent(
         )
       }
     )
-  },
-  ignoreInit = TRUE
+  }
 )
 
 
