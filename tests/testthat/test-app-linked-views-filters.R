@@ -19,6 +19,12 @@ test_that("filtering a deferred group in Linked views shows the intersection", {
     "window.__linkedErrors=[];",
     "window.addEventListener('error',e=>__linkedErrors.push(String(e.message)));"
   ))
+  ## The dataset selector is rendered by the server; on a slow runner it is not
+  ## bound yet when the app has loaded.
+  app$wait_for_js(
+    "Shiny.shinyapp.$inputValues.crb_file_selector !== undefined",
+    timeout = 60000
+  )
   app$set_inputs(crb_file_selector = "Mouse brain (Trekker)", wait_ = FALSE)
   app$wait_for_idle(timeout = 60000)
   app$click(selector = 'a[href="#shiny-tab-coordinated_views"]')
