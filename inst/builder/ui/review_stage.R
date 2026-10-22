@@ -240,13 +240,14 @@ builder_review_pages <- function(items, plan_contract = list()) {
   }))
 }
 
+## The column name as Configure and the generated Viewer show it; a prettified
+## "Neuron cluster ID" for `Neuron_cluster_ID` reads like a different column.
 builder_review_group_label <- function(value) {
-  value <- gsub("[_.]+", " ", as.character(value %||% ""))
-  value <- trimws(value)
-  if (!nzchar(value)) {
+  value <- trimws(as.character(value %||% ""))
+  if (!length(value) || !nzchar(value[[1L]])) {
     return("Not selected")
   }
-  paste0(toupper(substr(value, 1L, 1L)), substr(value, 2L, nchar(value)))
+  value[[1L]]
 }
 
 builder_review_projection_label <- function(value) {

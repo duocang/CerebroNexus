@@ -3256,7 +3256,14 @@ observe({
     )
     settings <- builder_default_settings(
       profile,
-      p$label,
+      builder_unique_dataset_name(
+        p$label,
+        vapply(
+          isolate(sets()),
+          function(entry) as.character(entry$settings$name %||% ""),
+          character(1)
+        )
+      ),
       dataset_profile = value$dataset_profile
     )
     settings$recommendations <- recommendations

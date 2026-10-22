@@ -975,6 +975,10 @@
   }
 
   function showStatusFlash(message) {
+    // A Save with nothing to write answers only with this flash, without a
+    // new activity state; the click's "Preparing save…" ends here too.
+    var pendingFeedback = document.getElementById("builder-project-pending-feedback");
+    if (pendingFeedback) pendingFeedback.remove();
     var toolbar = document.querySelector(".builder-project-toolbar");
     if (!toolbar) return showGlobalNotice(message);
     var prior = toolbar.querySelector(".builder-status-flash");
@@ -1181,6 +1185,11 @@
       return;
     }
     if (!builderNoticeGlyphs[message.type]) message.type = "info";
+    if (message.type === "error") {
+      // A failed action ends its "Preparing…"/"Opening…" feedback too.
+      var failedFeedback = document.getElementById("builder-project-pending-feedback");
+      if (failedFeedback) failedFeedback.remove();
+    }
     clearNoticesById(message.id);
     var target = message.target;
     if (target === "status") {
@@ -1270,8 +1279,13 @@
       var retryQueueLocked =
         control.matches(".builder-retry-import") && clientImportQueue.length > 0;
       var pickerLocked = datasetPickerOpening && control.matches(".builder-add-datasets");
+      // The first row cannot move up and the last cannot move down; R marks
+      // those buttons and this lock must not re-enable them.
+      var edgeLocked = control.matches(".builder-reorder") &&
+        control.getAttribute("data-at-edge") === "true";
       var controlLocked = datasetMutationsLocked ||
-        (activityLocked && !restoreControl) || retryQueueLocked || pickerLocked;
+        (activityLocked && !restoreControl) || retryQueueLocked || pickerLocked ||
+        edgeLocked;
       if ("disabled" in control) control.disabled = controlLocked;
       control.setAttribute(
         "aria-disabled",
@@ -1514,7 +1528,12 @@
         builderActivityState.busy_detail
       ].filter(Boolean).join(" · ");
     }
-    var operationOverlayOpen = pageInert &&
+    // A system picker opened for Build does not make the page inert, but its
+    // overlay is the only place offering "Enter path" and "Cancel" while the
+    // picker window may be hidden behind the browser.
+    var pickerWaiting = builderConnectionReady &&
+      builderActivityState.picker_waiting === true;
+    var operationOverlayOpen = (pageInert || pickerWaiting) &&
       builderActivityState.busy_modal !== true;
     // The Build progress panel does not depend on page_inert: when the
     // server stops making the page inert during a Build, the same panel
@@ -1549,7 +1568,7 @@
       beginBuildOperationFocus(overlay);
     }
     var shell = document.querySelector(".builder-shell");
-    if (shell) shell.inert = pageInert || builderProjectSaveResultOpen;
+    if (shell) shell.inert = pageInert || pickerWaiting || builderProjectSaveResultOpen;
     document.body.classList.toggle(
       "builder-connection-lost",
       !builderConnectionReady
@@ -4855,16 +4874,7 @@
     setupViewerGroupCatalogs(roots);
     setupViewerContentCatalogs(roots);
     setupCreatableSelects(roots);
-    if (desiredSpatialSection) {
-      var sectionSelect = document.getElementById("enhance-active_section");
-      if (sectionSelect && sectionSelect.value !== desiredSpatialSection) {
-        if (sectionSelect.selectize) {
-          sectionSelect.selectize.setValue(desiredSpatialSection, true);
-        } else {
-          sectionSelect.value = desiredSpatialSection;
-        }
-      }
-    }
+    applyDesiredSpatialSection(document.getElementById("enhance-active_section"));
     applyBuilderActivityState(roots);
     applyProjectSourceLoadState();
     matchingDynamicElements(roots, 'input[type="color"]').forEach(enhanceColour);
@@ -5861,8 +5871,12 @@
       "builder_activity_state",
       function (message) {
         if (!message || typeof message !== "object") return;
+        // Feedback inside a dialog stays until that dialog closes; the
+        // activity state changes while the dialog's action is still running.
         var pendingFeedback = document.getElementById("builder-project-pending-feedback");
-        if (pendingFeedback) pendingFeedback.remove();
+        if (pendingFeedback && pendingFeedback.dataset.inDialog !== "true") {
+          pendingFeedback.remove();
+        }
         resetDatasetMessageGenerationsForActivity(message);
         builderActivityState = {
           phase: message.phase || "none",
@@ -6111,6 +6125,28 @@
     clientImportHandlersRegistered = true;
   }
 
+  // Re-apply the server's spatial section after Configure redraws. The
+  // remembered section may belong to the dataset shown before; never force a
+  // section this select does not offer (it would show an empty choice).
+  function applyDesiredSpatialSection(select) {
+    if (!select || !desiredSpatialSection) return;
+    if (select.value === desiredSpatialSection) return;
+    var offered = select.selectize
+      ? Object.prototype.hasOwnProperty.call(
+          select.selectize.options,
+          desiredSpatialSection
+        )
+      : Array.prototype.some.call(select.options, function (option) {
+          return option.value === desiredSpatialSection;
+        });
+    if (!offered) return;
+    if (select.selectize) {
+      select.selectize.setValue(desiredSpatialSection, true);
+    } else {
+      select.value = desiredSpatialSection;
+    }
+  }
+
   function registerViewerGroupHandler() {
     if (viewerGroupHandlerRegistered || !window.Shiny) return;
     window.Shiny.addCustomMessageHandler(
@@ -6149,13 +6185,9 @@
           [0, 50, 200, 500, 1000, 2000, 5000].forEach(function (delay) {
             var timer = window.setTimeout(function () {
               if (generation !== spatialSectionGeneration) return;
-              var select = document.getElementById("enhance-active_section");
-              if (!select) return;
-              if (select.selectize) {
-                select.selectize.setValue(desiredSpatialSection, true);
-              } else {
-                select.value = desiredSpatialSection;
-              }
+              applyDesiredSpatialSection(
+                document.getElementById("enhance-active_section")
+              );
             }, delay);
             spatialSectionTimers.push(timer);
           });
@@ -6314,6 +6346,7 @@
       confirm_builder_project_open: "Opening selected datasets…",
       continue_to_review: "Preparing review…", complete_dataset_check: "Checking settings…"};
     feedback.textContent = messages[button.id];
+    if (button.closest("#shiny-modal")) feedback.dataset.inDialog = "true";
     button.insertAdjacentElement("beforebegin", feedback);
     // Some clicks open a dialog (such as the discard question before Open)
     // without changing the project phase.

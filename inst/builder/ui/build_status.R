@@ -630,9 +630,35 @@ builder_build_status_model <- function(result) {
       result$diagnostics_path
     } else {
       NULL
-    }
+    },
+    failures = builder_build_text_lines(result$failures),
+    failure_reasons = builder_build_failed_analysis_reasons(
+      result$analysis_log
+    ),
+    analysis_log = builder_build_text_lines(result$analysis_log)
   )
   structure(model, class = c("builder_build_status", "list"))
+}
+
+builder_build_text_lines <- function(value) {
+  value <- as.character(unlist(value %||% character(), use.names = FALSE))
+  value[!is.na(value) & nzchar(trimws(value))]
+}
+
+## The analysis log marks a failed analysis with "✗"; its first line names the
+## dataset, the analysis and the reason. Later lines are suggestions.
+builder_build_failed_analysis_reasons <- function(log) {
+  log <- builder_build_text_lines(log)
+  failed <- log[grepl("\u2717", log, fixed = TRUE)]
+  if (!length(failed)) {
+    return(character())
+  }
+  reasons <- vapply(
+    strsplit(failed, "\n", fixed = TRUE),
+    function(lines) trimws(lines[[1L]]),
+    character(1)
+  )
+  unique(sub("\\s*\u2717\\s*", " ", reasons))
 }
 
 .builder_open_app_child <- function(
@@ -1426,8 +1452,26 @@ builder_build_status_ui <- function(model) {
       )
     },
     if (identical(model$type, "needs_decision")) {
+      reasons <- if (length(model$failure_reasons)) {
+        model$failure_reasons
+      } else {
+        model$failures
+      }
       div(
         class = "builder-recovery-action",
+        if (length(reasons)) {
+          tags$ul(
+            class = "builder-failure-reasons",
+            lapply(reasons, tags$li)
+          )
+        },
+        if (length(model$analysis_log)) {
+          tags$details(
+            class = "builder-failure-log",
+            tags$summary("Analysis log"),
+            tags$pre(paste(model$analysis_log, collapse = "\n"))
+          )
+        },
         p(
           "Retry the failed optional work, or remove it, review, and build again."
         ),

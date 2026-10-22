@@ -6213,6 +6213,60 @@ builder_project_artifact_source_fingerprint <- function(
   NULL
 }
 
+## What a Project dataset-cache job runs in its background R process. An
+## installed Builder has no package source among `runtime_files`, so
+## `load_package` attaches CerebroNexus for the exporter functions.
+builder_project_crb_job_expression <- function() {
+  quote({
+    if (isTRUE(load_package)) {
+      suppressPackageStartupMessages(library(CerebroNexus))
+    }
+    runtime <- new.env(parent = globalenv())
+    runtime$`%||%` <- function(left, right) {
+      if (is.null(left)) right else left
+    }
+    for (runtime_file in runtime_files) {
+      source_utf8(runtime_file, runtime)
+    }
+    snapshots <- lapply(
+      plan$source_snapshot_identities,
+      function(identity) {
+        if (is.null(identity$snapshot)) NULL else identity$snapshot
+      }
+    )
+    value <- runtime$builder_execute_plan(plan, output, snapshots)
+    runtime$builder_project_prepare_build_artifacts(
+      plan = list(items = plan$items),
+      value = value,
+      root = root,
+      previous_artifacts = previous_artifacts,
+      entries = list(entry),
+      promote = TRUE
+    )
+  })
+}
+
+## A cache build that stopped on an optional analysis has no `error`; its
+## reason is the failed line of the analysis log (marked with a cross:
+## "<dataset>: <cross> <analysis>: <reason>"). Keep only that line so the rail
+## row stays short.
+builder_project_build_failure_text <- function(value) {
+  log <- as.character(unlist(value$analysis_log %||% character()))
+  failed <- log[grepl("\u2717", log, fixed = TRUE)]
+  if (length(failed)) {
+    first <- strsplit(failed[[1L]], "\n", fixed = TRUE)[[1L]][[1L]]
+    return(paste0(
+      "The dataset cache stopped on an optional analysis: ",
+      trimws(sub("\\s*\u2717\\s*", " ", first))
+    ))
+  }
+  failures <- as.character(unlist(value$failures %||% character()))
+  if (length(failures) && nzchar(failures[[1L]])) {
+    return(failures[[1L]])
+  }
+  "Dataset caches could not be prepared."
+}
+
 builder_project_prepare_build_artifacts <- function(
   plan,
   value,
@@ -6229,7 +6283,7 @@ builder_project_prepare_build_artifacts <- function(
   registration_error <- if (build_succeeded) {
     NULL
   } else {
-    value$error %||% "Dataset caches could not be prepared."
+    value$error %||% builder_project_build_failure_text(value)
   }
   for (item in if (build_succeeded) plan$items else list()) {
     if (!builder_project_plan_artifact_reusable(item)) {

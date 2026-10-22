@@ -5489,6 +5489,22 @@ test_that("browser lifecycle code includes queue sync and close protection", {
   )
 })
 
+## The background expression a Project cache job evaluates, taken from
+## project.R without sourcing the rest of the file.
+builder_project_crb_job_expression_source <- function() {
+  exprs <- parse(builder_test_inst_path("builder", "project.R"), keep.source = FALSE)
+  for (expr in exprs) {
+    if (
+      is.call(expr) &&
+        identical(expr[[1L]], as.name("<-")) &&
+        identical(expr[[2L]], as.name("builder_project_crb_job_expression"))
+    ) {
+      return(eval(expr[[3L]], new.env(parent = baseenv()))())
+    }
+  }
+  stop("builder_project_crb_job_expression() is missing from project.R.")
+}
+
 test_that("Save starts optional CRB work only after checked settings persist", {
   project <- paste(
     readLines(
@@ -5576,7 +5592,20 @@ test_that("Save starts optional CRB work only after checked settings persist", {
     fixed = TRUE
   )
   expect_match(worker, "builder_async_submit(", fixed = TRUE)
-  expect_match(worker, "runtime$builder_execute_plan(", fixed = TRUE)
+  expect_match(worker, "builder_project_crb_job_expression()", fixed = TRUE)
+  expect_match(
+    worker,
+    "load_package = builder_project_runtime_needs_package()",
+    fixed = TRUE
+  )
+  job <- paste(
+    deparse(builder_project_crb_job_expression_source()),
+    collapse = "
+"
+  )
+  expect_match(job, "library(CerebroNexus)", fixed = TRUE)
+  expect_match(job, "runtime$builder_execute_plan(", fixed = TRUE)
+  expect_match(job, "promote = TRUE", fixed = TRUE)
   expect_match(
     project,
     "builder_project_manifest_with_artifact(",
@@ -5680,7 +5709,12 @@ test_that("only the saved-project background CRB queue remains", {
     "builder_project_record_crb(",
     fixed = TRUE
   )
-  expect_match(source, "promote = TRUE", fixed = TRUE)
+  expect_match(
+    paste(deparse(builder_project_crb_job_expression_source()), collapse = "
+"),
+    "promote = TRUE",
+    fixed = TRUE
+  )
 
   capture_start <- regexpr(
     "builder_project_capture_build_plan <- function(",

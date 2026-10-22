@@ -12,6 +12,42 @@
 #' subset of cells, and passing one of them to the exporter silently truncates
 #' the data set. Offer the logical name only when its physical layers form a
 #' complete, non-overlapping partition.
+#' The grouping column to start with: a known annotation or clustering name
+#' first; otherwise the first candidate that is not a spatial grid index
+#' (Visium's `array_row`/`array_col` look like groups but are coordinates).
+builder_preselect_group <- function(candidates) {
+  candidates <- as.character(candidates)
+  if (!length(candidates)) {
+    return(character())
+  }
+  known <- c(
+    "seurat_clusters",
+    "cell_type",
+    "celltype",
+    "cell_class",
+    "annotation",
+    "clusters",
+    "cluster",
+    "leiden",
+    "louvain",
+    "sample",
+    "orig.ident"
+  )
+  lowered <- tolower(candidates)
+  hits <- unlist(
+    lapply(known, function(name) candidates[lowered == name]),
+    use.names = FALSE
+  )
+  if (length(hits)) {
+    return(unique(hits))
+  }
+  grid <- grepl(
+    "^(array_?(row|col)|(image)?(row|col)|in_tissue|x|y|z)$",
+    lowered
+  )
+  if (any(!grid)) candidates[!grid][[1L]] else candidates[[1L]]
+}
+
 builder_layer_choices <- function(
   assay,
   expected_cells,
@@ -330,13 +366,7 @@ describe_seurat <- function(object, metadata_groups = NULL) {
     )
   }
 
-  preselect <- intersect(
-    c("seurat_clusters", "cell_type", "celltype", "sample", "orig.ident"),
-    unname(candidates)
-  )
-  if (!length(preselect)) {
-    preselect <- if (length(candidates)) unname(candidates)[1] else character()
-  }
+  preselect <- builder_preselect_group(unname(candidates))
   if (!reuse_metadata) {
     group_counts <- lapply(unname(candidates), function(column) {
       values <- as.character(meta[[column]])

@@ -231,6 +231,23 @@ builder_detected_organism <- function(profile, dataset_profile = NULL) {
   if (builder_has_text(guess) && guess %in% c("hg", "mm")) guess else NULL
 }
 
+## The same file added twice would show two identical names in the rail and in
+## the generated Viewer's dataset menu; number the later copy instead.
+builder_unique_dataset_name <- function(name, existing) {
+  existing <- existing[!is.na(existing)]
+  if (!length(name) || !name %in% existing) {
+    return(name)
+  }
+  index <- 2L
+  repeat {
+    candidate <- paste0(name, " (", index, ")")
+    if (!candidate %in% existing) {
+      return(candidate)
+    }
+    index <- index + 1L
+  }
+}
+
 builder_default_settings <- function(
   profile,
   name,

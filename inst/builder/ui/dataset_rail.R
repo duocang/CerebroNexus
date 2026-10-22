@@ -1047,6 +1047,7 @@ builder_dataset_rail_row_ui <- function(model) {
         `data-ds` = model$id,
         `data-direction` = "up",
         `data-icon` = "up",
+        `data-at-edge` = if (!model$can_up) "true" else NULL,
         disabled = if (!model$can_up) "disabled" else NULL
       ),
       shiny::tags$button(
@@ -1056,6 +1057,7 @@ builder_dataset_rail_row_ui <- function(model) {
         `data-ds` = model$id,
         `data-direction` = "down",
         `data-icon` = "down",
+        `data-at-edge` = if (!model$can_down) "true" else NULL,
         disabled = if (!model$can_down) "disabled" else NULL
       ),
       shiny::tags$button(

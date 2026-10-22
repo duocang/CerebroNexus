@@ -661,7 +661,21 @@ builder_alignment_normalize <- function(
   normalized
 }
 
+#' The placement a picture arrived with (scale factors from the source file),
+#' or NULL for pictures that were added by hand.
+builder_alignment_source_registration <- function(record) {
+  registration <- record$source_registration %||% NULL
+  if (
+    !is.list(registration) ||
+      !.builder_alignment_valid_bounds(registration$base_bounds)
+  ) {
+    return(NULL)
+  }
+  registration
+}
+
 #' Reset one image to its deterministic fit without changing point appearance.
+#' A picture registered by its source file returns to that registration.
 builder_alignment_reset <- function(record) {
   normalized <- builder_alignment_normalize(record)
   if (is.null(normalized)) {
@@ -672,11 +686,18 @@ builder_alignment_reset <- function(record) {
     "point_opacity",
     "point_size"
   )]
+  registration <- builder_alignment_source_registration(normalized)
+  base_bounds <- normalized$base_bounds
+  if (!is.null(registration)) {
+    base_bounds <- registration$base_bounds
+    parameters$flip_x <- isTRUE(registration$flip_x)
+    parameters$flip_y <- isTRUE(registration$flip_y)
+  }
   reset <- builder_alignment_record(
     source = normalized$source,
     source_uri = normalized$source_uri,
     uri = normalized$source_uri,
-    base_bounds = normalized$base_bounds,
+    base_bounds = base_bounds,
     parameters = parameters,
     image_geometry = list(
       source_width = normalized$source_width,
@@ -704,6 +725,7 @@ builder_alignment_reset <- function(record) {
       "display_height",
       "source_content_md5",
       "image_label",
+      "source_registration",
       "roi_field",
       "roi_value",
       "outside",
@@ -2232,6 +2254,13 @@ builder_source_image_settings <- function(payload, dir) {
         source_path = image$source_path
       )
       record$viewport_bounds <- item$bounds
+      ## Remember where the picture belongs so Reset can return to it instead
+      ## of refitting a registered picture by eye.
+      record$source_registration <- list(
+        base_bounds = item$bounds,
+        flip_x = FALSE,
+        flip_y = TRUE
+      )
       record$image_label <- label
       facts <- intersect(
         names(image),

@@ -66,7 +66,7 @@ Builder checks the dependencies of selected analyses before Build. The exact sup
 
 # 1. Data
 
-Choose **Add files** to select one or more local Seurat objects stored as `.rds`, `.qs2` or `.qs`, or choose **Load example datasets**. Available formats depend on the installed readers.
+Choose **Add files** (or drop files anywhere on the page) to add Seurat or SingleCellExperiment objects stored as `.rds`, `.qs2` or `.qs`, AnnData `.h5ad`, MuData `.h5mu`, or a zipped SpatialData store, or choose **Load example datasets**. Available formats depend on the installed readers; a format whose reader is missing is listed under the add button with the reason.
 
 The example action loads three synthetic datasets: **Complete Viewer demo**, **Trekker spatial demo** and **Spatial alignment demo**. The first covers analysis tables, gene lists, trajectories, supplementary material, immune repertoire, HLA and spatial content; the second provides four tissue images; the third demonstrates an arrow-shaped section with a preset background alignment.
 
@@ -112,14 +112,14 @@ When a dataset is configured, use **Finish Checking**. Check the remaining datas
 
 Review is an exact, immutable description of the frozen plan that Build will execute. It shows the plan revision, dataset order, output filenames, expression backends, analysis dependencies, content dispositions, expected Viewer pages, App settings, planned payload targets, replacement policy, and estimated runtime and disk. Publication later adds `build-report.json` and `.cerebro-builder-release-v1`, matching the final release tree below.
 
-Choose one artifact mode:
+In **Build**, choose one artifact mode:
 
 - **CRB-only** releases the CRBs and any HDF5/BPCells sidecars.
 - **Public App** releases `cerebro_app/`; its private data directory contains
   the CRBs and sidecars.
 - **Login App** does the same, and adds `cerebro_app/viewer-auth.env` inside
   the release.
-  In Review, select **Require login**, add each local account, then Build and
+  In Build, select **Require login**, add each local account, then Build and
   open the generated App from its release directory to verify the local login.
   Keep `viewer-auth.env` with the App when moving a release; never commit it to
   Git or place it in a web-accessible directory.
@@ -175,8 +175,9 @@ The ownership record lists every Builder-owned release member. A later build can
 
 # Supported inputs and limits
 
-- Input adapters cover trusted Seurat files and shipped examples. SCE, CRB,
-  h5ad, h5Seurat, loom, and remote-upload adapters are not implemented.
+- Input adapters cover trusted Seurat and SingleCellExperiment files, AnnData,
+  MuData, zipped SpatialData and the shipped examples. CRB, h5Seurat, loom, and
+  remote-upload adapters are not implemented.
 - The Builder does not generate trajectories, GSEA, Trekker mappings, or extra
   plots. It preserves supported existing forms and diagnoses unsupported ones.
 - Only `monocle2` trajectories are exported. Other methods are reported as

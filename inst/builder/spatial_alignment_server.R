@@ -3532,17 +3532,25 @@ builder_spatial_alignment_server <- function(
     bounds <- alignment_bounds_for(preview)
     fit_bounds <- alignment_bounds_for(preview, image_fit = TRUE)
     reset <- builder_alignment_reset(current_draft)
-    image_dimensions <- c(
-      width = reset$source_width %||%
-        (reset$base_bounds$xmax - reset$base_bounds$xmin),
-      height = reset$source_height %||%
-        (reset$base_bounds$ymax - reset$base_bounds$ymin)
-    )
-    reset$base_bounds <- builder_alignment_fit_bounds(
-      fit_bounds,
-      image_dimensions
-    )
-    reset <- builder_alignment_center(reset, bounds)
+    if (is.null(builder_alignment_source_registration(reset))) {
+      image_dimensions <- c(
+        width = reset$source_width %||%
+          (reset$base_bounds$xmax - reset$base_bounds$xmin),
+        height = reset$source_height %||%
+          (reset$base_bounds$ymax - reset$base_bounds$ymin)
+      )
+      reset$base_bounds <- builder_alignment_fit_bounds(
+        fit_bounds,
+        image_dimensions
+      )
+      reset <- builder_alignment_center(reset, bounds)
+    } else {
+      reset$bounds <- builder_alignment_transform_bounds(
+        builder_alignment_oriented_bounds(reset$base_bounds, reset),
+        reset
+      )
+      reset$viewport_bounds <- bounds
+    }
     draft(reset)
     canvas_reset_token(canvas_reset_token() + 1L)
     update_controls(reset, bounds)

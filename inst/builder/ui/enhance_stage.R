@@ -228,8 +228,16 @@ builder_enhance_model <- function(
   )
 }
 
-builder_enhance_analysis_profile <- function(profile, organism) {
+builder_enhance_analysis_profile <- function(profile, organism, assay = NULL) {
   profile$organism_guess <- organism
+  assay <- assay %||% profile$default_assay %||% NULL
+  assay_profile <- if (is.character(assay) && length(assay) == 1L) {
+    profile$assay_profiles[[assay]] %||% NULL
+  }
+  if (is.list(assay_profile)) {
+    profile$analysis_assay <- assay
+    profile$analysis_layers <- as.character(assay_profile$layers %||% character())
+  }
   profile
 }
 
@@ -254,7 +262,8 @@ builder_enhance_modules <- function(profile, settings) {
   marker_imports <- settings$marker_imports %||% list()
   analysis_profile <- builder_enhance_analysis_profile(
     profile,
-    settings$organism
+    settings$organism,
+    settings$assay
   )
   lapply(steps, function(step) {
     imported_marker_summary <- if (

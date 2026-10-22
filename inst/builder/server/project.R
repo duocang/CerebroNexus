@@ -677,6 +677,13 @@ builder_project_registration_runtime_files <- function() {
   normalizePath(files, winslash = "/", mustWork = TRUE)
 }
 
+## An installed Builder has no package source to source into the worker, so
+## the worker must attach CerebroNexus itself before running the build code.
+builder_project_runtime_needs_package <- function() {
+  builder_dir <- dirname(builder_project_source_runtime_file())
+  !length(builder_project_package_runtime_files(builder_dir))
+}
+
 ## Warm Project workers. Manifest writes and attachment staging share one
 ## session so their transactions stay ordered; source copies run in their own
 ## session so a long copy never delays a manifest write.
@@ -914,6 +921,10 @@ builder_project_record_crb <- function(
   apply_written(written)
 }
 
+builder_project_cache_notice_id <- function(id) {
+  paste0("builder-dataset-cache-", id)
+}
+
 builder_project_finish_crb_job <- function(id, token, prepared, output) {
   if (builder_session_closed()) {
     try(
@@ -1000,7 +1011,8 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     builder_notify(
       "warning",
       paste(message, "The dataset remains checked without a cache."),
-      target = list(dataset = id)
+      target = list(dataset = id),
+      id = builder_project_cache_notice_id(id)
     )
     return(invisible(FALSE))
   }
@@ -1017,7 +1029,8 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
     builder_notify(
       "warning",
       paste(message, "The dataset remains checked without a cache."),
-      target = list(dataset = id)
+      target = list(dataset = id),
+      id = builder_project_cache_notice_id(id)
     )
     return(invisible(FALSE))
   }
@@ -1040,11 +1053,13 @@ builder_project_finish_crb_job <- function(id, token, prepared, output) {
           }
         ),
         target = list(dataset = id),
+        id = builder_project_cache_notice_id(id),
         action = list(label = "Save", click = "save_builder_project")
       )
       return(invisible(FALSE))
     }
     builder_project_update_crb_job(id, NULL)
+    builder_notify_clear(builder_project_cache_notice_id(id))
     builder_notify(
       "success",
       paste0(current_entry$settings$name %||% id, ": dataset cache ready."),
@@ -1088,7 +1103,8 @@ builder_project_fail_crb_job <- function(id, token, error, output = NULL) {
         conditionMessage(error),
         "The dataset remains checked without a cache."
       ),
-      target = list(dataset = id)
+      target = list(dataset = id),
+      id = builder_project_cache_notice_id(id)
     )
   }
   if (.builder_project_text(output %||% NULL)) {
@@ -1227,30 +1243,7 @@ start_next_builder_project_crb_job <- function() {
   builder_project_update_crb_job(id, job)
   task <- tryCatch(
     builder_async_submit(
-      quote({
-        runtime <- new.env(parent = globalenv())
-        runtime$`%||%` <- function(left, right) {
-          if (is.null(left)) right else left
-        }
-        for (runtime_file in runtime_files) {
-          source_utf8(runtime_file, runtime)
-        }
-        snapshots <- lapply(
-          plan$source_snapshot_identities,
-          function(identity) {
-            if (is.null(identity$snapshot)) NULL else identity$snapshot
-          }
-        )
-        value <- runtime$builder_execute_plan(plan, output, snapshots)
-        runtime$builder_project_prepare_build_artifacts(
-          plan = list(items = plan$items),
-          value = value,
-          root = root,
-          previous_artifacts = previous_artifacts,
-          entries = list(entry),
-          promote = TRUE
-        )
-      }),
+      builder_project_crb_job_expression(),
       list(
         plan = plan,
         output = output,
@@ -1258,6 +1251,7 @@ start_next_builder_project_crb_job <- function() {
         previous_artifacts = previous_artifacts,
         entry = captured_entry,
         runtime_files = runtime_files,
+        load_package = builder_project_runtime_needs_package(),
         source_utf8 = builder_source_utf8
       ),
       .pool = "crb"
@@ -3921,7 +3915,13 @@ complete_builder_project_open <- function(actions = NULL) {
   builder_project_open_actions(NULL)
   builder_project_open_wait(NULL)
   builder_project_open_discard_confirmed(FALSE)
-  shiny::removeModal()
+  ## Rendering the opened workspace takes seconds for large datasets. Close the
+  ## dataset dialog (which shows "Opening selected datasets…") only once that
+  ## render has reached the page, so the window is never an empty Builder.
+  session$onFlushed(
+    function() shiny::removeModal(session = session),
+    once = TRUE
+  )
   restore_total <- length(pending_entries)
   if (!restore_total) {
     builder_project_restore_progress(list(
@@ -4288,6 +4288,11 @@ observe({
       save_required <- artifacts_changed
       if (artifacts_changed) {
         builder_project_artifacts(prepared$artifacts)
+        ## A dataset that now has a cache no longer needs its earlier
+        ## "without a cache" warning.
+        for (artifact_id in names(prepared$artifacts)) {
+          builder_notify_clear(builder_project_cache_notice_id(artifact_id))
+        }
       }
       finish_registration <- function(saved) {
         builder_project_operation_phase(

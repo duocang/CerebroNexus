@@ -621,11 +621,14 @@ builder_import_progress_cleanup <- function(root) {
     }
     last_written_at <<- now
     last_percent <<- percent
+    ## proc.time()'s elapsed follows the wall clock, which a host time sync
+    ## (WSL resyncs after sleep) can move backwards; never let that abort an
+    ## import.
     invisible(builder_import_progress_write(
       path,
       stage,
       generation,
-      (now - started) * 1000,
+      max(0, (now - started) * 1000),
       bytes_done = bytes_done,
       bytes_total = bytes_total
     ))

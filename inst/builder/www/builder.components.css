@@ -1463,6 +1463,16 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   border-top: 1px solid var(--c-border-2);
   box-shadow: 0 -6px 16px -8px rgb(17 17 26 / .18);
 }
+/* Review and Build keep their primary action in view the same way, instead
+   of leaving it half below the window edge. */
+.builder-stage-review > .builder-stage-footer,
+.builder-stage-build > .builder-stage-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  border-top: 1px solid var(--c-border-2);
+  box-shadow: 0 -6px 16px -8px rgb(17 17 26 / .18);
+}
 /* The summary flows straight into "Available metadata"; the one divider
    sits under that line, above Essentials. */
 .builder-configure-inspect {
@@ -1960,6 +1970,26 @@ body.modal-open #shiny-modal.modal { z-index: 2020; }
   max-width: var(--builder-measure-form);
 }
 .builder-field { min-width: 0; }
+/* Viewer appearance: the on/off settings form one full-width row. */
+.builder-display-flags {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin-bottom: var(--space-3);
+}
+.builder-display-flags > .checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: 0;
+  font-size: var(--builder-type-body);
+}
+.builder-display-flags > .checkbox-inline > input[type="checkbox"] {
+  position: static;
+  margin: 0;
+}
 .builder-field > .form-group,
 .builder-advanced-grid > .form-group { width: 100%; }
 .builder-field--name { grid-column: 1; grid-row: 1; }

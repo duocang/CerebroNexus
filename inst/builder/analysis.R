@@ -21,7 +21,8 @@ builder_analysis_steps <- function() {
       cost = "seconds",
       network = FALSE,
       note = "Adds continuous QC variables to meta.data.",
-      needs = NULL
+      needs = NULL,
+      needs_layer = "counts"
     ),
     list(
       id = "most_expressed",
@@ -29,7 +30,8 @@ builder_analysis_steps <- function() {
       cost = "seconds",
       network = FALSE,
       note = "Finds the genes contributing the most expression in each group.",
-      needs = NULL
+      needs = NULL,
+      needs_layer = "counts"
     ),
     list(
       id = "marker_genes",
@@ -114,6 +116,19 @@ builder_step_blocked <- function(step, profile, selected) {
     ## The gene list ships per organism; "other" has none.
     if (!profile$organism_guess %in% c("hg", "mm")) {
       return("Human and mouse only")
+    }
+  }
+  ## Raw-count steps cannot run on an assay that only carries normalized data;
+  ## say so here instead of failing during Build.
+  if (!is.null(step$needs_layer) && !is.null(profile$analysis_layers)) {
+    if (!step$needs_layer %in% profile$analysis_layers) {
+      return(paste0(
+        "Needs a ",
+        step$needs_layer,
+        " layer in the ",
+        profile$analysis_assay %||% "selected",
+        " assay"
+      ))
     }
   }
   if (!is.null(step$needs)) {

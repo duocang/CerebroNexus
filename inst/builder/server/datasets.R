@@ -1202,7 +1202,8 @@ invisible(lapply(analysis_checkbox_steps, function(step) {
       requested <- isTRUE(input[[paste0("enhance-analysis_", step$id)]])
       analysis_profile <- builder_enhance_analysis_profile(
         entry$profile,
-        entry$settings$organism
+        entry$settings$organism,
+        entry$settings$assay
       )
       blocked <- builder_step_blocked(step, analysis_profile, selected)
       if (requested && !is.null(blocked)) {

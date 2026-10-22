@@ -429,15 +429,22 @@ builder_viewer_display_ui <- function(id, entry, epoch) {
       )
     )
   }
+  ## Checkboxes sit together on their own row; inside the two-column grid
+  ## they would each take a cell next to the number fields.
+  flags <- function(...) {
+    div(class = "builder-display-flags", ...)
+  }
   page <- function(prefix, label, labels = TRUE, extras = NULL) {
     tags$details(
       class = "builder-viewer-card",
-      tags$summary(label),
+      tags$summary(span(class = "builder-viewer-card-title", label)),
       div(
         class = "builder-viewer-card-body builder-advanced-grid",
-        if (labels) flag(paste0(prefix, "_group_labels"), "Show group labels"),
-        flag(paste0(prefix, "_draw_border"), "Draw cell borders"),
-        flag(paste0(prefix, "_keep_square"), "Keep plots square"),
+        flags(
+          if (labels) flag(paste0(prefix, "_group_labels"), "Show group labels"),
+          flag(paste0(prefix, "_draw_border"), "Draw cell borders"),
+          flag(paste0(prefix, "_keep_square"), "Keep plots square")
+        ),
         extras
       )
     )
@@ -457,9 +464,11 @@ builder_viewer_display_ui <- function(id, entry, epoch) {
     ),
     div(
       class = "builder-advanced-grid",
-      flag("group_labels", "Show group labels"),
-      flag("draw_border", "Draw cell borders"),
-      flag("keep_square", "Keep plots square"),
+      flags(
+        flag("group_labels", "Show group labels"),
+        flag("draw_border", "Draw cell borders"),
+        flag("keep_square", "Keep plots square")
+      ),
       div(
         class = "form-group",
         tags$label(`for` = ns("label_size"), "Group label size (CSS pixels)"),
@@ -581,7 +590,7 @@ builder_viewer_display_ui <- function(id, entry, epoch) {
     ),
     tags$details(
       class = "builder-viewer-card",
-      tags$summary("HLA & TCR Motifs"),
+      tags$summary(span(class = "builder-viewer-card-title", "HLA & TCR Motifs")),
       div(
         class = "builder-viewer-card-body builder-advanced-grid",
         select(
