@@ -7,6 +7,10 @@ inst_dir <- viewer_app_test_path()
 ## they share one driver. Tests that switch data sets, assert a pristine startup
 ## or build their own bundle boot their own app.
 shared_app <- viewer_shared_app("app_inst", inst_dir)
+## The three dataset-switching tests below each need a new session that starts
+## on the default data set. They share one app process; each after the first
+## starts a new Shiny session in it rather than booting another app.
+switching_app <- viewer_shared_app("dataset_switching", inst_dir)
 
 ## shinytest2's wait_for_idle() tracks server reactivity, NOT the async
 ## client-side cell-view renderer (www/cell_views.js). After it returns,
@@ -114,16 +118,7 @@ test_that("{shinytest2} recording: overview", {
 })
 
 test_that("Projection switches categorical spatial datasets coherently", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "projection_dataset_switch",
-    load_timeout = 120000,
-    height = 950,
-    width = 1619
-  )
-  withr::defer(app$stop())
-  app$wait_for_idle(timeout = 30000)
+  app <- viewer_new_session(switching_app())
 
   app$set_inputs(
     crb_file_selector = "Mouse ileum (MERFISH)",
@@ -166,16 +161,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
 })
 
 test_that("Spatial backgrounds reset when the spatial dataset changes", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "spatial_background_isolation",
-    load_timeout = 120000,
-    height = 950,
-    width = 1619
-  )
-  withr::defer(app$stop())
-  app$wait_for_idle(timeout = 20000)
+  app <- viewer_new_session(switching_app())
 
   app$set_inputs(
     crb_file_selector = "Mouse brain (Visium)",
@@ -327,16 +313,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
 })
 
 test_that("Linked views resets the active background to its preset", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "linked_background_reset",
-    load_timeout = 120000,
-    height = 950,
-    width = 1619
-  )
-  withr::defer(app$stop())
-  app$wait_for_idle(timeout = 20000)
+  app <- viewer_new_session(switching_app())
   app$set_inputs(
     crb_file_selector = "Mouse brain (Xenium)",
     wait_ = FALSE
@@ -474,12 +451,14 @@ test_that("{shinytest2} recording: main", {
   app$wait_for_idle(timeout = 10000)
 
   expect_mapequal(
-    app$get_values(input = c(
-      "overview_projection_point_size",
-      "overview_projection_point_opacity",
-      "overview_projection_percentage_cells_to_show",
-      "overview_projection_group_filter_seurat_clusters"
-    ))$input,
+    app$get_values(
+      input = c(
+        "overview_projection_point_size",
+        "overview_projection_point_opacity",
+        "overview_projection_percentage_cells_to_show",
+        "overview_projection_group_filter_seurat_clusters"
+      )
+    )$input,
     list(
       overview_projection_point_size = 9,
       overview_projection_point_opacity = 0.9,
@@ -513,10 +492,12 @@ test_that("{shinytest2} recording: groups", {
   expect_false(is.null(table_val))
 
   expect_mapequal(
-    app$get_values(input = c(
-      "groups_by_other_group_show_as_percent",
-      "groups_by_other_group_show_table"
-    ))$input,
+    app$get_values(
+      input = c(
+        "groups_by_other_group_show_as_percent",
+        "groups_by_other_group_show_table"
+      )
+    )$input,
     list(
       groups_by_other_group_show_as_percent = TRUE,
       groups_by_other_group_show_table = TRUE
@@ -574,11 +555,13 @@ test_that("{shinytest2} recording: marker_genes", {
   expect_false(grepl("no_markers_found|no_data", ui_val$html, fixed = FALSE))
 
   expect_mapequal(
-    app$get_values(input = c(
-      "marker_genes_selected_method",
-      "marker_genes_selected_table",
-      "marker_genes_table_filter_switch"
-    ))$input,
+    app$get_values(
+      input = c(
+        "marker_genes_selected_method",
+        "marker_genes_selected_table",
+        "marker_genes_table_filter_switch"
+      )
+    )$input,
     list(
       marker_genes_selected_method = "cerebro_seurat",
       marker_genes_selected_table = "seurat_clusters",
