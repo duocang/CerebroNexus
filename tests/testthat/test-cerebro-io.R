@@ -840,11 +840,12 @@ test_that("every required accessor is a method of the current class", {
 })
 
 test_that("the Viewer gate also runs from the process-wide function cache", {
+  ## shiny_server.R sources the function cache and the shared contract into the
+  ## same environment, so the process-wide functions reach the contract.
   cache <- new.env(parent = globalenv())
   sys.source(viewer_test_path("source_cache.R"), envir = cache)
-  ## shiny_server.R sources the shared contract, then the cached utilities
+  sys.source(viewer_test_path("core", "crb_contract.R"), envir = cache)
   scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
   withr::local_options(cerebro.quiet_runtime = TRUE)
   cache$viewerSource(viewer_test_path("utility_functions.R"), scope)
 
@@ -852,10 +853,10 @@ test_that("the Viewer gate also runs from the process-wide function cache", {
   retired <- retired_cerebros(root)
   current <- file.path(root, "current.crb")
   saveCerebro(make_embedded_cerebro(), current)
-  expect_null(scope$.runtimeLegacyReason(.readCerebroPayload(current)))
+  expect_null(cache$.runtimeLegacyReason(.readCerebroPayload(current)))
   pre_hla <- retired$entries$pre_hla$path
   expect_match(
-    scope$.runtimeLegacyReason(.readCerebroPayload(pre_hla)),
+    cache$.runtimeLegacyReason(.readCerebroPayload(pre_hla)),
     "predates HLA typing support"
   )
   ## a cached reader reaches the shared gate
