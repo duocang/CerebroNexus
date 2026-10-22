@@ -118,8 +118,7 @@ test_that("packed projections and first frames align shuffled cell identities", 
     byrow = TRUE
   )
   expect_equal(unname(actual), unname(as.matrix(expected)))
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   scope$getProjection <- function(name) object$projections[[name]]
   scope$getMetaData <- function() object$getMetaData()
   expect_identical(
@@ -737,7 +736,7 @@ test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
   projection_calls <- 0L
   scope <- new.env(parent = globalenv())
   ## Shared runtime helpers such as viewerMemoOne(); the mocks below win.
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  viewer_runtime_env(scope)
   scope$reactive <- function(x) function() eval(substitute(x))
   scope$reactiveVal <- function(...) function(...) NULL
   scope$req <- function(...) invisible(NULL)

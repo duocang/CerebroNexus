@@ -54,8 +54,7 @@ test_that("changing workbooks refreshes sheet choices and retains their display 
 })
 
 test_that("embedded table display labels preserve identity and dataset isolation", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), runtime)
+  runtime <- viewer_runtime_env()
   tables <- list(
     "old-one" = data.frame(value = 11L),
     "old-two" = data.frame(value = 22L),

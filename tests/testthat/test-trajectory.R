@@ -83,8 +83,7 @@ test_that("getTrajectory bug is fixed in class definition", {
 })
 
 test_that("trajectory helper utilities are defined in the app scope", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   metadata <- data.frame(
     cell_barcode = "c1",
     group = "A",

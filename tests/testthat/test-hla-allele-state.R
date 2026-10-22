@@ -2,7 +2,7 @@ test_that("HLA tabs retain one allele and use it for both network colours and ov
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       updates <- list()
       session$sendInputMessage <- function(inputId, message) {
         updates[[inputId]] <<- message

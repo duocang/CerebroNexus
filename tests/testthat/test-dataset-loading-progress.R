@@ -2,7 +2,7 @@ test_that("dataset loading reports progress and acknowledges the loaded dataset"
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sent <- list()
       session$sendCustomMessage <- function(type, message) {
         sent[[length(sent) + 1L]] <<- list(type = type, message = message)
@@ -112,8 +112,7 @@ test_that("dataset loading reports progress and acknowledges the loaded dataset"
 
 
 test_that("loading labels match selector labels without changing dataset identity", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
   files <- c(ds1 = "/private/one.crb", ds2 = "/private/two.crb")
   labels <- c(ds2 = "Tissue atlas", ds1 = "All nuclei")
   expect_identical(
@@ -161,19 +160,9 @@ test_that("loading labels match selector labels without changing dataset identit
 
 
 test_that("loading transitions avoid flashes and survive consecutive switches", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  expect_identical(
-    system2(
-      "node",
-      c(
-        shQuote(testthat::test_path(
-          "fixtures",
-          "dataset-loading-transition.js"
-        )),
-        shQuote(viewer_test_path("www", "viewer-shell.js"))
-      )
-    ),
-    0L
+  expect_node_fixture(
+    "dataset-loading-transition.js",
+    viewer_test_path("www", "viewer-shell.js")
   )
 })
 
@@ -181,7 +170,7 @@ test_that("catalog Data info decides loading with the request and loads once", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sys.source(viewer_test_path("core", "dataset_overview.R"), scope)
       session$sendCustomMessage <- function(type, message) NULL
       removeNotification <- function(...) NULL
@@ -217,6 +206,7 @@ test_that("catalog Data info decides loading with the request and loads once", {
         names = c(
           "viewer_send_dataset_phase",
           "viewer_clear_cell_view_aux",
+          "viewer_catalog_info",
           "viewer_dataset_load_required",
           "viewer_request_dataset",
           "datasetLoadProgress",
@@ -282,8 +272,7 @@ test_that("a background read that never finishes does not stall the dataset swit
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
-      sys.source(viewer_test_path("crb_cache.R"), scope)
+      viewer_runtime_env(scope)
       session$sendCustomMessage <- function(type, message) NULL
       reads <- 0L
       dataset_load_requested <- reactiveVal(TRUE)

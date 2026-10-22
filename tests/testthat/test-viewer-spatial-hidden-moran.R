@@ -1,6 +1,5 @@
 test_that("hidden Moran cache key does not prepare Spatial data", {
-  helpers <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), helpers)
+  helpers <- viewer_runtime_env()
   score_output <- parse(viewer_test_path("spatial", "out_morans_i.R"))[[1L]]
   shiny::testServer(
     function(input, output, session) {

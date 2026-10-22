@@ -6,37 +6,13 @@
 ## overview module; source it directly here so it can be unit-tested without a
 ## Shiny session.
 
-repo_file <- function(...) {
-  parts <- c(...)
-  stripped <- if (length(parts) && identical(parts[[1L]], "inst")) {
-    parts[-1L]
-  } else {
-    parts
-  }
-  # 1) installed package (R CMD check) or load_all-shimmed source location
-  if (length(stripped)) {
-    p <- system.file(
-      do.call(file.path, as.list(stripped)),
-      package = "CerebroNexus"
-    )
-    if (nzchar(p)) {
-      return(p)
-    }
-  }
-  # 2) fall back to the source tree (devtools::test_dir run from the repo)
-  testthat::test_path("..", "..", ...)
-}
-
 # The shared helper lives in utility_functions.R (sourced once at server start).
 # Source it into a throwaway environment and return the function. The file only
 # DEFINES functions at top level (Shiny / later calls happen inside them), so
 # sourcing it standalone is safe.
 load_filter <- function() {
   env <- new.env()
-  sys.source(
-    repo_file("inst", "viewer", "utility_functions.R"),
-    envir = env
-  )
+  viewer_runtime_env(env)
   env[["filterSelectionByHiddenGroups"]]
 }
 
@@ -98,4 +74,48 @@ test_that("hidden groups not present in the data are ignored", {
   fx <- make_fixture()
   out <- f(fx$selection, fx$metadata, "sample", "sample_ZZZ")
   expect_equal(out, fx$selection)
+})
+
+test_that("viewerVisibleSelection reads cells only when a group is hidden", {
+  env <- new.env()
+  viewer_runtime_env(env)
+  context <- list(epoch = "s", dataset_key = "A", generation = 1)
+  reads <- 0L
+  cells <- function() {
+    reads <<- reads + 1L
+    data.frame(
+      group = c("a", "b", "a"),
+      DR_1 = c(1, 2, 3),
+      DR_2 = c(4, 5, 6)
+    )
+  }
+  selection <- data.frame(identifier = c("1-4", "2-5", "3-6"))
+  visible <- function(request) {
+    env$viewerVisibleSelection(
+      selection,
+      request,
+      context,
+      "group",
+      cells,
+      coordinates = c("DR_1", "DR_2")
+    )
+  }
+  expect_identical(visible(NULL), selection)
+  expect_identical(
+    visible(list(
+      groups = "a",
+      dataset_context = modifyList(
+        context,
+        list(generation = 2)
+      )
+    )),
+    selection
+  )
+  expect_identical(reads, 0L)
+  expect_identical(
+    visible(list(groups = "a", dataset_context = context))$identifier,
+    "2-5"
+  )
+  expect_null(visible(list(groups = c("a", "b"), dataset_context = context)))
+  expect_identical(reads, 2L)
 })

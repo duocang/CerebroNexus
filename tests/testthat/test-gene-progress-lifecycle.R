@@ -2,7 +2,7 @@ test_that("Gene progress closes when hidden and does not reopen painted keys", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       viewer_loaded_dataset_context <- reactiveVal(viewerDatasetContext(
         "session",
         "A",
@@ -164,7 +164,7 @@ test_that("plot parameter changes reuse expression values", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       viewer_loaded_dataset_context <- reactiveVal(viewerDatasetContext(
         "session",
         "A",

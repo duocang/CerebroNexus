@@ -40,8 +40,7 @@ test_that("Viewer no longer depends on shinyFiles", {
 })
 
 test_that("Specialist group filters share inclusive empty-selection behavior", {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_path("utility_functions.R"), envir = env)
+  env <- viewer_runtime_env()
   metadata <- data.frame(
     sample = c("A", "A", "B"),
     cell_type = c("T", "B", "T"),
@@ -67,7 +66,7 @@ test_that("Specialist group filters share inclusive empty-selection behavior", {
 test_that("Projection renders an empty filter result instead of retaining cells", {
   shiny::testServer(
     function(input, output, session) {
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       metadata <- data.frame(sample = factor(c("A", "B")))
       viewer_loaded_dataset_context <- function() {
         list(epoch = "s", dataset_key = "A", generation = 1)

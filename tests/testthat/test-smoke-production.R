@@ -40,6 +40,8 @@ build_smoke_app <- function(envir = parent.frame()) {
     cerebro_data = c("Dataset A" = crb_a, "Dataset B" = crb_b),
     result_dir = app_dir,
     launch_browser = FALSE,
+    ## The bundle freezes its port; parallel test files must not share one.
+    port = httpuv::randomPort(),
     spatial_images = list(
       "Dataset A" = list(fov = c(Histology = img_a)),
       "Dataset B" = list(fov = c(Histology = img_b))
@@ -231,6 +233,7 @@ build_real_app <- function(envir = parent.frame()) {
     cerebro_data = c("Visium" = visium_crb, "Xenium" = xenium_crb),
     result_dir = app_dir,
     launch_browser = FALSE,
+    port = httpuv::randomPort(),
     initial_page = "spatial",
     spatial_images = list(
       Visium = stats::setNames(
@@ -496,6 +499,7 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
       assign("Cerebro.options", config, envir = .GlobalEnv)
       runtime <- new.env(parent = globalenv())
       sys.source(file.path("viewer", "crb_cache.R"), envir = runtime)
+      sys.source(file.path("viewer", "core", "crb_contract.R"), envir = runtime)
       sys.source(
         file.path("viewer", "utility_functions.R"),
         envir = runtime
@@ -529,7 +533,7 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
 ## silently depends on CerebroNexus being installed. The deserialize test above
 ## covers the dataset; this covers module initialization
 ## for module code that loads package-authored helpers. The HLA module is the
-## worst offender -- its pure core lives in R/ (not copied into a bundle) and it
+## worst offender -- its pure core lives in R/, outside inst/viewer, and it
 ## used to reach the installed namespace via core_shim. That resolved under
 ## R CMD check (package installed) but NOT in an exported bundle, so it passed
 ## every check except a user actually running the exported app.
@@ -537,9 +541,10 @@ test_that("a bundled dataset deserializes and works without CerebroNexus", {
 ## The only faithful test is the production condition: build the bundle, then
 ## load its module code in a process whose library path genuinely lacks
 ## CerebroNexus -- exactly what a user who never installed the package has.
-## If the core files were not copied into the bundle, or core_shim reached for
-## the namespace, or a core file dropped off its source list, the functions the
-## module calls by bare name go unbound here and this fails loudly.
+## If createShinyApp() did not write the core into the bundle, or core_shim
+## reached for the namespace, or a core object fell outside the generated
+## source, the functions the module calls by bare name go unbound here and this
+## fails loudly.
 test_that("an exported bundle resolves the HLA core with no CerebroNexus installed", {
   skip_if_not_installed("callr")
   skip_on_cran()

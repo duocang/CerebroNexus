@@ -2,6 +2,12 @@
 ## Server function for Cerebro.
 ##----------------------------------------------------------------------------##
 
+## A path below the viewer's root directory. Server modules use it too: they
+## run inside server(), within this file's scope.
+cerebro_root_path <- function(...) {
+  file.path(Cerebro.options[["cerebro_root"]], ...)
+}
+
 ## plotting_functions.R holds only pure plot-builder functions (no reactive /
 ## input / output / session references), so source it ONCE at process startup
 ## instead of re-evaluating every definition on every new browser session. It
@@ -10,39 +16,19 @@
 ## utility_functions.R stay inside server(): the former defines a top-level
 ## reactive (reactive_colors); the latter's helpers close over session-scope
 ## reactives (data_set(), preferences, ...).
-source(
-  paste0(
-    Cerebro.options[["cerebro_root"]],
-    "/viewer/plotting_functions.R"
-  ),
-  local = TRUE
-)
-source(
-  paste0(Cerebro.options[["cerebro_root"]], "/viewer/color_config.R"),
-  local = TRUE
-)
-source(
-  paste0(Cerebro.options[["cerebro_root"]], "/viewer/source_cache.R"),
-  local = TRUE
-)
-source(
-  paste0(Cerebro.options[["cerebro_root"]], "/viewer/core/viewer_pack.R"),
-  local = TRUE
-)
+source(cerebro_root_path("viewer/plotting_functions.R"), local = TRUE)
+source(cerebro_root_path("viewer/color_config.R"), local = TRUE)
+source(cerebro_root_path("viewer/source_cache.R"), local = TRUE)
+source(cerebro_root_path("viewer/core/viewer_pack.R"), local = TRUE)
+source(cerebro_root_path("viewer/core/crb_contract.R"), local = TRUE)
 
 ## Generated Extra material tables are immutable. Share their lazy cache across
 ## sessions instead of reading the same sheet again for every browser tab.
 .extra_material_process_cache <- new.env(parent = emptyenv())
 
 ## Process-owned query/cache functions do not capture a browser session.
-source(
-  file.path(Cerebro.options[["cerebro_root"]], "viewer", "msigdb.R"),
-  local = TRUE
-)
-source(
-  file.path(Cerebro.options[["cerebro_root"]], "viewer", "crb_cache.R"),
-  local = TRUE
-)
+source(cerebro_root_path("viewer/msigdb.R"), local = TRUE)
+source(cerebro_root_path("viewer/crb_cache.R"), local = TRUE)
 .reserveCrbHeap(Cerebro.options[["crb_file_to_load"]])
 .viewer_pack_process_cache <- new.env(parent = emptyenv())
 ## CRBs without a stored cell fingerprint would otherwise hash every barcode on
@@ -102,13 +88,7 @@ source(
   assign(key, value, envir = .viewer_cell_fingerprint_cache)
   value
 }
-source(
-  file.path(
-    Cerebro.options[["cerebro_root"]],
-    "viewer/core/dataset_overview.R"
-  ),
-  local = TRUE
-)
+source(cerebro_root_path("viewer/core/dataset_overview.R"), local = TRUE)
 .crb_launch_state <- new.env(parent = emptyenv())
 .crb_launch_state$prototypes <- Cerebro.options[[".dataset_prototypes"]]
 if (!is.list(.crb_launch_state$prototypes)) {
@@ -136,43 +116,31 @@ server <- function(input, output, session) {
   ##--------------------------------------------------------------------------##
   ## Load color setup and utility functions.
   ##--------------------------------------------------------------------------##
-  source(
-    paste0(Cerebro.options[["cerebro_root"]], "/viewer/color_setup.R"),
-    local = TRUE
-  )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/utility_functions.R"
-    ),
-    local = TRUE
-  )
-  if (length(.crb_launch_state$prototypes)) {
-    backend_plan <- Cerebro.options[[".bundle_backend_plan"]]
-    configured_paths <- unname(
-      Cerebro.options[["crb_file_to_load"]] %||% character()
+  source(cerebro_root_path("viewer/color_setup.R"), local = TRUE)
+  source(cerebro_root_path("viewer/utility_functions.R"), local = TRUE)
+  ## Catalog summary of a dataset target, or NULL.
+  viewer_catalog_info <- function(target) {
+    viewerDatasetInfo(Cerebro.options[[".dataset_catalog"]], target)
+  }
+  ## Configured bundle CRBs use the backend plan createShinyApp() validated.
+  viewer_backend_plan <- function(path) {
+    .configuredRuntimeBackendPlan(
+      path,
+      Cerebro.options[[".bundle_backend_plan"]],
+      unname(Cerebro.options[["crb_file_to_load"]] %||% character())
     )
+  }
+  if (length(.crb_launch_state$prototypes)) {
     for (prototype_path in names(.crb_launch_state$prototypes)) {
-      effective_backend <- .configuredRuntimeBackendPlan(
-        prototype_path,
-        backend_plan,
-        configured_paths
-      )
       .cacheCrbPrototype(
         prototype_path,
         .crb_launch_state$prototypes[[prototype_path]],
-        .runtimeBackendCacheIdentity(effective_backend)
+        .runtimeBackendCacheIdentity(viewer_backend_plan(prototype_path))
       )
     }
     .crb_launch_state$prototypes <- NULL
   }
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/coordinated_views/config.R"
-    ),
-    local = TRUE
-  )
+  source(cerebro_root_path("viewer/coordinated_views/config.R"), local = TRUE)
   observeEvent(
     input[["cell_view_aux_request"]],
     {
@@ -181,13 +149,7 @@ server <- function(input, output, session) {
     },
     ignoreInit = TRUE
   )
-  source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/clone_contract.R"
-    ),
-    local = TRUE
-  )
+  source(cerebro_root_path("viewer/clone_contract.R"), local = TRUE)
 
   ##--------------------------------------------------------------------------##
   ## Central parameters.
@@ -352,12 +314,7 @@ server <- function(input, output, session) {
   ## Whether a request must materialize the full CRB: always outside Data info,
   ## and on Data info only without a usable catalog summary.
   viewer_dataset_load_required <- function(target) {
-    catalog <- if (exists("Cerebro.options")) {
-      Cerebro.options[[".dataset_catalog"]]
-    } else {
-      NULL
-    }
-    info <- viewerDatasetInfo(catalog, target)
+    info <- viewer_catalog_info(target)
     viewerDatasetLoadRequired(
       isolate(input[["sidebar"]]),
       info,
@@ -531,10 +488,7 @@ server <- function(input, output, session) {
       available_crb_files$labels <- NULL
       ## take path or object from 'Cerebro.options' if it is set and points to an
       ## existing file or object
-    } else if (
-      exists('Cerebro.options') &&
-        !is.null(Cerebro.options[["crb_file_to_load"]])
-    ) {
+    } else if (!is.null(Cerebro.options[["crb_file_to_load"]])) {
       file_to_load <- Cerebro.options[["crb_file_to_load"]]
       ## launchCerebro() and createShinyApp() always name several files; a
       ## hand-written configuration must do the same.
@@ -770,18 +724,10 @@ server <- function(input, output, session) {
   observeEvent(
     available_crb_files$selected,
     {
-      catalog <- if (exists("Cerebro.options")) {
-        Cerebro.options[[".dataset_catalog"]]
-      } else {
-        NULL
-      }
-      info <- viewerDatasetInfo(
-        catalog,
-        viewerDatasetPath(
-          available_crb_files$files,
-          available_crb_files$selected
-        )
-      )
+      info <- viewer_catalog_info(viewerDatasetPath(
+        available_crb_files$files,
+        available_crb_files$selected
+      ))
       selected <- available_crb_files$selected
       if (!is.null(info) && length(selected) == 1L) {
         session$onFlushed(
@@ -801,15 +747,7 @@ server <- function(input, output, session) {
                 ))
                 start_crb_prefetch(
                   path,
-                  .runtimeBackendCacheIdentity(
-                    .configuredRuntimeBackendPlan(
-                      path,
-                      Cerebro.options[[".bundle_backend_plan"]],
-                      unname(
-                        Cerebro.options[["crb_file_to_load"]] %||% character()
-                      )
-                    )
-                  )
+                  .runtimeBackendCacheIdentity(viewer_backend_plan(path))
                 )
               }
             })
@@ -836,15 +774,10 @@ server <- function(input, output, session) {
   current_dataset_info <- reactive({
     req(!is.null(available_crb_files$selected))
     selected <- available_crb_files$selected
-    catalog <- if (exists("Cerebro.options")) {
-      Cerebro.options[[".dataset_catalog"]]
-    } else {
-      NULL
-    }
-    info <- viewerDatasetInfo(
-      catalog,
-      viewerDatasetPath(available_crb_files$files, selected)
-    )
+    info <- viewer_catalog_info(viewerDatasetPath(
+      available_crb_files$files,
+      selected
+    ))
     if (!is.null(info)) {
       info$label <- viewerDatasetLabel(
         available_crb_files$files,
@@ -942,19 +875,6 @@ server <- function(input, output, session) {
           ## Configured bundle CRBs consume the exact backend plan validated during
           ## createShinyApp(). Uploads and plain launches use the ordinary
           ## expression_backend field; serialized getters are not called.
-          backend_plan <- if (exists("Cerebro.options")) {
-            Cerebro.options[[".bundle_backend_plan"]]
-          } else {
-            NULL
-          }
-          configured_paths <- if (
-            exists("Cerebro.options") &&
-              !is.null(Cerebro.options[["crb_file_to_load"]])
-          ) {
-            unname(Cerebro.options[["crb_file_to_load"]])
-          } else {
-            character()
-          }
           cache_key <- normalizePath(
             dataset_to_load,
             winslash = "/",
@@ -991,19 +911,16 @@ server <- function(input, output, session) {
               } else if (identical(status, "success")) {
                 prefetched <- prefetch_task$result()
                 req(identical(prefetched$path, as.character(dataset_to_load)))
-                effective_backend <- .configuredRuntimeBackendPlan(
-                  dataset_to_load,
-                  backend_plan,
-                  configured_paths
-                )
                 .cacheCrbPrototype(
                   dataset_to_load,
                   prefetched$prototype,
-                  .runtimeBackendCacheIdentity(effective_backend)
+                  .runtimeBackendCacheIdentity(
+                    viewer_backend_plan(dataset_to_load)
+                  )
                 )
                 print(glue::glue(
                   "[{Sys.time()}] CRB background prefetch ready: ",
-                  "{.crbLogLabel(dataset_to_load)}"
+                  "{basename(dataset_to_load)}"
                 ))
               } else {
                 tryCatch(
@@ -1022,8 +939,8 @@ server <- function(input, output, session) {
           datasetLoadProgress(dataset_label, 42, "Opening cells and metadata")
           data <- get_or_load_crb(
             dataset_to_load,
-            backend_plan,
-            configured_paths
+            Cerebro.options[[".bundle_backend_plan"]],
+            unname(Cerebro.options[["crb_file_to_load"]] %||% character())
           )
         }
         datasetLoadProgress(dataset_label, 78, "Preparing viewer data")
@@ -1243,50 +1160,31 @@ server <- function(input, output, session) {
     if (exists(key, envir = viewer_projection_resources, inherits = FALSE)) {
       return(get(key, envir = viewer_projection_resources, inherits = FALSE))
     }
-    assets <- pack$manifest$assets
-    asset_row <- which(as.character(assets$path) == asset_path)
-    dimensions <- if (length(asset_row) == 1L) {
-      suppressWarnings(as.integer(strsplit(
-        as.character(assets$dimensions[[asset_row]]),
-        "x",
-        fixed = TRUE
-      )[[1L]]))
-    } else {
-      integer()
-    }
-    file <- file.path(pack$path, asset_path)
-    valid <- length(asset_row) == 1L &&
-      identical(as.character(assets$dtype[[asset_row]]), "float32") &&
-      length(dimensions) == 2L &&
-      identical(dimensions[[1L]], as.integer(pack$cell_count)) &&
-      dimensions[[2L]] %in% c(2L, 3L) &&
-      file.exists(file) &&
-      !dir.exists(file) &&
-      identical(
-        as.numeric(file.info(file)$size),
-        as.numeric(assets$bytes[[asset_row]])
-      ) &&
-      identical(
-        unname(.viewerFileMd5(file)),
-        as.character(assets$checksum[[asset_row]])
-      )
-    if (!valid) {
+    asset <- viewerPackVerifiedAsset(
+      pack,
+      asset_path,
+      .viewerFileMd5,
+      function(asset) {
+        identical(asset$dtype, "float32") &&
+          length(asset$dimensions) == 2L &&
+          identical(asset$dimensions[[1L]], as.integer(pack$cell_count)) &&
+          asset$dimensions[[2L]] %in% c(2L, 3L)
+      }
+    )
+    if (is.null(asset)) {
       return(NULL)
     }
-    prefix <- viewerStaticResourcePrefix(
-      "projection",
-      dirname(file)
-    )
+    prefix <- viewerStaticResourcePrefix("projection", dirname(asset$file))
     descriptor <- c(
       list(
         protocol = "canonical-projection-v1",
         projection_name = as.character(name),
-        url = paste0(prefix, "/", basename(file)),
-        cells = dimensions[[1L]],
-        dimensions = dimensions[[2L]],
+        url = paste0(prefix, "/", basename(asset$file)),
+        cells = asset$dimensions[[1L]],
+        dimensions = asset$dimensions[[2L]],
         dtype = "float32",
-        bytes = as.numeric(assets$bytes[[asset_row]]),
-        checksum = as.character(assets$checksum[[asset_row]])
+        bytes = asset$bytes,
+        checksum = asset$checksum
       ),
       viewerCanonicalResourceIdentity(pack)
     )
@@ -1309,6 +1207,14 @@ server <- function(input, output, session) {
   ## The binding is published only by the Viewer Pack builder after exact
   ## coordinate comparison. Non-matching frames retain their dedicated geometry
   ## asset.
+  ## A verified Float32 x/y coordinate asset for `cells` cells.
+  viewerXYGeometryAsset <- function(pack, path, cells) {
+    viewerPackVerifiedAsset(pack, path, .viewerFileMd5, function(asset) {
+      identical(asset$dtype, "float32") &&
+        identical(asset$dimensions, c(cells, 2L)) &&
+        identical(asset$bytes, as.numeric(cells) * 2 * 4)
+    })
+  }
   viewer_trajectory_resources <- new.env(parent = emptyenv())
   viewerTrajectoryFrameAsset <- function(method, name) {
     pack <- viewerPackCurrent()
@@ -1323,60 +1229,37 @@ server <- function(input, output, session) {
     if (exists(key, envir = viewer_trajectory_resources, inherits = FALSE)) {
       return(get(key, envir = viewer_trajectory_resources, inherits = FALSE))
     }
-    assets <- pack$manifest$assets
-    asset_row <- function(path) {
-      which(as.character(assets$path) == as.character(path))
-    }
-    codes_row <- asset_row(frame$state_codes_path)
-    dictionary_row <- asset_row(frame$state_dictionary_path)
-    if (length(codes_row) != 1L || length(dictionary_row) != 1L) {
-      return(NULL)
-    }
-    code_dimensions <- suppressWarnings(as.integer(
-      as.character(assets$dimensions[[codes_row]])
-    ))
-    dtype <- as.character(assets$dtype[[codes_row]])
-    bytes_per_code <- switch(
-      dtype,
-      uint8 = 1L,
-      uint16 = 2L,
-      uint32 = 4L,
-      NA_integer_
+    codes <- viewerPackVerifiedAsset(
+      pack,
+      frame$state_codes_path,
+      .viewerFileMd5,
+      function(asset) {
+        bytes_per_code <- switch(
+          asset$dtype,
+          uint8 = 1L,
+          uint16 = 2L,
+          uint32 = 4L,
+          NA_integer_
+        )
+        identical(asset$dimensions, frame$cells) &&
+          !is.na(bytes_per_code) &&
+          identical(asset$bytes, as.numeric(frame$cells) * bytes_per_code)
+      }
     )
-    paths <- c(frame$state_codes_path, frame$state_dictionary_path)
-    rows <- c(codes_row, dictionary_row)
-    files <- file.path(pack$path, paths)
-    valid <- identical(code_dimensions, frame$cells) &&
-      !is.na(bytes_per_code) &&
-      identical(
-        as.numeric(assets$bytes[[codes_row]]),
-        as.numeric(frame$cells) * bytes_per_code
-      ) &&
-      all(file.exists(files)) &&
-      !any(dir.exists(files)) &&
-      all(
-        as.numeric(file.info(files)$size) == as.numeric(assets$bytes[rows])
-      ) &&
-      all(
-        unname(.viewerFileMd5(files)) == as.character(assets$checksum[rows])
-      )
-    if (!isTRUE(valid)) {
+    dictionary <- if (!is.null(codes)) {
+      viewerPackVerifiedAsset(pack, frame$state_dictionary_path, .viewerFileMd5)
+    }
+    if (is.null(dictionary)) {
       return(NULL)
     }
     levels <- tryCatch(
       as.character(jsonlite::read_json(
-        files[[2L]],
+        dictionary$file,
         simplifyVector = TRUE
       )),
       error = function(error) NULL
     )
-    if (
-      is.null(levels) ||
-        length(levels) !=
-          suppressWarnings(as.integer(
-            assets$dimensions[[dictionary_row]]
-          ))
-    ) {
+    if (is.null(levels) || !identical(length(levels), dictionary$dimensions)) {
       return(NULL)
     }
     geometry_kind <- as.character(frame$geometry_kind)
@@ -1410,84 +1293,32 @@ server <- function(input, output, session) {
         checksum = ""
       )
       if (!identical(subset_kind, "identity")) {
-        subset_row <- asset_row(frame$subset_path)
-        if (length(subset_row) != 1L) {
+        subset_asset <- viewerPackVerifiedAsset(
+          pack,
+          frame$subset_path,
+          .viewerFileMd5,
+          function(asset) {
+            identical(asset$dtype, "uint32") &&
+              identical(asset$dimensions, subset_count) &&
+              identical(asset$bytes, as.numeric(subset_count) * 4)
+          }
+        )
+        if (is.null(subset_asset)) {
           return(NULL)
         }
-        subset_dimensions <- suppressWarnings(as.integer(
-          as.character(assets$dimensions[[subset_row]])
-        ))
-        subset_file <- file.path(pack$path, frame$subset_path)
-        subset_valid <- identical(
-          as.character(assets$dtype[[subset_row]]),
-          "uint32"
-        ) &&
-          identical(subset_dimensions, subset_count) &&
-          identical(
-            as.numeric(assets$bytes[[subset_row]]),
-            as.numeric(subset_count) * 4
-          ) &&
-          file.exists(subset_file) &&
-          !dir.exists(subset_file) &&
-          identical(
-            as.numeric(file.info(subset_file)$size),
-            as.numeric(assets$bytes[[subset_row]])
-          ) &&
-          identical(
-            unname(.viewerFileMd5(subset_file)),
-            as.character(assets$checksum[[subset_row]])
-          )
-        if (!isTRUE(subset_valid)) {
-          return(NULL)
-        }
-        paths <- c(paths, frame$subset_path)
-        files <- c(files, subset_file)
-        rows <- c(rows, subset_row)
-        subset$bytes <- as.numeric(assets$bytes[[subset_row]])
-        subset$checksum <- as.character(assets$checksum[[subset_row]])
+        subset$bytes <- subset_asset$bytes
+        subset$checksum <- subset_asset$checksum
       }
     } else {
-      geometry_row <- asset_row(frame$geometry_path)
-      if (length(geometry_row) != 1L) {
+      geometry <- viewerXYGeometryAsset(pack, frame$geometry_path, frame$cells)
+      if (is.null(geometry)) {
         return(NULL)
       }
-      geometry_dimensions <- suppressWarnings(as.integer(strsplit(
-        as.character(assets$dimensions[[geometry_row]]),
-        "x",
-        fixed = TRUE
-      )[[1L]]))
-      geometry_file <- file.path(pack$path, frame$geometry_path)
-      geometry_valid <- length(geometry_dimensions) == 2L &&
-        identical(geometry_dimensions, c(frame$cells, 2L)) &&
-        identical(as.character(assets$dtype[[geometry_row]]), "float32") &&
-        identical(
-          as.numeric(assets$bytes[[geometry_row]]),
-          as.numeric(frame$cells) * 2 * 4
-        ) &&
-        file.exists(geometry_file) &&
-        !dir.exists(geometry_file) &&
-        identical(
-          as.numeric(file.info(geometry_file)$size),
-          as.numeric(assets$bytes[[geometry_row]])
-        ) &&
-        identical(
-          unname(.viewerFileMd5(geometry_file)),
-          as.character(assets$checksum[[geometry_row]])
-        )
-      if (!isTRUE(geometry_valid)) {
-        return(NULL)
-      }
-      paths <- c(paths, frame$geometry_path)
-      files <- c(files, geometry_file)
-      rows <- c(rows, geometry_row)
     }
-    prefix <- viewerStaticResourcePrefix(
-      "trajectory",
-      dirname(files[[1L]])
-    )
+    prefix <- viewerStaticResourcePrefix("trajectory", dirname(codes$file))
     resource_url <- function(file) paste0(prefix, "/", basename(file))
     if (!is.null(subset) && !identical(subset$kind, "identity")) {
-      subset$url <- resource_url(subset_file)
+      subset$url <- resource_url(subset_asset$file)
     }
     descriptor <- c(
       list(
@@ -1499,21 +1330,21 @@ server <- function(input, output, session) {
           projection
         } else {
           list(
-            url = resource_url(geometry_file),
+            url = resource_url(geometry$file),
             cells = frame$cells,
             dimensions = 2L,
             dtype = "float32",
-            bytes = as.numeric(assets$bytes[[geometry_row]]),
-            checksum = as.character(assets$checksum[[geometry_row]])
+            bytes = geometry$bytes,
+            checksum = geometry$checksum
           )
         },
         subset = subset,
         state = list(
-          url = resource_url(file.path(pack$path, frame$state_codes_path)),
+          url = resource_url(codes$file),
           cells = frame$cells,
-          dtype = dtype,
-          bytes = as.numeric(assets$bytes[[codes_row]]),
-          checksum = as.character(assets$checksum[[codes_row]]),
+          dtype = codes$dtype,
+          bytes = codes$bytes,
+          checksum = codes$checksum,
           levels = I(levels)
         )
       ),
@@ -1549,51 +1380,21 @@ server <- function(input, output, session) {
     if (exists(key, envir = viewer_spatial_resources, inherits = FALSE)) {
       return(get(key, envir = viewer_spatial_resources, inherits = FALSE))
     }
-    assets <- pack$manifest$assets
-    asset_row <- which(
-      as.character(assets$path) == as.character(frame$geometry_path)
-    )
-    dimensions <- if (length(asset_row) == 1L) {
-      suppressWarnings(as.integer(strsplit(
-        as.character(assets$dimensions[[asset_row]]),
-        "x",
-        fixed = TRUE
-      )[[1L]]))
-    } else {
-      integer()
-    }
-    file <- file.path(pack$path, frame$geometry_path)
-    valid <- length(asset_row) == 1L &&
-      identical(as.character(assets$dtype[[asset_row]]), "float32") &&
-      identical(dimensions, c(frame$cells, 2L)) &&
-      identical(
-        as.numeric(assets$bytes[[asset_row]]),
-        as.numeric(frame$cells) * 2 * 4
-      ) &&
-      file.exists(file) &&
-      !dir.exists(file) &&
-      identical(
-        as.numeric(file.info(file)$size),
-        as.numeric(assets$bytes[[asset_row]])
-      ) &&
-      identical(
-        unname(.viewerFileMd5(file)),
-        as.character(assets$checksum[[asset_row]])
-      )
-    if (!isTRUE(valid)) {
+    asset <- viewerXYGeometryAsset(pack, frame$geometry_path, frame$cells)
+    if (is.null(asset)) {
       return(NULL)
     }
-    prefix <- viewerStaticResourcePrefix("spatial", dirname(file))
+    prefix <- viewerStaticResourcePrefix("spatial", dirname(asset$file))
     descriptor <- c(
       list(
         protocol = "spatial-geometry-v1",
         spatial_name = as.character(name),
-        url = paste0(prefix, "/", basename(file)),
+        url = paste0(prefix, "/", basename(asset$file)),
         cells = frame$cells,
         dimensions = 2L,
         dtype = "float32",
-        bytes = as.numeric(assets$bytes[[asset_row]]),
-        checksum = as.character(assets$checksum[[asset_row]])
+        bytes = asset$bytes,
+        checksum = asset$checksum
       ),
       viewerCanonicalResourceIdentity(pack)
     )
@@ -1654,57 +1455,32 @@ server <- function(input, output, session) {
     if (exists(key, envir = viewer_metadata_resources, inherits = FALSE)) {
       return(get(key, envir = viewer_metadata_resources, inherits = FALSE))
     }
-    assets <- pack$manifest$assets
-    codes_row <- which(as.character(assets$path) == codes_path)
-    dictionary_row <- which(as.character(assets$path) == dictionary_path)
-    if (length(codes_row) != 1L || length(dictionary_row) != 1L) {
-      return(NULL)
+    codes <- viewerPackVerifiedAsset(
+      pack,
+      codes_path,
+      .viewerFileMd5,
+      function(asset) {
+        bytes_per_code <- c(uint8 = 1L, uint16 = 2L)[asset$dtype]
+        length(bytes_per_code) == 1L &&
+          !is.na(bytes_per_code) &&
+          identical(asset$dimensions, as.integer(pack$cell_count)) &&
+          identical(
+            asset$bytes,
+            as.numeric(pack$cell_count) * unname(bytes_per_code)
+          )
+      }
+    )
+    dictionary_asset <- if (!is.null(codes)) {
+      viewerPackVerifiedAsset(pack, dictionary_path, .viewerFileMd5)
     }
-    dtype <- as.character(assets$dtype[[codes_row]])
-    dimensions <- suppressWarnings(as.integer(
-      as.character(assets$dimensions[[codes_row]])
-    ))
-    codes_file <- file.path(pack$path, codes_path)
-    dictionary_file <- file.path(pack$path, dictionary_path)
-    bytes_per_code <- if (identical(dtype, "uint8")) {
-      1L
-    } else if (identical(dtype, "uint16")) {
-      2L
-    } else {
-      NA_integer_
-    }
-    valid_files <- !is.na(bytes_per_code) &&
-      length(dimensions) == 1L &&
-      identical(dimensions, as.integer(pack$cell_count)) &&
-      file.exists(codes_file) &&
-      !dir.exists(codes_file) &&
-      file.exists(dictionary_file) &&
-      !dir.exists(dictionary_file) &&
-      identical(
-        as.numeric(file.info(codes_file)$size),
-        as.numeric(assets$bytes[[codes_row]])
-      ) &&
-      identical(
-        as.numeric(file.info(codes_file)$size),
-        as.numeric(pack$cell_count) * bytes_per_code
-      ) &&
-      identical(
-        as.numeric(file.info(dictionary_file)$size),
-        as.numeric(assets$bytes[[dictionary_row]])
-      ) &&
-      identical(
-        unname(.viewerFileMd5(codes_file)),
-        as.character(assets$checksum[[codes_row]])
-      ) &&
-      identical(
-        unname(.viewerFileMd5(dictionary_file)),
-        as.character(assets$checksum[[dictionary_row]])
-      )
-    if (!valid_files) {
+    if (is.null(dictionary_asset)) {
       return(NULL)
     }
     dictionary <- tryCatch(
-      as.character(jsonlite::read_json(dictionary_file, simplifyVector = TRUE)),
+      as.character(jsonlite::read_json(
+        dictionary_asset$file,
+        simplifyVector = TRUE
+      )),
       error = function(error) NULL
     )
     target_levels <- if (is.null(requested_levels)) {
@@ -1715,23 +1491,23 @@ server <- function(input, output, session) {
     remap <- match(dictionary, target_levels) - 1L
     if (
       is.null(dictionary) ||
-        length(dictionary) != as.integer(assets$dimensions[[dictionary_row]]) ||
+        !identical(length(dictionary), dictionary_asset$dimensions) ||
         anyNA(remap)
     ) {
       return(NULL)
     }
     resource_prefix <- viewerStaticResourcePrefix(
       "metadata",
-      dirname(codes_file)
+      dirname(codes$file)
     )
     descriptor <- c(
       list(
         protocol = "canonical-metadata-codes-v1",
-        url = paste0(resource_prefix, "/", basename(codes_file)),
+        url = paste0(resource_prefix, "/", basename(codes$file)),
         cells = as.integer(pack$cell_count),
-        dtype = dtype,
-        bytes = as.numeric(assets$bytes[[codes_row]]),
-        checksum = as.character(assets$checksum[[codes_row]])
+        dtype = codes$dtype,
+        bytes = codes$bytes,
+        checksum = codes$checksum
       ),
       viewerCanonicalResourceIdentity(pack),
       list(
@@ -1774,29 +1550,28 @@ server <- function(input, output, session) {
       ""
     }
     stored_fingerprint <- dataset$cell_fingerprint
-    if (
+    cell_identity <- if (
       is.character(stored_fingerprint) &&
         length(stored_fingerprint) == 1L &&
         !is.na(stored_fingerprint) &&
         grepl("^md5-cell-set-v1:[[:xdigit:]]{32}$", stored_fingerprint)
     ) {
-      return(list(
-        cell_count = getNumberOfCells(),
-        fingerprint = stored_fingerprint,
-        order_fingerprint = order_fingerprint,
-        pack_fingerprint = pack_fingerprint
-      ))
+      list(cell_count = getNumberOfCells(), fingerprint = stored_fingerprint)
+    } else {
+      .viewerCellFingerprintCached(
+        attr(dataset, "cerebro_dataset_path", exact = TRUE),
+        function() {
+          cells <- cv_saved_view_cells()
+          list(
+            cell_count = length(cells),
+            fingerprint = cv_config_dataset_fingerprint(
+              cells,
+              stored_fingerprint
+            )
+          )
+        }
+      )
     }
-    cell_identity <- .viewerCellFingerprintCached(
-      attr(dataset, "cerebro_dataset_path", exact = TRUE),
-      function() {
-        cells <- cv_saved_view_cells()
-        list(
-          cell_count = length(cells),
-          fingerprint = cv_config_dataset_fingerprint(cells, stored_fingerprint)
-        )
-      }
-    )
     list(
       cell_count = cell_identity$cell_count,
       fingerprint = cell_identity$fingerprint,
@@ -1925,36 +1700,14 @@ server <- function(input, output, session) {
   # list of available trajectories
   available_trajectories <- reactive({
     req(!is.null(data_set()))
-    ## collect available trajectories across all methods and create selectable
-    ## options
-    available_trajectories <- c()
-    available_trajectory_method <- getMethodsForTrajectories()
-    ## check if at least 1 trajectory method exists
-    if (length(available_trajectory_method) > 0) {
-      ## cycle through trajectory methods
-      for (i in seq_along(available_trajectory_method)) {
-        ## get current method and names of trajectories for this method
-        current_method <- available_trajectory_method[i]
-        available_trajectories_for_this_method <- getNamesOfTrajectories(
-          current_method
-        )
-        ## check if at least 1 trajectory is available for this method
-        if (length(available_trajectories_for_this_method) > 0) {
-          ## cycle through trajectories for this method
-          for (j in seq_along(available_trajectories_for_this_method)) {
-            ## create selectable combination of method and trajectory name and add
-            ## it to the available trajectories
-            current_trajectory <- available_trajectories_for_this_method[j]
-            available_trajectories <- c(
-              available_trajectories,
-              glue::glue("{current_method} // {current_trajectory}")
-            )
-          }
-        }
-      }
-    }
-    # message(str(available_trajectories))
-    return(available_trajectories)
+    ## "method // name" for every trajectory of every method
+    unlist(
+      lapply(getMethodsForTrajectories(), function(method) {
+        trajectories <- getNamesOfTrajectories(method)
+        if (length(trajectories)) paste(method, "//", trajectories)
+      }),
+      use.names = FALSE
+    )
   })
 
   # available genes
@@ -1989,16 +1742,10 @@ server <- function(input, output, session) {
   ## Tabs.
   ##--------------------------------------------------------------------------##
   source(
-    paste0(
-      Cerebro.options[["cerebro_root"]],
-      "/viewer/module/group_filters/group_filters_widget.R"
-    ),
+    cerebro_root_path("viewer/module/group_filters/group_filters_widget.R"),
     local = TRUE
   )
-  source(
-    paste0(Cerebro.options[["cerebro_root"]], "/viewer/load_data/server.R"),
-    local = TRUE
-  )
+  source(cerebro_root_path("viewer/load_data/server.R"), local = TRUE)
   ##--------------------------------------------------------------------------##
   ## Dynamic sidebar: show/hide conditional tabs based on dataset content.
   ##--------------------------------------------------------------------------##
@@ -2162,38 +1909,20 @@ server <- function(input, output, session) {
   )
 
   source(
-    file.path(
-      Cerebro.options[["cerebro_root"]],
-      "viewer/core/viewer_content_contract.R"
-    ),
+    cerebro_root_path("viewer/core/viewer_content_contract.R"),
     local = TRUE
   )
   ## Shared geometry/image helpers are needed by Linked views and asset routes;
   ## Spatial's controls and observers can wait until its page is requested.
   source(
-    file.path(
-      Cerebro.options[["cerebro_root"]],
-      "viewer/spatial/func_spatial_helpers.R"
-    ),
+    cerebro_root_path("viewer/spatial/func_spatial_helpers.R"),
     local = TRUE
   )
   ## Spatial and Gene expression share these colour scales, so they cannot
   ## depend on one page having been opened.
-  source(
-    file.path(
-      Cerebro.options[["cerebro_root"]],
-      "viewer/core/func_color_scale.R"
-    ),
-    local = TRUE
-  )
+  source(cerebro_root_path("viewer/core/func_color_scale.R"), local = TRUE)
 
-  source(
-    file.path(
-      Cerebro.options[["cerebro_root"]],
-      "viewer/core/cell_inspection.R"
-    ),
-    local = TRUE
-  )
+  source(cerebro_root_path("viewer/core/cell_inspection.R"), local = TRUE)
 
   deferred_viewer_server_files <- c(
     spatial = "spatial/server.R",

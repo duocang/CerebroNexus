@@ -61,128 +61,19 @@ performGeneSetEnrichmentAnalysis <- function(
   ## safety checks before starting to do anything
   ##--------------------------------------------------------------------------##
 
-  ## check if GSVA is installed
-  if (!requireNamespace("GSVA", quietly = TRUE)) {
-    stop(
-      "Package 'GSVA' is required for this function. Install it with install.packages(\"GSVA\") (or BiocManager::install(\"GSVA\") for Bioconductor packages: biomaRt, GSVA, qvalue).",
-      call. = FALSE
-    )
-  }
+  .checkSeuratAvailable()
+  .checkSeuratObject(object)
+  .checkSeuratAssay(object, assay)
 
-  ## check if qvalue is installed
-  if (!requireNamespace("qvalue", quietly = TRUE)) {
-    stop(
-      "Package 'qvalue' is required for this function. Install it with install.packages(\"qvalue\") (or BiocManager::install(\"qvalue\") for Bioconductor packages: biomaRt, GSVA, qvalue).",
-      call. = FALSE
-    )
-  }
-
-  ## check if Seurat is installed
-  if (!requireNamespace("Seurat", quietly = TRUE)) {
-    stop(
-      "The 'Seurat' package is needed for this function to work. Please install it.",
-      call. = FALSE
-    )
-  }
-
-  ## check that Seurat package is at least v3.0
-  if (utils::packageVersion('Seurat') < "3") {
-    stop(
-      paste0(
-        "The installed Seurat package is of version `",
-        utils::packageVersion('Seurat'),
-        "`, but at least v3.0 is required."
-      ),
-      call. = FALSE
-    )
-  }
-
-  ## check if provided object is of class "Seurat"
-  if (!inherits(object, "Seurat")) {
-    stop(
-      paste0(
-        "Provided object is of class `",
-        class(object),
-        "` but must be of class 'Seurat'."
-      ),
-      call. = FALSE
-    )
-  }
-
-  ## check version of Seurat object and stop if it is lower than 3
-  if (object@version < "3") {
-    stop(
-      paste0(
-        "Provided Seurat object has version `",
-        object@version,
-        "` but must be at least 3.0."
-      ),
-      call. = FALSE
-    )
-  }
-
-  ## check if provided assay exists
-  if (assay %in% names(object@assays) == FALSE) {
-    stop(
-      paste0(
-        'Specified assay slot `',
-        assay,
-        '` could not be found in provided Seurat object.'
-      ),
-      call. = FALSE
-    )
-  }
-
-  ## Resolve split Seurat v5 assays through the shared layer resolver. GSVA
-  ## requires normalized data and therefore never falls back to raw counts.
-  data_resolution <- .getExpressionMatrix(
-    seurat = object,
-    assay = assay,
-    slot = "data",
-    join_samples = TRUE,
-    return_resolution = TRUE
-  )
-  data_matrix <- .validate_expression_cells(
-    expression_data = data_resolution$data,
-    object_cells = colnames(object),
-    assay = assay,
-    requested_layer = data_resolution$requested,
-    resolved_layer = data_resolution$resolved
-  )
-
-  ## check if `data` matrix exist in provided assay
-  if (is.null(data_matrix) || nrow(data_matrix) == 0) {
-    stop(
-      paste0(
-        '`data` matrix could not be found in `',
-        assay,
-        '` assay slot of the provided Seurat object.'
-      ),
-      call. = FALSE
-    )
-  }
+  ## GSVA requires normalized data and therefore never falls back to raw counts.
+  data_matrix <- .getValidatedExpression(object, assay, "data")$data
 
   ## check if specified GMT files exists
   if (!file.exists(GMT_file)) {
     stop("Specified GMT file with gene sets cannot be found.", call. = FALSE)
   }
 
-  ## check if provided groups are present in meta data
-  if (any(which(groups %in% colnames(object@meta.data) == FALSE))) {
-    missing_groups <- groups[which(
-      groups %in% colnames(object@meta.data) == FALSE
-    )]
-    stop(
-      paste0(
-        "Group(s) `",
-        paste0(missing_groups, collapse = '`, `'),
-        "` were not ",
-        "found in meta data of provided Seurat object. Only grouping variables ",
-        "that are present in the meta data can be used."
-      ),
-      call. = FALSE
-    )
-  }
+  .checkSeuratGroups(object, groups)
 
   ## check if specified p-value thresholds are between 0 and 1
   if (thresh_p_val < 0 | thresh_p_val > 1) {
@@ -205,59 +96,34 @@ performGeneSetEnrichmentAnalysis <- function(
   ##---------------------------------------------------------------------------#
 
   ## load gene sets from GMT file
-  message(
-    paste0(
-      '[',
-      format(Sys.time(), '%H:%M:%S'),
-      '] Loading gene sets...'
-    )
-  )
+  .logStep('Loading gene sets...')
   gene_sets <- .read_GMT_file(GMT_file)
 
   ## get names of gene sets
   names(gene_sets$genesets) <- gene_sets$geneset.names
 
   ## make tibble that contains name and description for each set
+  ## with the number of genes and the collapsed gene list of each set
   gene_sets_tibble <- tibble::tibble(
     name = gene_sets$geneset.names,
     description = gene_sets$geneset.description,
-    length = NA,
-    genes = NA
+    length = unname(lengths(gene_sets$genesets)),
+    genes = unname(vapply(gene_sets$genesets, paste, '', collapse = ','))
   )
-
-  ## add number of genes and collapsed gene list to tibble of gene sets
-  for (i in seq_along(gene_sets$genesets)) {
-    gene_sets_tibble$length[i] <- gene_sets$genesets[[i]] %>% length()
-    gene_sets_tibble$genes[i] <- gene_sets$genesets[[i]] %>%
-      unlist() %>%
-      paste(.data, collapse = ',')
-  }
 
   ## log message
-  message(
-    paste0(
-      '[',
-      format(Sys.time(), '%H:%M:%S'),
-      '] Loaded ',
-      length(gene_sets$genesets),
-      ' gene sets from GMT file.'
-    )
-  )
+  .logStep('Loaded ', length(gene_sets$genesets), ' gene sets from GMT file.')
 
   ## check which genes are not expressed in any cell
   expressed_genes <- Matrix::rowSums(data_matrix)
   expressed_genes <- which(expressed_genes != 0)
 
   ## extract transcript counts for expressed genes from Seurat object
-  message(
-    paste0(
-      '[',
-      format(Sys.time(), '%H:%M:%S'),
-      '] Extracting transcript counts ',
-      'from `data` slot of `',
-      assay,
-      '` assay...'
-    )
+  .logStep(
+    'Extracting transcript counts ',
+    'from `data` slot of `',
+    assay,
+    '` assay...'
   )
   matrix_full <- data_matrix[expressed_genes, ]
 
@@ -273,111 +139,45 @@ performGeneSetEnrichmentAnalysis <- function(
     ## get current group
     current_group <- groups[i]
 
-    ## collect group levels
-    ## ... column contains factors
-    if (is.factor(object@meta.data[[current_group]])) {
-      ## get factor levels
-      group_levels <- levels(object@meta.data[[current_group]])
+    group_levels <- .seuratGroupLevels(
+      object@meta.data[[current_group]],
+      current_group
+    )
 
-      ## ... column contains characters
-    } else if (is.character(object@meta.data[[current_group]])) {
-      ## get unique entries in column
-      group_levels <- unique(object@meta.data[[current_group]])
-
-      ## check for NA values
-      ## ... if at least 1 group level is NA
-      if (any(is.na(group_levels))) {
-        ## get number of cells with NA as group assignment
-        number_of_cells_without_group_assignment <- object@meta.data[[
-          current_group
-        ]] %>%
-          is.na() %>%
-          which(. == TRUE) %>%
-          length()
-
-        ## remove NA entries from group levels
-        group_levels <- stats::na.omit(group_levels)
-
-        ## issue warning to user
-        warning(
-          paste0(
-            'Found ',
-            number_of_cells_without_group_assignment,
-            ' cell(s) ',
-            'without group assignment (NA) for `',
-            current_group,
-            '`. These cells will be ignored during the analysis.'
-          ),
-          call. = FALSE
-        )
-      }
-    }
-
-    ## log message
-    message(
-      glue::glue(
-        '[',
-        format(Sys.time(), '%H:%M:%S'),
-        '] Performing analysis for ',
-        '{length(group_levels)} subgroups of group `{current_group}`...'
-      )
+    .logStep(
+      'Performing analysis for ',
+      length(group_levels),
+      ' subgroups of group `',
+      current_group,
+      '`...'
     )
 
     ## check number of group levels
     ## ... if only 1 group level is present, show warning and move to next
     ##     grouping variable
     if (length(group_levels) == 1) {
-      message(
-        paste0(
-          '[',
-          format(Sys.time(), '%H:%M:%S'),
-          '] Only one group level found ',
-          'for group `',
-          current_group,
-          '`. Will skip this group and proceed ',
-          'to next.'
-        ),
-        call. = FALSE
+      .logStep(
+        'Only one group level found ',
+        'for group `',
+        current_group,
+        '`. Will skip this group and proceed ',
+        'to next.'
       )
       results <- NULL
 
       ## ... more than 1 group level is available
     } else if (length(group_levels) > 1) {
-      ## get results
-      group_mean_fun <- function(x) {
-        ## get indices of cells in this group level
-        cells_in_this_group <- which(object@meta.data[[current_group]] == x)
-
-        ## check how many cells are in the group level
-        ## ... only 1 cell
-        if (length(cells_in_this_group) == 1) {
-          ## return expression values from the single cell
-          matrix_full[, cells_in_this_group]
-
-          ## ... at least 2 cells
-        } else {
-          ## calculate mean expression for each gene across cells
-          Matrix::rowMeans(matrix_full[, cells_in_this_group])
-        }
-      }
-      matrix_mean_by_group <- if (
-        requireNamespace("future.apply", quietly = TRUE)
-      ) {
-        future.apply::future_sapply(
-          group_levels,
-          group_mean_fun,
-          USE.NAMES = TRUE,
-          simplify = TRUE,
-          future.globals = FALSE
-        )
-      } else {
-        sapply(
-          group_levels,
-          group_mean_fun,
-          USE.NAMES = TRUE,
-          simplify = TRUE
-        )
-      }
+      ## mean expression of each gene in each group level
+      matrix_mean_by_group <- future.apply::future_sapply(
+        group_levels,
+        function(x) {
+          cells_in_this_group <- which(object@meta.data[[current_group]] == x)
+          Matrix::rowMeans(matrix_full[, cells_in_this_group, drop = FALSE])
+        },
+        USE.NAMES = TRUE,
+        simplify = TRUE,
+        future.globals = FALSE
+      )
 
       ## get enrichment score for each gene set in every cell group
       gsva_param <- GSVA::gsvaParam(
@@ -386,14 +186,6 @@ performGeneSetEnrichmentAnalysis <- function(
         ...
       )
       enrichment_scores <- GSVA::gsva(gsva_param)
-
-      ## log message
-      # message(
-      #   paste0(
-      #     '[', format(Sys.time(), '%H:%M:%S'), '] Filtering results based on ',
-      #     'specified thresholds...'
-      #   )
-      # )
 
       ## create empty tibble for results
       results <- tibble::tibble(
@@ -418,13 +210,9 @@ performGeneSetEnrichmentAnalysis <- function(
         ## ... fewer than 2 gene sets available
         if (nrow(temp_results) < 2) {
           ## log message
-          message(
-            paste0(
-              '[',
-              format(Sys.time(), '%H:%M:%S'),
-              '] Only 1 gene set ',
-              'available, therefore p- and q-values cannot be calculated.'
-            )
+          .logStep(
+            'Only 1 gene set ',
+            'available, therefore p- and q-values cannot be calculated.'
           )
 
           ## p- and q-value cannot be computed, add NA instead
@@ -433,14 +221,6 @@ performGeneSetEnrichmentAnalysis <- function(
 
           ## ... at least 2 gene sets are available
         } else if (nrow(temp_results) >= 2) {
-          ## log message
-          # message(
-          #   paste0(
-          #     '[', format(Sys.time(), '%H:%M:%S'), '] Filtering results based ',
-          #     'on specified thresholds...'
-          #   )
-          # )
-
           ## calculate p- and q-values
           temp_p_values <- stats::pnorm(
             -abs(scale(temp_results$enrichment_score)[, 1])
@@ -480,7 +260,7 @@ performGeneSetEnrichmentAnalysis <- function(
           'p_value',
           'q_value'
         )) %>%
-        dplyr::rename(!!current_group := .data$group)
+        dplyr::rename(!!current_group := "group")
 
       ## factorize group column
       group_levels_with_results <- group_levels[
@@ -492,13 +272,11 @@ performGeneSetEnrichmentAnalysis <- function(
       )
 
       ## print number of enriched gene sets
-      message(
-        glue::glue(
-          '[',
-          format(Sys.time(), '%H:%M:%S'),
-          '] {nrow(results)} gene sets ',
-          'passed the thresholds across all subgroups of group `{current_group}`.'
-        )
+      .logStep(
+        nrow(results),
+        ' gene sets passed the thresholds across all subgroups of group `',
+        current_group,
+        '`.'
       )
 
       ## test if any gene sets passed the filtering

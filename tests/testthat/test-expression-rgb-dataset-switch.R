@@ -1,6 +1,5 @@
 test_that("RGB channels track canonical spelling across dataset switches", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   shiny::testServer(
     function(input, output, session) {
       list_of_genes <- shiny::reactiveVal(c("Snap25", "Gad1"))
@@ -72,7 +71,7 @@ test_that("an empty expression summary is a valid empty widget", {
 })
 
 test_that("gene choice refresh preserves canonical selections and unknown input", {
-  source(viewer_test_path("utility_functions.R"), local = TRUE)
+  viewer_runtime_env(environment())
   expect_identical(
     canonicalGeneSelection(
       c("Snap25", "Snap25", "missing"),
@@ -95,7 +94,7 @@ test_that("mounted Gene selectors do not restore old input on return", {
   )
   shiny::testServer(
     function(input, output, session) {
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       data_set <- shiny::reactiveVal(list(genes = c("Gad1", "Slc17a7")))
       getGeneNames <- function() data_set()$genes
       updateSelectizeInput <- function(
@@ -159,7 +158,7 @@ test_that("obsolete selector retries cannot replace a new dataset's choices", {
   )
   shiny::testServer(
     function(input, output, session) {
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       data_set <- shiny::reactiveVal(list(genes = c("Snap25", "Gad1")))
       getGeneNames <- function() data_set()$genes
       updateSelectizeInput <- function(
@@ -204,8 +203,7 @@ test_that("obsolete selector retries cannot replace a new dataset's choices", {
 })
 
 test_that("a single-shot gene selector registers even when the selection moved", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   updates <- list()
   scope$updateSelectizeInput <- function(
     session,

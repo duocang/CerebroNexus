@@ -50,9 +50,9 @@ test_that("result selectors have visible labels and explain empty data", {
       getGroups <- getMethodsForMarkerGenes <- getMethodsForEnrichedPathways <- choices
       getGroupsWithMarkerGenes <- getGroupsWithEnrichedPathways <- choices
       getGroupsWithMostExpressedGenes <- getGroupsWithMeanExpression <- choices
+      viewer_result_page_load("marker_genes", environment())
+      viewer_result_page_load("enriched_pathways", environment())
       for (path in list(
-        c("marker_genes", "select_content.R"),
-        c("enriched_pathways", "select_content.R"),
         c("most_expressed_genes", "select_group.R"),
         c("groups", "select_group.R")
       )) {
@@ -89,7 +89,7 @@ test_that("result selectors have visible labels and explain empty data", {
 })
 
 test_that("inactivity warning can be continued or cancelled before expiry", {
-  skip_if(Sys.which("node") == "", "Node unavailable")
+  skip_if_no_node()
   scope <- new.env(parent = globalenv())
   viewer_server_load(
     viewer_server_statements("shiny_UI.R"),
@@ -98,11 +98,5 @@ test_that("inactivity warning can be continued or cancelled before expiry", {
   )
   script <- withr::local_tempfile(fileext = ".js")
   writeLines(scope$inactivity, script)
-  expect_equal(
-    system2(
-      "node",
-      c(shQuote(test_path("fixtures", "inactivity.js")), shQuote(script))
-    ),
-    0L
-  )
+  expect_node_fixture("inactivity.js", script)
 })

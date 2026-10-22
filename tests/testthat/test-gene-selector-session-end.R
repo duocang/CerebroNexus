@@ -3,7 +3,7 @@ test_that("gene selector timers do nothing once their session has closed", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       updates <- 0L
       updateSelectizeInput <- function(...) updates <<- updates + 1L
       data_set <- shiny::reactiveVal("dataset-a")
@@ -31,7 +31,7 @@ test_that("an open session still receives the scheduled gene choices", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       updates <- 0L
       updateSelectizeInput <- function(...) updates <<- updates + 1L
       data_set <- shiny::reactiveVal("dataset-a")

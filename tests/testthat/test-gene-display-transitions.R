@@ -1,7 +1,7 @@
 test_that("RGB seeds valid genes once and preserves edited or empty channels", {
   shiny::testServer(
     function(input, output, session) {
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       list_of_genes <- reactiveVal(c("A", "B", "C", "D"))
       observed <- new.env()
       observed$updates <- list()
@@ -72,7 +72,7 @@ test_that("RGB seeds valid genes once and preserves edited or empty channels", {
 test_that("RGB layout changes reuse expression rows while producing a new paint key", {
   shiny::testServer(
     function(input, output, session) {
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       sys.source(
         viewer_test_path("gene_expression", "func_expression_summary.R"),
         environment()
@@ -166,19 +166,15 @@ test_that("RGB layouts preserve channel intensity, identity and first-paint comp
   viewer_browser_test("rgbLayouts")
 })
 
+## The two browser tests below each start on a new session's Gene expression
+## page. They share one app process and Chrome tab; the second starts a new
+## Shiny session in it, so all session state is fresh without another boot.
+gene_display_app <- viewer_shared_app("gene_display_transitions", width = 1440)
+
 test_that("four selected genes survive RGB layout and display-mode round trips", {
   skip_on_cran()
   skip_if_not_installed("shinytest2")
-  inst_dir <- viewer_app_test_path()
-  suppressWarnings(shinytest2::local_app_support(inst_dir))
-  app <- shinytest2::AppDriver$new(
-    inst_dir,
-    name = "gene_display_transitions",
-    height = 950,
-    width = 1440,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- gene_display_app()
   app$run_js(paste0(
     "window.modeErrors=[];",
     "window.addEventListener('error',e=>modeErrors.push(e.message));",
@@ -284,16 +280,7 @@ test_that("four selected genes survive RGB layout and display-mode round trips",
 test_that("genes chosen in RGB channels carry over to the gene list", {
   skip_on_cran()
   skip_if_not_installed("shinytest2")
-  inst_dir <- viewer_app_test_path()
-  suppressWarnings(shinytest2::local_app_support(inst_dir))
-  app <- shinytest2::AppDriver$new(
-    inst_dir,
-    name = "gene_rgb_carry_over",
-    height = 950,
-    width = 1440,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
+  app <- viewer_new_session(gene_display_app())
   app$click(selector = 'a[href="#shiny-tab-geneExpression"]')
   mode <- function(value) {
     app$set_inputs(

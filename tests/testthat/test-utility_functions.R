@@ -10,27 +10,7 @@
 ## grouping column) plus the caching contract of the cachePlot() wrapper. See
 ## the git history of utility_functions.R for context.
 
-## Prefer the source tree so devtools::test() exercises the current checkout;
-## use the installed copy only when the source tree is unavailable.
-source_candidates <- c(
-  file.path(getwd(), "inst", "viewer", "utility_functions.R"),
-  file.path(getwd(), "..", "..", "inst", "viewer", "utility_functions.R"),
-  testthat::test_path("..", "..", "inst", "viewer", "utility_functions.R")
-)
-utils_file <- source_candidates[file.exists(source_candidates)][1L]
-if (is.na(utils_file)) {
-  utils_file <- system.file(
-    "viewer",
-    "utility_functions.R",
-    package = "CerebroNexus"
-  )
-}
-skip_if_not(file.exists(utils_file), "utility_functions.R not found")
-
-utils_env <- new.env()
-sys.source(file.path(dirname(utils_file), "crb_cache.R"), envir = utils_env)
-sys.source(file.path(dirname(utils_file), "msigdb.R"), envir = utils_env)
-source(utils_file, local = utils_env)
+utils_env <- viewer_runtime_env(new.env())
 ## The fixtures below use a single mocked collection ("H"); the per-collection
 ## catalogue walk is covered separately in test-resource-boundaries.R.
 utils_env$.msigdbCollectionsFunction <- function() {
@@ -222,17 +202,13 @@ test_that("Viewer tables can explicitly opt out of HTML escaping", {
 })
 
 test_that("embedded Extra material escapes CRB-controlled HTML", {
-  content_file <- file.path(
-    dirname(utils_file),
-    "extra_material",
-    "content.R"
-  )
+  content_file <- viewer_test_path("extra_material", "content.R")
   find_calls <- function(node) {
     if (!is.call(node) && !is.expression(node)) {
       return(list())
     }
     found <- if (
-      is.call(node) && identical(node[[1L]], as.name("prettifyTable"))
+      is.call(node) && identical(node[[1L]], as.name("cerebroResultTable"))
     ) {
       list(node)
     } else {
@@ -256,7 +232,7 @@ test_that("embedded Extra material escapes CRB-controlled HTML", {
     selection = selection,
     input = input,
     extra_material_table_filter = function(...) "none",
-    prettifyTable = prettifyTable
+    cerebroResultTable = utils_env$cerebroResultTable
   ))
 
   widget <- eval(calls[[1L]], envir = evaluation)
@@ -493,16 +469,19 @@ test_that("duplicate Extra material labels identify the embedded source", {
   )
 })
 
-test_that("CRB cache log labels omit directory paths", {
-  label <- get0(".crbLogLabel", envir = utils_env, inherits = FALSE)
-  expect_true(is.function(label))
-  if (!is.function(label)) {
-    return(invisible(NULL))
-  }
-  expect_identical(
-    label("/private/shiny/session/uploaded-dataset.crb"),
-    "uploaded-dataset.crb"
-  )
+test_that("CRB cache log lines omit directory paths", {
+  root <- withr::local_tempdir()
+  path <- file.path(root, "uploaded-dataset.crb")
+  object <- Cerebro$new()
+  object$setExpressionBackend(type = "embedded")
+  saveRDS(object, path)
+  output <- capture.output({
+    utils_env$get_or_load_crb(path)
+    utils_env$get_or_load_crb(path)
+  })
+  expect_match(output[[1L]], "CRB cache miss, loading: uploaded-dataset.crb$")
+  expect_match(output[[2L]], "CRB cache hit: uploaded-dataset.crb$")
+  expect_false(any(grepl(basename(root), output, fixed = TRUE)))
 })
 
 test_that("Viewer uploads require explicit open mode", {
@@ -1039,8 +1018,7 @@ test_that("cachePlot caches by key and invalidates on key or dataset change", {
 })
 
 test_that("Spatial sections are normalized once per loaded dataset", {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   reads <- 0L
   make_dataset <- function() {
     dataset <- new.env()
@@ -1064,8 +1042,7 @@ test_that("Spatial sections are normalized once per loaded dataset", {
 })
 
 test_that("single-entry memos recompute only for a different key", {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   memo <- env$viewerMemoOne()
   calls <- 0L
   compute <- function() {
@@ -1079,8 +1056,7 @@ test_that("single-entry memos recompute only for a different key", {
 })
 
 test_that("embedded Spatial images are served once per session by URL", {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   registered <- 0L
   ended <- list()
   mock <- list(
@@ -1108,8 +1084,7 @@ test_that("embedded Spatial images are served once per session by URL", {
 
 test_that("embedded images larger than a million base64 characters stay whole", {
   skip_if_not_installed("base64enc")
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   ## R before 4.6 stops substring() at 1,000,000 characters by default; newer R
   ## does not. Pin the old default so this fails without the explicit end on
   ## every R version.

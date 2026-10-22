@@ -296,12 +296,7 @@ viewerDatasetLoadRequired <- function(
   if (!isTRUE(initial_page_applied) && !is.null(initial_tab)) {
     tab <- initial_tab
   }
-  is.null(info) ||
-    (is.character(tab) &&
-      length(tab) == 1L &&
-      !is.na(tab) &&
-      nzchar(tab) &&
-      !identical(tab, "loadData"))
+  is.null(info) || viewerDatasetLoadOnTab(FALSE, tab)
 }
 
 viewerDatasetLoadOnTab <- function(current, tab) {
@@ -924,6 +919,14 @@ viewerProjectionCellIndices <- function(
   metadata = getMetaData(),
   percentage = input[[paste0(prefix, "_percentage_cells_to_show")]]
 ) {
+  ## A `percentage` random sample of the given cells.
+  sample_of <- function(indices) {
+    if (!length(indices) || percentage >= 100) {
+      return(indices)
+    }
+    size <- ceiling(length(indices) * percentage / 100)
+    indices[sample.int(length(indices), size)]
+  }
   groups <- getGroups()
   filter_ids <- paste0(prefix, "_group_filter_", groups)
   bound_inputs <- shiny::isolate(names(input))
@@ -934,15 +937,7 @@ viewerProjectionCellIndices <- function(
     groups
   )
   if (!length(groups) || !any(filter_ids %in% bound_inputs)) {
-    cell_count <- nrow(metadata)
-    if (!cell_count) {
-      return(integer())
-    }
-    if (percentage < 100) {
-      size <- ceiling(cell_count * percentage / 100)
-      return(sample.int(cell_count, size))
-    }
-    return(seq_len(cell_count))
+    return(sample_of(seq_len(nrow(metadata))))
   }
   filters <- stats::setNames(
     lapply(groups, function(group) {
@@ -983,26 +978,9 @@ viewerProjectionCellIndices <- function(
     )
   ]
   if (!length(filters)) {
-    cell_count <- nrow(metadata)
-    if (!cell_count) {
-      return(integer())
-    }
-    if (percentage < 100) {
-      size <- ceiling(cell_count * percentage / 100)
-      return(sample.int(cell_count, size))
-    }
-    return(seq_len(cell_count))
+    return(sample_of(seq_len(nrow(metadata))))
   }
-  indices <- which(cerebroGroupFilterMask(metadata, filters))
-  if (!length(indices)) {
-    return(indices)
-  }
-  size <- if (percentage < 100) {
-    ceiling(length(indices) * percentage / 100)
-  } else {
-    return(indices)
-  }
-  indices[sample.int(length(indices), size)]
+  sample_of(which(cerebroGroupFilterMask(metadata, filters)))
 }
 
 viewerProjectionMetadataColumns <- function(
@@ -1286,10 +1264,11 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
   chunks <- list()
   data_size <- 0L
   pack <- function(values, type) {
+    ## Element size, which is also the chunk's alignment.
+    size <- switch(type, i8 = 1L, i16 = 2L, i32 = 4L, f32 = 4L, f64 = 8L, 1L)
     bytes <- if (identical(type, "json")) {
       cv_wire_json_strings(values)
     } else {
-      size <- switch(type, i8 = 1L, i16 = 2L, i32 = 4L, f32 = 4L, f64 = 8L)
       writeBin(
         if (startsWith(type, "i")) as.integer(values) else as.numeric(values),
         raw(),
@@ -1297,16 +1276,7 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
         endian = "little"
       )
     }
-    alignment <- switch(
-      type,
-      i8 = 1L,
-      i16 = 2L,
-      i32 = 4L,
-      f32 = 4L,
-      f64 = 8L,
-      1L
-    )
-    offset <- data_size + ((alignment - data_size %% alignment) %% alignment)
+    offset <- data_size + ((size - data_size %% size) %% size)
     chunks[[length(chunks) + 1L]] <<- list(offset = offset, bytes = bytes)
     data_size <<- offset + length(bytes)
     list(
@@ -1445,10 +1415,6 @@ cerebroCellViewResolveDeferredAux <- function(message) {
     message[[name]] <- resolved[[name]]
   }
   message
-}
-
-.runtimeDiagnostic <- function(x) {
-  if (!isTRUE(getOption("cerebro.quiet_runtime", FALSE))) print(x)
 }
 
 cerebroCellViewRecolor <- function(
@@ -1669,28 +1635,6 @@ cerebroCellViewRender <- function(
     message$data$deferred_selection_lengths
   ))
   message$data$deferred_selection_lengths <- NULL
-  stamp_transport_profile <- function(message) {
-    request_at_ms <- tryCatch(
-      suppressWarnings(as.numeric(
-        input[[paste0(id, "_render_request")]]$nonce
-      )),
-      error = function(error) NA_real_
-    )
-    if (length(request_at_ms) != 1L || !is.finite(request_at_ms)) {
-      request_at_ms <- NA_real_
-    }
-    sent_at_ms <- as.numeric(Sys.time()) * 1000
-    message$transport_profile <- list(
-      request_at_ms = request_at_ms,
-      server_prepare_ms = if (is.finite(request_at_ms)) {
-        max(0, sent_at_ms - request_at_ms)
-      } else {
-        NA_real_
-      },
-      sent_at_ms = sent_at_ms
-    )
-    message
-  }
   if (exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
     identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
     if (
@@ -1711,10 +1655,9 @@ cerebroCellViewRender <- function(
       )
     }
   }
-  if (
-    isTRUE(input[["coordviews_wire_supported"]]) &&
-      exists("cv_wire_pack_message", mode = "function", inherits = TRUE)
-  ) {
+  wire <- isTRUE(input[["coordviews_wire_supported"]])
+  progressive <- FALSE
+  if (wire) {
     selection_keys <- message$data$selection_key
     key_groups <- if (is.list(selection_keys)) {
       selection_keys
@@ -1763,84 +1706,83 @@ cerebroCellViewRender <- function(
         is.function(deferred_aux))) &&
       is.null(message$data$panels) &&
       n_cells >= 4096L
-    if (progressive) {
-      .cerebro_cell_view_wire_serial <<-
-        .cerebro_cell_view_wire_serial + 1L
-      token <- .cerebro_cell_view_wire_serial
-      message$data$n <- n_cells
-      message$data$wire_token <- token
-      ## Same dataset and cells as the barcodes the browser already holds:
-      ## name that delivery so it can skip requesting them again.
-      served <- if (!is.null(aux_key)) .cerebro_cell_view_aux_served[[id]]
-      if (
-        is.list(served) &&
-          identical(served$key, aux_key) &&
-          viewerDatasetContextEqual(served$dataset_context, dataset_context)
-      ) {
-        message$data$aux_reuse <- served$wire_token
-      }
-      message$data$selection_key <- NULL
-      full_hover <- message$hover
-      message$hover <- list(hoverinfo = "skip")
-      message <- stamp_transport_profile(message)
-      session$sendBinaryMessage(
-        "cell_view_binary",
-        cv_wire_pack_message(message)
-      )
-      stale <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
-      stale <- stale[vapply(
-        stale,
-        function(key) {
-          pending <- .cerebro_cell_view_aux_pending[[key]]
-          is.list(pending) && identical(pending$id, id)
-        },
-        logical(1)
-      )]
-      if (length(stale)) {
-        rm(list = stale, envir = .cerebro_cell_view_aux_pending)
-      }
-      .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- if (
-        is.function(deferred_aux)
-      ) {
-        list(
-          id = id,
-          wire_token = token,
-          dataset_context = dataset_context,
-          render_token = message$render_token,
-          build = deferred_aux,
-          core_builder = core_aux,
-          aux_key = aux_key
-        )
-      } else {
-        list(
-          id = id,
-          wire_token = token,
-          dataset_context = dataset_context,
-          render_token = message$render_token,
-          selection_key = selection_keys,
-          hover = full_hover
-        )
-      }
+  }
+  if (progressive) {
+    .cerebro_cell_view_wire_serial <<-
+      .cerebro_cell_view_wire_serial + 1L
+    token <- .cerebro_cell_view_wire_serial
+    message$data$n <- n_cells
+    message$data$wire_token <- token
+    ## Same dataset and cells as the barcodes the browser already holds:
+    ## name that delivery so it can skip requesting them again.
+    served <- if (!is.null(aux_key)) .cerebro_cell_view_aux_served[[id]]
+    if (
+      is.list(served) &&
+        identical(served$key, aux_key) &&
+        viewerDatasetContextEqual(served$dataset_context, dataset_context)
+    ) {
+      message$data$aux_reuse <- served$wire_token
+    }
+    message$data$selection_key <- NULL
+    full_hover <- message$hover
+    message$hover <- list(hoverinfo = "skip")
+  } else if (is.function(deferred_aux)) {
+    auxiliary <- deferred_aux()
+    message$data$selection_key <- auxiliary$selection_key
+    message$hover <- auxiliary$hover
+  }
+
+  request_at_ms <- tryCatch(
+    suppressWarnings(as.numeric(
+      input[[paste0(id, "_render_request")]]$nonce
+    )),
+    error = function(error) NA_real_
+  )
+  if (length(request_at_ms) != 1L || !is.finite(request_at_ms)) {
+    request_at_ms <- NA_real_
+  }
+  sent_at_ms <- as.numeric(Sys.time()) * 1000
+  message$transport_profile <- list(
+    request_at_ms = request_at_ms,
+    server_prepare_ms = if (is.finite(request_at_ms)) {
+      max(0, sent_at_ms - request_at_ms)
     } else {
-      if (is.function(deferred_aux)) {
-        auxiliary <- deferred_aux()
-        message$data$selection_key <- auxiliary$selection_key
-        message$hover <- auxiliary$hover
-      }
-      message <- stamp_transport_profile(message)
-      session$sendBinaryMessage(
-        "cell_view_binary",
-        cv_wire_pack_message(message)
-      )
-    }
+      NA_real_
+    },
+    sent_at_ms = sent_at_ms
+  )
+  if (wire) {
+    session$sendBinaryMessage("cell_view_binary", cv_wire_pack_message(message))
   } else {
-    if (is.function(deferred_aux)) {
-      auxiliary <- deferred_aux()
-      message$data$selection_key <- auxiliary$selection_key
-      message$hover <- auxiliary$hover
-    }
-    message <- stamp_transport_profile(message)
     session$sendCustomMessage("cell_view_render", message)
+  }
+
+  if (progressive) {
+    stale <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
+    stale <- stale[vapply(
+      stale,
+      function(key) {
+        pending <- .cerebro_cell_view_aux_pending[[key]]
+        is.list(pending) && identical(pending$id, id)
+      },
+      logical(1)
+    )]
+    if (length(stale)) {
+      rm(list = stale, envir = .cerebro_cell_view_aux_pending)
+    }
+    .cerebro_cell_view_aux_pending[[paste(id, token, sep = ":")]] <- c(
+      list(
+        id = id,
+        wire_token = token,
+        dataset_context = dataset_context,
+        render_token = message$render_token
+      ),
+      if (is.function(deferred_aux)) {
+        list(build = deferred_aux, core_builder = core_aux, aux_key = aux_key)
+      } else {
+        list(selection_key = selection_keys, hover = full_hover)
+      }
+    )
   }
   invisible(message$render_token)
 }
@@ -2430,59 +2372,20 @@ findColumnsInteger <- function(df, columns_to_test) {
   return(columns_indices)
 }
 
-findColumnsPercentage <- function(df) {
-  columns_indices <- c()
-  for (i in 1:ncol(df)) {
-    if (
-      grepl(colnames(df)[i], pattern = "pct|percent|%", ignore.case = TRUE) &&
-        any(is.na(df[[i]])) == FALSE &&
-        is.numeric(df[[i]]) &&
-        min(df[[i]], na.rm = TRUE) >= 0 &&
-        max(df[[i]], na.rm = TRUE) <= 100
-    ) {
-      columns_indices <- c(columns_indices, i)
-    }
-  }
-  return(columns_indices)
-}
-
-findColumnsPValues <- function(df) {
-  pattern_columns_p_value <- "pval|p_val|p-val|p.val|padj|p_adj|p-adj|p.adj|adjp|adj_p|adj-p|adj.p|FDR|qval|q_val|q-val|q.val"
-  columns_indices <- c()
-  for (i in 1:ncol(df)) {
-    if (
-      grepl(
-        colnames(df)[i],
-        pattern = pattern_columns_p_value,
-        ignore.case = TRUE
-      ) &&
-        any(is.na(df[[i]])) == FALSE &&
-        is.numeric(df[[i]]) &&
-        min(df[[i]], na.rm = TRUE) >= 0 &&
-        max(df[[i]], na.rm = TRUE) <= 1
-    ) {
-      columns_indices <- c(columns_indices, i)
-    }
-  }
-  return(columns_indices)
-}
-
-findColumnsLogFC <- function(df) {
-  columns_indices <- c()
-  for (i in 1:ncol(df)) {
-    if (
-      grepl(
-        colnames(df)[i],
-        pattern = "logFC|log-FC|log_FC|log.FC",
-        ignore.case = TRUE
-      ) &&
-        any(is.na(df[[i]])) == FALSE &&
-        is.numeric(df[[i]])
-    ) {
-      columns_indices <- c(columns_indices, i)
-    }
-  }
-  return(columns_indices)
+## Numeric columns without NA whose name matches `pattern` and whose values lie
+## within [lower, upper].
+findColumnsMatching <- function(df, pattern, lower = -Inf, upper = Inf) {
+  which(vapply(
+    seq_along(df),
+    function(i) {
+      values <- df[[i]]
+      grepl(colnames(df)[i], pattern = pattern, ignore.case = TRUE) &&
+        !anyNA(values) &&
+        is.numeric(values) &&
+        all(values >= lower & values <= upper)
+    },
+    logical(1)
+  ))
 }
 
 ##----------------------------------------------------------------------------##
@@ -2581,16 +2484,25 @@ prettifyTable <- function(
 
   ## identify which columns might contain percentages, p-values, and logFC
   columns_percent <- if (classify_values) {
-    findColumnsPercentage(table)
+    findColumnsMatching(table, "pct|percent|%", 0, 100)
   } else {
     integer()
   }
   columns_p_value <- if (classify_values) {
-    findColumnsPValues(table)
+    findColumnsMatching(
+      table,
+      "pval|p_val|p-val|p.val|padj|p_adj|p-adj|p.adj|adjp|adj_p|adj-p|adj.p|FDR|qval|q_val|q-val|q.val",
+      0,
+      1
+    )
   } else {
     integer()
   }
-  columns_logFC <- if (classify_values) findColumnsLogFC(table) else integer()
+  columns_logFC <- if (classify_values) {
+    findColumnsMatching(table, "logFC|log-FC|log_FC|log.FC")
+  } else {
+    integer()
+  }
 
   ## find columns with very long (character) content so that they can be
   ## hidden
@@ -2609,9 +2521,7 @@ prettifyTable <- function(
   }
 
   ## add manually specified column types
-  if (is.null(columns_percentage) == FALSE) {
-    columns_percent <- c(columns_percent, columns_percentage)
-  }
+  columns_percent <- c(columns_percent, columns_percentage)
 
   ## check whether percentage values were given on a 0-100 scale and convert
   ## them to 0-1 if so. Selected-cells slices often carry NA in percent_mt /
@@ -2764,10 +2674,7 @@ prettifyTable <- function(
   ##   significant decimals
   if (number_formatting == TRUE) {
     ## integer values
-    if (
-      !is.null(columns_integer) &&
-        length(columns_integer) > 0
-    ) {
+    if (length(columns_integer)) {
       table <- table %>%
         DT::formatRound(
           columns = columns_integer,
@@ -2778,51 +2685,27 @@ prettifyTable <- function(
     }
 
     ## p-values
-    if (
-      !is.null(columns_p_value) &&
-        length(columns_p_value) > 0
-    ) {
+    if (length(columns_p_value)) {
       table <- table %>%
-        DT::formatSignif(
-          columns = columns_p_value,
-          digits = 3
-        )
+        DT::formatSignif(columns = columns_p_value, digits = 3)
     }
 
     ## logFC
-    if (
-      !is.null(columns_logFC) &&
-        length(columns_logFC) > 0
-    ) {
+    if (length(columns_logFC)) {
       table <- table %>%
-        DT::formatRound(
-          columns = columns_logFC,
-          digits = 3
-        )
+        DT::formatRound(columns = columns_logFC, digits = 3)
     }
 
     ## percentage
-    if (
-      !is.null(columns_percent) &&
-        length(columns_percent) > 0
-    ) {
+    if (length(columns_percent)) {
       table <- table %>%
-        DT::formatPercentage(
-          columns = columns_percent,
-          digits = 2
-        )
+        DT::formatPercentage(columns = columns_percent, digits = 2)
     }
 
     ## numeric but none of the above
-    if (
-      !is.null(columns_only_numeric) &&
-        length(columns_only_numeric) > 0
-    ) {
+    if (length(columns_only_numeric)) {
       table <- table %>%
-        DT::formatSignif(
-          columns = columns_only_numeric,
-          digits = 3
-        )
+        DT::formatSignif(columns = columns_only_numeric, digits = 3)
     }
   }
 
@@ -2838,13 +2721,12 @@ prettifyTable <- function(
     up_col <- if (is.null(chart_theme)) "#4c9a6b" else chart_theme$up
     down_col <- if (is.null(chart_theme)) "#c05b5b" else chart_theme$down
 
-    ## integer
-    if (
-      !is.null(columns_integer) &&
-        length(columns_integer) > 0 &&
-        nrow(table_original) > 1
-    ) {
-      for (i in columns_integer) {
+    ## 101-step white-to-accent background over each column's own range.
+    ramp <- function(table, columns) {
+      if (nrow(table_original) <= 1) {
+        return(table)
+      }
+      for (i in columns) {
         range <- range(table_original[[i]])
         if (range[1] != range[2]) {
           table <- table %>%
@@ -2857,85 +2739,46 @@ prettifyTable <- function(
             )
         }
       }
+      table
     }
-
-    ## p-values
-    if (
-      !is.null(columns_p_value) &&
-        length(columns_p_value) > 0
-    ) {
-      table <- table %>%
+    bar <- function(table, columns, data_range) {
+      if (!length(columns)) {
+        return(table)
+      }
+      table %>%
         DT::formatStyle(
-          columns = columns_p_value,
-          background = DT::styleColorBar(c(1, 0), bar_col),
+          columns = columns,
+          background = DT::styleColorBar(data_range, bar_col),
           backgroundSize = '98% 88%',
           backgroundRepeat = 'no-repeat',
           backgroundPosition = 'center'
         )
     }
-
-    ## logFC
-    if (
-      !is.null(columns_logFC) &&
-        length(columns_logFC) > 0 &&
-        nrow(table_original) > 1
-    ) {
-      for (i in columns_logFC) {
-        range <- range(table_original[[i]])
-        if (range[1] != range[2]) {
+    ## Columns whose values all have a colour in the named palette.
+    palette_colors <- function(table, palettes) {
+      for (i in which(colnames(table_original) %in% palettes)) {
+        colors <- reactive_colors()[[colnames(table_original)[i]]]
+        if (all(unique(table_original[[i]]) %in% names(colors))) {
           table <- table %>%
             DT::formatStyle(
-              columns = i,
-              backgroundColor = DT::styleInterval(
-                seq(range[1], range[2], (range[2] - range[1]) / 100),
-                colorRampPalette(colors = c('white', ramp_hi))(102)
-              )
+              i,
+              backgroundColor = DT::styleEqual(names(colors), colors),
+              fontWeight = 'bold'
             )
         }
       }
+      table
     }
 
-    ## percentage
-    if (
-      !is.null(columns_percent) &&
-        length(columns_percent) > 0
-    ) {
-      table <- table %>%
-        DT::formatStyle(
-          columns = columns_percent,
-          background = DT::styleColorBar(c(0, 1), bar_col),
-          backgroundSize = '98% 88%',
-          backgroundRepeat = 'no-repeat',
-          backgroundPosition = 'center'
-        )
-    }
-
-    ## numeric values that are non of the above
-    if (
-      !is.null(columns_only_numeric) &&
-        length(columns_only_numeric) > 0 &&
-        nrow(table_original) > 1
-    ) {
-      for (i in columns_only_numeric) {
-        range <- range(table_original[[i]])
-        if (range[1] != range[2]) {
-          table <- table %>%
-            DT::formatStyle(
-              columns = i,
-              backgroundColor = DT::styleInterval(
-                seq(range[1], range[2], (range[2] - range[1]) / 100),
-                colorRampPalette(colors = c('white', ramp_hi))(102)
-              )
-            )
-        }
-      }
-    }
+    ## Keep this order: a column can receive a ramp and a later bar.
+    table <- ramp(table, columns_integer)
+    table <- bar(table, columns_p_value, c(1, 0))
+    table <- ramp(table, columns_logFC)
+    table <- bar(table, columns_percent, c(0, 1))
+    table <- ramp(table, columns_only_numeric)
 
     ## logicals
-    if (
-      !is.null(columns_logical) &&
-        length(columns_logical) > 0
-    ) {
+    if (length(columns_logical)) {
       table <- table %>%
         DT::formatStyle(
           columns_logical,
@@ -2944,51 +2787,9 @@ prettifyTable <- function(
         )
     }
 
-    ## grouping variables
-    columns_groups <- which(colnames(table_original) %in% getGroups())
-    if (length(columns_groups) > 0) {
-      for (i in columns_groups) {
-        group <- colnames(table_original)[i]
-        if (
-          all(
-            unique(table_original[[i]]) %in% names(reactive_colors()[[group]])
-          )
-        ) {
-          table <- table %>%
-            DT::formatStyle(
-              i,
-              backgroundColor = DT::styleEqual(
-                names(reactive_colors()[[group]]),
-                reactive_colors()[[group]]
-              ),
-              fontWeight = 'bold'
-            )
-        }
-      }
-    }
-
-    ## cell cycle assignments
-    columns_cell_cycle <- which(colnames(table_original) %in% getCellCycle())
-    if (length(columns_cell_cycle) > 0) {
-      for (i in columns_cell_cycle) {
-        method <- colnames(table_original)[i]
-        if (
-          all(
-            unique(table_original[[i]]) %in% names(reactive_colors()[[method]])
-          )
-        ) {
-          table <- table %>%
-            DT::formatStyle(
-              i,
-              backgroundColor = DT::styleEqual(
-                names(reactive_colors()[[method]]),
-                reactive_colors()[[method]]
-              ),
-              fontWeight = 'bold'
-            )
-        }
-      }
-    }
+    ## grouping variables and cell cycle assignments
+    table <- palette_colors(table, getGroups())
+    table <- palette_colors(table, getCellCycle())
   }
 
   ## return the table
@@ -3397,26 +3198,41 @@ is_cerebro_dataset <- function(object) {
     any(startsWith(class(object), "Cerebro"))
 }
 
-getExperiment <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getExperiment())
+## Getters that forward to the loaded data set's method of the same name and
+## return NULL while no data set is loaded.
+.viewerForwardGetter <- function(method) {
+  force(method)
+  function(...) {
+    if (is_cerebro_dataset(data_set())) {
+      return(data_set()[[method]](...))
+    }
   }
 }
-getParameters <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getParameters())
-  }
+for (getter in c(
+  "getExperiment",
+  "getParameters",
+  "getGroups",
+  "getCellCycle",
+  "getMetaData",
+  "getProjection",
+  "getMethodsForMarkerGenes",
+  "getGroupsWithMarkerGenes",
+  "getMarkerGenes",
+  "getMethodsForTrajectories",
+  "getNamesOfTrajectories",
+  "getTrajectory",
+  "getGroupsWithMostExpressedGenes",
+  "getMethodsForEnrichedPathways",
+  "getGroupsWithEnrichedPathways",
+  "getEnrichedPathways",
+  "checkForExtraPlots",
+  "getNamesOfExtraPlots",
+  "getExtraPlot"
+)) {
+  assign(getter, .viewerForwardGetter(getter))
 }
-getTechnicalInfo <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getTechnicalInfo())
-  }
-}
-getGeneLists <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGeneLists())
-  }
-}
+rm(getter)
+viewerGetMostExpressedGenes <- .viewerForwardGetter("getMostExpressedGenes")
 getGeneNames <- function() {
   cache <- viewerProjectionFirstFrameCache()
   if (!is.null(cache$gene_names)) {
@@ -3424,11 +3240,6 @@ getGeneNames <- function() {
   }
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGeneNames())
-  }
-}
-getGroups <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGroups())
   }
 }
 getGroupLevels <- function(group) {
@@ -3439,16 +3250,6 @@ getGroupLevels <- function(group) {
   }
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$getGroupLevels(group))
-  }
-}
-getCellCycle <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getCellCycle())
-  }
-}
-getMetaData <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMetaData())
   }
 }
 .runtimeCerebroCellCount <- function(object) {
@@ -3481,41 +3282,6 @@ availableProjections <- function() {
   }
   if (is_cerebro_dataset(data_set())) {
     return(data_set()$availableProjections())
-  }
-}
-getProjection <- function(name) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getProjection(name))
-  }
-}
-getMethodsForMarkerGenes <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMethodsForMarkerGenes())
-  }
-}
-getGroupsWithMarkerGenes <- function(method) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGroupsWithMarkerGenes(method))
-  }
-}
-getMarkerGenes <- function(method, group) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMarkerGenes(method, group))
-  }
-}
-getMethodsForTrajectories <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMethodsForTrajectories())
-  }
-}
-getNamesOfTrajectories <- function(method) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getNamesOfTrajectories(method))
-  }
-}
-getTrajectory <- function(method, name) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getTrajectory(method, name))
   }
 }
 
@@ -3593,9 +3359,20 @@ getVariableToCompareChoices <- function() {
   return(all_cols)
 }
 
-getMitoColumn <- function() {
+## The first metadata column that matches the earliest of `patterns`, or NULL.
+firstColumnMatching <- function(patterns) {
   cols <- colnames(getMetaData())
-  patterns <- c(
+  for (pattern in patterns) {
+    matches <- grep(pattern, cols, ignore.case = TRUE, value = TRUE)
+    if (length(matches) > 0) {
+      return(matches[1])
+    }
+  }
+  NULL
+}
+
+getMitoColumn <- function() {
+  firstColumnMatching(c(
     "^percent[_.]?mt$",
     "^percent[_.]?mito$",
     "^percent[_.]?mitochondrial$",
@@ -3607,14 +3384,7 @@ getMitoColumn <- function() {
     "^mitochondrial[_.]?percent$",
     "^mito[_.]?pct$",
     "^mt[_.]?pct$"
-  )
-  for (pattern in patterns) {
-    matches <- grep(pattern, cols, ignore.case = TRUE, value = TRUE)
-    if (length(matches) > 0) {
-      return(matches[1])
-    }
-  }
-  return(NULL)
+  ))
 }
 
 hasMitoColumn <- function() {
@@ -3622,8 +3392,7 @@ hasMitoColumn <- function() {
 }
 
 getRiboColumn <- function() {
-  cols <- colnames(getMetaData())
-  patterns <- c(
+  firstColumnMatching(c(
     "^percent[_.]?ribo$",
     "^percent[_.]?ribosomal$",
     "^pct[_.]?ribo$",
@@ -3632,14 +3401,7 @@ getRiboColumn <- function() {
     "^ribosomal[_.]?percent$",
     "^ribo[_.]?pct$",
     "^ribosomal[_.]?pct$"
-  )
-  for (pattern in patterns) {
-    matches <- grep(pattern, cols, ignore.case = TRUE, value = TRUE)
-    if (length(matches) > 0) {
-      return(matches[1])
-    }
-  }
-  return(NULL)
+  ))
 }
 
 hasRiboColumn <- function() {
@@ -3647,8 +3409,7 @@ hasRiboColumn <- function() {
 }
 
 getEryColumn <- function() {
-  cols <- colnames(getMetaData())
-  patterns <- c(
+  firstColumnMatching(c(
     "^percent[_.]?ery$",
     "^percent[_.]?erythrocyte$",
     "^percent[_.]?hb$",
@@ -3670,14 +3431,7 @@ getEryColumn <- function() {
     "^ery[_.]?pct$",
     "^hb[_.]?pct$",
     "^hgb[_.]?pct$"
-  )
-  for (pattern in patterns) {
-    matches <- grep(pattern, cols, ignore.case = TRUE, value = TRUE)
-    if (length(matches) > 0) {
-      return(matches[1])
-    }
-  }
-  return(NULL)
+  ))
 }
 
 hasEryColumn <- function() {
@@ -3726,10 +3480,6 @@ read_cerebro_file <- function(file) {
   object
 }
 
-.crbLogLabel <- function(path) {
-  basename(path)
-}
-
 .runtimeBackendPlanError <- function(message, crb_path = NULL) {
   suffix <- if (is.null(crb_path)) {
     ""
@@ -3737,43 +3487,6 @@ read_cerebro_file <- function(file) {
     paste0(" for CRB '", crb_path, "'")
   }
   stop("The backend plan ", message, suffix, ".", call. = FALSE)
-}
-
-.runtimeWindowsPathSegmentInvalid <- function(parts) {
-  grepl("[[:cntrl:]<>:\"|?*]", parts) |
-    grepl("[. ]$", parts) |
-    grepl(
-      "^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])($|\\.)",
-      parts,
-      ignore.case = TRUE
-    )
-}
-
-.runtimePortableBackendPath <- function(path, context) {
-  valid <- is.character(path) &&
-    length(path) == 1L &&
-    !is.na(path) &&
-    nzchar(path) &&
-    !grepl("/$", path) &&
-    !grepl("\\\\", path) &&
-    !grepl("^(/|~|[A-Za-z]:)", path)
-  parts <- if (valid) {
-    strsplit(path, "/", fixed = TRUE)[[1L]]
-  } else {
-    character()
-  }
-  windows_invalid <- length(parts) > 0L &&
-    any(.runtimeWindowsPathSegmentInvalid(parts))
-  if (
-    !valid ||
-      length(parts) == 0L ||
-      any(!nzchar(parts)) ||
-      any(parts %in% c(".", "..")) ||
-      windows_invalid
-  ) {
-    stop(context, " must be a portable relative path.", call. = FALSE)
-  }
-  paste(parts, collapse = "/")
 }
 
 .validateRuntimeBackendEntry <- function(entry, crb_path) {
@@ -3790,7 +3503,7 @@ read_cerebro_file <- function(file) {
   valid_type <- is.character(entry$type) &&
     length(entry$type) == 1L &&
     !is.na(entry$type) &&
-    entry$type %in% c("embedded", "h5")
+    entry$type %in% .runtimeBackendTypes
   valid_mode <- is.character(entry$mode) &&
     length(entry$mode) == 1L &&
     !is.na(entry$mode) &&
@@ -3887,11 +3600,11 @@ get_or_load_crb <- function(
   .checkCrbBackendIdentity(cache_key, cache_identity)
   cached <- .touchCrbPrototype(cache_key)
   if (!is.null(cached)) {
-    print(glue::glue("[{Sys.time()}] CRB cache hit: {.crbLogLabel(path)}"))
+    print(glue::glue("[{Sys.time()}] CRB cache hit: {basename(path)}"))
     prototype <- cached$object
   } else {
     print(glue::glue(
-      "[{Sys.time()}] CRB cache miss, loading: {.crbLogLabel(path)}"
+      "[{Sys.time()}] CRB cache miss, loading: {basename(path)}"
     ))
     prototype <- read_cerebro_file(path)
     .cacheCrbPrototype(path, prototype, cache_identity)
@@ -4006,62 +3719,6 @@ get_or_load_crb <- function(
 ## Direct launches and uploads read only the ordinary expression_backend field;
 ## serialized getter code is never invoked by this internal loading path.
 ##----------------------------------------------------------------------------##
-.readRuntimeCrbSchema <- function(obj, crb_path) {
-  field <- "crb_schema"
-  if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
-    return(NULL)
-  }
-  if (
-    bindingIsActive(field, obj) ||
-      isTRUE(rlang::env_binding_are_lazy(obj, field))
-  ) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' has an unsupported CRB schema descriptor.",
-      call. = FALSE
-    )
-  }
-  schema <- obj[[field]]
-  if (is.null(schema)) {
-    return(NULL)
-  }
-  schema_names <- names(schema)
-  expected_names <- c(
-    "version",
-    "cell_names_hash",
-    "projection_rownames",
-    "n_cells"
-  )
-  valid <- is.list(schema) &&
-    !is.data.frame(schema) &&
-    length(schema) == length(expected_names) &&
-    !is.null(schema_names) &&
-    !anyDuplicated(schema_names) &&
-    setequal(schema_names, expected_names) &&
-    identical(schema$version, 3L) &&
-    is.character(schema$cell_names_hash) &&
-    length(schema$cell_names_hash) == 1L &&
-    !is.na(schema$cell_names_hash) &&
-    grepl("^[[:xdigit:]]{32}$", schema$cell_names_hash) &&
-    is.character(schema$projection_rownames) &&
-    !anyNA(schema$projection_rownames) &&
-    !any(!nzchar(schema$projection_rownames)) &&
-    !anyDuplicated(schema$projection_rownames) &&
-    is.integer(schema$n_cells) &&
-    length(schema$n_cells) == 1L &&
-    !is.na(schema$n_cells) &&
-    schema$n_cells >= 0L
-  if (!valid) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' has an unsupported CRB schema descriptor.",
-      call. = FALSE
-    )
-  }
-  schema
-}
 
 ## The H5 file stores the cell names under /expression/genes and the gene names
 ## under /expression/barcodes (writeTENxMatrix() names the axes the 10x way
@@ -4233,226 +3890,8 @@ get_or_load_crb <- function(
   obj
 }
 
-.readRuntimeBackendDescriptor <- function(obj, crb_path) {
-  if (!is.environment(obj)) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' has an unsupported expression-backend descriptor.",
-      call. = FALSE
-    )
-  }
-  getter_name <- "getExpressionBackend"
-  field_name <- "expression_backend"
-  getter_exists <- exists(getter_name, envir = obj, inherits = FALSE)
-  field_exists <- exists(field_name, envir = obj, inherits = FALSE)
-  getter_active <- getter_exists && bindingIsActive(getter_name, obj)
-  field_active <- field_exists && bindingIsActive(field_name, obj)
-  getter_lazy <- getter_exists &&
-    !getter_active &&
-    isTRUE(rlang::env_binding_are_lazy(obj, getter_name))
-  field_lazy <- field_exists &&
-    !field_active &&
-    isTRUE(rlang::env_binding_are_lazy(obj, field_name))
-  invalid <- getter_active ||
-    field_active ||
-    getter_lazy ||
-    field_lazy ||
-    xor(getter_exists, field_exists)
-  if (invalid) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' has an unsupported expression-backend descriptor.",
-      call. = FALSE
-    )
-  }
-  .assertCurrentRuntimeCrb(obj, crb_path)
-  getter <- get(getter_name, envir = obj, inherits = FALSE)
-  if (!is.function(getter)) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' has an unsupported expression-backend descriptor.",
-      call. = FALSE
-    )
-  }
-  backend <- get(field_name, envir = obj, inherits = FALSE)
-  valid_type <- is.list(backend) &&
-    is.character(backend$type) &&
-    length(backend$type) == 1L &&
-    !is.na(backend$type) &&
-    backend$type %in% c("embedded", "h5")
-  valid_location <- valid_type &&
-    if (identical(backend$type, "embedded")) {
-      is.null(backend$location)
-    } else {
-      is.character(backend$location) &&
-        length(backend$location) == 1L &&
-        !is.na(backend$location) &&
-        nzchar(backend$location)
-    }
-  if (!valid_type || !valid_location) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' has an unsupported expression-backend descriptor.",
-      call. = FALSE
-    )
-  }
-  if (!identical(backend$type, "embedded")) {
-    backend$location <- .runtimePortableBackendPath(
-      backend$location,
-      paste0("The ", backend$type, " backend location")
-    )
-  }
-  list(type = backend$type, location = backend$location)
-}
-
-## CRBs written by older releases that this Viewer no longer opens. The package
-## names the same retired forms in .legacyCerebroReason(); a generated app has no
-## package, so the check is repeated here.
-.runtimeLegacyReason <- function(obj) {
-  is_stored <- function(field) {
-    exists(field, envir = obj, inherits = FALSE) &&
-      !bindingIsActive(field, obj) &&
-      !isTRUE(rlang::env_binding_are_lazy(obj, field))
-  }
-  stored <- function(field) {
-    if (is_stored(field)) obj[[field]] else NULL
-  }
-  no_backend <- "it has no expression-backend descriptor"
-  if (!exists("expression_backend", envir = obj, inherits = FALSE)) {
-    return(no_backend)
-  }
-  backend <- stored("expression_backend")
-  if (is.null(backend)) {
-    ## An active or lazy binding is malformed, not old; the readers report it.
-    return(if (is_stored("expression_backend")) no_backend)
-  }
-  schema <- stored("crb_schema")
-  if (is.list(schema) && !identical(schema$version, 3L)) {
-    return(structure(
-      paste0("it uses thin-CRB schema version ", schema$version[1L]),
-      repairable = FALSE
-    ))
-  }
-  if (length(stored("bcr_data")) > 0L || length(stored("tcr_data")) > 0L) {
-    return("its receptors are stored in the retired bcr_data/tcr_data fields")
-  }
-  immune <- stored("immune_repertoire_backend")
-  if (is.list(immune) && !identical(immune$type, "file")) {
-    return(structure(
-      "its immune repertoire sidecar uses a retired layout",
-      repairable = FALSE
-    ))
-  }
-  required <- .runtimeRequiredCerebroMethods()
-  absent <- !vapply(
-    names(required),
-    exists,
-    logical(1),
-    envir = obj,
-    inherits = FALSE
-  )
-  if (any(absent)) {
-    return(paste0("it predates ", required[[which(absent)[[1L]]]]))
-  }
-  .runtimeLegacySpatialReason(obj)
-}
-
-## Accessor -> the feature that introduced it (`.requiredCerebroMethods` in the
-## package). A function, so it is shared with .runtimeLegacyReason() through the
-## process-wide function cache in source_cache.R.
-.runtimeRequiredCerebroMethods <- function() {
-  c(
-    availableSpatial = "spatial support",
-    getHLATyping = "HLA typing support",
-    getTrekker = "Trekker support",
-    getMethodsForEnrichedPathways = "the enriched-pathways page"
-  )
-}
-
-## Same checks as .legacySpatialReason() in the package.
-.runtimeLegacySpatialReason <- function(obj) {
-  stored <- function(field) {
-    if (
-      exists(field, envir = obj, inherits = FALSE) &&
-        !bindingIsActive(field, obj) &&
-        !isTRUE(rlang::env_binding_are_lazy(obj, field))
-    ) {
-      obj[[field]]
-    } else {
-      NULL
-    }
-  }
-  spatial <- stored("spatial")
-  if (!is.list(spatial) || !length(spatial)) {
-    return(NULL)
-  }
-  entry_names <- names(spatial)
-  for (index in seq_along(spatial)) {
-    entry <- spatial[[index]]
-    if (!is.list(entry)) {
-      next
-    }
-    label <- if (is.null(entry_names)) index else entry_names[[index]]
-    if (any(c("histology_image", "histology_image_bounds") %in% names(entry))) {
-      return(paste0(
-        "its spatial entry '",
-        label,
-        "' stores a singular histology_image instead of histology_images"
-      ))
-    }
-    molecules <- entry[["molecules"]]
-    if (
-      !is.null(molecules) && !inherits(molecules, "CerebroSpatialMoleculeRef")
-    ) {
-      return(paste0(
-        "its spatial entry '",
-        label,
-        "' embeds its molecule table instead of using the spatial sidecar"
-      ))
-    }
-  }
-  getter <- stored("getSpatialData")
-  if (
-    !is.function(getter) || !"hydrate_molecules" %in% names(formals(getter))
-  ) {
-    return("it predates deferred spatial molecule loading")
-  }
-  NULL
-}
-
-.assertCurrentRuntimeCrb <- function(obj, crb_path) {
-  reason <- .runtimeLegacyReason(obj)
-  if (!is.null(reason)) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' uses a retired format: ",
-      reason,
-      ". ",
-      if (isFALSE(attr(reason, "repairable"))) {
-        paste0(
-          "convertCerebro() cannot repair it; re-export it from the source ",
-          "object with exportFromSeurat(expression_matrix_mode = \"h5\")."
-        )
-      } else {
-        "Convert it once with CerebroNexus::convertCerebro()."
-      },
-      call. = FALSE
-    )
-  }
-  invisible(obj)
-}
-
 .fallbackRuntimeBackendPlan <- function(obj, crb_path) {
-  backend <- .readRuntimeBackendDescriptor(obj, crb_path)
-  if (identical(backend$type, "embedded")) {
-    return(list(type = "embedded", mode = "embedded", location = NULL))
-  }
-  list(type = backend$type, mode = "bundled", location = backend$location)
+  .effectiveRuntimeBackendPlan(.readRuntimeBackendDescriptor(obj, crb_path))
 }
 
 .runtimeBackendRecoveryAdvice <- function() {
@@ -4567,33 +4006,6 @@ getGroupsWithMeanExpression <- function() {
     return(character(0))
   }
   tryCatch(ds$getGroupsWithMeanExpression(), error = function(e) character(0))
-}
-getGroupsWithMostExpressedGenes <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGroupsWithMostExpressedGenes())
-  }
-}
-viewerGetMostExpressedGenes <- function(group) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMostExpressedGenes(group))
-  }
-}
-
-## Wrapper functions for enriched_pathways module.
-getMethodsForEnrichedPathways <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getMethodsForEnrichedPathways())
-  }
-}
-getGroupsWithEnrichedPathways <- function(method) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getGroupsWithEnrichedPathways(method))
-  }
-}
-getEnrichedPathways <- function(method, group) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getEnrichedPathways(method, group))
-  }
 }
 
 ## Wrapper functions for extra_material module. Generated external tables are
@@ -4867,21 +4279,6 @@ getExtraMaterialCategories <- function() {
 checkForExtraTables <- function() {
   length(extra_material_table_groups()) > 0L
 }
-checkForExtraPlots <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$checkForExtraPlots())
-  }
-}
-getNamesOfExtraPlots <- function() {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getNamesOfExtraPlots())
-  }
-}
-getExtraPlot <- function(name) {
-  if (is_cerebro_dataset(data_set())) {
-    return(data_set()$getExtraPlot(name))
-  }
-}
 
 ## Wrapper for immune repertoire module.
 getImmuneRepertoire <- function() {
@@ -5016,31 +4413,6 @@ viewerReadSpatialData <- function(ds, name) {
   tryCatch(
     ds$getSpatialData(name, hydrate_molecules = FALSE),
     error = function(e) NULL
-  )
-}
-
-## The first Spatial frame only needs coordinates and embedded-image metadata.
-## Read those fields directly from canonical storage so a tab click does not
-## normalize or copy molecule payloads and other unrelated Spatial content.
-## Malformed entries retain the validated public accessor fallback.
-viewerSpatialFirstFrameData <- function(name) {
-  ds <- data_set()
-  if (!any(grepl("Cerebro", class(ds)))) {
-    return(NULL)
-  }
-  stored <- tryCatch(ds$spatial[[name]], error = function(error) NULL)
-  coordinates <- if (is.list(stored)) stored[["coordinates"]] else NULL
-  valid_coordinates <- is.data.frame(coordinates) &&
-    all(c("x", "y") %in% colnames(coordinates)) &&
-    is.numeric(coordinates[["x"]]) &&
-    is.numeric(coordinates[["y"]]) &&
-    nrow(coordinates) > 0L
-  if (!isTRUE(valid_coordinates)) {
-    return(getSpatialData(name))
-  }
-  list(
-    coordinates = coordinates,
-    histology_images = stored[["histology_images"]]
   )
 }
 
@@ -5250,16 +4622,12 @@ filterSelectionByHiddenGroups <- function(
 
 viewerPersistentSelection <- function(selection, dataset_context) {
   if (
-    !is.null(selection) &&
-      (!is.list(selection) ||
-        !viewerDatasetContextEqual(
-          selection[["dataset_context"]],
-          dataset_context
-        ))
+    !is.list(selection) ||
+      !viewerDatasetContextEqual(
+        selection[["dataset_context"]],
+        dataset_context
+      )
   ) {
-    return(NULL)
-  }
-  if (is.null(selection)) {
     return(NULL)
   }
   ## Stable cell IDs identify a selection on their own. Coordinate identifiers
@@ -5727,14 +5095,15 @@ cerebroResultTable <- function(
   color_highlighting = TRUE,
   hide_long_columns = TRUE,
   columns_hide = NULL,
-  columns_percentage = NULL
+  columns_percentage = NULL,
+  filter = list(position = "top", clear = TRUE)
 ) {
   if (!nrow(results_df)) {
     return(prepareEmptyTable(as.data.frame(results_df)[0, , drop = FALSE]))
   }
   prettifyTable(
     results_df,
-    filter = list(position = "top", clear = TRUE),
+    filter = filter,
     dom = "Bfrtlip",
     show_buttons = TRUE,
     number_formatting = number_formatting,
@@ -6056,53 +5425,218 @@ viewerTrekkerBackground <- function(tk) {
   )
 }
 
-centerOfGroups <- function(coordinates, df, n_dimensions, group) {
-  ## Guard against a missing grouping column: callers occasionally pass a
-  ## group that isn't present in df (e.g. a metadata column dropped for a
-  ## selected-cells slice), which would otherwise make df[[group]] NULL and
-  ## crash the tibble construction. Return a typed empty result instead.
-  if (is.null(group) || !group %in% colnames(df)) {
-    return(tidyr::tibble(
-      group = character(),
-      x_median = numeric(),
-      y_median = numeric(),
-      z_median = numeric()
-    ))
+## Server side of a stored-result page (Marker genes, Enriched pathways): a
+## method/grouping selector pair, the table-or-message shell and the table.
+## Getters and messages are arguments, so each page passes its own and tests
+## can stub them. `statuses` maps a stored status string to its message;
+## `progress` wraps the table in withProgress; `columns_hide(df)` returns the
+## columns hidden by default.
+cerebroResultPageServer <- function(
+  input,
+  output,
+  session,
+  prefix,
+  methods,
+  groups,
+  results,
+  messages,
+  statuses = list(),
+  progress = NULL,
+  columns_hide = function(results_df) NULL
+) {
+  id <- function(suffix) paste0(prefix, "_", suffix)
+  method_id <- id("selected_method")
+  table_id <- id("selected_table")
+  ## Resolve both initial selectors together. Changing the method updates only
+  ## the group choices, so the surrounding controls do not disappear and rebind.
+  output[[id("select_method_and_table_UI")]] <- shiny::renderUI({
+    available <- methods()
+    if (!length(available)) {
+      return(shiny::p(messages$no_methods))
+    }
+    shiny::fluidRow(
+      shiny::column(
+        6,
+        shiny::selectInput(
+          method_id,
+          label = "Method",
+          choices = available,
+          selected = available[[1L]],
+          width = "100%"
+        )
+      ),
+      shiny::column(
+        6,
+        shiny::selectInput(
+          table_id,
+          label = "Grouping variable",
+          choices = groups(available[[1L]]),
+          width = "100%"
+        )
+      )
+    )
+  })
+  shiny::observeEvent(
+    input[[method_id]],
+    {
+      method <- input[[method_id]]
+      shiny::req(method %in% methods())
+      choices <- groups(method)
+      current <- shiny::isolate(input[[table_id]])
+      selected <- if (length(current) == 1L && current %in% choices) {
+        current
+      } else if (length(choices)) {
+        choices[[1L]]
+      } else {
+        character()
+      }
+      shiny::updateSelectInput(
+        session,
+        table_id,
+        choices = choices,
+        selected = selected
+      )
+    },
+    ignoreInit = TRUE
+  )
+  ## The stored table for the selected method and grouping; shared by the
+  ## shell and the table so a selection reads it once.
+  selected_result <- shiny::reactive({
+    shiny::req(
+      input[[method_id]],
+      input[[table_id]],
+      input[[method_id]] %in% methods(),
+      input[[table_id]] %in% groups(input[[method_id]])
+    )
+    results(input[[method_id]], input[[table_id]])
+  })
+  ## Table controls, or a message when the data set has no such results.
+  output[[id("table_or_text_UI")]] <- shiny::renderUI({
+    available <- methods()
+    if (!length(available)) {
+      return(shiny::p(messages$not_included))
+    }
+    method <- input[[method_id]]
+    shiny::req(method %in% available)
+    if (!length(groups(method))) {
+      return(shiny::p(messages$no_groups))
+    }
+    result <- selected_result()
+    if (is.data.frame(result)) {
+      cerebroResultTableControls(
+        prefix,
+        result,
+        colnames(result)[[1L]] %in% getGroups()
+      )
+    } else if (
+      is.character(result) &&
+        length(result) == 1L &&
+        result %in% names(statuses)
+    ) {
+      shiny::p(statuses[[result]])
+    } else {
+      shiny::p(messages$no_results)
+    }
+  })
+  output[[id("table")]] <- DT::renderDataTable({
+    shiny::req(
+      input[[method_id]],
+      input[[table_id]],
+      input[[table_id]] %in% groups(input[[method_id]])
+    )
+    step <- if (is.null(progress)) function(...) NULL else shiny::incProgress
+    render <- function() {
+      results_df <- selected_result()
+      shiny::req(is.data.frame(results_df))
+      step(0.3, detail = "Filtering data...")
+      ## Filter for one subgroup only if the user asked for it.
+      grouped <- colnames(results_df)[[1L]] %in% getGroups()
+      if (!isTRUE(input[[id("table_filter_switch")]]) && grouped) {
+        shiny::req(input[[id("table_select_group_level")]])
+      }
+      results_df <- cerebroFilterResultRows(
+        results_df,
+        input[[id("table_filter_switch")]],
+        grouped,
+        input[[id("table_select_group_level")]]
+      )
+      step(0.6, detail = "Rendering table...")
+      cerebroResultTable(
+        results_df,
+        paste0(
+          prefix,
+          "_by_",
+          input[[method_id]],
+          "_",
+          input[[table_id]]
+        ),
+        number_formatting = input[[id("table_number_formatting")]],
+        color_highlighting = input[[id("table_color_highlighting")]],
+        columns_hide = columns_hide(results_df)
+      )
+    }
+    if (is.null(progress)) {
+      render()
+    } else {
+      shiny::withProgress(message = progress, value = 0, render())
+    }
+  })
+  invisible(NULL)
+}
+
+## Drop selected cells whose group the legend hides, so counts and the
+## selected-cells panels reflect visible groups only. `hidden_request` is a
+## page's <plot_id>_hidden_groups input; a request for another data set is
+## ignored. `metadata_fn()` returns the plotted cells and is called only when a
+## group is hidden; its `coordinates` columns key cells for selections without
+## a stable selection_key. Returns NULL when no selected cell is left.
+viewerVisibleSelection <- function(
+  selection,
+  hidden_request,
+  dataset_context,
+  color_variable,
+  metadata_fn,
+  coordinates = 1:2
+) {
+  hidden_groups <- if (
+    is.list(hidden_request) &&
+      viewerDatasetContextEqual(
+        hidden_request[["dataset_context"]],
+        dataset_context
+      )
+  ) {
+    as.character(hidden_request[["groups"]] %||% character())
+  } else {
+    character()
   }
-  ## check number of dimenions in projection
-  ## ... 2 dimensions
-  if (n_dimensions == 2) {
-    ## calculate center for groups and return
-    tidyr::tibble(
-      x = coordinates[[1]],
-      y = coordinates[[2]],
-      group = df[[group]]
-    ) %>%
-      dplyr::group_by(.data$group) %>%
-      dplyr::summarise(
-        x_median = median(x),
-        y_median = median(y),
-        .groups = 'drop_last'
-      ) %>%
-      dplyr::ungroup() %>%
-      return()
-    ## ... 3 dimensions
-  } else if (n_dimensions == 3 && is.numeric(coordinates[, 3])) {
-    ## calculate center for groups and return
-    tidyr::tibble(
-      x = coordinates[[1]],
-      y = coordinates[[2]],
-      z = coordinates[[3]],
-      group = df[[group]]
-    ) %>%
-      dplyr::group_by(.data$group) %>%
-      dplyr::summarise(
-        x_median = median(x),
-        y_median = median(y),
-        z_median = median(z),
-        .groups = 'drop_last'
-      ) %>%
-      dplyr::ungroup() %>%
-      return()
+  if (!length(hidden_groups)) {
+    return(selection)
   }
+  metadata <- metadata_fn()
+  metadata[["selection_key"]] <- if ("cell_barcode" %in% colnames(metadata)) {
+    as.character(metadata[["cell_barcode"]])
+  } else {
+    NULL
+  }
+  stable_selection <- "selection_key" %in%
+    colnames(metadata) &&
+    "selection_key" %in% colnames(selection) &&
+    any(
+      !is.na(selection[["selection_key"]]) &
+        nzchar(as.character(selection[["selection_key"]]))
+    )
+  if (!stable_selection) {
+    metadata[["identifier"]] <- paste0(
+      metadata[[coordinates[[1L]]]],
+      "-",
+      metadata[[coordinates[[2L]]]]
+    )
+  }
+  selection <- filterSelectionByHiddenGroups(
+    selection,
+    metadata,
+    color_variable,
+    hidden_groups
+  )
+  if (is.null(selection) || nrow(selection) == 0) NULL else selection
 }

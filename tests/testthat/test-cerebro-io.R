@@ -125,12 +125,6 @@ legacy_payload <- function(extra = list(), drop = character(), cls = NULL) {
   payload
 }
 
-runtime_env <- function() {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
-  runtime
-}
-
 ## ---------------------------------------------------------------------------
 ## H5 fixture
 ## ---------------------------------------------------------------------------
@@ -417,7 +411,7 @@ test_that("an H5 CRB written without a schema still reads", {
   expect_cerebro_fields(readCerebro(path), fixture)
   expect_null(readCerebro(path)$crb_schema)
 
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   runtime_object <- runtime$read_cerebro_file(path)
   runtime_object <- runtime$.attachExternalExpression(runtime_object, path)
   expect_true(rlang::env_binding_are_lazy(runtime_object, "expression"))
@@ -448,7 +442,7 @@ test_that("a missing H5 file is reported as a missing sidecar", {
     "expression sidecar is missing"
   )
 
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   expect_error(
     runtime$.attachExternalExpression(
       runtime$read_cerebro_file(file.path(lonely, "thin.crb")),
@@ -471,7 +465,7 @@ test_that("the Viewer hydrates a thin CRB lazily and checks it against the H5 fi
   saveCerebro(fixture$object, qs)
   expected <- readCerebro(qs)
 
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   runtime_object <- runtime$read_cerebro_file(qs)
   runtime_object <- runtime$.attachExternalExpression(runtime_object, qs)
   expect_true(rlang::env_binding_are_lazy(runtime_object, "meta_data"))
@@ -511,7 +505,7 @@ test_that("the Viewer hydrates a thin CRB lazily and checks it against the H5 fi
 })
 
 test_that("Data Info reads the thin cell count without forcing metadata", {
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   object <- new.env(parent = emptyenv())
   object$crb_schema <- list(version = 3L, n_cells = 4L)
   delayedAssign(
@@ -751,7 +745,7 @@ retired_cerebros <- function(root) {
 test_that("every retired format is rejected with a pointer to convertCerebro", {
   root <- withr::local_tempdir()
   retired <- retired_cerebros(root)
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
 
   for (name in names(retired$entries)) {
     entry <- retired$entries[[name]]
@@ -772,7 +766,10 @@ test_that("every retired format is rejected with a pointer to convertCerebro", {
       info = name
     )
     expect_error(
-      .assertCurrentCerebroFile(.readCerebroPayload(entry$path), entry$path),
+      .crbContract()$.assertCurrentRuntimeCrb(
+        .readCerebroPayload(entry$path),
+        entry$path
+      ),
       paste0("'", basename(entry$path), "' uses a retired format"),
       fixed = TRUE,
       info = name
@@ -786,20 +783,12 @@ test_that("every retired format is rejected with a pointer to convertCerebro", {
       "uses a retired format.*convertCerebro",
       info = name
     )
-    ## and the package and the Viewer name the same reason
-    stored <- .readCerebroPayload(entry$path)
-    expect_identical(
-      runtime$.runtimeLegacyReason(stored),
-      .legacyCerebroReason(stored),
-      info = name
-    )
   }
 })
 
 test_that("only a spatial entry in a retired form is gated", {
   root <- withr::local_tempdir()
   path <- file.path(root, "spatial.crb")
-  runtime <- runtime_env()
   coordinates <- data.frame(x = c(1, 2), y = c(3, 4))
   object <- Cerebro$new()
   object$setExpressionBackend("embedded")
@@ -819,8 +808,7 @@ test_that("only a spatial entry in a retired form is gated", {
 
   ## a canonical image and a molecule sidecar reference are current
   expect_s3_class(stored$spatial$fov$molecules, "CerebroSpatialMoleculeRef")
-  expect_null(.legacySpatialReason(stored))
-  expect_null(runtime$.runtimeLegacySpatialReason(stored))
+  expect_null(.crbContract()$.runtimeLegacySpatialReason(stored))
   expect_s3_class(readCerebro(path), "Cerebro")
 
   ## an in-memory object keeps table molecules until it is saved; only a file
@@ -834,24 +822,29 @@ test_that("current formats are not mistaken for retired ones", {
   embedded <- make_embedded_cerebro()
   path <- file.path(root, "embedded.crb")
   saveCerebro(embedded, path)
-  expect_null(.legacyCerebroReason(.readCerebroPayload(path)))
+  expect_null(.crbContract()$.runtimeLegacyReason(.readCerebroPayload(path)))
   expect_s3_class(readCerebro(path), "Cerebro")
+
+  ## a malformed (active) descriptor is left to the readers
+  payload <- new.env(parent = emptyenv())
+  makeActiveBinding("expression_backend", function() NULL, payload)
+  payload$availableSpatial <- function() character()
+  expect_null(.crbContract()$.runtimeLegacyReason(payload))
 })
 
-test_that("the package and the Viewer require the same accessors", {
-  expect_identical(
-    runtime_env()$.runtimeRequiredCerebroMethods(),
-    .requiredCerebroMethods
-  )
-  ## every required accessor is a method of the current class
+test_that("every required accessor is a method of the current class", {
   expect_true(all(
-    names(.requiredCerebroMethods) %in% names(Cerebro$public_methods)
+    names(.crbContract()$.runtimeRequiredCerebroMethods()) %in%
+      names(Cerebro$public_methods)
   ))
 })
 
 test_that("the Viewer gate also runs from the process-wide function cache", {
+  ## shiny_server.R sources the function cache and the shared contract into the
+  ## same environment, so the process-wide functions reach the contract.
   cache <- new.env(parent = globalenv())
   sys.source(viewer_test_path("source_cache.R"), envir = cache)
+  sys.source(viewer_test_path("core", "crb_contract.R"), envir = cache)
   scope <- new.env(parent = globalenv())
   withr::local_options(cerebro.quiet_runtime = TRUE)
   cache$viewerSource(viewer_test_path("utility_functions.R"), scope)
@@ -860,11 +853,15 @@ test_that("the Viewer gate also runs from the process-wide function cache", {
   retired <- retired_cerebros(root)
   current <- file.path(root, "current.crb")
   saveCerebro(make_embedded_cerebro(), current)
-  expect_null(scope$.runtimeLegacyReason(.readCerebroPayload(current)))
+  expect_null(cache$.runtimeLegacyReason(.readCerebroPayload(current)))
+  pre_hla <- retired$entries$pre_hla$path
   expect_match(
-    scope$.runtimeLegacyReason(
-      .readCerebroPayload(retired$entries$pre_hla$path)
-    ),
+    cache$.runtimeLegacyReason(.readCerebroPayload(pre_hla)),
+    "predates HLA typing support"
+  )
+  ## a cached reader reaches the shared gate
+  expect_error(
+    scope$.attachExternalExpression(scope$read_cerebro_file(pre_hla), pre_hla),
     "predates HLA typing support"
   )
 })
@@ -896,7 +893,7 @@ test_that("convertCerebro upgrades what can be repaired without the source", {
       exists("bcr_data", envir = converted, inherits = FALSE),
       info = name
     )
-    for (accessor in names(.requiredCerebroMethods)) {
+    for (accessor in names(.crbContract()$.runtimeRequiredCerebroMethods())) {
       expect_true(
         is.function(converted[[accessor]]),
         info = paste(name, accessor)
@@ -909,7 +906,9 @@ test_that("convertCerebro upgrades what can be repaired without the source", {
       NULL,
       info = name
     )
-    expect_null(.legacyCerebroReason(.readCerebroPayload(entry$path)))
+    expect_null(
+      .crbContract()$.runtimeLegacyReason(.readCerebroPayload(entry$path))
+    )
   }
 
   ## the receptors of bcr_data / tcr_data end up in the unified repertoire
@@ -1460,8 +1459,7 @@ test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
   expect_identical(restored$getSpatialData("fov1")$molecules, molecules)
   expect_identical(restored$spatial$fov1$molecules, molecules)
 
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
   runtime_object <- runtime$read_cerebro_file(path)
   runtime_object <- runtime$.attachSpatialMoleculeBackend(runtime_object, path)
   expect_s3_class(
@@ -1497,40 +1495,9 @@ test_that("bundled demo CRBs use the current qs2 codec", {
 ## Gate parity, failed saves and malformed descriptors
 ## ---------------------------------------------------------------------------
 
-test_that("the package and the Viewer agree on which CRBs are retired", {
-  root <- withr::local_tempdir()
-  retired <- retired_cerebros(root)
-  runtime <- runtime_env()
-
-  current <- file.path(root, "current.crb")
-  saveCerebro(make_embedded_cerebro(), current)
-  paths <- c(
-    vapply(retired$entries, function(entry) entry$path, character(1)),
-    unknown_backend = retired$unknown_backend,
-    current = current
-  )
-  for (name in names(paths)) {
-    object <- .readCerebroPayload(paths[[name]])
-    expect_identical(
-      .legacyCerebroReason(object),
-      runtime$.runtimeLegacyReason(object),
-      info = name
-    )
-  }
-
-  ## a malformed (active) descriptor is left to the readers by both
-  payload <- new.env(parent = emptyenv())
-  makeActiveBinding("expression_backend", function() NULL, payload)
-  payload$availableSpatial <- function() character()
-  expect_identical(
-    .legacyCerebroReason(payload),
-    runtime$.runtimeLegacyReason(payload)
-  )
-})
-
-test_that("the package and the Viewer read the same CRB schema and H5 names", {
+test_that("the CRB schema reader takes v3 only; both sides read the same H5 names", {
   skip_if_no_h5()
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   fixture <- make_h5_cerebro(withr::local_tempdir())
   expect_identical(
     .h5CellNames(fixture$h5),
@@ -1554,17 +1521,22 @@ test_that("the package and the Viewer read the same CRB schema and H5 names", {
     extra_field = c(valid, list(other = 1L)),
     missing_field = valid[c("version", "n_cells")]
   )
-  for (name in names(schemas)) {
-    object <- legacy_payload(list(crb_schema = schemas[[name]]))
-    package_result <- tryCatch(
-      .readCrbSchema(object, "x.crb"),
-      error = function(error) "error"
+  expect_identical(
+    .crbContract()$.readRuntimeCrbSchema(
+      legacy_payload(list(crb_schema = valid)),
+      "x.crb"
+    ),
+    valid
+  )
+  for (name in setdiff(names(schemas), "valid")) {
+    expect_error(
+      .crbContract()$.readRuntimeCrbSchema(
+        legacy_payload(list(crb_schema = schemas[[name]])),
+        "x.crb"
+      ),
+      "unsupported CRB schema descriptor",
+      info = name
     )
-    viewer_result <- tryCatch(
-      runtime$.readRuntimeCrbSchema(object, "x.crb"),
-      error = function(error) "error"
-    )
-    expect_identical(package_result, viewer_result, info = name)
   }
 })
 
@@ -1693,7 +1665,7 @@ test_that("the Viewer checks the H5 cell names before it reads expression", {
   fixture <- make_h5_cerebro(root)
   path <- file.path(root, "thin.crb")
   saveCerebro(fixture$object, path)
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   attach <- function() {
     runtime$.attachExternalExpression(runtime$read_cerebro_file(path), path)
   }
@@ -1713,7 +1685,7 @@ test_that("the cell names are read once for hydration and expression", {
   fixture <- make_h5_cerebro(root)
   path <- file.path(root, "thin.crb")
   saveCerebro(fixture$object, path)
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   reads <- 0L
   original <- runtime$.runtimeH5Names
   runtime$.runtimeH5Names <- function(sidecar, dataset) {
@@ -1747,7 +1719,7 @@ test_that("the cell names are read once for hydration and expression", {
 test_that("a retired format that convertCerebro cannot repair says to re-export", {
   root <- withr::local_tempdir()
   retired <- retired_cerebros(root)
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
 
   for (name in names(retired$entries)) {
     entry <- retired$entries[[name]]

@@ -26,8 +26,7 @@ test_that("sparse expression colour transport is exact and density-gated", {
   expect_null(sparse_color(rep(1, 10000L)))
   expect_null(sparse_color(numeric(4095L)))
 
-  wire <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = wire)
+  wire <- viewer_runtime_env()
   sparse_wire <- wire$cv_wire_pack_message(list(
     data = list(
       sparse_color = packed
@@ -38,8 +37,7 @@ test_that("sparse expression colour transport is exact and density-gated", {
 })
 
 test_that("binary colour payload retains R doubles", {
-  wire <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = wire)
+  wire <- viewer_runtime_env()
   values <- rep(0, 4096L)
   values[[1L]] <- 1 + 2^-40
   payload <- wire$cv_wire_pack_message(list(data = list(color = values)))
@@ -64,8 +62,7 @@ test_that("binary colour payload retains R doubles", {
 })
 
 test_that("short JSON colour payload also retains double precision", {
-  wire <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = wire)
+  wire <- viewer_runtime_env()
   exact <- 1 + 2^-40
   payload <- wire$cv_wire_pack_message(list(data = list(color = c(exact, 0))))
   header_length <- readBin(
@@ -233,8 +230,7 @@ test_that("RGB and separate panels use one packed colour map", {
 })
 
 test_that("full canonical expression reads omit the million-index slice", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   data_set <- Cerebro$new()
   data_set$expression <- matrix(
     1:6,
@@ -299,7 +295,7 @@ test_that("single-gene colour caches are bounded on both sides", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sys.source(
         viewer_test_path(
           "gene_expression",
@@ -374,7 +370,7 @@ test_that("secondary expression summaries wait for the painted primary frame", {
         }
         expression_projection_data <- expression_projection_parameters_color <- read_data
         expression_projection_render_key <- function() "current"
-        sys.source(viewer_test_path("utility_functions.R"), scope)
+        viewer_runtime_env(scope)
         viewer_loaded_dataset_context <- function() {
           viewerDatasetContext("session", "A", 1)
         }

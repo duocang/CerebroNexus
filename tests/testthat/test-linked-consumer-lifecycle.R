@@ -2,7 +2,7 @@ test_that("Linked primary paint gates supplements and replays hidden palette cha
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sys.source(viewer_test_path("coordinated_views", "bundle.R"), scope)
       context <- list(epoch = "s", dataset_key = "A", generation = 1)
       viewer_loaded_dataset_context <- function() context
@@ -205,6 +205,57 @@ test_that("Linked controls defer genes and use emitted image presets", {
         expect_lte(as.numeric(xml2::xml_attr(node, "min")), controls[[id]])
         expect_gte(as.numeric(xml2::xml_attr(node, "max")), controls[[id]])
       }
+    }
+  )
+})
+
+test_that("Linked RGB co-expression sends the loaded dataset context", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      context <- list(epoch = "s", dataset_key = "A", generation = 3)
+      viewer_loaded_dataset_context <- function() context
+      coordviews_visible <- reactive(TRUE)
+      cv_expression_cells <- function() NULL
+      getNumberOfCells <- function() 2L
+      cv_gene_values <- function(gene, cells, n) c(1, 4)
+      feedback <- list()
+      cv_expression_feedback <- function(ok, rgb = FALSE) {
+        feedback[[length(feedback) + 1L]] <<- c(ok = ok, rgb = rgb)
+      }
+      messages <- list()
+      session$sendCustomMessage <- function(type, payload) {
+        messages[[length(messages) + 1L]] <<- list(
+          type = type,
+          payload = payload
+        )
+      }
+      sys.source(viewer_test_path("coordinated_views", "bundle.R"), scope)
+      viewer_server_load(
+        viewer_server_statements("coordinated_views", "server.R"),
+        scope,
+        names = c("cv_context_payload", "cv_scale_gene_values"),
+        events = "coordviews_gene_r"
+      )
+    },
+    {
+      session$flushReact()
+      expect_length(scope$messages, 0)
+      session$setInputs(coordviews_gene_r = "G1")
+      expect_length(scope$messages, 1)
+      payload <- scope$messages[[1]]$payload
+      expect_identical(scope$messages[[1]]$type, "coordviews_rgbval")
+      expect_identical(payload$dataset_context, scope$context)
+      expect_identical(as.integer(payload$r), c(64L, 255L))
+      expect_identical(as.character(payload$genes), c("G1", "", ""))
+      session$setInputs(coordviews_gene_r = "")
+      payload <- scope$messages[[2]]$payload
+      expect_false(payload$ok)
+      expect_identical(payload$dataset_context, scope$context)
+      expect_identical(
+        scope$feedback,
+        list(c(ok = TRUE, rgb = TRUE), c(ok = FALSE, rgb = TRUE))
+      )
     }
   )
 })

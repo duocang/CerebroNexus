@@ -1,37 +1,28 @@
 dataset_context_javascript <- viewer_test_path("www", "dataset-context.js")
 
 run_dataset_context_node <- function(body) {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   expect_true(
     file.exists(dataset_context_javascript),
     info = "dataset-context.js not found"
   )
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs = require('fs');",
-      "const events = []; const handlers = {}; const inputs = [];",
-      "global.window = global;",
-      "global.document = {addEventListener: () => {}};",
-      "global.CustomEvent = function(type, options) {",
-      "  this.type = type; this.detail = options && options.detail;",
-      "};",
-      "window.dispatchEvent = event => { events.push(event); return true; };",
-      "window.setTimeout = () => 0;",
-      "global.Shiny = window.Shiny = {",
-      "  addCustomMessageHandler: (name, handler) => { handlers[name] = handler; },",
-      "  setInputValue: (name, value) => { inputs.push({name:name,value:value}); }",
-      "};",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(dataset_context_javascript, quote = "\"")
-      ),
-      body
-    ),
-    runner
-  )
-  system2("node", runner, stdout = TRUE, stderr = TRUE)
+  run_node_script(c(
+    "const fs = require('fs');",
+    "const events = []; const handlers = {}; const inputs = [];",
+    "global.window = global;",
+    "global.document = {addEventListener: () => {}};",
+    "global.CustomEvent = function(type, options) {",
+    "  this.type = type; this.detail = options && options.detail;",
+    "};",
+    "window.dispatchEvent = event => { events.push(event); return true; };",
+    "window.setTimeout = () => 0;",
+    "global.Shiny = window.Shiny = {",
+    "  addCustomMessageHandler: (name, handler) => { handlers[name] = handler; },",
+    "  setInputValue: (name, value) => { inputs.push({name:name,value:value}); }",
+    "};",
+    js_eval_file(dataset_context_javascript),
+    body
+  ))
 }
 
 test_that("dataset context freshness is epoch/key/generation exact", {
@@ -98,8 +89,7 @@ test_that("dataset context freshness is epoch/key/generation exact", {
 })
 
 test_that("R dataset contexts validate and compare the full identity", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
 
   a1 <- runtime$viewerDatasetContext("session-1", "A", 1L)
   expect_identical(
@@ -128,8 +118,7 @@ test_that("R dataset contexts validate and compare the full identity", {
 })
 
 test_that("dataset context tokens are unambiguous", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
 
   contexts <- list(
     runtime$viewerDatasetContext("a", "bc", 1L),
@@ -142,8 +131,7 @@ test_that("dataset context tokens are unambiguous", {
 })
 
 test_that("JSON renders keep the captured context after the selector changes", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
   sent <- new.env(parent = emptyenv())
   sent$messages <- list()
   runtime$input <- list(coordviews_wire_supported = FALSE)
@@ -193,8 +181,7 @@ test_that("JSON renders keep the captured context after the selector changes", {
 })
 
 test_that("binary and progressive auxiliary renders carry one exact context", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
   sent <- new.env(parent = emptyenv())
   sent$messages <- list()
   runtime$input <- list(coordviews_wire_supported = TRUE)
@@ -246,8 +233,7 @@ test_that("binary and progressive auxiliary renders carry one exact context", {
 })
 
 test_that("background messages carry context and missing context fails closed", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
   sent <- new.env(parent = emptyenv())
   sent$messages <- list()
   runtime$input <- list(coordviews_wire_supported = FALSE)
@@ -291,8 +277,7 @@ test_that("background messages carry context and missing context fails closed", 
 })
 
 test_that("server rejects stale auxiliary requests before consuming payloads", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
   context <- runtime$viewerDatasetContext("session", "B", 2L)
   old <- runtime$viewerDatasetContext("session", "A", 1L)
   runtime$viewer_loaded_dataset_context <- function() context
@@ -331,8 +316,7 @@ test_that("server rejects stale auxiliary requests before consuming payloads", {
 })
 
 test_that("browser-visible dataset keys are opaque and never file paths", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
   private_paths <- c(
     tumor = "C:/Users/private/subject-001.crb",
     control = "D:/restricted/subject-002.crb"
@@ -353,7 +337,8 @@ test_that("dataset switches invalidate old generations and reconnects replay the
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
+      Cerebro.options <- list()
       sent <- list()
       session$sendCustomMessage <- function(type, message) {
         sent[[length(sent) + 1L]] <<- list(type = type, message = message)
@@ -383,6 +368,7 @@ test_that("dataset switches invalidate old generations and reconnects replay the
         scope,
         names = c(
           "viewer_send_dataset_phase",
+          "viewer_catalog_info",
           "viewer_dataset_load_required",
           "viewer_request_dataset"
         ),
@@ -443,7 +429,7 @@ test_that("portable-view requests and responses use one captured context", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sys.source(viewer_test_path("coordinated_views", "config.R"), scope)
       context <- list(epoch = "session", dataset_key = "A", generation = 1)
       current <- context
@@ -534,7 +520,7 @@ test_that("all specialist state inputs fail closed on context", {
     shiny::testServer(
       function(input, output, session) {
         scope <- environment()
-        sys.source(viewer_test_path("utility_functions.R"), scope)
+        viewer_runtime_env(scope)
         context <- list(epoch = "session", dataset_key = "A", generation = 1)
         viewer_loaded_dataset_context <- function() context
         getProjection <- function(...) data.frame(x = c(1, 2), y = c(3, 4))

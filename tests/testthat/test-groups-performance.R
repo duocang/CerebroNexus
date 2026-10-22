@@ -31,15 +31,10 @@ test_that("Groups reads only the active columns after its viewport gate", {
         plotly::plot_ly(x = table[[1]], y = table[[2]], type = "bar")
       }
       available_crb_files <- list(selected = "tiny")
-      viewer_server_load(
-        viewer_server_statements("groups", "expression_metrics.R"),
-        scope,
-        names = c(
-          "groupsMetricData",
-          "output$groups_nUMI_plot",
-          "output$groups_nGene_plot"
-        )
-      )
+      cerebroRegisterInfo <- function(...) NULL
+      ## The metric outputs are created in a loop, which viewer_server_load()
+      ## skips, so source the whole file.
+      sys.source(viewer_test_path("groups", "expression_metrics.R"), scope)
     },
     {
       session$setInputs(
@@ -114,12 +109,11 @@ test_that("Groups builds its first-frame controls without a renderUI cascade", {
 })
 
 test_that("Groups reports passive request-bound Plotly readiness", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   scope <- viewer_ui_test_env()
   sys.source(viewer_test_path("groups", "UI.R"), scope)
   scripts <- htmltools::tagQuery(scope$tab_groups)$find("script")$selectedTags()
-  payload <- tempfile(fileext = ".json")
-  on.exit(unlink(payload), add = TRUE)
+  payload <- withr::local_tempfile(fileext = ".json")
   writeLines(
     jsonlite::toJSON(
       unname(lapply(scripts, function(tag) {
@@ -129,16 +123,7 @@ test_that("Groups reports passive request-bound Plotly readiness", {
     ),
     payload
   )
-  output <- system2(
-    "node",
-    c(
-      shQuote(testthat::test_path("fixtures", "groups-readiness.js")),
-      shQuote(payload)
-    ),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  expect_null(attr(output, "status"), info = paste(output, collapse = "\n"))
+  expect_node_fixture("groups-readiness.js", payload)
 })
 
 test_that("Groups composition counts factors without sorting every cell", {

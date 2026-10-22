@@ -24,15 +24,8 @@ test_that("new viewer defaults match unsorted, unlabelled Seurat plots", {
 })
 
 test_that("expression paint order preserves cells when disabled", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  expect_identical(
-    system2(
-      "node",
-      c(
-        shQuote(test_path("fixtures", "expression-paint-order.js")),
-        shQuote(viewer_test_path("www", "cell_views.js"))
-      )
-    ),
-    0L
+  expect_node_fixture(
+    "expression-paint-order.js",
+    viewer_test_path("www", "cell_views.js")
   )
 })

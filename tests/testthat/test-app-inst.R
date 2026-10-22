@@ -1,10 +1,16 @@
+skip_if_not_installed("shinytest2")
 library(shinytest2)
 
-## Locate inst/ whether running via devtools::test() or R CMD check
-inst_dir <- system.file(package = "CerebroNexus")
-if (!nzchar(inst_dir) || !file.exists(file.path(inst_dir, "app.R"))) {
-  inst_dir <- testthat::test_path("../../inst")
-}
+inst_dir <- viewer_app_test_path()
+
+## The recordings on the default data set navigate to the tab they assert on, so
+## they share one driver. Tests that switch data sets, assert a pristine startup
+## or build their own bundle boot their own app.
+shared_app <- viewer_shared_app("app_inst", inst_dir)
+## The three dataset-switching tests below each need a new session that starts
+## on the default data set. They share one app process; each after the first
+## starts a new Shiny session in it rather than booting another app.
+switching_app <- viewer_shared_app("dataset_switching", inst_dir)
 
 ## shinytest2's wait_for_idle() tracks server reactivity, NOT the async
 ## client-side cell-view renderer (www/cell_views.js). After it returns,
@@ -98,9 +104,7 @@ activate_tab <- function(app, tab_name, timeout = 20000) {
 }
 
 test_that("{shinytest2} recording: overview", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(inst_dir, name = "overview", height = 950, width = 1619)
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   ## Data Info tab: verify key values from the loaded example.crb
   cells_box <- retry_get_value(app, output = "load_data_overview")
@@ -111,21 +115,10 @@ test_that("{shinytest2} recording: overview", {
 
   date_box <- retry_get_value(app, output = "load_data_overview")
   expect_true(grepl("[0-9]{4}-[0-9]{2}-[0-9]{2}", date_box$html))
-
-  app$stop()
 })
 
 test_that("Projection switches categorical spatial datasets coherently", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "projection_dataset_switch",
-    load_timeout = 120000,
-    height = 950,
-    width = 1619
-  )
-  withr::defer(app$stop())
-  app$wait_for_idle(timeout = 30000)
+  app <- viewer_new_session(switching_app())
 
   app$set_inputs(
     crb_file_selector = "Mouse ileum (MERFISH)",
@@ -168,16 +161,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
 })
 
 test_that("Spatial backgrounds reset when the spatial dataset changes", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "spatial_background_isolation",
-    load_timeout = 120000,
-    height = 950,
-    width = 1619
-  )
-  withr::defer(app$stop())
-  app$wait_for_idle(timeout = 20000)
+  app <- viewer_new_session(switching_app())
 
   app$set_inputs(
     crb_file_selector = "Mouse brain (Visium)",
@@ -186,8 +170,25 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app$wait_for_idle(timeout = 30000)
   activate_tab(app, "spatial", timeout = 30000)
   wait_for_input(app, "spatial_projection_more_button", timeout = 30000)
-  app$click(selector = "#spatial_projection_more_button")
-  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
+  ## On a busy CI runner the first click once left the background picker
+  ## missing for 30 s. Open a closed drawer, or repeat its render request about
+  ## once a second, until the picker is there.
+  app$wait_for_js(
+    paste0(
+      "(() => {if (document.getElementById('spatial_projection_background_image'))",
+      " return true;",
+      "const drawer = document.getElementById('spatial_projection_more');",
+      "if (!drawer || drawer.getAttribute('aria-hidden') !== 'false') {",
+      " document.getElementById('spatial_projection_more_button').click();",
+      "} else if (!(Date.now() - (window.__spatialDrawerRequest || 0) < 1000)) {",
+      " window.__spatialDrawerRequest = Date.now();",
+      " Shiny.setInputValue('spatial_projection_more_render_request',",
+      " Date.now(), {priority: 'event'});",
+      "}",
+      "return false;})()"
+    ),
+    timeout = 30000
+  )
   app$wait_for_js(
     paste0(
       "document.getElementById('spatial_projection_background_image').value === ",
@@ -329,16 +330,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
 })
 
 test_that("Linked views resets the active background to its preset", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "linked_background_reset",
-    load_timeout = 120000,
-    height = 950,
-    width = 1619
-  )
-  withr::defer(app$stop())
-  app$wait_for_idle(timeout = 20000)
+  app <- viewer_new_session(switching_app())
   app$set_inputs(
     crb_file_selector = "Mouse brain (Xenium)",
     wait_ = FALSE
@@ -424,9 +416,7 @@ test_that("Linked views resets the active background to its preset", {
 
 
 test_that("{shinytest2} recording: main", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(inst_dir, name = "main", height = 950, width = 1619)
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   activate_tab(app, "overview")
   app$wait_for_idle(timeout = 10000)
@@ -477,24 +467,27 @@ test_that("{shinytest2} recording: main", {
   app$set_inputs(overview_projection_percentage_cells_to_show = 100)
   app$wait_for_idle(timeout = 10000)
 
-  app$expect_values(
-    input = c(
-      "overview_projection_point_size",
-      "overview_projection_point_opacity",
-      "overview_projection_percentage_cells_to_show",
-      "overview_projection_group_filter_seurat_clusters"
-    ),
-    output = FALSE,
-    export = FALSE
+  expect_mapequal(
+    app$get_values(
+      input = c(
+        "overview_projection_point_size",
+        "overview_projection_point_opacity",
+        "overview_projection_percentage_cells_to_show",
+        "overview_projection_group_filter_seurat_clusters"
+      )
+    )$input,
+    list(
+      overview_projection_point_size = 9,
+      overview_projection_point_opacity = 0.9,
+      overview_projection_percentage_cells_to_show = 100,
+      overview_projection_group_filter_seurat_clusters = "0"
+    )
   )
-  app$stop()
 })
 
 
 test_that("{shinytest2} recording: groups", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(inst_dir, name = "groups", height = 950, width = 1619)
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   app$set_inputs(sidebar = "groups")
   app$wait_for_idle(timeout = 10000)
@@ -515,26 +508,22 @@ test_that("{shinytest2} recording: groups", {
   table_val <- retry_get_value(app, output = "groups_by_other_group_table")
   expect_false(is.null(table_val))
 
-  app$expect_values(
-    input = c(
-      "groups_by_other_group_show_as_percent",
-      "groups_by_other_group_show_table"
-    ),
-    output = FALSE,
-    export = FALSE
+  expect_mapequal(
+    app$get_values(
+      input = c(
+        "groups_by_other_group_show_as_percent",
+        "groups_by_other_group_show_table"
+      )
+    )$input,
+    list(
+      groups_by_other_group_show_as_percent = TRUE,
+      groups_by_other_group_show_table = TRUE
+    )
   )
-  app$stop()
 })
 
 test_that("{shinytest2} recording: marker_genes", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "marker_genes",
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   # Marker genes is a conditionally shown sidebar item. Wait for it, then click,
   # so it activates on a slow runner instead of navigating too early.
@@ -582,60 +571,25 @@ test_that("{shinytest2} recording: marker_genes", {
   ui_val <- retry_get_value(app, output = "marker_genes_table_or_text_UI")
   expect_false(grepl("no_markers_found|no_data", ui_val$html, fixed = FALSE))
 
-  app$expect_values(
-    input = c(
-      "marker_genes_selected_method",
-      "marker_genes_selected_table",
-      "marker_genes_table_filter_switch"
-    ),
-    output = FALSE,
-    export = FALSE
+  expect_mapequal(
+    app$get_values(
+      input = c(
+        "marker_genes_selected_method",
+        "marker_genes_selected_table",
+        "marker_genes_table_filter_switch"
+      )
+    )$input,
+    list(
+      marker_genes_selected_method = "cerebro_seurat",
+      marker_genes_selected_table = "seurat_clusters",
+      marker_genes_table_filter_switch = FALSE
+    )
   )
-  app$stop()
 })
 
-
-test_that("app startup does not eagerly load scRepertoire", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "no_screp_at_startup",
-    height = 950,
-    width = 1619
-  )
-  withr::defer(app$stop())
-  app$wait_for_idle(timeout = 20000)
-
-  ## Deferred-loading contract: the IR settings render on the first flush
-  ## (suspendWhenHidden = FALSE), but startup must probe availability with
-  ## system.file() only and never load the ~90-package scRepertoire tree. Only a
-  ## real repertoire plot render is allowed to pull it in, so at a fresh startup
-  ## with no repertoire tab opened the namespace must be absent.
-  ##
-  ## Strict identity (not `expect_false(isTRUE(...))`): a missing or NULL export
-  ## must FAIL, not silently pass as though it were FALSE.
-  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
-  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
-
-  ## Delayed re-check: wait past the former one-second background-prewarm timer,
-  ## so any deferred/prewarm-style loader would have fired by now. Still unloaded
-  ## => genuinely lazy, not merely sampled before a callback ran.
-  Sys.sleep(1.5)
-  app$wait_for_idle(timeout = 10000)
-  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
-  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
-})
 
 test_that("{shinytest2} recording: gene_expression", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "gene_expression",
-    load_timeout = 120000,
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   activate_tab(app, "geneExpression")
   app$wait_for_idle(timeout = 10000)
@@ -789,52 +743,30 @@ test_that("{shinytest2} recording: gene_expression", {
     unname(unlist(rgb_animations)),
     rep("none", 3)
   )
-
-  app$stop()
 })
 
 test_that("{shinytest2} recording: gene_id_conversion", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "gene_id_conversion",
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   app$set_inputs(sidebar = "geneIdConversion")
   app$wait_for_idle(timeout = 10000)
 
   table_val <- retry_get_value(app, output = "gene_info")
   expect_false(is.null(table_val))
-
-  app$stop()
 })
 
 test_that("{shinytest2} recording: color_management", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "color_management",
-    height = 950,
-    width = 1619
-  )
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   app$set_inputs(sidebar = "color_management")
   app$wait_for_idle(timeout = 10000)
 
   ui_val <- retry_get_value(app, output = "color_assignments_UI")
   expect_false(is.null(ui_val))
-
-  app$stop()
 })
 
 test_that("{shinytest2} recording: about", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(inst_dir, name = "about", height = 950, width = 1619)
-  app$wait_for_idle(timeout = 20000)
+  app <- shared_app()
 
   app$set_inputs(sidebar = "about")
   app$wait_for_idle(timeout = 10000)
@@ -842,8 +774,6 @@ test_that("{shinytest2} recording: about", {
   about_text <- retry_get_value(app, output = "about")
   expect_false(is.null(about_text))
   expect_true(nchar(about_text) > 0)
-
-  app$stop()
 })
 
 test_that("createShinyApp bundles a working app", {
@@ -862,6 +792,8 @@ test_that("createShinyApp bundles a working app", {
     cerebro_data = c("mydata" = tmp),
     result_dir = app_dir,
     launch_browser = FALSE,
+    ## The bundle freezes its port; parallel test files must not share one.
+    port = httpuv::randomPort(),
     verbose = FALSE
   )
 

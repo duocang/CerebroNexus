@@ -24,7 +24,10 @@ lock_test_build <- function(crb, result_dir, ...) {
   )
 }
 
-lock_test_wait_for_file <- function(path, process, timeout = 10) {
+## Outside a source tree the worker loads the installed namespace first, which
+## alone takes about 6 s on an idle CI runner and well over 10 s under the
+## parallel test load of R CMD check.
+lock_test_wait_for_file <- function(path, process, timeout = 60) {
   deadline <- Sys.time() + timeout
   repeat {
     if (file.exists(path)) {
@@ -388,7 +391,7 @@ test_that("metadata directories are never deleted as owned lock files", {
   expect_identical(readLines(foreign), "FOREIGN")
 
   unlink(foreign)
-  expect_true(file.remove(owner_path))
+  expect_identical(unlink(owner_path, recursive = TRUE), 0L)
   writeLines(owner, owner_path)
   expect_true(.releaseBundleLock(lock))
 })
@@ -601,8 +604,12 @@ test_that("stage cleanup errors cannot strand the build lock", {
   )
   withr::local_options(warn = 2L)
 
-  expect_error(
-    lock_test_build(crb, result),
+  ## The cleanup error replaces the injected build failure as the build
+  ## unwinds. expect_error() sees the first error under the third edition, so
+  ## catch the one that leaves the call.
+  failure <- tryCatch(lock_test_build(crb, result), error = identity)
+  expect_match(
+    conditionMessage(failure),
     "Failed to remove the private app staging directory"
   )
   expect_false(dir.exists(.bundleLockPath(result)))
@@ -628,11 +635,16 @@ test_that("the bundle lock excludes a second R process", {
     "R",
     "createShinyApp.R"
   )
+  contract_source <- test_path("..", "..", "inst", "viewer", "core")
+  contract_source <- file.path(contract_source, "crb_contract.R")
   worker <- callr::r_bg(
-    function(implementation_source, result, ready, release) {
+    function(implementation_source, contract_source, result, ready, release) {
       implementation <- if (file.exists(implementation_source)) {
         environment <- new.env(parent = globalenv())
         sys.source(implementation_source, envir = environment)
+        contract <- new.env(parent = baseenv())
+        sys.source(contract_source, envir = contract)
+        environment$.crbContract <- function() contract
         environment
       } else {
         loadNamespace("CerebroNexus")
@@ -651,7 +663,7 @@ test_that("the bundle lock excludes a second R process", {
       }
       invisible(TRUE)
     },
-    args = list(implementation_source, result, ready, release),
+    args = list(implementation_source, contract_source, result, ready, release),
     libpath = .libPaths(),
     supervise = TRUE
   )

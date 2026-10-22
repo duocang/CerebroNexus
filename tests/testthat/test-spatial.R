@@ -635,13 +635,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   renderer$Cerebro.options <- list(cerebro_root = root)
   renderer$viewerExpressionColorSettings <- function(...) list()
   renderer$expressionColorScale <- function(...) list()
-  sys.source(
-    file.path(
-      system.file("viewer", package = "CerebroNexus"),
-      "utility_functions.R"
-    ),
-    envir = renderer
-  )
+  viewer_runtime_env(renderer)
   sys.source(
     file.path(
       system.file("viewer", package = "CerebroNexus"),
@@ -758,11 +752,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
 })
 
 test_that("external spatial images are streamed from session-private files", {
-  renderer <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = renderer
-  )
+  renderer <- viewer_runtime_env()
   image <- tempfile(fileext = ".png")
   withr::defer(unlink(image))
   bytes <- c(
@@ -802,8 +792,7 @@ test_that("external spatial images are streamed from session-private files", {
 })
 
 test_that("spatial first frames replace only exact flat geometry with an asset", {
-  renderer <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = renderer)
+  renderer <- viewer_runtime_env()
   sys.source(
     viewer_test_path("spatial", "func_spatial_helpers.R"),
     envir = renderer
@@ -896,30 +885,8 @@ test_that("spatial first frames replace only exact flat geometry with an asset",
   expect_null(rendered$data[["canonical_group"]])
 })
 
-test_that("Spatial first-frame data bypasses the legacy full accessor", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
-  coordinates <- data.frame(x = 1:3, y = 4:6)
-  stored <- list(
-    coordinates = coordinates,
-    histology_images = list(),
-    molecules = structure(list(), class = "large-unrelated-payload")
-  )
-  dataset <- structure(list(spatial = list(slice = stored)), class = "Cerebro")
-  runtime$data_set <- function() dataset
-  runtime$getSpatialData <- function(name) {
-    stop("legacy accessor should not run")
-  }
-
-  result <- runtime$viewerSpatialFirstFrameData("slice")
-  expect_identical(result$coordinates, coordinates)
-  expect_identical(result$histology_images, list())
-  expect_false("molecules" %in% names(result))
-})
-
 test_that("Spatial geometry catalog is registered but fetched only on page request", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   sys.source(viewer_test_path("spatial", "func_spatial_helpers.R"), scope)
   scope$Cerebro.options <- list()
   scope$available_crb_files <- list(

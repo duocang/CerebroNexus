@@ -2,7 +2,7 @@ test_that("feedback reads only small controls without reactive dependencies", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       runs <- 0L
       probe <- reactive({
         input$trigger
@@ -46,22 +46,10 @@ test_that("feedback reads only small controls without reactive dependencies", {
 })
 
 test_that("feedback matches painted operations and rejects stale datasets", {
-  node <- Sys.which("node")
-  skip_if(!nzchar(node), "Node unavailable")
-  result <- system2(
-    node,
-    shQuote(c(
-      test_path("fixtures", "view-feedback.js"),
-      viewer_test_path("www", "view-feedback.js")
-    )),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
-  expect_match(
-    paste(result, collapse = "\n"),
-    "feedback assertions passed",
-    fixed = TRUE
+  expect_node_fixture(
+    "view-feedback.js",
+    viewer_test_path("www", "view-feedback.js"),
+    pass = "feedback assertions passed"
   )
 })
 

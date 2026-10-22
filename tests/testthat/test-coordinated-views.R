@@ -31,7 +31,7 @@ have_bundle <- nzchar(bundle_file) &&
   file.exists(contract_file) &&
   file.exists(utility_file)
 if (have_bundle) {
-  sys.source(utility_file, envir = cv_env)
+  viewer_runtime_env(cv_env, root = dirname(utility_file))
   sys.source(
     file.path(dirname(bundle_file), "..", "spatial", "func_spatial_helpers.R"),
     envir = cv_env
@@ -193,58 +193,52 @@ test_that("trajectory coordinates and graph enter Linked views", {
 })
 
 run_config_transport_node <- function(body) {
-  skip_if(Sys.which("node") == "", "node not on PATH")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs = require('fs');",
-      "const timers = []; const sent = []; const handlers = {}; let applied = 0;",
-      "const events = {}; let ready = true, selectedCells = 1, captures = 0;",
-      "function classes(){return {toggle:()=>{},add:()=>{},remove:()=>{}};}",
-      "function element(id){return {id:id,value:'',disabled:false,open:false,attrs:{},",
-      "  classList:classes(),listeners:{},addEventListener:function(n,f){this.listeners[n]=f;},",
-      "  setAttribute:function(n,v){this.attrs[n]=v;},getAttribute:function(n){return this.attrs[n]||null;},",
-      "  removeAttribute:function(n){delete this.attrs[n];},focus:()=>{},click:function(){",
-      "    if(this.listeners.click)this.listeners.click.call(this,{currentTarget:this});}};}",
-      "const ids = {}; ['cv-config-dialog','cv-config-open','cv-config-close','cv-config-png',",
-      "  'cv-config-download','coordviews_config_upload','cv-config-upload-button',",
-      "  'cv-config-status'].forEach(id=>{ids[id]=element(id);});",
-      "const host={classList:classes()}; const label={textContent:'Download PNG'};",
-      "ids.coordviews_config_upload.closest=()=>host;",
-      "ids['cv-config-png'].querySelector=()=>label;",
-      "ids['cv-config-dialog'].showModal=function(){this.open=true;};",
-      "ids['cv-config-dialog'].close=function(){this.open=false;};",
-      "global.document={readyState:'complete',activeElement:null,body:{appendChild:()=>{}},",
-      "  getElementById:id=>ids[id]||null,querySelectorAll:()=>[],addEventListener:()=>{},",
-      "  contains:()=>true,createElement:()=>element('created')};",
-      "global.window=global; window.devicePixelRatio=1; window.addEventListener=(name,fn)=>{events[name]=fn;};",
-      "window.setTimeout=(fn,delay)=>{const timer={fn:fn,delay:delay};timers.push(timer);return timer;};",
-      "window.clearTimeout=timer=>{const at=timers.indexOf(timer);if(at>=0)timers.splice(at,1);};",
-      "window.FileReader=function(){this.readAsText=file=>{this.result=file.text;this.onload();};};",
-      "const datasetContext={epoch:'session-1',dataset_key:'dataset-1',generation:1};",
-      "window.CerebroDatasetContext={phase:()=> 'ready',current:()=>datasetContext,",
-      "  key:value=>value?JSON.stringify([value.epoch,value.dataset_key,value.generation]):'',",
-      "  accepts:message=>!!(message&&message.dataset_context&&",
-      "    message.dataset_context.epoch===datasetContext.epoch&&",
-      "    message.dataset_context.dataset_key===datasetContext.dataset_key&&",
-      "    message.dataset_context.generation===datasetContext.generation)};",
-      "window.cerebroLinkedViewsState={ready:()=>ready,summary:()=>({selectedCells}),",
-      "  capture:()=>{captures++;return {selection:{cells:[]}};},apply:()=>{applied+=1;return {selectedCells:1};},downloadPNG:()=>true};",
-      "global.Shiny={setInputValue:(id,value)=>sent.push({id:id,value:value}),",
-      "  addCustomMessageHandler:(id,fn)=>{handlers[id]=fn;}};",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(
-          file.path(dirname(bundle_file), "..", "www", "coordviews-config.js"),
-          quote = "\""
-        )
-      ),
-      body
-    ),
-    runner
-  )
-  system2("node", runner, stdout = TRUE, stderr = TRUE)
+  run_node_script(c(
+    "const fs = require('fs');",
+    "const timers = []; const sent = []; const handlers = {}; let applied = 0;",
+    "const events = {}; let ready = true, selectedCells = 1, captures = 0;",
+    "function classes(){return {toggle:()=>{},add:()=>{},remove:()=>{}};}",
+    "function element(id){return {id:id,value:'',disabled:false,open:false,attrs:{},",
+    "  classList:classes(),listeners:{},addEventListener:function(n,f){this.listeners[n]=f;},",
+    "  setAttribute:function(n,v){this.attrs[n]=v;},getAttribute:function(n){return this.attrs[n]||null;},",
+    "  removeAttribute:function(n){delete this.attrs[n];},focus:()=>{},click:function(){",
+    "    if(this.listeners.click)this.listeners.click.call(this,{currentTarget:this});}};}",
+    "const ids = {}; ['cv-config-dialog','cv-config-open','cv-config-close','cv-config-png',",
+    "  'cv-config-download','coordviews_config_upload','cv-config-upload-button',",
+    "  'cv-config-status'].forEach(id=>{ids[id]=element(id);});",
+    "const host={classList:classes()}; const label={textContent:'Download PNG'};",
+    "ids.coordviews_config_upload.closest=()=>host;",
+    "ids['cv-config-png'].querySelector=()=>label;",
+    "ids['cv-config-dialog'].showModal=function(){this.open=true;};",
+    "ids['cv-config-dialog'].close=function(){this.open=false;};",
+    "global.document={readyState:'complete',activeElement:null,body:{appendChild:()=>{}},",
+    "  getElementById:id=>ids[id]||null,querySelectorAll:()=>[],addEventListener:()=>{},",
+    "  contains:()=>true,createElement:()=>element('created')};",
+    "global.window=global; window.devicePixelRatio=1; window.addEventListener=(name,fn)=>{events[name]=fn;};",
+    "window.setTimeout=(fn,delay)=>{const timer={fn:fn,delay:delay};timers.push(timer);return timer;};",
+    "window.clearTimeout=timer=>{const at=timers.indexOf(timer);if(at>=0)timers.splice(at,1);};",
+    "window.FileReader=function(){this.readAsText=file=>{this.result=file.text;this.onload();};};",
+    "const datasetContext={epoch:'session-1',dataset_key:'dataset-1',generation:1};",
+    "window.CerebroDatasetContext={phase:()=> 'ready',current:()=>datasetContext,",
+    "  readyContext:()=>datasetContext,",
+    "  readyKey:()=>window.CerebroDatasetContext.key(datasetContext),",
+    "  key:value=>value?JSON.stringify([value.epoch,value.dataset_key,value.generation]):'',",
+    "  accepts:message=>!!(message&&message.dataset_context&&",
+    "    message.dataset_context.epoch===datasetContext.epoch&&",
+    "    message.dataset_context.dataset_key===datasetContext.dataset_key&&",
+    "    message.dataset_context.generation===datasetContext.generation)};",
+    "window.cerebroLinkedViewsState={ready:()=>ready,summary:()=>({selectedCells}),",
+    "  capture:()=>{captures++;return {selection:{cells:[]}};},apply:()=>{applied+=1;return {selectedCells:1};},downloadPNG:()=>true};",
+    "global.Shiny={setInputValue:(id,value)=>sent.push({id:id,value:value}),",
+    "  addCustomMessageHandler:(id,fn)=>{handlers[id]=fn;}};",
+    js_eval_file(file.path(
+      dirname(bundle_file),
+      "..",
+      "www",
+      "coordviews-config.js"
+    )),
+    body
+  ))
 }
 
 test_that("sharing waits for readiness but accepts an empty selection", {
@@ -668,8 +662,7 @@ test_that("thin preloaded primary and supplement align unverified projections on
   )
   path <- fixture$crb
   scope <- new.env(parent = globalenv())
-  sys.source(file.path(dirname(utility_file), "crb_cache.R"), scope)
-  sys.source(utility_file, scope)
+  viewer_runtime_env(scope, root = dirname(utility_file))
   ## The bundle resolves author display defaults; installed checks cannot
   ## reach the package's internal copy of these helpers.
   sys.source(viewer_test_path("core", "viewer_content_contract.R"), scope)
@@ -827,7 +820,7 @@ test_that("saved-view startup identity does not materialize cell names", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       data_set <- reactive(list(cell_fingerprint = input$fingerprint))
       getNumberOfCells <- function() 1000000L
       cv_saved_view_cells <- function() stop("must not read cell names")
@@ -904,29 +897,21 @@ test_that("deferred metadata builds only the requested attribute", {
     "cell_type",
     colors
   )
-  extra <- cv_env$cv_build_attribute(
+
+  expect_identical(as.integer(group$values), c(0L, 1L, 0L))
+  ## Only registered groups are deferred; other kinds are never materialised.
+  expect_null(cv_env$cv_build_attribute(
     crb,
     metadata,
     "cat_extra",
     "donor",
     colors
-  )
-  field <- cv_env$cv_build_attribute(
-    crb,
-    metadata,
-    "fields",
-    "meta:score",
-    colors
-  )
-
-  expect_identical(as.integer(group$values), c(0L, 1L, 0L))
-  expect_identical(as.integer(extra$values), c(0L, 0L, 1L))
-  expect_identical(as.integer(field$v), c(0L, 333L, 1000L))
+  ))
   expect_null(cv_env$cv_build_attribute(
     crb,
     metadata,
     "fields",
-    "meta:ignored_missing",
+    "meta:score",
     colors
   ))
 })
@@ -1059,7 +1044,7 @@ test_that("canonical zero-based indices resolve only requested cell IDs", {
   expect_null(cv_env$cv_cells_at_indices(cells, NULL))
 })
 
-test_that("rownames-only metadata supports selection and cell details", {
+test_that("rownames-only metadata supports selection", {
   skip_if_not(have_bundle)
   metadata <- data.frame(
     cluster = c("A", "B", "A"),
@@ -1070,12 +1055,9 @@ test_that("rownames-only metadata supports selection and cell details", {
 
   canonical <- cv_env$cv_canonical_metadata(metadata)
   selected <- cv_env$cv_selected_metadata(metadata, c("c3", "c1"))
-  detail <- cv_env$cv_cell_metadata(metadata, "c2")
 
   expect_identical(canonical$cell_barcode, c("c1", "c2", "c3"))
   expect_identical(selected$cell_barcode, c("c1", "c3"))
-  expect_identical(detail$cell_barcode, "c2")
-  expect_identical(detail$score, 2)
 })
 
 test_that("explicit cell barcodes remain authoritative", {
@@ -1232,69 +1214,6 @@ test_that("both clone pages read one definition of a clone", {
   expect_equal(length(cv_env$CEREBRO_CLONE_LABELS), 5)
   expect_match(cv_env$CEREBRO_CLONE_LABELS[5], "Hyperexpanded")
   expect_equal(cv_env$cerebro_clonecall_col(), "CTgene")
-})
-
-test_that("cv_build_fields turns every numeric meta column into a colouring", {
-  skip_if_not(have_bundle)
-  md <- data.frame(
-    cell_barcode = c("c1", "c2", "c3"),
-    cluster = c("a", "b", "a"),
-    nUMI = c(100, 200, 300),
-    percent.mt = c(1.5, NA, 3.5),
-    constant = c(7, 7, 7),
-    stringsAsFactors = FALSE
-  )
-  f <- cv_env$cv_build_fields(md)
-  ## QC-looking columns are exactly what users colour by — they must be offered.
-  expect_true("meta:nUMI" %in% names(f))
-  expect_true("meta:percent.mt" %in% names(f))
-  ## no colouring can be built from a constant column or a non-numeric one
-  expect_false("meta:constant" %in% names(f))
-  expect_false("meta:cluster" %in% names(f))
-  expect_false("meta:cell_barcode" %in% names(f))
-  ## the quantised vector is aligned to the rows, spans the full scale, and
-  ## carries the true range so the client can show real values, not 0-255.
-  fu <- f[["meta:nUMI"]]
-  expect_length(fu$v, nrow(md))
-  expect_equal(as.integer(fu$v), c(0L, fu$scale %/% 2L, fu$scale))
-  expect_equal(fu$min, 100)
-  expect_equal(fu$max, 300)
-  ## NA stays NA so the client can draw it as "no value" rather than as zero.
-  expect_true(is.na(f[["meta:percent.mt"]]$v[2]))
-})
-
-test_that("cv_build_extra_groups covers categorical columns that are not groups", {
-  skip_if_not(have_bundle)
-  md <- data.frame(
-    cell_barcode = c("c1", "c2", "c3"),
-    cluster = c("a", "b", "a"),
-    dextramer_allele = c("A*02:01", "A*02:01", "B*07:02"),
-    stringsAsFactors = FALSE
-  )
-  eg <- cv_env$cv_build_extra_groups(md, "cluster", function(g, lev) {
-    cv_env$cv_colors_for(lev)
-  })
-  ## registered groups stay out (they are already offered, and they own the
-  ## group filters); unregistered categorical columns come in.
-  expect_false("cluster" %in% names(eg$groups))
-  expect_true("dextramer_allele" %in% names(eg$groups))
-  expect_equal(
-    as.character(eg$groups$dextramer_allele$levels),
-    c("A*02:01", "B*07:02")
-  )
-  expect_equal(as.integer(eg$groups$dextramer_allele$values), c(0L, 0L, 1L))
-  expect_length(eg$skipped, 0)
-
-  ## A column with as many levels as cells is an identifier, not a grouping —
-  ## not colourable, but REPORTED rather than dropped, so the picker can say why
-  ## a column the Projection tab offers is missing here.
-  md$barcode_copy <- md$cell_barcode
-  eg2 <- cv_env$cv_build_extra_groups(md, "cluster", function(g, lev) {
-    cv_env$cv_colors_for(lev)
-  })
-  expect_false("barcode_copy" %in% names(eg2$groups))
-  expect_true("barcode_copy" %in% names(eg2$skipped))
-  expect_equal(eg2$skipped$barcode_copy, 3L)
 })
 
 test_that("cv_build_projections records dimensionality instead of dropping it", {

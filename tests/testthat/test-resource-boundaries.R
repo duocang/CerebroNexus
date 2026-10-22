@@ -1,8 +1,5 @@
 boundary_utils <- function() {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("crb_cache.R"), envir = env)
-  sys.source(viewer_test_path("msigdb.R"), envir = env)
-  source(viewer_test_path("utility_functions.R"), local = env)
+  env <- viewer_runtime_env()
   env
 }
 

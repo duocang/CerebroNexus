@@ -3,6 +3,7 @@
 # The example dataset now ships with real TCR data, so the immune repertoire
 # tab is present by default and its UI can be exercised directly.
 
+skip_if_not_installed("shinytest2")
 library(shinytest2)
 
 inst_dir <- viewer_app_test_path()
@@ -60,61 +61,20 @@ activate_ir_tab <- function(app, timeout = 60000) {
 }
 
 ## The tests in this file each booted their own app, and booting dominates their
-## runtime. The ones that only navigate the plot tabset and read the DOM now
-## share a single driver, created on first use and stopped when the file ends.
-## Ten of the sixteen tests use the shared driver; the other six keep their
-## own boot (below). Measured locally this takes the file from ~170s to ~120s.
+## runtime. The ones that only navigate the plot tabset and read the DOM share a
+## single driver, created on first use and stopped when the file ends.
 ##
 ## Sharing is deliberately NOT applied to a test that would be weakened by a
-## reused app. Keep giving these their own AppDriver:
+## reused app. These keep their own AppDriver:
 ##   * the lazy-loading boundary test — it asserts what a PRISTINE app has not
-##     loaded, and the shared driver has scRepertoire warm from other tests;
-##   * tests that assert INITIAL state (the active landing tab, "Group by"
-##     empty, Clonal UMAP ungrouped) — a reused app carries prior selections;
-##   * the info-dialog test — it leaves a modal open over the page;
-##   * the "does not break the main app" test — it reads the Data info tab of an
-##     app that has never opened the repertoire page.
-shared_driver <- NULL
-shared_driver_env <- environment()
-shared_app <- function() {
-  if (is.null(shared_driver)) {
-    local_app_support(inst_dir, envir = shared_driver_env)
-    shared_driver <<- AppDriver$new(
-      inst_dir,
-      name = "ir_shared",
-      height = 950,
-      width = 1619,
-      load_timeout = 60000
-    )
-    withr::defer(shared_driver$stop(), envir = shared_driver_env)
-  }
-  shared_driver
-}
-
-test_that("first IR plot tab is Clonal UMAP", {
-  # The default/landing tab should be the Clonal UMAP overview, so the first
-  # thing shown is where expanded clones sit on the cell projection.
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_default_tab",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
-  open_ir_tab(app)
-
-  active_tab <- app$get_js(
-    paste0(
-      "(function(){",
-      "var active=document.querySelector('#ir_tabs li.active a');",
-      "return active?active.getAttribute('data-value'):null;",
-      "})()"
-    )
-  )
-  expect_identical(active_tab, "Clonal UMAP")
-})
+##     loaded, and the shared driver has scRepertoire warm from other tests.
+##     The other checks that need an app which has never opened the repertoire
+##     page run on its boot too: Data info still renders, and the landing tab
+##     is Clonal UMAP;
+##   * tests that assert INITIAL state ("Group by" empty, Clonal UMAP
+##     ungrouped) — a reused app carries prior selections;
+##   * the info-dialog test — it leaves a modal open over the page.
+shared_app <- viewer_shared_app("ir_shared", inst_dir)
 
 test_that("immune_repertoire tab is present with example data (has TCR)", {
   app <- shared_app()
@@ -128,8 +88,8 @@ test_that("immune_repertoire tab is present with example data (has TCR)", {
 })
 
 test_that("Group by is visible on plots whose grouping it drives", {
-  # Group by is a real scRepertoire parameter for Scatter, and the custom BCR
-  # Isotype/SHM Proxy renderers also use it as their grouping column. It should
+  # Group by is a real scRepertoire parameter, and the custom BCR Isotype
+  # renderer also uses it as its grouping column. It should
   # only be hidden on Paired Scatter, where comparison is controlled by the
   # paired sample metadata selectors.
   local_app_support(inst_dir)
@@ -313,23 +273,6 @@ test_that("immune_repertoire tab can be opened and renders settings", {
     'document.querySelector("#ir_chain") !== null;'
   )
   expect_true(chain_present)
-})
-
-test_that("immune_repertoire module loads without breaking main app", {
-  local_app_support(inst_dir)
-  app <- AppDriver$new(
-    inst_dir,
-    name = "ir_load",
-    height = 950,
-    width = 1619,
-    load_timeout = 60000
-  )
-  withr::defer(app$stop())
-  app$wait_for_idle(timeout = 20000)
-
-  # Data info tab should still render normally (1476 cells in the new example)
-  cells_box <- app$get_value(output = "load_data_overview")
-  expect_true(grepl("1,?000", cells_box$html))
 })
 
 test_that("Clonal UMAP tab renders with receptor + projection selectors", {
@@ -713,11 +656,36 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
   app$wait_for_idle(timeout = 60000)
 
   ## Startup: nothing repertoire-related has rendered, so scRepertoire is unloaded.
+  ## Strict identity: a missing or NULL export must fail, not pass as FALSE.
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
   expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
 
+  ## Startup probes availability with system.file() only. Wait past the former
+  ## one-second background-prewarm timer, so a deferred loader would have fired.
+  Sys.sleep(1.5)
+  app$wait_for_idle(timeout = 10000)
+  expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)
+  expect_identical(app$get_value(export = "ir_heavy_deps_loaded"), FALSE)
+
+  ## The module does not break the main app: Data info of an app that has never
+  ## opened the repertoire page shows the example's 1000 cells.
+  cells_box <- app$get_value(output = "load_data_overview")
+  expect_true(grepl("1,?000", cells_box$html))
+
   ## Landing on the IR tab shows the default "Clonal UMAP" — a self-made plot —
   ## which must not drag in scRepertoire.
+  open_ir_tab(app)
+  expect_identical(
+    app$get_js(
+      paste0(
+        "(function(){",
+        "var active=document.querySelector('#ir_tabs li.active a');",
+        "return active?active.getAttribute('data-value'):null;",
+        "})()"
+      )
+    ),
+    "Clonal UMAP"
+  )
   activate_ir_tab(app)
   app$wait_for_idle(timeout = 45000)
   expect_identical(app$get_value(export = "scRepertoire_loaded"), FALSE)

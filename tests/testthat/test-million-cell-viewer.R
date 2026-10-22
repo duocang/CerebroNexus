@@ -206,8 +206,7 @@ test_that("the 1M demo replaces the illustrative path with marker guidance", {
 })
 
 test_that("the Viewer filters methods at trajectory selection boundaries", {
-  utility <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = utility)
+  utility <- viewer_runtime_env()
   expect_identical(
     utility$viewerSupportedTrajectoryMethods(
       c("unsupported", "marker_guided", "monocle2", "illustrative")
@@ -217,8 +216,7 @@ test_that("the Viewer filters methods at trajectory selection boundaries", {
 })
 
 test_that("Viewer spatial readers leave molecule sidecars dormant", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   dataset <- new.env(parent = emptyenv())
   class(dataset) <- c("Cerebro", "R6")
   dataset$spatial <- list(
@@ -239,8 +237,7 @@ test_that("Viewer spatial readers leave molecule sidecars dormant", {
 })
 
 test_that("million-cell hover stays columnar until the browser needs it", {
-  utility <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = utility)
+  utility <- viewer_runtime_env()
   columns <- utility$cerebroProjectionHoverColumns(
     data.frame(
       cell_barcode = c("cell-1", "cell-2"),
@@ -260,26 +257,16 @@ test_that("million-cell hover stays columnar until the browser needs it", {
 })
 
 test_that("sparse linked attributes expand into typed canonical vectors", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   source <- viewer_test_path("www", "cell_views_state.js")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs = require('fs');",
-      "global.window = {};",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(source, quote = '"')
-      ),
-      "const values = window.CBViewState.expandSparse(",
-      "  new Int32Array([1, 4]), new Int16Array([7, 9]), 6, -1);",
-      "console.log(JSON.stringify(Array.from(values)));"
-    ),
-    runner
-  )
-
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  output <- run_node_script(c(
+    "const fs = require('fs');",
+    "global.window = {};",
+    js_eval_file(source),
+    "const values = window.CBViewState.expandSparse(",
+    "  new Int32Array([1, 4]), new Int16Array([7, 9]), 6, -1);",
+    "console.log(JSON.stringify(Array.from(values)));"
+  ))
 
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
@@ -289,32 +276,22 @@ test_that("sparse linked attributes expand into typed canonical vectors", {
 })
 
 test_that("shared browser base reuses only matching dataset projections", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   source <- viewer_test_path("www", "cell_views_state.js")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs = require('fs'); global.window = {};",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(source, quote = '"')
-      ),
-      "const S = window.CBViewState;",
-      "const first = S.sharedBase(null, 'dataset-a', 3, 'order-a');",
-      "first.projections.umap = {x:new Float32Array(3),y:new Float32Array(3)};",
-      "const hit = S.sharedBase(first, 'dataset-a', 3, 'order-a');",
-      "const changedDataset = S.sharedBase(first, 'dataset-b', 3, 'order-a');",
-      "const changedCount = S.sharedBase(first, 'dataset-a', 4, 'order-a');",
-      "const changedOrder = S.sharedBase(first, 'dataset-a', 3, 'order-b');",
-      "console.log(JSON.stringify({hit:hit===first,dataset:changedDataset!==first,",
-      "count:changedCount!==first,order:changedOrder!==first,",
-      "projection:hit.projections.umap===first.projections.umap}));"
-    ),
-    runner
-  )
-
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  output <- run_node_script(c(
+    "const fs = require('fs'); global.window = {};",
+    js_eval_file(source),
+    "const S = window.CBViewState;",
+    "const first = S.sharedBase(null, 'dataset-a', 3, 'order-a');",
+    "first.projections.umap = {x:new Float32Array(3),y:new Float32Array(3)};",
+    "const hit = S.sharedBase(first, 'dataset-a', 3, 'order-a');",
+    "const changedDataset = S.sharedBase(first, 'dataset-b', 3, 'order-a');",
+    "const changedCount = S.sharedBase(first, 'dataset-a', 4, 'order-a');",
+    "const changedOrder = S.sharedBase(first, 'dataset-a', 3, 'order-b');",
+    "console.log(JSON.stringify({hit:hit===first,dataset:changedDataset!==first,",
+    "count:changedCount!==first,order:changedOrder!==first,",
+    "projection:hit.projections.umap===first.projections.umap}));"
+  ))
 
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
@@ -330,37 +307,27 @@ test_that("shared browser base reuses only matching dataset projections", {
 })
 
 test_that("specialist lifecycle owns request, ready, and auxiliary state", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   source <- viewer_test_path("www", "cell_views_state.js")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs = require('fs'); global.window = {};",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(source, quote = '"')
-      ),
-      "const L = window.CBViewState.specialistLifecycle, timings = {};",
-      "const first = L.begin(timings, 'spatial', true); first.requestAtMs = 10;",
-      "L.update(timings, 'spatial', {bytes: 42});",
-      "L.activate(timings, 'spatial', 20);",
-      "const ready = L.ready(timings, 'spatial', 35);",
-      "const view = {data:{wire_token:7}};",
-      "const requested = L.requestAux(view);",
-      "const duplicate = L.requestAux(view);",
-      "const rejected = L.acceptAux(view, {wire_token:8});",
-      "const accepted = L.acceptAux(view, {wire_token:7});",
-      "const cached = L.begin(timings, 'spatial', false);",
-      "console.log(JSON.stringify({generation:cached.generation,",
-      "cached:cached.cached,bytes:ready.bytes,latency:ready.requestToReadyMs,",
-      "activation:ready.activationStartedAtMs,requested,duplicate,rejected,accepted,",
-      "pending:view._auxPending,token:view._auxToken}));"
-    ),
-    runner
-  )
-
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  output <- run_node_script(c(
+    "const fs = require('fs'); global.window = {};",
+    js_eval_file(source),
+    "const L = window.CBViewState.specialistLifecycle, timings = {};",
+    "const first = L.begin(timings, 'spatial', true); first.requestAtMs = 10;",
+    "L.update(timings, 'spatial', {bytes: 42});",
+    "L.activate(timings, 'spatial', 20);",
+    "const ready = L.ready(timings, 'spatial', 35);",
+    "const view = {data:{wire_token:7}};",
+    "const requested = L.requestAux(view);",
+    "const duplicate = L.requestAux(view);",
+    "const rejected = L.acceptAux(view, {wire_token:8});",
+    "const accepted = L.acceptAux(view, {wire_token:7});",
+    "const cached = L.begin(timings, 'spatial', false);",
+    "console.log(JSON.stringify({generation:cached.generation,",
+    "cached:cached.cached,bytes:ready.bytes,latency:ready.requestToReadyMs,",
+    "activation:ready.activationStartedAtMs,requested,duplicate,rejected,accepted,",
+    "pending:view._auxPending,token:view._auxToken}));"
+  ))
 
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
@@ -382,45 +349,35 @@ test_that("specialist lifecycle owns request, ready, and auxiliary state", {
 })
 
 test_that("canonical mapping centralizes identity, subset, and index order", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   source <- viewer_test_path("www", "cell_views_state.js")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs = require('fs'); global.window = {};",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(source, quote = '"')
-      ),
-      "const M = window.CBViewState.canonicalMapping;",
-      "const identity = {cell_count:4,",
-      " cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),",
-      " cell_order_fingerprint:'md5-cell-order-v1:'+'b'.repeat(32),",
-      " pack_dataset_fingerprint:'md5-crb-v1:'+'c'.repeat(32)};",
-      "const resource = {cells:4,dataset_fingerprint:identity.cell_fingerprint,",
-      " cell_order_fingerprint:identity.cell_order_fingerprint,",
-      " pack_dataset_fingerprint:identity.pack_dataset_fingerprint};",
-      "const include = M.subsetContract({protocol:'canonical-subset-v1',",
-      " kind:'include_uint32',canonical_cells:4,cells:2,index_base:0,",
-      " dtype:'uint32',url:'subset.bin',bytes:8},4,2);",
-      "const exclude = M.subsetContract({protocol:'canonical-subset-v1',",
-      " kind:'exclude_uint32',canonical_cells:4,cells:2,index_base:0,",
-      " dtype:'uint32',url:'subset.bin',bytes:8},4,2);",
-      "const included = [], excluded = [];",
-      "M.forEachIndex(include,new Uint32Array([3,1]),i=>included.push(i));",
-      "M.forEachIndex(exclude,new Uint32Array([1,3]),i=>excluded.push(i));",
-      "console.log(JSON.stringify({identity:M.resourceIdentityMatches(resource,identity),",
-      "badIdentity:M.resourceIdentityMatches({...resource,cells:3},identity),",
-      "includeValid:M.indicesMatch(include,new Uint32Array([3,1])),",
-      "duplicate:M.indicesMatch(include,new Uint32Array([1,1])),",
-      "excludeValid:M.indicesMatch(exclude,new Uint32Array([1,3])),",
-      "unsorted:M.indicesMatch(exclude,new Uint32Array([3,1])),included,excluded}));"
-    ),
-    runner
-  )
-
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  output <- run_node_script(c(
+    "const fs = require('fs'); global.window = {};",
+    js_eval_file(source),
+    "const M = window.CBViewState.canonicalMapping;",
+    "const identity = {cell_count:4,",
+    " cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),",
+    " cell_order_fingerprint:'md5-cell-order-v1:'+'b'.repeat(32),",
+    " pack_dataset_fingerprint:'md5-crb-v1:'+'c'.repeat(32)};",
+    "const resource = {cells:4,dataset_fingerprint:identity.cell_fingerprint,",
+    " cell_order_fingerprint:identity.cell_order_fingerprint,",
+    " pack_dataset_fingerprint:identity.pack_dataset_fingerprint};",
+    "const include = M.subsetContract({protocol:'canonical-subset-v1',",
+    " kind:'include_uint32',canonical_cells:4,cells:2,index_base:0,",
+    " dtype:'uint32',url:'subset.bin',bytes:8},4,2);",
+    "const exclude = M.subsetContract({protocol:'canonical-subset-v1',",
+    " kind:'exclude_uint32',canonical_cells:4,cells:2,index_base:0,",
+    " dtype:'uint32',url:'subset.bin',bytes:8},4,2);",
+    "const included = [], excluded = [];",
+    "M.forEachIndex(include,new Uint32Array([3,1]),i=>included.push(i));",
+    "M.forEachIndex(exclude,new Uint32Array([1,3]),i=>excluded.push(i));",
+    "console.log(JSON.stringify({identity:M.resourceIdentityMatches(resource,identity),",
+    "badIdentity:M.resourceIdentityMatches({...resource,cells:3},identity),",
+    "includeValid:M.indicesMatch(include,new Uint32Array([3,1])),",
+    "duplicate:M.indicesMatch(include,new Uint32Array([1,1])),",
+    "excludeValid:M.indicesMatch(exclude,new Uint32Array([1,3])),",
+    "unsorted:M.indicesMatch(exclude,new Uint32Array([3,1])),included,excluded}));"
+  ))
 
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
@@ -439,37 +396,27 @@ test_that("canonical mapping centralizes identity, subset, and index order", {
 })
 
 test_that("resource descriptors share shape and identity validation", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   source <- viewer_test_path("www", "cell_views_state.js")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs=require('fs'); global.window={};",
-      sprintf(
-        "eval(fs.readFileSync(%s,'utf8'));",
-        encodeString(source, quote = '"')
-      ),
-      "const R=window.CBViewState.resourceDescriptor;",
-      "const identity={cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),",
-      "cell_order_fingerprint:'md5-cell-order-v1:'+'b'.repeat(32),",
-      "pack_dataset_fingerprint:'md5-crb-v1:'+'c'.repeat(32)};",
-      "const resource={protocol:'spatial-geometry-v1',url:'g.bin',cells:4,",
-      "dimensions:2,dtype:'float32',bytes:32,",
-      "dataset_fingerprint:identity.cell_fingerprint,",
-      "cell_order_fingerprint:identity.cell_order_fingerprint,",
-      "pack_dataset_fingerprint:identity.pack_dataset_fingerprint};",
-      "const valid=R.validate(resource,{protocol:'spatial-geometry-v1',",
-      "cells:4,dimensions:2,dtype:'float32',requireUrl:true,identity});",
-      "console.log(JSON.stringify({valid:!!valid,bytes:valid.bytes,",
-      "shape:!!R.validate({...resource,dimensions:3},{cells:4,dimensions:2}),",
-      "identity:!!R.validate({...resource,dataset_fingerprint:'bad'},",
-      "{cells:4,identity}),width:R.codeWidth({dtype:'uint16'})}));"
-    ),
-    runner
-  )
-
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  output <- run_node_script(c(
+    "const fs=require('fs'); global.window={};",
+    js_eval_file(source),
+    "const R=window.CBViewState.resourceDescriptor;",
+    "const identity={cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),",
+    "cell_order_fingerprint:'md5-cell-order-v1:'+'b'.repeat(32),",
+    "pack_dataset_fingerprint:'md5-crb-v1:'+'c'.repeat(32)};",
+    "const resource={protocol:'spatial-geometry-v1',url:'g.bin',cells:4,",
+    "dimensions:2,dtype:'float32',bytes:32,",
+    "dataset_fingerprint:identity.cell_fingerprint,",
+    "cell_order_fingerprint:identity.cell_order_fingerprint,",
+    "pack_dataset_fingerprint:identity.pack_dataset_fingerprint};",
+    "const valid=R.validate(resource,{protocol:'spatial-geometry-v1',",
+    "cells:4,dimensions:2,dtype:'float32',requireUrl:true,identity});",
+    "console.log(JSON.stringify({valid:!!valid,bytes:valid.bytes,",
+    "shape:!!R.validate({...resource,dimensions:3},{cells:4,dimensions:2}),",
+    "identity:!!R.validate({...resource,dataset_fingerprint:'bad'},",
+    "{cells:4,identity}),width:R.codeWidth({dtype:'uint16'})}));"
+  ))
 
   expect_equal(attr(output, "status"), NULL)
   expect_identical(
@@ -479,28 +426,18 @@ test_that("resource descriptors share shape and identity validation", {
 })
 
 test_that("telemetry snapshots normalize shared transport phases", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   source <- viewer_test_path("www", "cell_views_state.js")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(runner), add = TRUE)
-  writeLines(
-    c(
-      "const fs=require('fs'); global.window={};",
-      sprintf(
-        "eval(fs.readFileSync(%s,'utf8'));",
-        encodeString(source, quote = '"')
-      ),
-      "const T=window.CBViewState.telemetry;",
-      "const metric=T.transport({server_prepare_ms:'12.5',",
-      "server_resource_ms:'3',server_bundle_ms:'bad',sent_at_ms:900},",
-      "{bytes:42,decodeMs:4,requestToBinaryMs:8},true,1000);",
-      "const snapshot=T.snapshot(metric,{decodeToDrawMs:6});",
-      "console.log(JSON.stringify(snapshot));"
-    ),
-    runner
-  )
-
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
+  output <- run_node_script(c(
+    "const fs=require('fs'); global.window={};",
+    js_eval_file(source),
+    "const T=window.CBViewState.telemetry;",
+    "const metric=T.transport({server_prepare_ms:'12.5',",
+    "server_resource_ms:'3',server_bundle_ms:'bad',sent_at_ms:900},",
+    "{bytes:42,decodeMs:4,requestToBinaryMs:8},true,1000);",
+    "const snapshot=T.snapshot(metric,{decodeToDrawMs:6});",
+    "console.log(JSON.stringify(snapshot));"
+  ))
 
   expect_equal(attr(output, "status"), NULL)
   expect_identical(

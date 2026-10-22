@@ -29,8 +29,10 @@ test_that("all visualization pages keep usable controls, legends and canvases", 
   app$run_js(
     "document.getElementById('crb_file_selector').dispatchEvent(new Event('change',{bubbles:true}))"
   )
+  ## The default 4 s is too short while parallel test files boot their apps.
   app$wait_for_js(
-    "document.getElementById('cerebro-dataset-loading')?.hidden === true"
+    "document.getElementById('cerebro-dataset-loading')?.hidden === true",
+    timeout = 30000
   )
   probe <- paste(
     readLines(testthat::test_path("fixtures", "viewer-layout.js")),

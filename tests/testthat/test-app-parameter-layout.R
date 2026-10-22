@@ -11,6 +11,16 @@ test_that("parameter bars use available width and wrap without losing controls",
     load_timeout = 60000
   )
   withr::defer(app$stop())
+  ## set_window_size() waits for Shiny to stay idle for half a second after
+  ## every resize. The checks below sample the layout until it stops moving,
+  ## so only let the browser process the resize and paint before sampling.
+  resize <- function(width) {
+    app$set_window_size(width = width, height = 950, wait = FALSE)
+    app$get_js(paste0(
+      "new Promise(resolve => requestAnimationFrame(() => ",
+      "requestAnimationFrame(() => resolve(true))))"
+    ))
+  }
   probe <- paste(
     readLines(test_path("fixtures", "parameter-layout.js")),
     collapse = "\n"
@@ -33,7 +43,7 @@ test_that("parameter bars use available width and wrap without losing controls",
   previous <- pages[[1]]
   measure <- function(page, suffix = page) {
     for (width in c(1440, 760, 390)) {
-      app$set_window_size(width = width, height = 950)
+      resize(width)
       expression <- sprintf(
         "(%s)(%s)",
         probe,
@@ -75,7 +85,7 @@ test_that("parameter bars use available width and wrap without losing controls",
         )
       }
     }
-    app$set_window_size(width = 1440, height = 950)
+    resize(1440)
   }
   for (page in names(pages)) {
     if (pages[[page]] != previous) {
@@ -149,7 +159,7 @@ test_that("parameter bars use available width and wrap without losing controls",
       "!!document.querySelector('.cerebro-settings-drawer.is-open')"
     )
     for (width in c(1440, 390)) {
-      app$set_window_size(width = width, height = 950)
+      resize(width)
       app$wait_for_js(paste0(
         "(() => {const drawer=document.querySelector('.cerebro-settings-drawer.is-open');",
         "const fields=Array.from(drawer.querySelectorAll('.form-group')).filter(e=>e.getClientRects().length);",
@@ -176,6 +186,6 @@ test_that("parameter bars use available width and wrap without losing controls",
     app$click(
       selector = '.cerebro-settings-drawer.is-open .cerebro-settings-close'
     )
-    app$set_window_size(width = 1440, height = 950)
+    resize(1440)
   }
 })

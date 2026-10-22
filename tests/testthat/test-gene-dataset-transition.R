@@ -1,7 +1,7 @@
 test_that("dataset changes bypass pending gene edits and remap canonical names immediately", {
   shiny::testServer(
     function(input, output, session) {
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       list_of_genes <- reactiveVal(c("A", "B"))
       sys.source(
         viewer_test_path("gene_expression", "obj_selected_genes.R"),
@@ -193,7 +193,7 @@ test_that("a dataset switch notifies gene consumers once", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       list_of_genes <- reactiveVal(c("A", "B"))
       sys.source(
         viewer_test_path("gene_expression", "obj_selected_genes.R"),

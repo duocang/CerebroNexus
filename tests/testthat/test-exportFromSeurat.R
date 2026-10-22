@@ -332,20 +332,9 @@ test_that("h5 attach is lazy: .attachExternalExpression returns a DelayedMatrix
            seed, not an eagerly materialised dgCMatrix (low RAM, instant attach)", {
   skip_if_not_installed("HDF5Array")
 
-  ## source the runtime attach helper from inst/ — it's a Shiny utility,
-  ## not part of the package namespace
-  inst_util <- system.file(
-    "viewer/utility_functions.R",
-    package = "CerebroNexus"
-  )
-  if (!nzchar(inst_util)) {
-    inst_util <- testthat::test_path(
-      "../../inst/viewer/utility_functions.R"
-    )
-  }
-  ## load only the symbol we need into a fresh env to avoid namespace pollution
-  attach_env <- new.env(parent = globalenv())
-  source(inst_util, local = attach_env, echo = FALSE)
+  ## The runtime attach helper is a Viewer utility, not part of the package
+  ## namespace.
+  attach_env <- viewer_runtime_env()
   skip_if_not(
     is.function(attach_env$.attachExternalExpression),
     ".attachExternalExpression not found in utility_functions.R"

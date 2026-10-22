@@ -87,7 +87,7 @@ test_that("HLA network renders only on its requested subtab with a current conte
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       reads <- 0L
       sent <- list()
       context <- list(epoch = "session", dataset_key = "tiny", generation = 1L)
@@ -207,16 +207,19 @@ test_that("both HLA association table consumers wait for a visible, valid featur
         reads["breadth"] <<- reads["breadth"] + 1L
         data.frame(n = 2L)
       }
+      hla_unit_noun <- function() "cell"
       viewer_server_load(
         viewer_server_statements("hla_tcr_motifs", "associations.R"),
         scope,
         names = c(
           "hla_association_page_requested",
           "hla_association_consumer_ready",
+          "hla_overlap_live_table",
+          "hla_overlap_summary_skeleton",
+          "hla_overlap_breadth_skeleton",
           "hla_overlap_summary_proxy",
           "hla_overlap_table_proxy"
-        ),
-        events = "hla_association_consumer_ready"
+        )
       )
     },
     {

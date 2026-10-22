@@ -1,6 +1,5 @@
 wire_file <- viewer_test_path("www", "cell_views_wire.js")
 bundle_file <- viewer_test_path("coordinated_views", "bundle.R")
-utility_file <- viewer_test_path("utility_functions.R")
 
 wire_header <- function(payload) {
   header_length <- sum(as.integer(payload[seq_len(4L)]) * 256^(0:3))
@@ -10,8 +9,26 @@ wire_header <- function(payload) {
   )
 }
 
+## Decodes a packed envelope with the browser's cell_views_wire.js.
+unpack_in_node <- function(packed) {
+  payload <- withr::local_tempfile(fileext = ".bin")
+  writeBin(packed, payload)
+  output <- expect_node_script(c(
+    "const fs = require('fs');",
+    "global.window = global;",
+    js_eval_file(wire_file),
+    sprintf(
+      "const input = fs.readFileSync(%s);",
+      encodeString(payload, quote = "\"")
+    ),
+    "const buffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);",
+    "console.log(JSON.stringify(window.CBViewWire.unpack(buffer), (_key, value) => ArrayBuffer.isView(value) ? Array.from(value) : value));"
+  ))
+  jsonlite::fromJSON(output, simplifyVector = FALSE)
+}
+
 test_that("the browser restores compact linked-view vectors", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   skip_if_not_installed("base64enc")
   skip_if_not_installed("jsonlite")
   expect_true(file.exists(wire_file), info = "cell_views_wire.js not found")
@@ -19,8 +36,7 @@ test_that("the browser restores compact linked-view vectors", {
     return(invisible(NULL))
   }
 
-  helpers <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = helpers)
+  helpers <- viewer_runtime_env()
   sys.source(bundle_file, envir = helpers)
   packed <- helpers$cv_wire_pack_bundle(
     list(
@@ -47,31 +63,7 @@ test_that("the browser restores compact linked-view vectors", {
   expect_identical(header$groups$cluster$values$`__cv_wire__`, "i32")
   expect_identical(header$cat_extra$batch$values$`__cv_wire__`, "i8")
   expect_identical(header$fields$score$v$`__cv_wire__`, "i16")
-  payload <- tempfile(fileext = ".json")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(c(payload, runner)), add = TRUE)
-  writeBin(packed, payload)
-  writeLines(
-    c(
-      "const fs = require('fs');",
-      "global.window = global;",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(wire_file, quote = "\"")
-      ),
-      sprintf(
-        "const input = fs.readFileSync(%s);",
-        encodeString(payload, quote = "\"")
-      ),
-      "const buffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);",
-      "console.log(JSON.stringify(window.CBViewWire.unpack(buffer), (_key, value) => ArrayBuffer.isView(value) ? Array.from(value) : value));"
-    ),
-    runner
-  )
-
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
-  expect_equal(attr(output, "status"), NULL)
-  restored <- jsonlite::fromJSON(output, simplifyVector = FALSE)
+  restored <- unpack_in_node(packed)
 
   expect_identical(restored$wire_format, "binary-v1")
   expect_identical(unlist(restored$cells), c("cell-1", "cell-2"))
@@ -85,8 +77,7 @@ test_that("the browser restores compact linked-view vectors", {
 })
 
 test_that("hover code remapping preserves observed order and missing labels", {
-  helpers <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = helpers)
+  helpers <- viewer_runtime_env()
   for (values in list(
     factor(c("b", NA, "a", "NA", "b"), levels = c("unused", "NA", "a", "b")),
     ordered(c("b", "a", NA), levels = c("a", "b")),
@@ -113,8 +104,7 @@ test_that("hover code remapping preserves observed order and missing labels", {
 })
 
 test_that("binary envelopes also preserve messages without packed vectors", {
-  helpers <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = helpers)
+  helpers <- viewer_runtime_env()
   message <- list(id = "empty", data = list(n = 0L), labels = c("a", "b"))
   packed <- helpers$cv_wire_pack_message(message)
   expect_type(packed, "raw")
@@ -126,11 +116,10 @@ test_that("binary envelopes also preserve messages without packed vectors", {
 })
 
 test_that("specialist cell views use the same binary envelope", {
-  skip_if(Sys.which("node") == "", "node not on PATH")
+  skip_if_no_node()
   skip_if_not_installed("jsonlite")
 
-  helpers <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = helpers)
+  helpers <- viewer_runtime_env()
   sys.source(bundle_file, envir = helpers)
   packed <- helpers$cv_wire_pack_message(
     list(
@@ -143,31 +132,7 @@ test_that("specialist cell views use the same binary envelope", {
     ),
     min_length = 1L
   )
-  payload <- tempfile(fileext = ".bin")
-  runner <- tempfile(fileext = ".js")
-  on.exit(unlink(c(payload, runner)), add = TRUE)
-  writeBin(packed, payload)
-  writeLines(
-    c(
-      "const fs = require('fs');",
-      "global.window = global;",
-      sprintf(
-        "eval(fs.readFileSync(%s, 'utf8'));",
-        encodeString(wire_file, quote = "\"")
-      ),
-      sprintf(
-        "const input = fs.readFileSync(%s);",
-        encodeString(payload, quote = "\"")
-      ),
-      "const buffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);",
-      "console.log(JSON.stringify(window.CBViewWire.unpack(buffer), (_key, value) => ArrayBuffer.isView(value) ? Array.from(value) : value));"
-    ),
-    runner
-  )
-
-  output <- system2("node", runner, stdout = TRUE, stderr = TRUE)
-  expect_equal(attr(output, "status"), NULL)
-  restored <- jsonlite::fromJSON(output, simplifyVector = FALSE)
+  restored <- unpack_in_node(packed)
   expect_identical(restored$id, "overview_projection")
   expect_equal(restored$data$x[[1L]], 1.25)
   expect_null(restored$data$x[[2L]])
@@ -178,8 +143,7 @@ test_that("specialist cell views use the same binary envelope", {
 
 test_that("large specialist views send their first frame before hover data", {
   skip_if_not_installed("jsonlite")
-  runtime <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = runtime)
+  runtime <- viewer_runtime_env()
   sent <- list()
   runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$viewerDatasetIdentity <- function() {
@@ -263,8 +227,7 @@ test_that("large specialist views send their first frame before hover data", {
 
 test_that("deferred specialist IDs can declare trace lengths without placeholders", {
   skip_if_not_installed("jsonlite")
-  runtime <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = runtime)
+  runtime <- viewer_runtime_env()
   sent <- list()
   runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$viewerDatasetIdentity <- function() {
@@ -326,8 +289,7 @@ test_that("deferred specialist IDs can declare trace lengths without placeholder
 
 test_that("specialist views can reference validated shared coordinates", {
   skip_if_not_installed("jsonlite")
-  runtime <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = runtime)
+  runtime <- viewer_runtime_env()
 
   has_contract <- all(
     c(
@@ -477,8 +439,7 @@ test_that("specialist views can reference validated shared coordinates", {
 })
 
 test_that("core auxiliary identities precede full metadata and reject duplicate stages", {
-  env <- new.env(parent = globalenv())
-  sys.source(utility_file, env)
+  env <- viewer_runtime_env()
   sent <- list()
   core_builds <- 0L
   full_builds <- 0L
@@ -527,8 +488,7 @@ test_that("core auxiliary identities precede full metadata and reject duplicate 
 
 test_that("renders with delivered cells name the barcodes the browser holds", {
   skip_if_not_installed("jsonlite")
-  runtime <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = runtime)
+  runtime <- viewer_runtime_env()
   sent <- list()
   runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$session <- list(

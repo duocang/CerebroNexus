@@ -1,7 +1,7 @@
 test_that("bound empty filters hide cells while unmounted filters keep defaults", {
   shiny::testServer(
     function(input, output, session) {
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       metadata <- data.frame(state = factor(c("A", "B", "A")))
       getGroups <- function() "state"
       getGroupLevels <- function(group) levels(metadata[[group]])

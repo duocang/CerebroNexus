@@ -131,7 +131,7 @@ test_that("generated apps select and safely render external sheets", {
   runtime <- new.env()
   runtime$Cerebro.options <- config
   runtime$Cerebro.options$cerebro_root <- app
-  source(file.path(app, "viewer", "utility_functions.R"), local = runtime)
+  viewer_runtime_env(runtime, root = file.path(app, "viewer"))
   groups <- runtime$extra_material_table_groups(config$extra_tables, NULL)
 
   expect_identical(

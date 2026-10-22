@@ -117,6 +117,32 @@ test_that("CRB preflight reads, inspects, and releases one dataset at a time", {
   expect_named(preflight$spatial_catalogs, c("First", "Second"))
 })
 
+test_that("CRB preflight keeps each spatial backend at its dataset index", {
+  sidecar <- list(type = "directory", location = "second.spatial")
+  local_mocked_bindings(
+    .isRecognizedCerebroObject = function(object) TRUE,
+    .readBundleDatasetInfo = function(object, label, path) list(),
+    .spatialMoleculeBackend = function(object, file) {
+      if (identical(file, "second.crb")) sidecar else NULL
+    },
+    .immuneRepertoireBackend = function(object, file) NULL
+  )
+  paths <- c(First = "first.crb", Second = "second.crb", Third = "third.crb")
+
+  preflight <- .preflightBundleData(
+    paths,
+    read_object = function(path) list(path = path),
+    inspect_backend = function(path, object) list(type = "embedded"),
+    inspect_spatial = function(object, dataset) list()
+  )
+
+  ## A NULL backend for the first dataset must not shift the second one.
+  expect_identical(
+    preflight$spatial_backends,
+    list(First = NULL, Second = sidecar, Third = NULL)
+  )
+})
+
 test_that("spatial preflight does not hydrate molecule sidecars", {
   hydrate_values <- logical()
   object <- new.env(parent = emptyenv())
@@ -328,11 +354,7 @@ test_that("scatter defaults accept one value or one value per dataset", {
 })
 
 test_that("Viewer resolves scatter defaults for the selected dataset", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = runtime
-  )
+  runtime <- viewer_runtime_env()
   options <- list(
     point_size = c(PBMC = 2, Xenium = 5),
     point_opacity = c(PBMC = 0.4, Xenium = 1),
@@ -496,10 +518,7 @@ render_bundle_spatial_background <- function(
     ## that called it, which is this renderer environment.
     renderer$session <- session
   }
-  sys.source(
-    file.path(app, "viewer", "utility_functions.R"),
-    envir = renderer
-  )
+  viewer_runtime_env(renderer, root = file.path(app, "viewer"))
   sys.source(
     file.path(app, "viewer", "spatial", "func_spatial_helpers.R"),
     envir = renderer
@@ -554,23 +573,9 @@ render_bundle_spatial_background <- function(
 }
 
 source_bundle_runtime <- function(app = NULL) {
-  utility <- if (is.null(app)) {
-    testthat::test_path("../../inst/viewer/utility_functions.R")
-  } else {
-    file.path(app, "viewer", "utility_functions.R")
-  }
-  if (!file.exists(utility)) {
-    utility <- system.file(
-      "viewer",
-      "utility_functions.R",
-      package = "CerebroNexus"
-    )
-  }
-  stopifnot(file.exists(utility))
-  runtime <- new.env(parent = globalenv())
-  sys.source(file.path(dirname(utility), "crb_cache.R"), envir = runtime)
-  sys.source(utility, envir = runtime)
-  runtime
+  root <- if (is.null(app)) viewer_test_path() else file.path(app, "viewer")
+  stopifnot(file.exists(file.path(root, "utility_functions.R")))
+  viewer_runtime_env(root = root)
 }
 
 capture_backend_contract <- function(operation) {
@@ -978,7 +983,7 @@ test_that("build and runtime share the backend plan decision contract", {
   for (case_name in names(cases)) {
     backend <- cases[[case_name]]
     object <- new_backend_contract_object(backend[c("type", "location")])
-    build <- .effectiveBundleBackendPlan(backend)
+    build <- .crbContract()$.effectiveRuntimeBackendPlan(backend)
     app_runtime <- runtime$.fallbackRuntimeBackendPlan(
       object,
       file.path(root, paste0(case_name, ".crb"))
@@ -987,11 +992,11 @@ test_that("build and runtime share the backend plan decision contract", {
     expect_identical(app_runtime, build, info = case_name)
   }
   expect_identical(
-    .effectiveBundleBackendPlan(cases$embedded),
+    .crbContract()$.effectiveRuntimeBackendPlan(cases$embedded),
     list(type = "embedded", mode = "embedded", location = NULL)
   )
   expect_identical(
-    .effectiveBundleBackendPlan(cases$h5),
+    .crbContract()$.effectiveRuntimeBackendPlan(cases$h5),
     list(type = "h5", mode = "bundled", location = "matrix.h5")
   )
 })
@@ -2315,10 +2320,11 @@ test_that("spatial image targets bound long logical names and filenames", {
   expect_true(all(
     nchar(strsplit(target, "/", fixed = TRUE)[[1L]], type = "bytes") <= 255L
   ))
-  ## Keep enough headroom for an ordinary Windows app directory beneath the
-  ## historical 260-character full-path limit. Per-segment validity alone is
-  ## insufficient when four encoded logical identifiers are nested.
-  expect_lte(nchar(target, type = "bytes"), 180L)
+  ## Keep enough headroom for an ordinary Windows app directory, plus its
+  ## sibling staging directory, beneath the 260-character MAX_PATH limit.
+  ## Per-segment validity alone is insufficient when four encoded logical
+  ## identifiers are nested.
+  expect_lte(nchar(target, type = "bytes"), 120L)
   expect_match(target, "\\.png$")
 })
 
@@ -3392,23 +3398,7 @@ test_that("a bundled real H5 backend attaches with exact data", {
 
 test_that("the runtime rejects an H5 backend that is a directory", {
   skip_if_not_installed("HDF5Array")
-  runtime <- new.env(parent = globalenv())
-  source_path <- testthat::test_path(
-    "..",
-    "..",
-    "inst",
-    "viewer",
-    "utility_functions.R"
-  )
-  if (!file.exists(source_path)) {
-    source_path <- system.file(
-      "viewer",
-      "utility_functions.R",
-      package = "CerebroNexus"
-    )
-  }
-  expect_true(file.exists(source_path))
-  sys.source(source_path, envir = runtime)
+  runtime <- source_bundle_runtime()
   root <- withr::local_tempdir()
   dir.create(file.path(root, "matrix.h5"))
   object <- new.env(parent = emptyenv())

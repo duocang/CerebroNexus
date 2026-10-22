@@ -1,52 +1,3 @@
-#' Remove Common Leading Whitespace from a String
-#'
-#' Eliminates the minimal common indentation shared by all non-empty lines of
-#' the input, preserving relative indentation within blocks.
-#'
-#' @param string A character string containing text with indentation.
-#' @return A dedented character string.
-#' @keywords internal
-#' @noRd
-dedent <- function(string) {
-  if (!is.character(string) || length(string) != 1) {
-    stop("Input must be a single character string")
-  }
-  lines <- strsplit(string, "\n", fixed = TRUE)[[1]]
-  while (length(lines) > 0 && grepl("^\\s*$", lines[1])) {
-    lines <- lines[-1]
-  }
-  while (length(lines) > 0 && grepl("^\\s*$", lines[length(lines)])) {
-    lines <- lines[-length(lines)]
-  }
-  if (length(lines) == 0) {
-    return("")
-  }
-  non_empty_lines <- lines[!grepl("^\\s*$", lines)]
-  if (length(non_empty_lines) == 0) {
-    return("")
-  }
-  lead_spaces <- vapply(
-    non_empty_lines,
-    function(line) {
-      m <- regmatches(line, regexpr("^\\s*", line))
-      nchar(m)
-    },
-    integer(1)
-  )
-  min_indent <- min(lead_spaces)
-  if (min_indent > 0) {
-    pat <- paste0("^\\s{", min_indent, "}")
-    lines <- vapply(
-      lines,
-      function(line) {
-        if (grepl("^\\s*$", line)) line else sub(pat, "", line)
-      },
-      character(1)
-    )
-  }
-  paste(lines, collapse = "\n")
-}
-
 .normalizeDatasetNumericOption <- function(
   value,
   data_labels,
@@ -234,46 +185,15 @@ dedent <- function(string) {
 
 # Portable bundle paths ----------------------------------------------------
 
-.windowsPathSegmentInvalid <- function(parts) {
-  grepl("[[:cntrl:]<>:\"|?*]", parts) |
-    grepl("[. ]$", parts) |
-    grepl(
-      "^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])($|\\.)",
-      parts,
-      ignore.case = TRUE
-    )
-}
-
 .portableBundlePath <- function(path, subject) {
-  valid <- is.character(path) &&
-    length(path) == 1L &&
-    !is.na(path) &&
-    nzchar(path) &&
-    !grepl("/$", path) &&
-    !grepl("\\\\", path) &&
-    !grepl("^(/|~|[A-Za-z]:)", path)
-  parts <- if (valid) {
-    strsplit(path, "/", fixed = TRUE)[[1L]]
-  } else {
-    character()
-  }
-  windows_invalid <- length(parts) > 0L &&
-    any(.windowsPathSegmentInvalid(parts))
-  if (
-    !valid ||
-      length(parts) == 0L ||
-      any(!nzchar(parts)) ||
-      any(parts %in% c(".", "..")) ||
-      windows_invalid
-  ) {
-    stop(
-      subject,
-      " must be one portable relative path using forward slashes, without ",
-      "empty, '.', '..', or Windows-incompatible segments.",
-      call. = FALSE
+  .crbContract()$.runtimePortableBackendPath(
+    path,
+    subject,
+    paste0(
+      "must be one portable relative path using forward slashes, without ",
+      "empty, '.', '..', or Windows-incompatible segments."
     )
-  }
-  paste(parts, collapse = "/")
+  )
 }
 
 # Native path resolution ---------------------------------------------------
@@ -332,34 +252,30 @@ dedent <- function(string) {
   style
 }
 
+## Windows device, extended-length and malformed paths fail closed.
+.rejectWindowsNamespacePath <- function(style) {
+  if (style %in% c("windows-device", "windows-malformed")) {
+    stop(
+      "Windows ",
+      if (identical(style, "windows-device")) {
+        "device or extended-length"
+      } else {
+        "malformed Windows"
+      },
+      " path namespaces are not supported.",
+      call. = FALSE
+    )
+  }
+}
+
 .lexicalAbsolutePath <- function(
   path,
   style = .absolutePathStyle(path),
   os_type = .Platform$OS.type
 ) {
-  slash_path <- if (
-    identical(style, "posix") &&
-      !identical(os_type, "windows")
-  ) {
-    path
-  } else {
-    gsub("\\", "/", path, fixed = TRUE)
-  }
-  if (identical(style, "drive")) {
-    prefix <- paste0(substr(slash_path, 1L, 2L), "/")
-    remainder <- sub("^[A-Za-z]:/+", "", slash_path)
-  } else if (identical(style, "unc")) {
-    unc_parts <- strsplit(sub("^/+", "", slash_path), "/", fixed = TRUE)[[1L]]
-    prefix <- paste0("//", unc_parts[[1L]], "/", unc_parts[[2L]])
-    remainder <- paste(unc_parts[-seq_len(2L)], collapse = "/")
-  } else {
-    prefix <- "/"
-    remainder <- sub("^/+", "", slash_path)
-  }
-
-  parts <- strsplit(remainder, "/", fixed = TRUE)[[1L]]
+  parsed <- .absolutePathComponents(path, style, os_type = os_type)
   normalized <- character()
-  for (part in parts) {
+  for (part in parsed$parts) {
     if (!nzchar(part) || identical(part, ".")) {
       next
     }
@@ -371,17 +287,7 @@ dedent <- function(string) {
     }
     normalized <- c(normalized, part)
   }
-  if (length(normalized) == 0L) {
-    return(prefix)
-  }
-  paste0(
-    prefix,
-    if (endsWith(prefix, "/")) "" else "/",
-    paste(
-      normalized,
-      collapse = "/"
-    )
-  )
+  .composeAbsolutePath(parsed$root, normalized)
 }
 
 .absolutePathComponents <- function(
@@ -552,19 +458,7 @@ dedent <- function(string) {
     .pathDirectoryEntryExists(candidate, os_type = os_type)
   }
 ) {
-  if (style %in% c("windows-device", "windows-malformed")) {
-    detail <- if (identical(style, "windows-device")) {
-      "device or extended-length"
-    } else {
-      "malformed Windows"
-    }
-    stop(
-      "Windows ",
-      detail,
-      " path namespaces are not supported.",
-      call. = FALSE
-    )
-  }
+  .rejectWindowsNamespacePath(style)
   parsed <- .absolutePathComponents(path, style, os_type = os_type)
   if (identical(os_type, "windows") && identical(style, "unc")) {
     unc_root_parts <- strsplit(
@@ -572,7 +466,7 @@ dedent <- function(string) {
       "/",
       fixed = TRUE
     )[[1L]]
-    if (any(.windowsPathSegmentInvalid(unc_root_parts))) {
+    if (any(.crbContract()$.runtimeWindowsPathSegmentInvalid(unc_root_parts))) {
       stop(
         "Native Windows paths cannot contain Windows-incompatible segments.",
         call. = FALSE
@@ -615,7 +509,7 @@ dedent <- function(string) {
     }
     if (
       identical(os_type, "windows") &&
-        .windowsPathSegmentInvalid(part)
+        .crbContract()$.runtimeWindowsPathSegmentInvalid(part)
     ) {
       stop(
         "Native Windows paths cannot contain Windows-incompatible segments.",
@@ -699,19 +593,7 @@ dedent <- function(string) {
 
 .canonicalTargetPath <- function(path, os_type = .Platform$OS.type) {
   style <- .absolutePathStyle(path, os_type = os_type)
-  if (style %in% c("windows-device", "windows-malformed")) {
-    detail <- if (identical(style, "windows-device")) {
-      "device or extended-length"
-    } else {
-      "malformed Windows"
-    }
-    stop(
-      "Windows ",
-      detail,
-      " path namespaces are not supported.",
-      call. = FALSE
-    )
-  }
+  .rejectWindowsNamespacePath(style)
   style <- .nativeFilesystemStyle(path, style, os_type = os_type)
   if (is.na(style)) {
     path <- file.path(getwd(), path)
@@ -773,7 +655,8 @@ dedent <- function(string) {
 }
 
 ## Treat the ordinary field as data. The getter binding is checked only as a
-## format marker and is never invoked during preflight.
+## format marker and is never invoked during preflight. Callers check the
+## location's portability with their own message.
 .readBundleBackend <- function(
   crb_path,
   object = .readCerebroPayload(crb_path)
@@ -800,71 +683,11 @@ dedent <- function(string) {
       call. = FALSE
     )
   }
-  getter_name <- "getExpressionBackend"
-  backend_field <- "expression_backend"
-  getter_exists <- exists(getter_name, envir = object, inherits = FALSE)
-  field_exists <- exists(backend_field, envir = object, inherits = FALSE)
-  getter_is_active <- getter_exists && bindingIsActive(getter_name, object)
-  field_is_active <- field_exists && bindingIsActive(backend_field, object)
-  getter_is_lazy <- getter_exists &&
-    !getter_is_active &&
-    isTRUE(rlang::env_binding_are_lazy(object, getter_name))
-  field_is_lazy <- field_exists &&
-    !field_is_active &&
-    isTRUE(rlang::env_binding_are_lazy(object, backend_field))
-  if (
-    getter_is_active ||
-      field_is_active ||
-      getter_is_lazy ||
-      field_is_lazy
-  ) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' has an unsupported expression-backend descriptor.",
-      call. = FALSE
-    )
-  }
-  if (!getter_exists && !field_exists) {
-    .assertCurrentCerebroFile(object, crb_path)
-  }
-  if (
-    !getter_exists ||
-      !field_exists ||
-      !is.function(object[[getter_name]])
-  ) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' has an unsupported expression-backend descriptor.",
-      call. = FALSE
-    )
-  }
-  .assertCurrentCerebroFile(object, crb_path)
-  backend <- object[[backend_field]]
-  valid_type <- is.list(backend) &&
-    is.character(backend$type) &&
-    length(backend$type) == 1L &&
-    !is.na(backend$type) &&
-    backend$type %in% c("embedded", .cerebroExternalBackends)
-  valid_location <- valid_type &&
-    if (identical(backend$type, "embedded")) {
-      is.null(backend$location)
-    } else {
-      is.character(backend$location) &&
-        length(backend$location) == 1L &&
-        !is.na(backend$location) &&
-        nzchar(backend$location)
-    }
-  if (!valid_type || !valid_location) {
-    stop(
-      "The Cerebro data file '",
-      basename(crb_path),
-      "' has an unsupported expression-backend descriptor.",
-      call. = FALSE
-    )
-  }
-  backend
+  .crbContract()$.readRuntimeBackendDescriptor(
+    object,
+    crb_path,
+    portable = FALSE
+  )
 }
 
 .readBundleSpatialCatalog <- function(object, dataset) {
@@ -1051,7 +874,7 @@ dedent <- function(string) {
     }
     object <- .readCerebroPayload(path)
     if (.recognizedCerebroObject(object)) {
-      .assertCurrentCerebroFile(object, path)
+      .crbContract()$.assertCurrentRuntimeCrb(object, path)
     }
     catalog[[path]] <- .readBundleDatasetInfo(
       object,
@@ -1099,10 +922,11 @@ dedent <- function(string) {
             names(cerebro_data)[[index]],
             cerebro_data[[index]]
           ))
-          spatial_backends[[index]] <- .spatialMoleculeBackend(
+          ## `[<-` with list(): `[[<-` NULL would delete the slot.
+          spatial_backends[index] <- list(.spatialMoleculeBackend(
             object,
             cerebro_data[[index]]
-          )
+          ))
           immune_backends[index] <- list(.immuneRepertoireBackend(
             object,
             cerebro_data[[index]]
@@ -1147,7 +971,10 @@ dedent <- function(string) {
   unname(tools::md5sum(path))
 }
 
-.spatialImageBundlePathComponent <- function(value, maximum_bytes = 40L) {
+## Each component stays short because a Windows build nests four of them
+## beneath the app's staging directory, and the whole path must fit the
+## 260-character MAX_PATH limit unless long paths are enabled system-wide.
+.spatialImageBundlePathComponent <- function(value, maximum_bytes = 24L) {
   if (
     !is.character(value) ||
       length(value) != 1L ||
@@ -1167,7 +994,7 @@ dedent <- function(string) {
   if (nchar(encoded, type = "bytes") <= maximum_bytes) {
     return(encoded)
   }
-  digest <- .bundlePathDigest(bytes)
+  digest <- substr(.bundlePathDigest(bytes), 1L, 16L)
   prefix_length <- maximum_bytes - nchar(digest, type = "bytes") - 1L
   paste0(substr(encoded, 1L, prefix_length), "-", digest)
 }
@@ -1182,7 +1009,7 @@ dedent <- function(string) {
   extension_is_safe <- grepl("^[A-Za-z0-9]{1,16}$", extension)
   encoded_filename <- .spatialImageBundlePathComponent(
     filename,
-    40L - if (extension_is_safe) nchar(extension, type = "bytes") + 1L else 0L
+    24L - if (extension_is_safe) nchar(extension, type = "bytes") + 1L else 0L
   )
   if (extension_is_safe) {
     encoded_filename <- paste0(encoded_filename, ".", extension)
@@ -1212,15 +1039,6 @@ dedent <- function(string) {
   }
   digest <- .bundlePathDigest(charToRaw(enc2utf8(dataset_id)))
   paste0("private-data/dataset-", digest, ".crb")
-}
-
-## Compute the backend decision once; the caller serializes it so runtime
-## consumes the same decision that preflight validated.
-.effectiveBundleBackendPlan <- function(backend) {
-  if (identical(backend$type, "embedded")) {
-    return(list(type = "embedded", mode = "embedded", location = NULL))
-  }
-  list(type = backend$type, mode = "bundled", location = backend$location)
 }
 
 # Native path identity and symbolic-link inspection -----------------------
@@ -1392,6 +1210,38 @@ dedent <- function(string) {
   file.rename(from, to)
 }
 
+## Remove `path` only while it is an empty directory, so a lock that gained
+## contents is preserved rather than deleted recursively. POSIX remove()
+## already refuses non-empty directories, but on Windows file.remove() cannot
+## delete any directory and unlink() only deletes them recursively; cmd's
+## rmdir without /S has the POSIX semantics.
+.removeEmptyDirectory <- function(path) {
+  if (.Platform$OS.type != "windows") {
+    return(file.remove(path))
+  }
+  status <- system2(
+    Sys.getenv("COMSPEC", "cmd.exe"),
+    c(
+      "/d",
+      "/c",
+      "rmdir",
+      shQuote(normalizePath(path, winslash = "\\", mustWork = FALSE), "cmd")
+    ),
+    stdout = FALSE,
+    stderr = FALSE
+  )
+  if (!identical(as.integer(status), 0L)) {
+    warning(
+      "cannot remove directory '",
+      path,
+      "': it is not empty or not accessible",
+      call. = FALSE
+    )
+    return(FALSE)
+  }
+  TRUE
+}
+
 # Target preparation and build locks --------------------------------------
 
 .bundleLockName <- function(name) {
@@ -1453,19 +1303,7 @@ dedent <- function(string) {
 
 .prepareBundleResultTarget <- function(result_dir) {
   result_style <- .absolutePathStyle(result_dir)
-  if (result_style %in% c("windows-device", "windows-malformed")) {
-    detail <- if (identical(result_style, "windows-device")) {
-      "device or extended-length"
-    } else {
-      "malformed Windows"
-    }
-    stop(
-      "Windows ",
-      detail,
-      " path namespaces are not supported.",
-      call. = FALSE
-    )
-  }
+  .rejectWindowsNamespacePath(result_style)
   result_dir <- path.expand(result_dir)
   .assertOutsideBundleLockNamespace(result_dir)
   .bundleResultLeaf(result_dir)
@@ -1566,7 +1404,7 @@ dedent <- function(string) {
     if (any(regular_files)) {
       file.remove(metadata_paths[regular_files])
     }
-    file.remove(lock_path)
+    .removeEmptyDirectory(lock_path)
     if (.bundlePathExists(lock_path)) {
       stop(
         "Failed to initialize the build lock. An incomplete lock remains at '",
@@ -1732,7 +1570,7 @@ dedent <- function(string) {
   }
 
   remove_dir_attempt <- .attemptBundleOperation(function() {
-    file.remove(release_path)
+    .removeEmptyDirectory(release_path)
   })
   if (.bundlePathExists(release_path)) {
     warning(
@@ -1763,62 +1601,30 @@ dedent <- function(string) {
 
   entries <- character()
   if (dir.exists(result_dir)) {
-    inspection_error <- NULL
-    access_status <- tryCatch(
-      withCallingHandlers(
-        ops$access(result_dir, mode = 5L),
-        warning = function(warning_condition) {
-          inspection_error <<- conditionMessage(warning_condition)
-          invokeRestart("muffleWarning")
-        }
-      ),
-      error = function(error_condition) {
-        inspection_error <<- conditionMessage(error_condition)
-        NULL
-      }
-    )
+    access <- .attemptBundleOperation(function() {
+      ops$access(result_dir, mode = 5L)
+    })
+    status <- access$value
     if (
-      !is.null(inspection_error) ||
-        length(access_status) != 1L ||
-        is.na(access_status) ||
-        access_status != 0L
+      !is.null(access$condition) ||
+        length(status) != 1L ||
+        is.na(status) ||
+        status != 0L
     ) {
-      detail <- if (is.null(inspection_error)) {
-        "the directory is not readable and searchable"
-      } else {
-        inspection_error
-      }
       stop(
         "Failed to inspect 'result_dir': ",
-        detail,
+        access$condition %||% "the directory is not readable and searchable",
         ".",
         call. = FALSE
       )
     }
-
-    inspection_error <- NULL
-    entries <- tryCatch(
-      withCallingHandlers(
-        ops$list_dir(result_dir),
-        warning = function(warning_condition) {
-          inspection_error <<- conditionMessage(warning_condition)
-          invokeRestart("muffleWarning")
-        }
-      ),
-      error = function(error_condition) {
-        inspection_error <<- conditionMessage(error_condition)
-        NULL
-      }
-    )
-    if (!is.null(inspection_error) || !is.character(entries)) {
-      detail <- if (is.null(inspection_error)) {
-        "the directory listing was not a character vector"
-      } else {
-        inspection_error
-      }
+    listing <- .attemptBundleOperation(function() ops$list_dir(result_dir))
+    entries <- listing$value
+    if (!is.null(listing$condition) || !is.character(entries)) {
       stop(
         "Failed to inspect 'result_dir': ",
-        detail,
+        listing$condition %||%
+          "the directory listing was not a character vector",
         ".",
         call. = FALSE
       )
@@ -1857,6 +1663,43 @@ dedent <- function(string) {
     )
   }
 
+  ## After a failed step, restore the previous bundle unless something else
+  ## now occupies the destination, then stop with `failure`.
+  recover_backup <- function(failure, attempt) {
+    if (.bundlePathExists(result_dir)) {
+      stop(
+        failure,
+        " because an unexpected destination appeared at '",
+        .canonicalTargetPath(result_dir),
+        "'. The previous bundle remains recoverable at '",
+        backup,
+        "'.",
+        .bundleOperationDetail(attempt),
+        call. = FALSE
+      )
+    }
+    restore_attempt <- .attemptBundleOperation(function() {
+      ops$rename(backup, result_dir)
+    })
+    if (dir.exists(result_dir) && !.bundlePathExists(backup)) {
+      stop(
+        failure,
+        "; the previous bundle was restored.",
+        .bundleOperationDetail(attempt),
+        call. = FALSE
+      )
+    }
+    stop(
+      failure,
+      " and could not restore the previous bundle. It remains recoverable ",
+      "at '",
+      backup,
+      "'.",
+      .bundleOperationDetail(restore_attempt),
+      call. = FALSE
+    )
+  }
+
   backup <- NULL
   if (isTRUE(destination$exists)) {
     backup <- tempfile(
@@ -1870,37 +1713,9 @@ dedent <- function(string) {
     backup_ready <- dir.exists(backup) && !.bundlePathExists(result_dir)
     if (!.bundleOperationSucceeded(backup_attempt) || !backup_ready) {
       if (dir.exists(backup)) {
-        if (.bundlePathExists(result_dir)) {
-          stop(
-            "Failed to stage the existing app for replacement because an ",
-            "unexpected destination appeared at '",
-            .canonicalTargetPath(result_dir),
-            "'. The previous bundle remains recoverable at '",
-            backup,
-            "'.",
-            .bundleOperationDetail(backup_attempt),
-            call. = FALSE
-          )
-        }
-        restore_attempt <- .attemptBundleOperation(function() {
-          ops$rename(backup, result_dir)
-        })
-        restored <- dir.exists(result_dir) && !.bundlePathExists(backup)
-        if (restored) {
-          stop(
-            "Failed to stage the existing app for replacement; the previous ",
-            "bundle was restored.",
-            .bundleOperationDetail(backup_attempt),
-            call. = FALSE
-          )
-        }
-        stop(
-          "Failed to stage the existing app for replacement and could not ",
-          "restore the previous bundle. It remains recoverable at '",
-          backup,
-          "'.",
-          .bundleOperationDetail(restore_attempt),
-          call. = FALSE
+        recover_backup(
+          "Failed to stage the existing app for replacement",
+          backup_attempt
         )
       }
       stop(
@@ -1919,39 +1734,7 @@ dedent <- function(string) {
     !.bundlePathExists(stage)
   if (!published) {
     if (!is.null(backup) && dir.exists(backup)) {
-      unexpected_destination <- .bundlePathExists(result_dir)
-      if (unexpected_destination) {
-        stop(
-          "Failed to publish the staged app bundle because an unexpected ",
-          "destination appeared at '",
-          .canonicalTargetPath(result_dir),
-          "'. The previous bundle remains recoverable at '",
-          backup,
-          "'.",
-          .bundleOperationDetail(publish_attempt),
-          call. = FALSE
-        )
-      }
-      restore_attempt <- .attemptBundleOperation(function() {
-        ops$rename(backup, result_dir)
-      })
-      restored <- dir.exists(result_dir) && !.bundlePathExists(backup)
-      if (restored) {
-        stop(
-          "Failed to publish the staged app bundle; the previous bundle was ",
-          "restored.",
-          .bundleOperationDetail(publish_attempt),
-          call. = FALSE
-        )
-      }
-      stop(
-        "Failed to publish the staged app bundle and could not restore the ",
-        "previous bundle. It remains recoverable at '",
-        backup,
-        "'.",
-        .bundleOperationDetail(restore_attempt),
-        call. = FALSE
-      )
+      recover_backup("Failed to publish the staged app bundle", publish_attempt)
     }
     if (.bundlePathExists(result_dir)) {
       stop(
@@ -2706,13 +2489,6 @@ createShinyApp <- function(
   ) {
     immune_backends <- vector("list", length(cerebro_data))
   }
-  if (
-    !is.list(spatial_backends) ||
-      length(spatial_backends) != length(cerebro_data)
-  ) {
-    spatial_backends <- vector("list", length(cerebro_data))
-    names(spatial_backends) <- names(cerebro_data)
-  }
   spatial_catalogs <- preflight_data$spatial_catalogs
   spatial_point_appearance <- .normalizeAppSpatialPointSettings(
     spatial_point_appearance,
@@ -2947,7 +2723,7 @@ createShinyApp <- function(
         )
       )
     }
-    effective <- .effectiveBundleBackendPlan(backend)
+    effective <- .crbContract()$.effectiveRuntimeBackendPlan(backend)
     target <- crb_targets[[index]]
     existing <- effective_backend_entries[[target]]
     if (!is.null(existing) && !identical(existing, effective)) {
@@ -3051,6 +2827,12 @@ createShinyApp <- function(
   if (!build_ops$copy(shiny_source, stage_result_dir, recursive = TRUE)) {
     stop("Failed to copy Shiny source files.", call. = FALSE)
   }
+  hla_core_dir <- file.path(stage_result_dir, "viewer/hla_tcr_motifs/core")
+  dir.create(hla_core_dir, showWarnings = FALSE)
+  build_ops$write_lines(
+    .viewerHLACoreSource(),
+    file.path(hla_core_dir, "hla_core.R")
+  )
 
   if (verbose) {
     cat("Copying data artifacts...\n")
@@ -3145,6 +2927,7 @@ createShinyApp <- function(
   cerebro_options[["crb_file_to_load"]] <- crb_files
   cerebro_options[["cerebro_root"]] <- "."
   internal_option_names <- c(
+    ".hla_core",
     ".bundle_backend_plan",
     ".bundle_run_options",
     ".dataset_catalog",
@@ -3227,55 +3010,53 @@ createShinyApp <- function(
   )
 
   # Generate app.R -----------------------------------------------------------##
-  app_content <- dedent(
-    '
-    library(dplyr)
-    library(DT)
-    library(plotly)
-    library(shiny)
-    library(shinydashboard)
-    library(shinyWidgets)
-
-    cerebro_root <- "."
-
-    if (file.exists("cerebro_config.rds")) {
-      Cerebro.options <<- readRDS("cerebro_config.rds")
-    } else {
-      stop("cerebro_config.rds not found!")
-    }
-
-    if (!is.null(Cerebro.options$colors)) {
-      colors <- Cerebro.options$colors
-    }
-
-    bundle_run_options <- Cerebro.options$.bundle_run_options
-    shiny_options <- bundle_run_options$shiny_app_options
-
-    source(file.path(cerebro_root, "viewer/shiny_UI.R"))
-    source(file.path(cerebro_root, "viewer/shiny_server.R"))
-    source(file.path(cerebro_root, "viewer/auth.R"), local = TRUE)
-
-    viewer_app <- viewer_auth_apply(
-      ui,
-      server,
-      Cerebro.options[[".viewer_auth"]],
-      Cerebro.options[["cerebro_root"]]
-    )
-
-    shiny::shinyApp(
-      ui = viewer_app$ui,
-      server = viewer_app$server,
-      onStart = function() {
-        previous <- options(
-          shiny.maxRequestSize = bundle_run_options$max_request_size_bytes
-        )
-        shiny::onStop(function() {
-          options(previous)
-        })
-      },
-      options = shiny_options
-    )
-  '
+  app_content <- c(
+    'library(dplyr)',
+    'library(DT)',
+    'library(plotly)',
+    'library(shiny)',
+    'library(shinydashboard)',
+    'library(shinyWidgets)',
+    '',
+    'cerebro_root <- "."',
+    '',
+    'if (file.exists("cerebro_config.rds")) {',
+    '  Cerebro.options <<- readRDS("cerebro_config.rds")',
+    '} else {',
+    '  stop("cerebro_config.rds not found!")',
+    '}',
+    '',
+    'if (!is.null(Cerebro.options$colors)) {',
+    '  colors <- Cerebro.options$colors',
+    '}',
+    '',
+    'bundle_run_options <- Cerebro.options$.bundle_run_options',
+    'shiny_options <- bundle_run_options$shiny_app_options',
+    '',
+    'source(file.path(cerebro_root, "viewer/shiny_UI.R"))',
+    'source(file.path(cerebro_root, "viewer/shiny_server.R"))',
+    'source(file.path(cerebro_root, "viewer/auth.R"), local = TRUE)',
+    '',
+    'viewer_app <- viewer_auth_apply(',
+    '  ui,',
+    '  server,',
+    '  Cerebro.options[[".viewer_auth"]],',
+    '  Cerebro.options[["cerebro_root"]]',
+    ')',
+    '',
+    'shiny::shinyApp(',
+    '  ui = viewer_app$ui,',
+    '  server = viewer_app$server,',
+    '  onStart = function() {',
+    '    previous <- options(',
+    '      shiny.maxRequestSize = bundle_run_options$max_request_size_bytes',
+    '    )',
+    '    shiny::onStop(function() {',
+    '      options(previous)',
+    '    })',
+    '  },',
+    '  options = shiny_options',
+    ')'
   )
 
   build_ops$write_lines(app_content, app_file)
