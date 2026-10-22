@@ -910,7 +910,8 @@
       var allowed = groupFilter[gname];
       if (!allowed) continue;
       var g = D.groups[gname];
-      if (g && !allowed.has(g.values[i])) return false;
+      // A deferred group filters once its values arrive (requestDeferredGroup).
+      if (g && g.values && !allowed.has(g.values[i])) return false;
     }
     return true;
   }
@@ -1757,7 +1758,9 @@
   function gpuFilterKey() {
     var groups = Object.keys(groupFilter).sort().map(function (name) {
       var values = groupFilter[name];
-      return name + ':' + (values ? Array.from(values).sort().join(',') : '');
+      var loaded = D.groups[name] && D.groups[name].values ? 'v' : 'd';
+      return name + ':' + loaded + ':' +
+        (values ? Array.from(values).sort().join(',') : '');
     }).join('|');
     return Array.from(hidden).sort().join(',') + '|' + groups;
   }
@@ -5480,21 +5483,29 @@
     var value = D.groups && D.groups[mode];
     return value && value.deferred ? { kind: 'groups', name: mode, value: value } : null;
   }
+  // The group colouring is waiting for, so its values switch the colouring;
+  // values fetched only for a group filter re-apply the filters instead.
+  var deferredColorRequest = null;
+  function requestDeferredGroup(name) {
+    var value = D.groups && D.groups[name];
+    if (!value || !value.deferred || value.requested ||
+        typeof Shiny === 'undefined') return;
+    value.requested = true;
+    Shiny.setInputValue('coordviews_attribute_request', {
+      dataset_context: D.dataset_context,
+      dataset_id: D.dataset_id,
+      dataset_fingerprint: configFingerprint(),
+      kind: 'groups',
+      name: name,
+      nonce: Date.now()
+    }, { priority: 'event' });
+  }
   function setColorBy(mode) {
     var deferred = deferredColor(mode);
     if (deferred) {
       viewOperation('linked', 'Loading colour field: ' + deferred.name + '…');
-      if (!deferred.value.requested && typeof Shiny !== 'undefined') {
-        deferred.value.requested = true;
-        Shiny.setInputValue('coordviews_attribute_request', {
-      dataset_context: D.dataset_context,
-          dataset_id: D.dataset_id,
-          dataset_fingerprint: configFingerprint(),
-          kind: deferred.kind,
-          name: deferred.name,
-          nonce: Date.now()
-        }, { priority: 'event' });
-      }
+      deferredColorRequest = deferred.name;
+      requestDeferredGroup(deferred.name);
       return;
     }
     var previousMode = colorBy;
@@ -6163,6 +6174,7 @@
     });
     if (k >= total) delete groupFilter[gname];   // all levels on = no filter
     else groupFilter[gname] = chosen;
+    if (groupFilter[gname]) requestDeferredGroup(gname);
     applyActiveChange();
   }
 
@@ -6605,7 +6617,7 @@
     selectionSourceSpace = null;
     pick = null; nicheSet = null;
     hoverCell = null; focusPanel = null;
-    hidden = new Set(); groupFilter = {};
+    hidden = new Set(); groupFilter = {}; deferredColorRequest = null;
     panels.forEach(function (p) {
       p.spaceId = null; p.sx = null; p.sy = null; p.ok = null;
       p.gpuTransformOnly = false;
@@ -8408,7 +8420,8 @@
         background_identity: edit.identity, values: edit.values });
     });
     colorBy = singleSpaceModes[singleSpaceIds[0]] || colorBy;
-    hidden = new Set(); groupFilter = {}; sel = null; selectionSource = null;
+    hidden = new Set(); groupFilter = {}; deferredColorRequest = null;
+    sel = null; selectionSource = null;
     selectionSourceSpace = null;
     pick = null; hoverCell = null; focusPanel = previousFocus;
     var appearance = payload.meta.appearance || payload.appearanceOverrides
@@ -9258,7 +9271,12 @@
       var target = message.kind === 'groups' && D.groups;
       if (!target || !target[message.name] || !message.value) return;
       target[message.name] = message.value;
-      setColorBy(message.name);
+      if (deferredColorRequest === message.name) {
+        deferredColorRequest = null;
+        setColorBy(message.name);
+      } else if (groupFilter[message.name]) {
+        applyActiveChange();
+      }
     } catch (error) {
       requestWireFallback(D && D.dataset_id, D && configFingerprint());
     }
@@ -9546,7 +9564,7 @@
         ? authorDisplay.color_clip : 0.01;
       var clipControl = $('cv-clip');
       if (clipControl) clipControl.value = String(colorClip);
-      groupFilter = {};
+      groupFilter = {}; deferredColorRequest = null;
       var labelsControl = $('cv-labels');
       if (labelsControl) labelsControl.checked = labelsOn;
       var bordersControl = $('cv-borders');
@@ -9991,7 +10009,10 @@
         var index = group.levels.indexOf(level);
         allowed.add(index);
       });
-      if (allowed.size < group.levels.length) groupFilter[name] = allowed;
+      if (allowed.size < group.levels.length) {
+        groupFilter[name] = allowed;
+        requestDeferredGroup(name);
+      }
     });
     hidden = new Set();
     var activeGroup = catOf(colorBy);

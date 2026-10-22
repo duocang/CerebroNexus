@@ -10,6 +10,11 @@
   non-table element, `getMarkerGenes()` failing with the default
   `organism = NULL`, and the gene lists of `performGeneSetEnrichmentAnalysis()`
   results carrying a stray space after every gene.
+- Fixes the Linked views group filters on a group that is not the one coloured
+  at start, for example `celltype` on the Trekker example: filtering it showed
+  a stale picture or empty panels, because its per-cell values had not been
+  loaded. The filter now loads them and then shows the cells that pass every
+  filter; the colouring stays as it was (#222).
 
 ## Internal
 
