@@ -170,8 +170,25 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app$wait_for_idle(timeout = 30000)
   activate_tab(app, "spatial", timeout = 30000)
   wait_for_input(app, "spatial_projection_more_button", timeout = 30000)
-  app$click(selector = "#spatial_projection_more_button")
-  wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
+  ## On a busy CI runner the first click once left the background picker
+  ## missing for 30 s. Open a closed drawer, or repeat its render request about
+  ## once a second, until the picker is there.
+  app$wait_for_js(
+    paste0(
+      "(() => {if (document.getElementById('spatial_projection_background_image'))",
+      " return true;",
+      "const drawer = document.getElementById('spatial_projection_more');",
+      "if (!drawer || drawer.getAttribute('aria-hidden') !== 'false') {",
+      " document.getElementById('spatial_projection_more_button').click();",
+      "} else if (!(Date.now() - (window.__spatialDrawerRequest || 0) < 1000)) {",
+      " window.__spatialDrawerRequest = Date.now();",
+      " Shiny.setInputValue('spatial_projection_more_render_request',",
+      " Date.now(), {priority: 'event'});",
+      "}",
+      "return false;})()"
+    ),
+    timeout = 30000
+  )
   app$wait_for_js(
     paste0(
       "document.getElementById('spatial_projection_background_image').value === ",
