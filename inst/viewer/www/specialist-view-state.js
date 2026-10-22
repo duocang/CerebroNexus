@@ -223,19 +223,23 @@
         navigate(spec);
         var controls = config.controls || [];
         var rerender = controls.some(controlChanges);
+        // A newer restore replaces a state still waiting for its render.
+        var previousApi = engine(spec);
+        if (previousApi && previousApi.dropPendingState) {
+          previousApi.dropPendingState(id);
+        }
         restoreControls(controls);
         var restoreSequence = ++stateRestoreSequence;
         var restoreContext = currentContextKey();
         var applied = false;
         // Restored controls re-render the plot (a grouping column turns it
         // into panels), and that render resets the panels and the brush, so
-        // the state is applied again once it arrives.
+        // the state is applied again once it arrives, however long the render
+        // takes. It waits on the view of this dataset only, and is dropped by a
+        // newer restore or a selection the user makes before the render.
         var pendingApi = rerender ? engine(spec) : null;
         if (pendingApi && pendingApi.dropPendingState) {
           pendingApi.applyState(id, config, { afterRender: true });
-          window.setTimeout(function () {
-            pendingApi.dropPendingState(id, config);
-          }, 10000);
         }
         [0, 250, 750].forEach(function (delay) {
           window.setTimeout(function () {

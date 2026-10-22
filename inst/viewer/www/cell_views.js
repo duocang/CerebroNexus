@@ -2582,6 +2582,9 @@
     return (sp && sp.label) || source.spaceId || '';
   }
   function setSelection(s, source) {
+    // A selection made while a restored view waits for its render wins over
+    // the restored one.
+    if (singleActive) dropPendingSingleState(singleActive);
     sel = (s && s.size) ? s : null;
     if (!sel) {
       selectionSource = null;
@@ -8889,10 +8892,14 @@
     return { selectedCells: target.selection.length };
   }
 
-  // A state kept for a render that never came must not land on a later one.
+  // Drops the state kept for the next render of a view (any state when `saved`
+  // is omitted). Views are kept per dataset, so a render of another dataset
+  // never receives it.
   function dropPendingSingleState(id, saved) {
     var view = singleView(id);
-    if (view && view.pendingSavedState === saved) view.pendingSavedState = null;
+    if (view && (saved === undefined || view.pendingSavedState === saved)) {
+      view.pendingSavedState = null;
+    }
   }
 
   function updateSingleBackground(message) {
