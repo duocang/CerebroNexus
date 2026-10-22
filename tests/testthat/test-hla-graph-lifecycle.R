@@ -3,7 +3,7 @@ test_that("HLA graphs recover from unbound controls and cache by the actual coho
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       available_crb_files <- reactiveValues(selected = "dataset-A")
       data_set <- reactive(if (isTRUE(input$loaded)) "loaded" else NULL)
       hla_first_frame_graph_matches <- function() FALSE

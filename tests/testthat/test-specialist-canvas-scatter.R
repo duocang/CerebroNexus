@@ -41,8 +41,7 @@ test_that("shared viewport and gesture math is reversible", {
 })
 
 test_that("selection composition shows count, top groups, and Other", {
-  env <- new.env(parent = globalenv())
-  sys.source(file.path(viewer_dir, "utility_functions.R"), envir = env)
+  env <- viewer_runtime_env()
   metadata <- data.frame(
     cell_barcode = paste0("cell", 1:8),
     sample = rep(c("s1", "s2"), 4),
@@ -81,8 +80,7 @@ test_that("selection composition shows count, top groups, and Other", {
 })
 
 test_that("empty selection composition does not hydrate metadata", {
-  env <- new.env(parent = globalenv())
-  sys.source(file.path(viewer_dir, "utility_functions.R"), envir = env)
+  env <- viewer_runtime_env()
   calls <- new.env(parent = emptyenv())
   calls$metadata <- 0L
   calls$groups <- 0L
@@ -117,8 +115,7 @@ test_that("empty selection composition does not hydrate metadata", {
 })
 
 test_that("selection summary reports source and escapes labels", {
-  env <- new.env(parent = globalenv())
-  sys.source(file.path(viewer_dir, "utility_functions.R"), envir = env)
+  env <- viewer_runtime_env()
   metadata <- data.frame(
     cell_barcode = paste0("cell", 1:4),
     sample = c("sample_1", "sample_2", "sample_1", "sample_1"),

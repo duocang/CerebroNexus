@@ -10,31 +10,7 @@
 ## grouping column) plus the caching contract of the cachePlot() wrapper. See
 ## the git history of utility_functions.R for context.
 
-## Prefer the source tree so devtools::test() exercises the current checkout;
-## use the installed copy only when the source tree is unavailable.
-source_candidates <- c(
-  file.path(getwd(), "inst", "viewer", "utility_functions.R"),
-  file.path(getwd(), "..", "..", "inst", "viewer", "utility_functions.R"),
-  testthat::test_path("..", "..", "inst", "viewer", "utility_functions.R")
-)
-utils_file <- source_candidates[file.exists(source_candidates)][1L]
-if (is.na(utils_file)) {
-  utils_file <- system.file(
-    "viewer",
-    "utility_functions.R",
-    package = "CerebroNexus"
-  )
-}
-skip_if_not(file.exists(utils_file), "utility_functions.R not found")
-
-utils_env <- new.env()
-sys.source(file.path(dirname(utils_file), "crb_cache.R"), envir = utils_env)
-sys.source(file.path(dirname(utils_file), "msigdb.R"), envir = utils_env)
-sys.source(
-  file.path(dirname(utils_file), "core", "crb_contract.R"),
-  envir = utils_env
-)
-source(utils_file, local = utils_env)
+utils_env <- viewer_runtime_env(new.env())
 ## The fixtures below use a single mocked collection ("H"); the per-collection
 ## catalogue walk is covered separately in test-resource-boundaries.R.
 utils_env$.msigdbCollectionsFunction <- function() {
@@ -226,11 +202,7 @@ test_that("Viewer tables can explicitly opt out of HTML escaping", {
 })
 
 test_that("embedded Extra material escapes CRB-controlled HTML", {
-  content_file <- file.path(
-    dirname(utils_file),
-    "extra_material",
-    "content.R"
-  )
+  content_file <- viewer_test_path("extra_material", "content.R")
   find_calls <- function(node) {
     if (!is.call(node) && !is.expression(node)) {
       return(list())
@@ -1046,8 +1018,7 @@ test_that("cachePlot caches by key and invalidates on key or dataset change", {
 })
 
 test_that("Spatial sections are normalized once per loaded dataset", {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   reads <- 0L
   make_dataset <- function() {
     dataset <- new.env()
@@ -1071,8 +1042,7 @@ test_that("Spatial sections are normalized once per loaded dataset", {
 })
 
 test_that("single-entry memos recompute only for a different key", {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   memo <- env$viewerMemoOne()
   calls <- 0L
   compute <- function() {
@@ -1086,8 +1056,7 @@ test_that("single-entry memos recompute only for a different key", {
 })
 
 test_that("embedded Spatial images are served once per session by URL", {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   registered <- 0L
   ended <- list()
   mock <- list(
@@ -1115,8 +1084,7 @@ test_that("embedded Spatial images are served once per session by URL", {
 
 test_that("embedded images larger than a million base64 characters stay whole", {
   skip_if_not_installed("base64enc")
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   ## R before 4.6 stops substring() at 1,000,000 characters by default; newer R
   ## does not. Pin the old default so this fails without the explicit end on
   ## every R version.

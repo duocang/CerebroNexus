@@ -2,7 +2,7 @@ test_that("Linked primary paint gates supplements and replays hidden palette cha
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sys.source(viewer_test_path("coordinated_views", "bundle.R"), scope)
       context <- list(epoch = "s", dataset_key = "A", generation = 1)
       viewer_loaded_dataset_context <- function() context

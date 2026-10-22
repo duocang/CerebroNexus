@@ -125,8 +125,7 @@ test_that("RGB expression reads all channels in one backend call", {
   scope$req <- shiny::req
   scope$withProgress <- function(expr, ...) force(expr)
   scope$incProgress <- function(...) NULL
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  viewer_runtime_env(scope)
   scope$input <- shiny::reactiveValues(
     expression_projection_genes_in_separate_panels = "rgb"
   )

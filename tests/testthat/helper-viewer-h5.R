@@ -75,8 +75,6 @@ viewer_h5_fixture <- function(
 
 ## Runtime scope with the Viewer helpers loaded, as a generated app has them.
 viewer_runtime_scope <- function() {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   scope
 }

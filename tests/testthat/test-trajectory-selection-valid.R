@@ -8,10 +8,7 @@
 
 load_predicate <- function() {
   env <- new.env()
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = env
-  )
+  viewer_runtime_env(env)
   env[["trajectorySelectionValid"]]
 }
 

@@ -354,11 +354,7 @@ test_that("scatter defaults accept one value or one value per dataset", {
 })
 
 test_that("Viewer resolves scatter defaults for the selected dataset", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = runtime
-  )
+  runtime <- viewer_runtime_env()
   options <- list(
     point_size = c(PBMC = 2, Xenium = 5),
     point_opacity = c(PBMC = 0.4, Xenium = 1),
@@ -522,10 +518,7 @@ render_bundle_spatial_background <- function(
     ## that called it, which is this renderer environment.
     renderer$session <- session
   }
-  sys.source(
-    file.path(app, "viewer", "utility_functions.R"),
-    envir = renderer
-  )
+  viewer_runtime_env(renderer, root = file.path(app, "viewer"))
   sys.source(
     file.path(app, "viewer", "spatial", "func_spatial_helpers.R"),
     envir = renderer
@@ -580,27 +573,9 @@ render_bundle_spatial_background <- function(
 }
 
 source_bundle_runtime <- function(app = NULL) {
-  utility <- if (is.null(app)) {
-    testthat::test_path("../../inst/viewer/utility_functions.R")
-  } else {
-    file.path(app, "viewer", "utility_functions.R")
-  }
-  if (!file.exists(utility)) {
-    utility <- system.file(
-      "viewer",
-      "utility_functions.R",
-      package = "CerebroNexus"
-    )
-  }
-  stopifnot(file.exists(utility))
-  runtime <- new.env(parent = globalenv())
-  sys.source(file.path(dirname(utility), "crb_cache.R"), envir = runtime)
-  sys.source(
-    file.path(dirname(utility), "core", "crb_contract.R"),
-    envir = runtime
-  )
-  sys.source(utility, envir = runtime)
-  runtime
+  root <- if (is.null(app)) viewer_test_path() else file.path(app, "viewer")
+  stopifnot(file.exists(file.path(root, "utility_functions.R")))
+  viewer_runtime_env(root = root)
 }
 
 capture_backend_contract <- function(operation) {

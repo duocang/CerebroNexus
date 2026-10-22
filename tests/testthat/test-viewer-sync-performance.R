@@ -16,19 +16,14 @@ run_projection_indices <- function(
       list()
     }
   )
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  viewer_runtime_env(scope)
   scope$getGroups <- function() groups
   scope$getGroupLevels <- function(group) unique(metadata[[group]])
   scope$viewerProjectionCellIndices("test", metadata)
 }
 
 test_that("expression rows are fetched once and aligned by cell", {
-  utility_env <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = utility_env
-  )
+  utility_env <- viewer_runtime_env()
   expect_true(is.function(utility_env$viewerExpressionValues))
 
   calls <- 0L
@@ -58,11 +53,7 @@ test_that("expression rows are fetched once and aligned by cell", {
 })
 
 test_that("single-gene expression uses row access, not a matrix read", {
-  utility_env <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = utility_env
-  )
+  utility_env <- viewer_runtime_env()
 
   row_calls <- 0L
   matrix_calls <- 0L
@@ -83,11 +74,7 @@ test_that("single-gene expression uses row access, not a matrix read", {
 })
 
 test_that("expression helpers preserve canonical cell indices", {
-  utility_env <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = utility_env
-  )
+  utility_env <- viewer_runtime_env()
 
   requested <- NULL
   data_set <- new.env(parent = emptyenv())
@@ -102,11 +89,7 @@ test_that("expression helpers preserve canonical cell indices", {
 })
 
 test_that("legacy expression accessors receive cell barcodes", {
-  utility_env <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = utility_env
-  )
+  utility_env <- viewer_runtime_env()
 
   LegacyCerebro <- R6::R6Class(
     NULL,
@@ -145,10 +128,7 @@ test_that("already aligned expression cells skip the string match", {
     match_lengths <<- c(match_lengths, length(x))
     base::match(x, table, ...)
   }
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = utility_env
-  )
+  viewer_runtime_env(utility_env)
 
   data_set <- new.env(parent = emptyenv())
   data_set$getExpressionMatrix <- function(cells, genes) {
@@ -221,9 +201,7 @@ test_that("projection filtering and sampling preserve original row indices", {
 })
 
 test_that("the first reactive value bypasses debounce", {
-  utility_env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = utility_env)
-  sys.source(viewer_test_path("utility_functions.R"), envir = utility_env)
+  utility_env <- viewer_runtime_env()
   compute_count <- 0L
   server <- function(input, output, session) {
     raw <- shiny::reactive({
@@ -245,9 +223,7 @@ test_that("the first reactive value bypasses debounce", {
 })
 
 test_that("page-gated debounced values stay idle off the page", {
-  utility_env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = utility_env)
-  sys.source(viewer_test_path("utility_functions.R"), envir = utility_env)
+  utility_env <- viewer_runtime_env()
   compute_count <- 0L
   server <- function(input, output, session) {
     active <- function() identical(input$sidebar, "page")
@@ -275,9 +251,7 @@ test_that("page-gated debounced values stay idle off the page", {
 })
 
 test_that("hidden outputs resolve to their owning sidebar tabs", {
-  utility_env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = utility_env)
-  sys.source(viewer_test_path("utility_functions.R"), envir = utility_env)
+  utility_env <- viewer_runtime_env()
 
   expect_identical(
     utility_env$viewerOutputTab(c(

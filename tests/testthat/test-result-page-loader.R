@@ -8,8 +8,7 @@ test_that("result page completion follows local draws and preserves paint gates"
 })
 
 test_that("stored table controls include the first subgroup without another output", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   results <- data.frame(
     cluster = factor(c("b", "a"), levels = c("a", "b", "unused")),
     gene = c("X", "Y")

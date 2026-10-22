@@ -1,6 +1,6 @@
 spatial_flow_server <- function(input, output, session) {
   scope <- environment()
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  viewer_runtime_env(scope)
   sys.source(viewer_test_path("spatial", "func_spatial_helpers.R"), scope)
   coords <- data.frame(x = c(0, 10, 10, 0), y = c(0, 0, 10, 10))
   metadata <- data.frame(cell_index = 1:4, group = rep("A", 4))

@@ -1,8 +1,7 @@
 projection_first_frame_indices <- function(metadata, percentage = 100) {
   scope <- new.env(parent = globalenv())
   scope$input <- list(test_percentage_cells_to_show = percentage)
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  viewer_runtime_env(scope)
   scope$getGroups <- function() character()
   scope$viewerProjectionCellIndices("test", metadata)
 }
@@ -18,8 +17,7 @@ test_that("Spatial metadata uses the new dataset's validated colour before contr
       ))
       spatial_projection_parameters_plot <- parameters
       spatial_projection_cells_to_show <- function() 1:2
-      sys.source(viewer_test_path("core", "crb_contract.R"), environment())
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       viewerProjectionFirstFrameMetadata <- metadata
       sys.source(
         viewer_test_path("spatial", "obj_projection_metadata.R"),
@@ -60,9 +58,7 @@ test_that("a full projection preserves canonical row order", {
 })
 
 test_that("projection payload selects only required metadata columns", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   metadata <- data.frame(
     cell_barcode = c("c1", "c2"),
     major_type = factor(c("T", "B")),
@@ -93,9 +89,7 @@ test_that("projection payload selects only required metadata columns", {
 })
 
 test_that("projection first frame excludes cell identities and hover metadata", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   metadata <- data.frame(
     cell_barcode = c("c1", "c2"),
     major_type = factor(c("T", "B")),
@@ -110,9 +104,7 @@ test_that("projection first frame excludes cell identities and hover metadata", 
 })
 
 test_that("thin CRB first frames do not force cell-barcode hydration", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   object <- new.env(parent = emptyenv())
   metadata <- data.frame(group = factor(c("A", "B")))
   projection <- data.frame(x = 1:2, y = 3:4)
@@ -133,16 +125,13 @@ test_that("thin CRB first frames do not force cell-barcode hydration", {
 test_that("first-frame cache is optional outside a loaded dataset", {
   scope <- new.env(parent = globalenv())
   scope$data_set <- NULL
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  viewer_runtime_env(scope)
 
   expect_null(scope$viewerProjectionFirstFrameCache())
 })
 
 test_that("projection auxiliary data is built only after it is requested", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   calls <- 0L
   pending <- list(
     id = "overview_projection",
@@ -169,9 +158,7 @@ test_that("projection auxiliary data is built only after it is requested", {
 })
 
 test_that("projection auxiliary rows preserve plotted group order", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   auxiliary <- scope$cerebroCellViewDeferredAux(
     selection_rows = list(c(2L, 4L), c(1L, 3L)),
     cell_barcodes = c("c1", "c2", "c3", "c4"),
@@ -196,8 +183,7 @@ test_that("projection auxiliary rows preserve plotted group order", {
 test_that("unmounted group filters preserve canonical rows without level scans", {
   scope <- new.env(parent = globalenv())
   scope$input <- list(test_percentage_cells_to_show = 100)
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  viewer_runtime_env(scope)
   level_calls <- 0L
   scope$getGroups <- function() c("state", "sample")
   scope$getGroupLevels <- function(group) {
@@ -306,9 +292,7 @@ test_that("gene-expression deferred hover selects rows and columns first", {
 })
 
 test_that("cached H5 gene names do not force the expression backend", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   slow_calls <- 0L
   object <- new.env(parent = emptyenv())
   class(object) <- c("Cerebro", "R6")
@@ -353,9 +337,7 @@ test_that("thin H5 first-frame cache includes its small gene index", {
 })
 
 test_that("projection can render before its dynamic controls bind", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   metadata <- data.frame(
     cell_barcode = c("c1", "c2"),
     sample = factor(c("a", "b")),
@@ -439,9 +421,7 @@ test_that("a new projection mount redraws unchanged data", {
 })
 
 test_that("full ordered projection rows bypass row subsetting", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = scope)
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   table <- data.frame(
     x = 1:4,
     y = 5:8,

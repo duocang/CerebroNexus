@@ -1,6 +1,5 @@
 test_that("hover preserves full metadata text and cell order without requiring QC metrics", {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   env$getGroups <- function() "group"
   table <- data.frame(
     cell_barcode = c("c3", "c1", "c2"),

@@ -635,13 +635,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   renderer$Cerebro.options <- list(cerebro_root = root)
   renderer$viewerExpressionColorSettings <- function(...) list()
   renderer$expressionColorScale <- function(...) list()
-  sys.source(
-    file.path(
-      system.file("viewer", package = "CerebroNexus"),
-      "utility_functions.R"
-    ),
-    envir = renderer
-  )
+  viewer_runtime_env(renderer)
   sys.source(
     file.path(
       system.file("viewer", package = "CerebroNexus"),
@@ -758,11 +752,7 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
 })
 
 test_that("external spatial images are streamed from session-private files", {
-  renderer <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = renderer
-  )
+  renderer <- viewer_runtime_env()
   image <- tempfile(fileext = ".png")
   withr::defer(unlink(image))
   bytes <- c(
@@ -802,8 +792,7 @@ test_that("external spatial images are streamed from session-private files", {
 })
 
 test_that("spatial first frames replace only exact flat geometry with an asset", {
-  renderer <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = renderer)
+  renderer <- viewer_runtime_env()
   sys.source(
     viewer_test_path("spatial", "func_spatial_helpers.R"),
     envir = renderer
@@ -897,8 +886,7 @@ test_that("spatial first frames replace only exact flat geometry with an asset",
 })
 
 test_that("Spatial geometry catalog is registered but fetched only on page request", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   sys.source(viewer_test_path("spatial", "func_spatial_helpers.R"), scope)
   scope$Cerebro.options <- list()
   scope$available_crb_files <- list(

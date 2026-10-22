@@ -31,7 +31,7 @@ have_bundle <- nzchar(bundle_file) &&
   file.exists(contract_file) &&
   file.exists(utility_file)
 if (have_bundle) {
-  sys.source(utility_file, envir = cv_env)
+  viewer_runtime_env(cv_env, root = dirname(utility_file))
   sys.source(
     file.path(dirname(bundle_file), "..", "spatial", "func_spatial_helpers.R"),
     envir = cv_env
@@ -662,9 +662,7 @@ test_that("thin preloaded primary and supplement align unverified projections on
   )
   path <- fixture$crb
   scope <- new.env(parent = globalenv())
-  sys.source(file.path(dirname(utility_file), "crb_cache.R"), scope)
-  sys.source(file.path(dirname(utility_file), "core", "crb_contract.R"), scope)
-  sys.source(utility_file, scope)
+  viewer_runtime_env(scope, root = dirname(utility_file))
   ## The bundle resolves author display defaults; installed checks cannot
   ## reach the package's internal copy of these helpers.
   sys.source(viewer_test_path("core", "viewer_content_contract.R"), scope)
@@ -822,7 +820,7 @@ test_that("saved-view startup identity does not materialize cell names", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       data_set <- reactive(list(cell_fingerprint = input$fingerprint))
       getNumberOfCells <- function() 1000000L
       cv_saved_view_cells <- function() stop("must not read cell names")

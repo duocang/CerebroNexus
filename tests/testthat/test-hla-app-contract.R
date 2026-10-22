@@ -408,8 +408,7 @@ test_that("the page's nav gate scans every sample, like the core does", {
   )
   expect_setequal(hla_detect_chains(late), c("TRA", "TRB"))
 
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   expect_true(scope$viewerHasTcrRepertoire(late))
 })
 

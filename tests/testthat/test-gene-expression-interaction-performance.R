@@ -3,7 +3,7 @@ test_that("Gene selection settles before expression extraction starts", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       list_of_genes <- function() c("A", "B", "C")
       sys.source(
         viewer_test_path("gene_expression", "obj_selected_genes.R"),
@@ -87,7 +87,7 @@ test_that("Gene projection host is present before dynamic controls bind", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       availableProjections <- function() c("first", "second")
       available_trajectories <- function() character()
       preferences <- list(
@@ -135,8 +135,7 @@ test_that("Gene projection host is present before dynamic controls bind", {
 })
 
 test_that("empty Gene selection keeps the same summary without hydrating IDs", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   full <- data.frame(
     cell_barcode = c("a", "b", "c"),
     cluster = c("X", "X", "Y")

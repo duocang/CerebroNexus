@@ -2,7 +2,7 @@ test_that("trajectory static frames fall back when filters or resources change",
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sys.source(viewer_test_path("color_setup.R"), scope)
       sys.source(viewer_test_path("plotting_functions.R"), scope)
       trajectory_selection_ok <- function() TRUE
@@ -109,7 +109,7 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       viewer_loaded_dataset_context <- function() {
         list(epoch = "s", dataset_key = "A", generation = 1)
       }

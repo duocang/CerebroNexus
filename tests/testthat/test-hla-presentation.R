@@ -228,7 +228,7 @@ test_that("HLA metadata discovery uses declared biology and chain-specific filte
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       hla_first_frame <- function() NULL
       hla_active_chain <- function() input$chain %||% "TRB"
       getGroups <- function() {

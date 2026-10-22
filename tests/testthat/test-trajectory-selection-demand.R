@@ -29,8 +29,7 @@ test_that("selected table matches barcodes first and coordinates as fallback", {
     viewer_test_path("trajectory", "selected_cells_table.R"),
     "output.trajectory_details_selected_cells_table"
   )
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   scope$output <- list()
   local_mocked_bindings(
     renderDataTable = function(expr, ...) {

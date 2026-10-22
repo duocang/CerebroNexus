@@ -125,13 +125,6 @@ legacy_payload <- function(extra = list(), drop = character(), cls = NULL) {
   payload
 }
 
-runtime_env <- function() {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("core", "crb_contract.R"), envir = runtime)
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
-  runtime
-}
-
 ## ---------------------------------------------------------------------------
 ## H5 fixture
 ## ---------------------------------------------------------------------------
@@ -418,7 +411,7 @@ test_that("an H5 CRB written without a schema still reads", {
   expect_cerebro_fields(readCerebro(path), fixture)
   expect_null(readCerebro(path)$crb_schema)
 
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   runtime_object <- runtime$read_cerebro_file(path)
   runtime_object <- runtime$.attachExternalExpression(runtime_object, path)
   expect_true(rlang::env_binding_are_lazy(runtime_object, "expression"))
@@ -449,7 +442,7 @@ test_that("a missing H5 file is reported as a missing sidecar", {
     "expression sidecar is missing"
   )
 
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   expect_error(
     runtime$.attachExternalExpression(
       runtime$read_cerebro_file(file.path(lonely, "thin.crb")),
@@ -472,7 +465,7 @@ test_that("the Viewer hydrates a thin CRB lazily and checks it against the H5 fi
   saveCerebro(fixture$object, qs)
   expected <- readCerebro(qs)
 
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   runtime_object <- runtime$read_cerebro_file(qs)
   runtime_object <- runtime$.attachExternalExpression(runtime_object, qs)
   expect_true(rlang::env_binding_are_lazy(runtime_object, "meta_data"))
@@ -512,7 +505,7 @@ test_that("the Viewer hydrates a thin CRB lazily and checks it against the H5 fi
 })
 
 test_that("Data Info reads the thin cell count without forcing metadata", {
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   object <- new.env(parent = emptyenv())
   object$crb_schema <- list(version = 3L, n_cells = 4L)
   delayedAssign(
@@ -752,7 +745,7 @@ retired_cerebros <- function(root) {
 test_that("every retired format is rejected with a pointer to convertCerebro", {
   root <- withr::local_tempdir()
   retired <- retired_cerebros(root)
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
 
   for (name in names(retired$entries)) {
     entry <- retired$entries[[name]]
@@ -1465,8 +1458,7 @@ test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
   expect_identical(restored$getSpatialData("fov1")$molecules, molecules)
   expect_identical(restored$spatial$fov1$molecules, molecules)
 
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
   runtime_object <- runtime$read_cerebro_file(path)
   runtime_object <- runtime$.attachSpatialMoleculeBackend(runtime_object, path)
   expect_s3_class(
@@ -1504,7 +1496,7 @@ test_that("bundled demo CRBs use the current qs2 codec", {
 
 test_that("the CRB schema reader takes v3 only; both sides read the same H5 names", {
   skip_if_no_h5()
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   fixture <- make_h5_cerebro(withr::local_tempdir())
   expect_identical(
     .h5CellNames(fixture$h5),
@@ -1672,7 +1664,7 @@ test_that("the Viewer checks the H5 cell names before it reads expression", {
   fixture <- make_h5_cerebro(root)
   path <- file.path(root, "thin.crb")
   saveCerebro(fixture$object, path)
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   attach <- function() {
     runtime$.attachExternalExpression(runtime$read_cerebro_file(path), path)
   }
@@ -1692,7 +1684,7 @@ test_that("the cell names are read once for hydration and expression", {
   fixture <- make_h5_cerebro(root)
   path <- file.path(root, "thin.crb")
   saveCerebro(fixture$object, path)
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
   reads <- 0L
   original <- runtime$.runtimeH5Names
   runtime$.runtimeH5Names <- function(sidecar, dataset) {
@@ -1726,7 +1718,7 @@ test_that("the cell names are read once for hydration and expression", {
 test_that("a retired format that convertCerebro cannot repair says to re-export", {
   root <- withr::local_tempdir()
   retired <- retired_cerebros(root)
-  runtime <- runtime_env()
+  runtime <- viewer_runtime_env()
 
   for (name in names(retired$entries)) {
     entry <- retired$entries[[name]]

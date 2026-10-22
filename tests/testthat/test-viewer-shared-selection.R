@@ -1,6 +1,6 @@
 selection_env <- new.env(parent = globalenv())
 sys.source(viewer_test_path("plotting_functions.R"), selection_env)
-sys.source(viewer_test_path("utility_functions.R"), selection_env)
+viewer_runtime_env(selection_env)
 
 test_that("persistent selection preserves cell identity at coincident coordinates", {
   context <- selection_env$viewerDatasetContext("session", "spatial", 1)

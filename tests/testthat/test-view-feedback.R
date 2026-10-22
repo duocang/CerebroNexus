@@ -2,7 +2,7 @@ test_that("feedback reads only small controls without reactive dependencies", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       runs <- 0L
       probe <- reactive({
         input$trigger

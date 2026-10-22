@@ -2,7 +2,7 @@ sys.source(
   viewer_test_path("core", "viewer_content_contract.R"),
   envir = environment()
 )
-sys.source(viewer_test_path("utility_functions.R"), envir = environment())
+viewer_runtime_env(environment())
 sys.source(
   viewer_test_path("spatial", "func_spatial_helpers.R"),
   envir = environment()

@@ -40,8 +40,7 @@ test_that("trajectory metadata columns preserve exact values, order and row name
 })
 
 test_that("empty Trajectory selection preserves summary without hydrating metadata", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), scope)
+  scope <- viewer_runtime_env()
   full <- data.frame(
     cell_barcode = c("a", "b", "c"),
     cluster = c("X", "X", "Y")

@@ -2,7 +2,7 @@ test_that("dataset loading reports progress and acknowledges the loaded dataset"
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sent <- list()
       session$sendCustomMessage <- function(type, message) {
         sent[[length(sent) + 1L]] <<- list(type = type, message = message)
@@ -112,8 +112,7 @@ test_that("dataset loading reports progress and acknowledges the loaded dataset"
 
 
 test_that("loading labels match selector labels without changing dataset identity", {
-  runtime <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = runtime)
+  runtime <- viewer_runtime_env()
   files <- c(ds1 = "/private/one.crb", ds2 = "/private/two.crb")
   labels <- c(ds2 = "Tissue atlas", ds1 = "All nuclei")
   expect_identical(
@@ -171,7 +170,7 @@ test_that("catalog Data info decides loading with the request and loads once", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sys.source(viewer_test_path("core", "dataset_overview.R"), scope)
       session$sendCustomMessage <- function(type, message) NULL
       removeNotification <- function(...) NULL
@@ -273,8 +272,7 @@ test_that("a background read that never finishes does not stall the dataset swit
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
-      sys.source(viewer_test_path("crb_cache.R"), scope)
+      viewer_runtime_env(scope)
       session$sendCustomMessage <- function(type, message) NULL
       reads <- 0L
       dataset_load_requested <- reactiveVal(TRUE)

@@ -1,7 +1,6 @@
 test_that("ImageFeaturePlot preserves values and uses the saved expression palette", {
-  runtime <- new.env(parent = globalenv())
+  runtime <- viewer_runtime_env()
   for (path in c(
-    "utility_functions.R",
     "core/func_color_scale.R",
     "spatial/func_projection_update_plot.R"
   )) {

@@ -87,7 +87,7 @@ test_that("HLA network renders only on its requested subtab with a current conte
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       reads <- 0L
       sent <- list()
       context <- list(epoch = "session", dataset_key = "tiny", generation = 1L)

@@ -2,7 +2,7 @@ test_that("Gene feedback uses canonical keys without preparing expression", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       key_function <- viewer_r_assignment(
         viewer_test_path(
           "gene_expression",

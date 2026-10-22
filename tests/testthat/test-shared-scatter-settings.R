@@ -1,6 +1,5 @@
 test_that("projection defaults are canonical and spatial defaults independent", {
-  env <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  env <- viewer_runtime_env()
   options <- list(
     point_size = c(a = 3, b = 8),
     point_opacity = c(a = .4, b = .9),
@@ -58,7 +57,7 @@ test_that("function coordinate settings validate dataset, FOV and numeric bounds
 test_that("function and Viewer agree on coordinate appearance bounds", {
   env <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_content_contract.R"), env)
-  sys.source(viewer_test_path("utility_functions.R"), env)
+  viewer_runtime_env(env)
   catalogs <- list(dataset = list(fov = list()))
   for (roi in c(FALSE, TRUE)) {
     for (size in c(.5, 1, 20, 21, Inf, NA_real_)) {

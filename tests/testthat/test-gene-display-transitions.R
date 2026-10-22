@@ -1,7 +1,7 @@
 test_that("RGB seeds valid genes once and preserves edited or empty channels", {
   shiny::testServer(
     function(input, output, session) {
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       list_of_genes <- reactiveVal(c("A", "B", "C", "D"))
       observed <- new.env()
       observed$updates <- list()
@@ -72,7 +72,7 @@ test_that("RGB seeds valid genes once and preserves edited or empty channels", {
 test_that("RGB layout changes reuse expression rows while producing a new paint key", {
   shiny::testServer(
     function(input, output, session) {
-      sys.source(viewer_test_path("utility_functions.R"), environment())
+      viewer_runtime_env(environment())
       sys.source(
         viewer_test_path("gene_expression", "func_expression_summary.R"),
         environment()

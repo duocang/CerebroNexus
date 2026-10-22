@@ -206,8 +206,7 @@ test_that("the 1M demo replaces the illustrative path with marker guidance", {
 })
 
 test_that("the Viewer filters methods at trajectory selection boundaries", {
-  utility <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = utility)
+  utility <- viewer_runtime_env()
   expect_identical(
     utility$viewerSupportedTrajectoryMethods(
       c("unsupported", "marker_guided", "monocle2", "illustrative")
@@ -217,8 +216,7 @@ test_that("the Viewer filters methods at trajectory selection boundaries", {
 })
 
 test_that("Viewer spatial readers leave molecule sidecars dormant", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = scope)
+  scope <- viewer_runtime_env()
   dataset <- new.env(parent = emptyenv())
   class(dataset) <- c("Cerebro", "R6")
   dataset$spatial <- list(
@@ -239,8 +237,7 @@ test_that("Viewer spatial readers leave molecule sidecars dormant", {
 })
 
 test_that("million-cell hover stays columnar until the browser needs it", {
-  utility <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("utility_functions.R"), envir = utility)
+  utility <- viewer_runtime_env()
   columns <- utility$cerebroProjectionHoverColumns(
     data.frame(
       cell_barcode = c("cell-1", "cell-2"),

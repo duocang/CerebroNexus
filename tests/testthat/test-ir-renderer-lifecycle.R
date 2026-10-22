@@ -200,7 +200,7 @@ test_that("Clonal projection paints before drawer binding and defers cell identi
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
-      sys.source(viewer_test_path("utility_functions.R"), scope)
+      viewer_runtime_env(scope)
       sys.source(viewer_test_path("clone_contract.R"), scope)
       context <- list(epoch = "s", dataset_key = "A", generation = 1)
       viewer_loaded_dataset_context <- function() context

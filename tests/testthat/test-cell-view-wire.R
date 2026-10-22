@@ -1,6 +1,5 @@
 wire_file <- viewer_test_path("www", "cell_views_wire.js")
 bundle_file <- viewer_test_path("coordinated_views", "bundle.R")
-utility_file <- viewer_test_path("utility_functions.R")
 
 wire_header <- function(payload) {
   header_length <- sum(as.integer(payload[seq_len(4L)]) * 256^(0:3))
@@ -37,8 +36,7 @@ test_that("the browser restores compact linked-view vectors", {
     return(invisible(NULL))
   }
 
-  helpers <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = helpers)
+  helpers <- viewer_runtime_env()
   sys.source(bundle_file, envir = helpers)
   packed <- helpers$cv_wire_pack_bundle(
     list(
@@ -79,8 +77,7 @@ test_that("the browser restores compact linked-view vectors", {
 })
 
 test_that("hover code remapping preserves observed order and missing labels", {
-  helpers <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = helpers)
+  helpers <- viewer_runtime_env()
   for (values in list(
     factor(c("b", NA, "a", "NA", "b"), levels = c("unused", "NA", "a", "b")),
     ordered(c("b", "a", NA), levels = c("a", "b")),
@@ -107,8 +104,7 @@ test_that("hover code remapping preserves observed order and missing labels", {
 })
 
 test_that("binary envelopes also preserve messages without packed vectors", {
-  helpers <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = helpers)
+  helpers <- viewer_runtime_env()
   message <- list(id = "empty", data = list(n = 0L), labels = c("a", "b"))
   packed <- helpers$cv_wire_pack_message(message)
   expect_type(packed, "raw")
@@ -123,8 +119,7 @@ test_that("specialist cell views use the same binary envelope", {
   skip_if_no_node()
   skip_if_not_installed("jsonlite")
 
-  helpers <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = helpers)
+  helpers <- viewer_runtime_env()
   sys.source(bundle_file, envir = helpers)
   packed <- helpers$cv_wire_pack_message(
     list(
@@ -148,8 +143,7 @@ test_that("specialist cell views use the same binary envelope", {
 
 test_that("large specialist views send their first frame before hover data", {
   skip_if_not_installed("jsonlite")
-  runtime <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = runtime)
+  runtime <- viewer_runtime_env()
   sent <- list()
   runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$viewerDatasetIdentity <- function() {
@@ -233,8 +227,7 @@ test_that("large specialist views send their first frame before hover data", {
 
 test_that("deferred specialist IDs can declare trace lengths without placeholders", {
   skip_if_not_installed("jsonlite")
-  runtime <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = runtime)
+  runtime <- viewer_runtime_env()
   sent <- list()
   runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$viewerDatasetIdentity <- function() {
@@ -296,8 +289,7 @@ test_that("deferred specialist IDs can declare trace lengths without placeholder
 
 test_that("specialist views can reference validated shared coordinates", {
   skip_if_not_installed("jsonlite")
-  runtime <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = runtime)
+  runtime <- viewer_runtime_env()
 
   has_contract <- all(
     c(
@@ -447,8 +439,7 @@ test_that("specialist views can reference validated shared coordinates", {
 })
 
 test_that("core auxiliary identities precede full metadata and reject duplicate stages", {
-  env <- new.env(parent = globalenv())
-  sys.source(utility_file, env)
+  env <- viewer_runtime_env()
   sent <- list()
   core_builds <- 0L
   full_builds <- 0L
@@ -497,8 +488,7 @@ test_that("core auxiliary identities precede full metadata and reject duplicate 
 
 test_that("renders with delivered cells name the barcodes the browser holds", {
   skip_if_not_installed("jsonlite")
-  runtime <- new.env(parent = globalenv())
-  sys.source(utility_file, envir = runtime)
+  runtime <- viewer_runtime_env()
   sent <- list()
   runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$session <- list(

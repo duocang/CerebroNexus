@@ -12,10 +12,7 @@
 # sourcing it standalone is safe.
 load_filter <- function() {
   env <- new.env()
-  sys.source(
-    viewer_test_path("utility_functions.R"),
-    envir = env
-  )
+  viewer_runtime_env(env)
   env[["filterSelectionByHiddenGroups"]]
 }
 
@@ -81,7 +78,7 @@ test_that("hidden groups not present in the data are ignored", {
 
 test_that("viewerVisibleSelection reads cells only when a group is hidden", {
   env <- new.env()
-  sys.source(viewer_test_path("utility_functions.R"), envir = env)
+  viewer_runtime_env(env)
   context <- list(epoch = "s", dataset_key = "A", generation = 1)
   reads <- 0L
   cells <- function() {
