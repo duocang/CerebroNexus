@@ -153,7 +153,9 @@ test_that("Opening Linked views after Share does not answer the request again", 
   expect_identical(app$get_js("window.__testJSONCount"), 1L)
   expect_false(grepl(
     "Loading linked views",
-    app$get_js("document.getElementById('shiny-tab-coordinated_views').innerText"),
+    app$get_js(
+      "document.getElementById('shiny-tab-coordinated_views').innerText"
+    ),
     fixed = TRUE
   ))
 })
