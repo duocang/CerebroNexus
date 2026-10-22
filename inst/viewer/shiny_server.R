@@ -2239,7 +2239,9 @@ server <- function(input, output, session) {
     invisible(TRUE)
   }
   load_coordinated_views_server <- function() {
-    load_deferred_viewer_server("coordinated_views/server.R")
+    load_deferred_viewer_server(
+      deferred_viewer_server_files[["coordinated_views"]]
+    )
   }
   observeEvent(
     input[["coordviews_visible"]],

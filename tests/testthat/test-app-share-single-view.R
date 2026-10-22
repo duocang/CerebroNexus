@@ -87,3 +87,73 @@ test_that("Share on a single-plot page downloads and opens before Linked views",
     timeout = 15000
   )
 })
+
+## Counts the JSON blobs the page turns into downloads.
+count_json_downloads <- function(app) {
+  app$run_js(paste0(
+    "(() => {const original=URL.createObjectURL;window.__testJSONCount=0;",
+    "URL.createObjectURL=function(blob){",
+    "if(blob.type.startsWith('application/json'))window.__testJSONCount++;",
+    "return original.call(URL,blob);};})()"
+  ))
+}
+
+share_download_once <- function(app) {
+  app$click(selector = share_overview)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('cv-config-dialog').open && ",
+      "!document.getElementById('cv-config-download').disabled"
+    ),
+    timeout = 10000
+  )
+  app$click(selector = "#cv-config-download")
+  app$wait_for_js("window.__testJSONCount >= 1", timeout = 15000)
+  Sys.sleep(3)
+}
+
+test_that("Opening Linked views before Share neither replays nor repeats a request", {
+  skip_on_cran()
+  skip_if_not_installed("shinytest2")
+
+  app <- share_single_view_app("share_after_linked_views")
+  withr::defer(app$stop())
+  count_json_downloads(app)
+  app$click(selector = 'a[href="#shiny-tab-coordinated_views"]')
+  app$wait_for_js(
+    "document.getElementById('shiny-tab-coordinated_views').classList.contains('active')",
+    timeout = 20000
+  )
+  Sys.sleep(5)
+  expect_identical(app$get_js("window.__testJSONCount"), 0L)
+  app$click(selector = 'a[href="#shiny-tab-overview"]')
+  app$wait_for_js(
+    "document.getElementById('shiny-tab-overview').classList.contains('active')",
+    timeout = 10000
+  )
+  share_download_once(app)
+  expect_identical(app$get_js("window.__testJSONCount"), 1L)
+})
+
+test_that("Opening Linked views after Share does not answer the request again", {
+  skip_on_cran()
+  skip_if_not_installed("shinytest2")
+
+  app <- share_single_view_app("linked_views_after_share")
+  withr::defer(app$stop())
+  count_json_downloads(app)
+  share_download_once(app)
+  expect_identical(app$get_js("window.__testJSONCount"), 1L)
+  app$click(selector = 'a[href="#shiny-tab-coordinated_views"]')
+  app$wait_for_js(
+    "document.getElementById('shiny-tab-coordinated_views').classList.contains('active')",
+    timeout = 20000
+  )
+  Sys.sleep(8)
+  expect_identical(app$get_js("window.__testJSONCount"), 1L)
+  expect_false(grepl(
+    "Loading linked views",
+    app$get_js("document.getElementById('shiny-tab-coordinated_views').innerText"),
+    fixed = TRUE
+  ))
+})
