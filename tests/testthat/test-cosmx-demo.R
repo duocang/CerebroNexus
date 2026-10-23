@@ -127,7 +127,10 @@ test_that("the CosMx sources are the eight section archives with published sums"
     unname(basename(paths$archives[["Lung12"]])),
     "Lung12_SMI_Flat_data.tar.gz"
   )
-  expect_identical(basename(dirname(paths$crb)), "cerebro-v1")
+  expect_identical(
+    basename(dirname(paths$crb)),
+    paste0("cerebro-v", env$.viewerCosMxVersion)
+  )
   expect_identical(dirname(paths$crb), dirname(paths$sidecar))
   expect_identical(
     unname(env$.viewerCosMxMembers("Lung12")[["metadata"]]),
@@ -212,6 +215,28 @@ test_that("inconsistent flat files are rejected", {
     env$.viewerCosMxReadSample(files, "Lung1"),
     "CenterX_global_px"
   )
+})
+
+test_that("a spatial entry does not store the cell names twice", {
+  skip_if_not_installed("Matrix")
+  env <- cosmx_demo_env()
+  coordinates <- data.frame(
+    x = c(1, 2, 3),
+    y = c(-1, -2, -3),
+    row.names = c("s_1_1", "s_1_2", "s_2_1")
+  )
+  entry <- env$.viewerCosMxSpatialEntry(coordinates, c("GENEA", "GENEB"))
+  expect_named(entry, c("coordinates", "expression", "histology_images"))
+  expect_identical(rownames(entry$coordinates), rownames(coordinates))
+  expect_identical(dim(entry$expression), c(2L, 3L))
+  expect_identical(rownames(entry$expression), c("GENEA", "GENEB"))
+  expect_null(colnames(entry$expression))
+  expect_identical(length(entry$expression@x), 0L)
+  expect_length(entry$histology_images, 0L)
+  ## The Cerebro class accepts it as a spatial entry.
+  object <- Cerebro$new()
+  object$addSpatialData("section", entry)
+  expect_identical(object$availableSpatial(), "section")
 })
 
 test_that("only the flat CSV files are unpacked from a section archive", {

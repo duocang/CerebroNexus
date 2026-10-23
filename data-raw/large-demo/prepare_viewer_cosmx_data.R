@@ -1,7 +1,7 @@
 ## NanoString CosMx SMI non-small-cell lung cancer (NSCLC) FFPE data set
 ## (He et al. 2022, Nature Biotechnology 40:1794): 8 sections of 5 tissues, 960
 ## genes, one flat-file archive per section. See cosmx.ATTRIBUTION.md.
-.viewerCosMxVersion <- 1L
+.viewerCosMxVersion <- 2L
 
 .viewerCosMxBaseUrl <- paste0(
   "https://nanostring-public-share.s3.us-west-2.amazonaws.com/",
@@ -244,6 +244,24 @@
   )
 }
 
+## A spatial entry of the Viewer: the section's coordinates and an expression
+## matrix. The Viewer reads expression from the H5 sidecar, so the entry's own
+## matrix is empty. It keeps the genes as row names and has no column names, so
+## the cell names, which the coordinates already hold, are not stored twice.
+.viewerCosMxSpatialEntry <- function(coordinates, genes) {
+  list(
+    coordinates = coordinates,
+    expression = Matrix::sparseMatrix(
+      i = integer(),
+      j = integer(),
+      x = numeric(),
+      dims = c(length(genes), nrow(coordinates)),
+      dimnames = list(genes, NULL)
+    ),
+    histology_images = list()
+  )
+}
+
 .viewerCosMxBuildObject <- function(
   paths,
   work,
@@ -307,23 +325,11 @@
     object$addGroup(group, sort(levels(metadata[[group]]), method = "radix"))
   }
   object$addProjection("umap", projection)
-  ## One spatial entry per section. The Viewer reads expression from the H5
-  ## sidecar, so the entry's own expression matrix is empty.
+  ## One spatial entry per section.
   for (sample in names(sections)) {
-    coordinates <- sections[[sample]]$coordinates
     object$addSpatialData(
       sample,
-      list(
-        coordinates = coordinates,
-        expression = Matrix::sparseMatrix(
-          i = integer(),
-          j = integer(),
-          x = numeric(),
-          dims = c(nrow(expression), nrow(coordinates)),
-          dimnames = list(rownames(expression), rownames(coordinates))
-        ),
-        histology_images = list()
-      )
+      .viewerCosMxSpatialEntry(sections[[sample]]$coordinates, rownames(expression))
     )
   }
   object$addExtraTable(
