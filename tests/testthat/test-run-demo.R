@@ -1,11 +1,23 @@
 test_that("run-demo loads the worktree and avoids a busy default port", {
   launcher <- testthat::test_path("..", "..", "run-demo.R")
   skip_if_not(file.exists(launcher), "repository-only launcher")
-  withr::local_envvar(c(CEREBRO_1M_DEMO_CRB = NA, CEREBRO_REN_DEMO_CRB = NA))
+  withr::local_envvar(c(
+    CEREBRO_1M_DEMO_CRB = NA,
+    CEREBRO_REN_DEMO_CRB = NA,
+    CEREBRO_COSMX_DEMO_CRB = NA,
+    CEREBRO_TCELL_DEMO_CRB = NA
+  ))
   root <- normalizePath(testthat::test_path("..", ".."))
-  datasets <- tempfile(c("one-", "ren-"))
+  keys <- c("one", "ren", "cosmx", "tcell")
+  datasets <- stats::setNames(tempfile(paste0(keys, "-")), keys)
   file.create(datasets)
   withr::defer(unlink(datasets))
+  variables <- c(
+    one = "CEREBRO_1M_DEMO_CRB",
+    ren = "CEREBRO_REN_DEMO_CRB",
+    cosmx = "CEREBRO_COSMX_DEMO_CRB",
+    tcell = "CEREBRO_TCELL_DEMO_CRB"
+  )
   loaded <- NULL
   testthat::local_mocked_bindings(
     load_all = function(path, ...) loaded <<- path,
@@ -34,48 +46,83 @@ test_that("run-demo loads the worktree and avoids a busy default port", {
     },
     .package = "shiny"
   )
-  for (ren_only in c(FALSE, TRUE)) {
+  ## Options and the data sets they prepare. Without a selecting option the
+  ## 1M mouse brain and Ren are prepared, as before.
+  runs <- list(
+    list(options = character(), expected = c("one", "ren")),
+    list(options = "--ren-only", expected = "ren"),
+    list(options = "--cosmx", expected = c("one", "ren", "cosmx")),
+    list(options = c("--tcell", "--cosmx"), expected = keys),
+    list(options = "--cosmx-only", expected = "cosmx"),
+    list(options = "--tcell-only", expected = "tcell"),
+    list(options = c("--tcell-only", "--cosmx-only"), expected = c("cosmx", "tcell")),
+    list(options = c("--ren-only", "--tcell"), expected = c("ren", "tcell")),
+    list(options = c("--ren-only", "--no-compressed"), expected = "ren")
+  )
+  for (run in runs) {
     prepared <- character()
     packs <- character()
+    launched <- NULL
     scope <- new.env(parent = globalenv())
     scope$commandArgs <- function(trailingOnly) {
       if (!trailingOnly) {
         paste0("--file=", normalizePath(launcher))
       } else {
-        c("--no-browser", if (ren_only) "--ren-only")
+        c("--no-browser", run$options)
       }
     }
     scope$source <- function(file, local) {
       scope$.viewerRenVersion <- 2L
+      scope$.viewerCosMxVersion <- 1L
+      scope$.viewerTcellVersion <- 1L
       scope$prepareViewer1mBenchmarkData <- function() {
         prepared <<- c(prepared, "one")
-        datasets[[1]]
+        datasets[["one"]]
       }
       scope$prepareViewerRenDemoData <- function() {
         prepared <<- c(prepared, "ren")
-        datasets[[2]]
+        datasets[["ren"]]
       }
-      ## The launcher builds a Viewer Pack for each demo data set it prepares.
+      scope$prepareViewerCosMxDemoData <- function() {
+        prepared <<- c(prepared, "cosmx")
+        datasets[["cosmx"]]
+      }
+      scope$prepareViewerTcellDemoData <- function() {
+        prepared <<- c(prepared, "tcell")
+        datasets[["tcell"]]
+      }
+      ## The launcher builds a Viewer Pack for each demo data set it prepares,
+      ## and for the compressed twin it makes of it.
       scope$prepareDemoViewerPack <- function(crb) {
         packs <<- c(packs, basename(crb))
         invisible(crb)
       }
+      scope$prepareCompressedDemoVariant <- function(crb) {
+        paste0(crb, "_compressed")
+      }
     }
     sys.source(launcher, scope)
-    expect_identical(loaded, root)
-    expect_identical(prepared, if (ren_only) "ren" else c("one", "ren"))
-    expect_identical(
-      packs,
-      basename(if (ren_only) datasets[[2]] else datasets)
-    )
-    expect_identical(
-      Sys.getenv("CEREBRO_REN_DEMO_CRB"),
-      normalizePath(datasets[[2]])
-    )
-    expect_identical(
-      Sys.getenv("CEREBRO_1M_DEMO_CRB"),
-      if (ren_only) "" else normalizePath(datasets[[1]])
-    )
+    label <- paste(c("run-demo", run$options), collapse = " ")
+    expect_identical(loaded, root, label = label)
+    expect_identical(prepared, run$expected, label = label)
+    expected_packs <- unlist(lapply(
+      basename(datasets[run$expected]),
+      function(name) {
+        if ("--no-compressed" %in% run$options) {
+          name
+        } else {
+          c(name, paste0(name, "_compressed"))
+        }
+      }
+    ), use.names = FALSE)
+    expect_identical(packs, expected_packs, label = label)
+    for (name in keys) {
+      expect_identical(
+        Sys.getenv(variables[[name]]),
+        if (name %in% run$expected) normalizePath(datasets[[name]]) else "",
+        label = paste(label, variables[[name]])
+      )
+    }
     expect_identical(
       launched,
       list(
@@ -83,10 +130,29 @@ test_that("run-demo loads the worktree and avoids a busy default port", {
         host = "127.0.0.1",
         port = 18765L,
         browser = FALSE
-      )
+      ),
+      label = label
     )
   }
-  expect_identical(ports, 4L)
+  expect_identical(ports, 2L * length(runs))
+})
+
+test_that("run-demo rejects an unknown option", {
+  launcher <- testthat::test_path("..", "..", "run-demo.R")
+  skip_if_not(file.exists(launcher), "repository-only launcher")
+  scope <- new.env(parent = globalenv())
+  scope$commandArgs <- function(trailingOnly) {
+    if (!trailingOnly) {
+      paste0("--file=", normalizePath(launcher))
+    } else {
+      "--everything"
+    }
+  }
+  expect_error(
+    sys.source(launcher, scope),
+    "Supported options: --ren-only, --cosmx-only, --tcell-only, --cosmx, --tcell",
+    fixed = TRUE
+  )
 })
 
 test_that("demo preparation reuses valid packs and rebuilds missing or stale first frames", {
