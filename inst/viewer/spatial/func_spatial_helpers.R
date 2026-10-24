@@ -639,6 +639,36 @@ spatial_roi_value <- function(value) {
   if (spatial_roi_is_specific(value)) value else ""
 }
 
+## Metadata row of each cell (NA when absent). match() hashes every metadata
+## cell name on each call, and the Spatial controls ask for the facets of the
+## same sections again and again (several per section on the first visit), so
+## the rows of recent cell vectors are kept. identical() is immediate for the
+## same vector and a pointer comparison per name for an equal copy.
+.spatial_metadata_rows_cache <- new.env(parent = emptyenv())
+spatial_metadata_rows <- function(metadata, cells) {
+  metadata_cells <- if ("cell_barcode" %in% colnames(metadata)) {
+    as.character(metadata[["cell_barcode"]])
+  } else {
+    rownames(metadata)
+  }
+  cache <- .spatial_metadata_rows_cache
+  if (!identical(cache$metadata_cells, metadata_cells)) {
+    cache$metadata_cells <- metadata_cells
+    cache$entries <- list()
+  }
+  for (entry in cache$entries) {
+    if (identical(entry$cells, cells)) {
+      return(entry$rows)
+    }
+  }
+  rows <- match(cells, metadata_cells)
+  cache$entries <- c(
+    list(list(cells = cells, rows = rows)),
+    utils::head(cache$entries, 31L)
+  )
+  rows
+}
+
 spatial_metadata_facet <- function(metadata, cells, candidates) {
   empty <- list(
     field = NULL,
@@ -667,12 +697,7 @@ spatial_metadata_facet <- function(metadata, cells, candidates) {
   if (!is.atomic(column) || is.list(column)) {
     return(empty)
   }
-  metadata_cells <- if ("cell_barcode" %in% colnames(metadata)) {
-    as.character(metadata[["cell_barcode"]])
-  } else {
-    rownames(metadata)
-  }
-  rows <- match(cells, metadata_cells)
+  rows <- spatial_metadata_rows(metadata, cells)
   by_cell <- rep(NA_character_, length(cells))
   valid <- !is.na(rows)
   by_cell[valid] <- as.character(column[rows[valid]])
@@ -762,12 +787,7 @@ spatial_split_columns <- function(
   ) {
     return(character())
   }
-  metadata_cells <- if ("cell_barcode" %in% colnames(metadata)) {
-    as.character(metadata[["cell_barcode"]])
-  } else {
-    rownames(metadata)
-  }
-  rows <- match(cells, metadata_cells)
+  rows <- spatial_metadata_rows(metadata, cells)
   rows <- rows[!is.na(rows)]
   n_rows <- length(unique(rows))
   candidates <- setdiff(colnames(metadata), "cell_barcode")

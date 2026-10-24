@@ -1347,6 +1347,16 @@ test_that("spatial hierarchy resolves sample and ROI values by barcode", {
   expect_identical(roi$values, c("R3", "R1"))
 })
 
+test_that("spatial metadata rows follow the metadata they were matched in", {
+  metadata <- data.frame(cell_barcode = c("c1", "c2", "c3"))
+  expect_identical(spatial_metadata_rows(metadata, c("c3", "c1")), c(3L, 1L))
+  ## An equal copy of the cells is answered from the kept rows.
+  expect_identical(spatial_metadata_rows(metadata, c("c3", "c1")), c(3L, 1L))
+  expect_identical(spatial_metadata_rows(metadata, c("c2", "c4")), c(2L, NA))
+  reordered <- data.frame(cell_barcode = c("c3", "c2", "c1"))
+  expect_identical(spatial_metadata_rows(reordered, c("c3", "c1")), c(1L, 3L))
+})
+
 test_that("ROI rotation pivots use the selected sample and ROI field", {
   metadata <- data.frame(
     cell_barcode = c("a1", "a2", "b1", "b2"),
