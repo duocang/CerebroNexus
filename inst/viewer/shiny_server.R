@@ -32,6 +32,91 @@ viewerSource(cerebro_root_path("viewer/msigdb.R"), environment())
 viewerSource(cerebro_root_path("viewer/crb_cache.R"), environment())
 .reserveCrbHeap(Cerebro.options[["crb_file_to_load"]])
 .viewer_pack_process_cache <- new.env(parent = emptyenv())
+## Canonical cell-name files by cell-order fingerprint, shared by all sessions
+## of the process (see viewerCellNamesResource() in server()). A background
+## process decodes a Pack's cell names and writes the file, started when the
+## Pack is opened: decoding a million names took 0.7-2 s of the R thread right
+## after the first view of a page.
+.viewer_cell_names_files <- new.env(parent = emptyenv())
+## Evaluated in a mirai daemon with `cells` (or NULL and the Pack's
+## `asset_file`), the cell count `n` and the target `file`.
+.viewer_cell_names_job <- quote({
+  if (is.null(cells)) {
+    cells <- qs2::qs_read(asset_file)
+  }
+  if (
+    !is.character(cells) ||
+      length(cells) != n ||
+      anyNA(cells) ||
+      any(!nzchar(cells))
+  ) {
+    NULL
+  } else {
+    cells <- enc2utf8(cells)
+    if (!file.exists(file)) {
+      partial <- tempfile("cell-names-", dirname(file))
+      connection <- gzfile(partial, "wb", compression = 1L)
+      writeBin(cells, connection)
+      close(connection)
+      file.rename(partial, file)
+    }
+    list(
+      cells = length(cells),
+      ## Decompressed size: every name and its terminating NUL.
+      bytes = sum(nchar(cells, type = "bytes")) + length(cells)
+    )
+  }
+})
+viewerCellNamesFile <- function(pack) {
+  fingerprint <- as.character(pack$manifest$cell_order_fingerprint %||% "")
+  if (
+    !is.list(pack) ||
+      !isTRUE(pack$canonical_order) ||
+      length(fingerprint) != 1L ||
+      !nzchar(fingerprint)
+  ) {
+    return(NULL)
+  }
+  entry <- .viewer_cell_names_files[[fingerprint]]
+  if (!is.null(entry)) {
+    return(entry)
+  }
+  cells <- pack$cells
+  asset <- if (is.null(cells)) {
+    viewerPackVerifiedAsset(pack, "common/cell_order.qs2")
+  }
+  if (is.null(cells) && is.null(asset)) {
+    return(NULL)
+  }
+  directory <- file.path(tempdir(), "cerebro-cell-names")
+  dir.create(directory, showWarnings = FALSE, recursive = TRUE)
+  entry <- new.env(parent = emptyenv())
+  entry$directory <- directory
+  entry$file <- file.path(
+    directory,
+    paste0(gsub("[^A-Za-z0-9_-]", "_", fingerprint), ".bin.gz")
+  )
+  entry$arguments <- list(
+    cells = cells,
+    asset_file = asset$file,
+    n = pack$cell_count,
+    file = entry$file
+  )
+  ## A daemon that cannot start (a library path the child R does not see, a
+  ## blocked socket) times out; the file is then written in the session.
+  entry$task <- tryCatch(
+    do.call(
+      mirai::mirai,
+      c(
+        list(.expr = .viewer_cell_names_job, .timeout = 10000),
+        entry$arguments
+      )
+    ),
+    error = function(error) NULL
+  )
+  assign(fingerprint, entry, envir = .viewer_cell_names_files)
+  entry
+}
 ## CRBs without a stored cell fingerprint would otherwise hash every barcode on
 ## each session's load. The value depends only on the file's cells.
 .viewer_cell_fingerprint_cache <- new.env(parent = emptyenv())
@@ -97,11 +182,11 @@ if (!is.list(.crb_launch_state$prototypes)) {
 }
 if (length(.crb_launch_state$prototypes)) {
   for (prototype_path in names(.crb_launch_state$prototypes)) {
-    viewerPackOpenCached(
+    viewerCellNamesFile(viewerPackOpenCached(
       prototype_path,
       .crb_launch_state$prototypes[[prototype_path]],
       .viewer_pack_process_cache
-    )
+    ))
   }
 }
 
@@ -1205,64 +1290,55 @@ server <- function(input, output, session) {
     )
   }
   ## The canonical cell names as one static file of NUL-terminated UTF-8
-  ## strings, gzip-compressed (26 MB -> 6.5 MB for 1.3 M cells, 0.15 s). A
-  ## view then sends the canonical index of its points and the browser
-  ## downloads the names once, instead of R encoding a million names into the
-  ## message of every view (about a second, and 29 MB). The file is written
-  ## once per process and cell order.
-  viewer_cell_name_resources <- new.env(parent = emptyenv())
+  ## strings, gzip-compressed (26 MB -> 6.5 MB for 1.3 M cells). A view then
+  ## sends the canonical index of its points and the browser downloads the
+  ## names once, instead of R encoding a million names into the message of
+  ## every view (about a second, and 29 MB). See viewerCellNamesFile().
   viewerCellNamesResource <- function() {
     pack <- viewerPackCurrent()
-    fingerprint <- as.character(pack$manifest$cell_order_fingerprint %||% "")
-    if (
-      !is.list(pack) ||
-        !isTRUE(pack$canonical_order) ||
-        length(fingerprint) != 1L ||
-        !nzchar(fingerprint)
-    ) {
+    entry <- viewerCellNamesFile(pack)
+    if (is.null(entry)) {
       return(NULL)
     }
-    if (exists(fingerprint, envir = viewer_cell_name_resources)) {
-      descriptor <- get(fingerprint, envir = viewer_cell_name_resources)
-      ## A browser that could not read the file gets the names in messages.
-      failed <- isolate(input[["cell_view_names_resource_failed"]])
-      return(if (identical(failed, descriptor$url)) NULL else descriptor)
+    if (is.null(entry$result)) {
+      ## Waits only for what the background process has not finished yet.
+      value <- if (inherits(entry$task, "mirai")) {
+        mirai::call_mirai(entry$task)$data
+      }
+      if (mirai::is_error_value(value) || is.null(entry$task)) {
+        value <- tryCatch(
+          eval(.viewer_cell_names_job, entry$arguments, baseenv()),
+          error = function(error) NULL
+        )
+      }
+      ## Invalid names (NULL) are sent in messages instead.
+      entry$result <- if (is.list(value) && file.exists(entry$file)) {
+        value
+      } else {
+        FALSE
+      }
+      entry$task <- entry$arguments <- NULL
     }
-    directory <- file.path(tempdir(), "cerebro-cell-names")
-    file <- file.path(
-      directory,
-      paste0(gsub("[^A-Za-z0-9_-]", "_", fingerprint), ".bin.gz")
-    )
-    cells <- viewerPackCellBarcodes(pack)
-    if (is.null(cells)) {
+    if (!is.list(entry$result)) {
       return(NULL)
-    }
-    cells <- enc2utf8(cells)
-    if (!file.exists(file)) {
-      dir.create(directory, showWarnings = FALSE, recursive = TRUE)
-      partial <- tempfile("cell-names-", directory)
-      connection <- gzfile(partial, "wb", compression = 1L)
-      writeBin(cells, connection)
-      close(connection)
-      file.rename(partial, file)
     }
     descriptor <- c(
       list(
         protocol = "canonical-cell-names-v1",
         url = paste0(
-          viewerStaticResourcePrefix("cell-names", directory),
+          viewerStaticResourcePrefix("cell-names", entry$directory),
           "/",
-          basename(file)
+          basename(entry$file)
         ),
         encoding = "gzip",
-        cells = length(cells),
-        ## Decompressed size: every name and its terminating NUL.
-        bytes = sum(nchar(cells, type = "bytes")) + length(cells)
+        cells = entry$result$cells,
+        bytes = entry$result$bytes
       ),
       viewerCanonicalResourceIdentity(pack)
     )
-    assign(fingerprint, descriptor, envir = viewer_cell_name_resources)
-    descriptor
+    ## A browser that could not read the file gets the names in messages.
+    failed <- isolate(input[["cell_view_names_resource_failed"]])
+    if (identical(failed, descriptor$url)) NULL else descriptor
   }
   ## Trajectory frames may bind an exact row subset to a canonical projection.
   ## The binding is published only by the Viewer Pack builder after exact
@@ -1664,6 +1740,9 @@ server <- function(input, output, session) {
   observe({
     input[["sidebar"]]
     identity <- viewerDatasetIdentity()
+    ## A dataset opened in this session (an upload, another CRB) starts its
+    ## cell-name file here; launch datasets started theirs at start-up.
+    viewerCellNamesFile(viewerPackCurrent())
     dataset_identity <- list(
       dataset_context = viewer_loaded_dataset_context(),
       dataset_id = viewer_current_dataset_key(),
