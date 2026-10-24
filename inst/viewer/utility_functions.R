@@ -1036,9 +1036,7 @@ viewerExpressionCells <- function(data_set, cells) {
       error = function(e) NULL
     ))
   ) {
-    n_cells <- tryCatch(ncol(data_set$expression), error = function(e) {
-      NA_integer_
-    })
+    n_cells <- viewerExpressionCellCount(data_set)
     if (
       length(n_cells) == 1L &&
         !is.na(n_cells) &&
@@ -1053,7 +1051,33 @@ viewerExpressionCells <- function(data_set, cells) {
   if (is.null(cell_names)) cells else cell_names[as.integer(cells)]
 }
 
+## Cells of the expression matrix, without attaching an H5 backend.
+viewerExpressionCellCount <- function(data_set) {
+  rows <- attr(data_set, "cerebro_h5_rows", exact = TRUE)
+  tryCatch(
+    if (is.list(rows)) rows$n_cells() else ncol(data_set$expression),
+    error = function(e) NA_integer_
+  )
+}
+
+## Rows of an H5 sidecar straight from the file (all cells, or cell indices);
+## NULL when that does not apply, so the caller uses the R6 accessors.
+viewerH5ExpressionRows <- function(data_set, cells, genes) {
+  rows <- attr(data_set, "cerebro_h5_rows", exact = TRUE)
+  if (!is.list(rows) || !(is.null(cells) || is.numeric(cells))) {
+    return(NULL)
+  }
+  values <- lapply(genes, rows$row)
+  names(values) <- genes
+  values <- values[!vapply(values, is.null, logical(1))]
+  if (is.null(cells)) values else lapply(values, `[`, as.integer(cells))
+}
+
 viewerExpressionRow <- function(data_set, cells, gene) {
+  direct <- viewerH5ExpressionRows(data_set, cells, gene)
+  if (!is.null(direct) && length(direct)) {
+    return(direct[[1L]])
+  }
   cells <- viewerExpressionCells(data_set, cells)
   as.numeric(data_set$getExpressionRow(gene = gene, cells = cells))
 }
@@ -1068,6 +1092,11 @@ viewerExpressionValues <- function(data_set, cells, genes) {
   genes <- genes[!is.na(genes) & nzchar(genes)]
   if (!length(genes)) {
     return(list())
+  }
+
+  direct <- viewerH5ExpressionRows(data_set, cells, genes)
+  if (!is.null(direct) && length(direct) == length(genes)) {
+    return(direct)
   }
 
   if (length(genes) == 1L) {
@@ -3742,6 +3771,62 @@ get_or_load_crb <- function(
   as.integer(as.vector(rhdf5::h5read(sidecar, "expression/shape")))[[1L]]
 }
 
+## One gene's values for every cell, read with rhdf5 from the gene's slice of
+## the TENx arrays (/expression/indptr, indices, data). The DelayedArray path
+## returns the same values but first loads HDF5Array (seconds for its S4
+## classes and methods) and reads every cell name. `verify` runs before the
+## first read (the thin-CRB cell-name check).
+.h5ExpressionRows <- function(sidecar, verify) {
+  state <- new.env(parent = emptyenv())
+  prepare <- function() {
+    if (is.null(state$genes)) {
+      verify()
+      state$n_cells <- .runtimeH5CellCount(sidecar)
+      state$genes <- .runtimeH5Names(sidecar, "barcodes")
+    }
+  }
+  list(
+    n_cells = function() {
+      prepare()
+      state$n_cells
+    },
+    ## NULL for a gene the file does not have.
+    row = function(gene) {
+      prepare()
+      column <- match(gene, state$genes)
+      if (is.na(column)) {
+        return(NULL)
+      }
+      bounds <- as.vector(rhdf5::h5read(
+        sidecar,
+        "expression/indptr",
+        start = column,
+        count = 2L,
+        bit64conversion = "double"
+      ))
+      values <- numeric(state$n_cells)
+      count <- bounds[[2L]] - bounds[[1L]]
+      if (count > 0) {
+        start <- bounds[[1L]] + 1
+        cells <- rhdf5::h5read(
+          sidecar,
+          "expression/indices",
+          start = start,
+          count = count,
+          bit64conversion = "double"
+        )
+        values[as.vector(cells) + 1] <- as.vector(rhdf5::h5read(
+          sidecar,
+          "expression/data",
+          start = start,
+          count = count
+        ))
+      }
+      values
+    }
+  )
+}
+
 .checkThinCrbCells <- function(cells, schema, crb_path) {
   if (
     !identical(
@@ -3970,20 +4055,24 @@ get_or_load_crb <- function(
   ## A thin CRB stores no cell names, so the H5 file's names are compared with
   ## its checksum here: the attach above only compared the cell count, and
   ## expression of another data set with as many cells must not be painted.
+  verify_cells <- function() {
+    if (!is.null(crb_schema) && !isTRUE(cell_names_state$verified)) {
+      ## Callers often wrap the first expression access in tryCatch(), so the
+      ## refusal is also logged.
+      tryCatch(
+        .thinCrbCellNames(cell_names_state, loc_abs, crb_schema, crb_path),
+        error = function(error) {
+          print(glue::glue("[{Sys.time()}] {conditionMessage(error)}"))
+          stop(error)
+        }
+      )
+    }
+  }
+  attr(obj, "cerebro_h5_rows") <- .h5ExpressionRows(loc_abs, verify_cells)
   delayedAssign(
     "expression",
     {
-      if (!is.null(crb_schema) && !isTRUE(cell_names_state$verified)) {
-        ## Callers often wrap the first expression access in tryCatch(), so the
-        ## refusal is also logged.
-        tryCatch(
-          .thinCrbCellNames(cell_names_state, loc_abs, crb_schema, crb_path),
-          error = function(error) {
-            print(glue::glue("[{Sys.time()}] {conditionMessage(error)}"))
-            stop(error)
-          }
-        )
-      }
+      verify_cells()
       print(glue::glue(
         "[{Sys.time()}] Attaching h5 backend (lazy TENxMatrix): {loc_abs}"
       ))

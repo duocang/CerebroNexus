@@ -11,6 +11,7 @@ test_that("gene means reuse canonical rows and retain full-dataset semantics", {
     scope
   )
   scope$expressionProjectionDatasetKey <- function() "summary-test"
+  scope$viewerExpressionCellCount <- function(data) ncol(data$expression)
   reads <- 0L
   scope$viewerExpressionValues <- function(data, cells, genes) {
     reads <<- reads + 1L

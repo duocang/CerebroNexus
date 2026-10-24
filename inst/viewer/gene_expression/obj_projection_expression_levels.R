@@ -82,9 +82,7 @@ expressionProjectionDatasetKey <- function() {
 }
 
 expressionProjectionFullCellSelection <- function(data, cells) {
-  n_cells <- tryCatch(ncol(data$expression), error = function(error) {
-    NA_integer_
-  })
+  n_cells <- viewerExpressionCellCount(data)
   length(n_cells) == 1L &&
     !is.na(n_cells) &&
     length(cells) == n_cells &&

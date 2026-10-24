@@ -648,6 +648,57 @@ test_that("attaching a thin H5 CRB does not load HDF5Array", {
   expect_true(state$after_expression)
 })
 
+test_that("H5 expression rows are read without loading HDF5Array", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("callr")
+  root <- withr::local_tempdir()
+  fixture <- viewer_h5_fixture(root)
+
+  state <- callr::r(
+    function(utility, crb) {
+      scope <- new.env(parent = globalenv())
+      sys.source(
+        file.path(dirname(utility), "core", "crb_contract.R"),
+        envir = scope
+      )
+      sys.source(utility, envir = scope)
+      object <- scope$.attachExternalExpression(
+        scope$read_cerebro_file(crb),
+        crb
+      )
+      state <- list(
+        count = scope$viewerExpressionCellCount(object),
+        row = scope$viewerExpressionRow(object, NULL, "g2"),
+        subset = scope$viewerExpressionRow(object, c(4L, 2L), "g3"),
+        values = scope$viewerExpressionValues(object, 2:3, c("g3", "g1")),
+        loaded = "HDF5Array" %in% loadedNamespaces(),
+        lazy = rlang::env_binding_are_lazy(object, "expression")
+      )
+      state$missing <- tryCatch(
+        scope$viewerExpressionRow(object, NULL, "absent"),
+        error = function(error) "error"
+      )
+      state
+    },
+    list(viewer_test_path("utility_functions.R"), fixture$crb)
+  )
+
+  expect_identical(state$count, 4L)
+  expect_identical(state$row, unname(fixture$values["g2", ]))
+  expect_identical(state$subset, unname(fixture$values["g3", c(4L, 2L)]))
+  expect_identical(
+    state$values,
+    list(
+      g3 = unname(fixture$values["g3", 2:3]),
+      g1 = unname(fixture$values["g1", 2:3])
+    )
+  )
+  expect_false(state$loaded)
+  expect_true(state$lazy)
+  ## A gene the file does not have still fails through the R6 accessor.
+  expect_identical(state$missing, "error")
+})
+
 test_that("a thin CRB without its H5 file names the recovery step", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
