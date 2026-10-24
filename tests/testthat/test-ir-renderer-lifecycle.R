@@ -196,67 +196,85 @@ test_that("IR metadata joins preserve samples and only hydrate requested columns
   )
 })
 
+## Server scope for the clonal projection observer. `pack_index` stands in for
+## the Viewer Pack's clone index (NULL: no Pack, the repertoire table is used).
+clonal_projection_server <- function(pack_index = NULL) {
+  function(input, output, session) {
+    scope <- environment()
+    viewer_runtime_env(scope)
+    sys.source(viewer_test_path("clone_contract.R"), scope)
+    context <- list(epoch = "s", dataset_key = "A", generation = 1)
+    viewer_loaded_dataset_context <- function() context
+    ir_receptor_types <- function() "TCR"
+    availableProjections <- function() "umap"
+    ir_umap_cells_to_show <- function() NULL
+    current_scatter_defaults <- function() {
+      list(point_size = 7, point_opacity = .6, percentage_cells_to_show = 100)
+    }
+    ## The clonal renderer reads the author display defaults through a
+    ## server-level helper; this harness answers "no configured defaults".
+    current_page_display_defaults <- function(page) list()
+    viewerDatasetIdentity <- function() list(fingerprint = "A")
+    builds <- barcode_reads <- repertoire_reads <- 0L
+    if (!is.null(pack_index)) {
+      viewerPackCurrent <- function() list()
+      viewerPackImmuneIndex <- function(pack, receptor) pack_index
+    }
+    ir_data_annotated <- function() {
+      repertoire_reads <<- repertoire_reads + 1L
+      NULL
+    }
+    ir_clonal_umap_data <- function(projection, receptor, clone_call, ...) {
+      builds <<- builds + 1L
+      stopifnot(projection == "umap", receptor == "TCR", clone_call == "gene")
+      list(
+        x = list(c(1, 2)),
+        y = list(c(3, 4)),
+        trace_codes = 1L,
+        coloured_key = c(2L, 1L),
+        coloured_rows = list(1:2),
+        key_type = "cell_index"
+      )
+    }
+    ir_clonal_umap_barcodes <- function(data) {
+      barcode_reads <<- barcode_reads + 1L
+      c("c1", "c2")[data$cell_index]
+    }
+    sent <- list()
+    cerebroCellViewRender <- function(id, meta, data, hover, ...) {
+      sent[[length(sent) + 1L]] <<- c(
+        list(id = id, meta = meta, data = data, hover = hover),
+        list(...)
+      )
+    }
+    viewer_server_load(
+      viewer_server_statements("immune_repertoire", "data.R"),
+      scope,
+      names = c(
+        "ir_param",
+        "IR_CLONE_LABELS",
+        "ir_clonecall_col",
+        "ir_clonal_umap_pack_index"
+      )
+    )
+    viewer_server_load(
+      viewer_server_statements("immune_repertoire", "visualizations.R"),
+      scope,
+      names = c(
+        "IR_EXPANSION_COLORS",
+        "ir_projection_axis_names",
+        "ir_projection_display_name",
+        "ir_clonal_umap_last_request",
+        "ir_clonal_umap_data_memo"
+      ),
+      events = "ir_clonalUMAP_projection_render_request"
+    )
+  }
+}
+
 test_that("Clonal projection paints before drawer binding and defers cell identities", {
   shiny::testServer(
-    function(input, output, session) {
-      scope <- environment()
-      viewer_runtime_env(scope)
-      sys.source(viewer_test_path("clone_contract.R"), scope)
-      context <- list(epoch = "s", dataset_key = "A", generation = 1)
-      viewer_loaded_dataset_context <- function() context
-      ir_receptor_types <- function() "TCR"
-      availableProjections <- function() "umap"
-      ir_umap_cells_to_show <- function() NULL
-      current_scatter_defaults <- function() {
-        list(point_size = 7, point_opacity = .6, percentage_cells_to_show = 100)
-      }
-      ## The clonal renderer reads the author display defaults through a
-      ## server-level helper; this harness answers "no configured defaults".
-      current_page_display_defaults <- function(page) list()
-      viewerDatasetIdentity <- function() list(fingerprint = "A")
-      builds <- barcode_reads <- 0L
-      ir_data_annotated <- function() NULL
-      ir_clonal_umap_data <- function(projection, receptor, clone_call, ...) {
-        builds <<- builds + 1L
-        stopifnot(projection == "umap", receptor == "TCR", clone_call == "gene")
-        list(
-          x = list(c(1, 2)),
-          y = list(c(3, 4)),
-          trace_codes = 1L,
-          coloured_key = c(2L, 1L),
-          coloured_rows = list(1:2),
-          key_type = "cell_index"
-        )
-      }
-      ir_clonal_umap_barcodes <- function(data) {
-        barcode_reads <<- barcode_reads + 1L
-        c("c1", "c2")[data$cell_index]
-      }
-      sent <- list()
-      cerebroCellViewRender <- function(id, meta, data, hover, ...) {
-        sent[[length(sent) + 1L]] <<- c(
-          list(id = id, meta = meta, data = data, hover = hover),
-          list(...)
-        )
-      }
-      viewer_server_load(
-        viewer_server_statements("immune_repertoire", "data.R"),
-        scope,
-        names = c("ir_param", "IR_CLONE_LABELS")
-      )
-      viewer_server_load(
-        viewer_server_statements("immune_repertoire", "visualizations.R"),
-        scope,
-        names = c(
-          "IR_EXPANSION_COLORS",
-          "ir_projection_axis_names",
-          "ir_projection_display_name",
-          "ir_clonal_umap_last_request",
-          "ir_clonal_umap_data_memo"
-        ),
-        events = "ir_clonalUMAP_projection_render_request"
-      )
-    },
+    clonal_projection_server(),
     {
       session$setInputs(
         sidebar = "overview",
@@ -288,6 +306,27 @@ test_that("Clonal projection paints before drawer binding and defers cell identi
       expect_false(scope$sent[[2]]$meta$appearance$group_labels)
       ## Appearance-only changes repaint without rebuilding the coordinates.
       expect_equal(scope$builds, 1)
+    }
+  )
+})
+
+test_that("Clonal projection from the Pack clone index never reads the repertoire", {
+  shiny::testServer(
+    clonal_projection_server(pack_index = list(cell_index = 1L, clone = "a")),
+    {
+      session$setInputs(
+        sidebar = "immune_repertoire",
+        ir_tabs = "Clonal UMAP",
+        ir_clonalUMAP_projection_render_request = list(
+          nonce = 1,
+          dataset_context = context
+        )
+      )
+      expect_length(scope$sent, 1)
+      session$setInputs(ir_clonalUMAP_point_border = TRUE)
+      expect_length(scope$sent, 2)
+      expect_equal(scope$builds, 1)
+      expect_equal(scope$repertoire_reads, 0)
     }
   )
 })

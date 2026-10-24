@@ -777,6 +777,23 @@ ir_clonecall_col <- function(cloneCall) {
   cerebro_clonecall_col(cloneCall)
 }
 
+## ---- Clonal UMAP clone index from the Viewer Pack --------------------- ##
+## The Pack's per-receptor clone index (list(pack, packed)), or NULL when the
+## clone call or the Pack cannot answer and the projection is built from the
+## full repertoire instead.
+ir_clonal_umap_pack_index <- function(receptor, clone_col) {
+  if (
+    !identical(clone_col, "CTgene") ||
+      !exists("viewerPackCurrent", mode = "function") ||
+      !exists("viewerPackImmuneIndex", mode = "function")
+  ) {
+    return(NULL)
+  }
+  pack <- viewerPackCurrent()
+  packed <- viewerPackImmuneIndex(pack, receptor)
+  if (is.null(packed)) NULL else list(pack = pack, packed = packed)
+}
+
 ## ---- Clonal UMAP data: coords + per-cell expansion level --------------- ##
 ## Joins the chosen projection's UMAP coordinates (barcode-indexed) with each
 ## cell's clone-expansion level, restricted to the selected receptor (TCR/BCR).
@@ -815,16 +832,9 @@ ir_clonal_umap_data <- function(
     return(NULL)
   }
   clone_col <- ir_clonecall_col(cloneCall)
-  pack <- NULL
-  packed <- NULL
-  if (
-    identical(clone_col, "CTgene") &&
-      exists("viewerPackCurrent", mode = "function") &&
-      exists("viewerPackImmuneIndex", mode = "function")
-  ) {
-    pack <- viewerPackCurrent()
-    packed <- viewerPackImmuneIndex(pack, receptor)
-  }
+  pack_index <- ir_clonal_umap_pack_index(receptor, clone_col)
+  pack <- pack_index$pack
+  packed <- pack_index$packed
   indexed_pack <- !is.null(packed) &&
     isTRUE(pack$canonical_order) &&
     exists("viewerProjectionFirstFrameCoordinates", mode = "function")

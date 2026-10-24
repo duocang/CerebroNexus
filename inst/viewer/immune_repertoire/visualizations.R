@@ -591,11 +591,20 @@ observe(
     }
     ## Appearance-only changes (labels, border, square, point size/opacity)
     ## reuse the coordinates built for the same data request. The memo stores
-    ## only usable results: a failed req() leaves it untouched. The repertoire
-    ## table is part of the key so this observer keeps depending on it even
-    ## when the memo answers (identical() on the same object is immediate).
+    ## only usable results: a failed req() leaves it untouched. Without a Pack
+    ## clone index the coordinates come from the repertoire table, which is
+    ## then part of the key so this observer keeps depending on it even when
+    ## the memo answers (identical() on the same object is immediate). With
+    ## the index, the full repertoire is not read for the projection at all.
+    uses_pack <- !is.null(ir_clonal_umap_pack_index(
+      receptor,
+      ir_clonecall_col(clone_call)
+    ))
     data_key <- c(
-      list(dataset_context = dataset_context, data = ir_data_annotated()),
+      list(
+        dataset_context = dataset_context,
+        data = if (uses_pack) NULL else ir_data_annotated()
+      ),
       request_signature[c(
         "dataset_fingerprint",
         "cell_order_fingerprint",
