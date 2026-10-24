@@ -1780,14 +1780,18 @@
 
   function gpuDataState(p) {
     var mode = panelColorMode(p), field = fieldForMode(mode), group = catOf(mode);
+    // Gene and RGB values colour only their own modes. Clearing an unused gene
+    // (null after undefined) must not rebuild every panel.
+    var gene = mode === GENE_MODE && D.gene ? D.gene.v : null;
+    var rgb = mode === RGB_MODE && D.rgb ? D.rgb : null;
     return {
       dataset: D.dataset_fingerprint || D.cell_fingerprint || D.dataset_id || D,
       unit: spaceById[p.spaceId] && spaceById[p.spaceId]._unit,
       mode: mode,
-      gene: D.gene && D.gene.v,
-      rgbR: D.rgb && D.rgb.r,
-      rgbG: D.rgb && D.rgb.g,
-      rgbB: D.rgb && D.rgb.b,
+      gene: gene,
+      rgbR: rgb && rgb.r,
+      rgbG: rgb && rgb.g,
+      rgbB: rgb && rgb.b,
       fieldValues: field && field.v,
       fieldColors: field && field.colors,
       fieldPalette: field && field.palette && field.palette.join(','),

@@ -82,6 +82,10 @@ test_that("Compact spatial scenes draw and identify only their own cells", {
   viewer_browser_test("spatialScenes")
 })
 
+test_that("Spatial GPU buffers cover their scene and survive an unused gene", {
+  viewer_browser_test("spatialGpu")
+})
+
 test_that("Linked resource hydration validates the primary bundle identity", {
   viewer_browser_test("linkedResources")
 })
