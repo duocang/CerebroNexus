@@ -351,6 +351,27 @@ window.viewerScenarios = {
     t.change('cv-borders',true);await t.settle();t.check(t.arcs().length>0,'Drawing remains usable after rejection');
     return true;
   },
+  async spatialScenes() {
+    const t=viewerTest;t.dataset();
+    t.linked({progressive:true,progressive_token:5});await t.settle();t.resetPaint();
+    // A compact scene: canonical rows of its own cells with their x/y only.
+    const extra={dataset_id:'A',dataset_context:{...t.context},dataset_fingerprint:'fp-A',progressive_token:5,
+      spaces:[{id:'spatial',label:'S1 (spatial)',name:'S1',is_roi_overview:false,
+        rows:new Int32Array([2,0]),x:new Float32Array([50,10]),y:new Float32Array([60,20])}]};
+    t.send('coordviews_supplement',t.wire(extra));await t.settle();
+    t.check(cerebroLinkedViewsState.summary().complete,'Compact spatial supplement completes workspace');
+    const canvases=[...new Set(t.paints.filter(p=>p.method==='arc').map(p=>p.canvas.id))];
+    const id=canvases.find(c=>t.arcs(c).length===2&&document.getElementById(c).closest('.cv-pane')
+      .textContent.includes('S1 (spatial)'));
+    t.check(id,'The spatial panel draws the two cells of its scene');
+    const points=t.arcs(id).slice().sort((a,b)=>b.args[0]-a.args[0]);
+    const canvas=document.getElementById(id),rect=canvas.getBoundingClientRect();
+    canvas.dispatchEvent(new MouseEvent('mousemove',{clientX:rect.left+points[0].args[0],
+      clientY:rect.top+points[0].args[1],bubbles:true,buttons:0}));await t.settle();
+    const tip=document.getElementById(id.replace('cv-cv-','cv-tip-')).innerHTML;
+    t.check(tip.includes('Cell:</span> c<'),'The rightmost spatial point is the third cell');
+    return true;
+  },
   async linkedResources() {
     const t=viewerTest;t.dataset();let downloads=[];
     const identity={cell_count:3,cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),

@@ -562,6 +562,9 @@
   function unitOf(space) {
     var xs = space.x, ys = space.y, zs = space.z || null, n = xs.length;
     var xr = space.xRange, yr = space.yRange;
+    // A spatial scene lists its cells; every other cell has no position.
+    var cells = !zs && space._cells && space._cells.length <= n ? space._cells : null;
+    var m = cells ? cells.length : n;
     // A linked spatial lens must use the current section's occupied extent as
     // its initial camera. Builder/editor viewports can still travel with the
     // data as coordinate metadata, but a viewport saved in a differently
@@ -578,7 +581,8 @@
     var x1 = fixedX ? Math.max(Number(xr[0]), Number(xr[1])) : -Infinity;
     var y0 = fixedY ? Math.min(Number(yr[0]), Number(yr[1])) : Infinity;
     var y1 = fixedY ? Math.max(Number(yr[0]), Number(yr[1])) : -Infinity;
-    for (var i = 0; i < n; i++) {
+    for (var c = 0; c < m; c++) {
+      var i = cells ? cells[c] : c;
       var xv = xs[i], yv = ys[i];
       if (xv == null || yv == null || isNaN(xv) || isNaN(yv)) continue;
       if (!fixedX) { if (xv < x0) x0 = xv; if (xv > x1) x1 = xv; }
@@ -636,7 +640,8 @@
     // at a corner of the BOX can still show nothing at all.
     var occ = new Uint8Array(OCC * OCC), cmx = 0, cmy = 0, cnt = 0;
     var sh = nz ? space._shrink3 : 1;
-    for (var j = 0; j < n; j++) {
+    for (var cj = 0; cj < m; cj++) {
+      var j = cells ? cells[cj] : cj;
       var a = xs[j], b = ys[j];
       if (a == null || isNaN(a) || b == null || isNaN(b)) { ok[j] = 0; continue; }
       // 3-D clouds shrink about the centre so x/y/z share one scale and the
@@ -2027,6 +2032,11 @@
     var shared = window.CerebroSharedDatasetState;
     var sharedName = null;
     var currentSpace = spaceById[p.spaceId];
+    // A spatial scene's panel visits and uploads only the scene's cells.
+    var cells = !order && currentSpace && currentSpace._cells &&
+      currentSpace._cells.length <= n ? currentSpace._cells : null;
+    var visits = cells ? cells.length : n;
+    var capacity = cells ? Math.min(shownCount, cells.length) : shownCount;
     if (shared && shownCount === n && !order && currentSpace) {
       Object.keys(shared.projections || {}).some(function (name) {
         var projection = shared.projections[name];
@@ -2037,15 +2047,15 @@
     var projectionCache = sharedName && shared.projections[sharedName];
     var positions = sharedName && shared.gpuPositions[sharedName];
     var sharedPositionsReady = !!(positions &&
-      positions.length === shownCount * 2 && projectionCache &&
+      positions.length === capacity * 2 && projectionCache &&
       Number.isInteger(projectionCache.gpuPositionCount));
-    if (!positions || positions.length !== shownCount * 2) {
-      positions = new Float32Array(shownCount * 2);
+    if (!positions || positions.length !== capacity * 2) {
+      positions = new Float32Array(capacity * 2);
       if (sharedName) shared.gpuPositions[sharedName] = positions;
       sharedPositionsReady = false;
     }
-    var colors = new Uint8Array(shownCount * 4);
-    var layers = new Uint32Array(shownCount);
+    var colors = new Uint8Array(capacity * 4);
+    var layers = new Uint32Array(capacity);
     var categoricalGroup = rgb ? null : catOf(panelColorMode(p));
     var categoricalRgba = categoricalGroup
       ? categoricalGroup.levels.map(function (_level, index) {
@@ -2070,7 +2080,8 @@
           for (var i = 0; i < n; i++) if (unit.ok[i]) vertexIndex[i] = ++vertex;
         }
       } else {
-        for (var i = 0; i < n; i++) {
+        for (var visit = 0; visit < visits; visit++) {
+          var i = cells ? cells[visit] : visit;
           if (pending) {
             var x = pending.x[i], y = pending.y[i];
             if (x != null && y != null && isFinite(x) && isFinite(y)) {
@@ -2095,8 +2106,8 @@
         (flatRgba[2] << 16) | (flatAlpha << 24)) >>> 0;
       new Uint32Array(colors.buffer).fill(packedRgba);
     } else {
-      for (var at = 0; at < n; at++) {
-        i = order ? order[at] : at;
+      for (var at = 0; at < visits; at++) {
+        i = order ? order[at] : cells ? cells[at] : at;
         if (pending) {
           x = pending.x[i]; y = pending.y[i];
           if (x != null && y != null && isFinite(x) && isFinite(y)) {
@@ -6044,6 +6055,7 @@
       is_roi_overview: spatialTemplate.is_roi_overview,
       x: spatialTemplate.x,
       y: spatialTemplate.y,
+      _cells: spatialTemplate._cells,
       x_range: spatialTemplate.x_range,
       y_range: spatialTemplate.y_range,
       builder_point_opacity: spatialTemplate.builder_point_opacity,
@@ -6081,6 +6093,7 @@
         image: sample.image || null,
         images: images,
         _sampleName: sample.name,
+        _cells: sample._cells || null,
         _spatialSample: true,
         _fitToData: true,
         _customImageId: custom,
@@ -9130,6 +9143,9 @@
       }
       scene.x = x;
       scene.y = y;
+      // The scene's cells in canonical order: its panel normalises and uploads
+      // only these, not every cell of the data set.
+      scene._cells = Int32Array.from(rows).sort();
       delete scene.rows;
     });
     return extra;

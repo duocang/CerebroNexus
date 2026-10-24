@@ -78,6 +78,10 @@ test_that("Supplements restore selection and reject stale or malformed geometry"
   viewer_browser_test("supplement")
 })
 
+test_that("Compact spatial scenes draw and identify only their own cells", {
+  viewer_browser_test("spatialScenes")
+})
+
 test_that("Linked resource hydration validates the primary bundle identity", {
   viewer_browser_test("linkedResources")
 })
