@@ -7073,15 +7073,23 @@
     return pending;
   }
   // Turns canonical indices into selection keys before the message is applied.
+  // `selection_index_all` stands for the indices 0..n-1 (every cell, in order).
   function resolveAuxCellNames(message) {
     var resource = message && message.cell_names_resource;
     var index = message && message.selection_index;
-    if (!resource || index == null || message.selection_key != null) {
+    var all = message && message.selection_index_all === true;
+    if (!resource || (index == null && !all) || message.selection_key != null) {
       return Promise.resolve(message);
     }
     var view = singleView(message.id, message.dataset_context);
     return fetchCellNames(resource, view && view.datasetIdentity).then(function (entry) {
       var names = entry.names;
+      if (all) {
+        var every = Object.assign({}, message, {selection_key: names.slice()});
+        delete every.selection_index_all;
+        delete every.cell_names_resource;
+        return every;
+      }
       var lookup = function (rows) {
         var keys = new Array(rows.length);
         for (var i = 0; i < rows.length; i++) {

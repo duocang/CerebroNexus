@@ -241,6 +241,12 @@ window.viewerScenarios = {
       .pipeThrough(new CompressionStream('gzip'))).blob();
     await deliver(33,new Int32Array([1,2,0]),{url:URL.createObjectURL(gzip),encoding:'gzip'});
     t.check((await t.hover(0)).includes('Cell: g-1'),'A gzip resource is decompressed');
+    const every=await t.render({n:3,selection_key:null,wire_token:34},{},id,{dataset_identity:identity});
+    t.send('cell_view_aux_binary',t.wire({id,dataset_context:{...t.context},render_token:every.render_token,
+      wire_token:34,selection_index_all:true,cell_names_resource:{...resource},hover:{hoverinfo:'skip'}}));
+    for(let i=0;i<5;i++)await t.settle();
+    t.check((await t.hover(0)).includes('Cell: c-0'),'Every cell in order needs no indices');
+    t.check((await t.hover(2)).includes('Cell: c-2'),'Every cell in order needs no indices');
     const failures=()=>t.requests.filter(r=>r.name==='cell_view_names_resource_failed').length;
     t.equal(failures(),0);
     await deliver(32,new Int32Array([0,1,2]),{cell_order_fingerprint:'md5-cell-order-v1:'+'d'.repeat(32)});

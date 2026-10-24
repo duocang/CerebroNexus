@@ -67,6 +67,24 @@ overview_projection_update_plot <- function(input) {
         length(cell_indices) &&
         max(cell_indices) <= names_resource$cells
     ) {
+      ## Every cell in canonical order: the rows would be 0..n-1, so the
+      ## browser takes the names as they are.
+      if (
+        !is.list(selection_rows) &&
+          length(cell_indices) == names_resource$cells &&
+          identical(as.integer(selection_rows), seq_along(cell_indices)) &&
+          identical(as.integer(cell_indices), seq_along(cell_indices))
+      ) {
+        return(list(
+          selection_index_all = TRUE,
+          cell_names_resource = names_resource,
+          hover = list(
+            hoverinfo = if (hover) "text" else "skip",
+            columns = list(),
+            pending = hover
+          )
+        ))
+      }
       ## Canonical rows (0-based) of the points; the browser takes their
       ## names from the cell-name resource, so the metadata is not read here.
       rows <- as.integer(cell_indices) - 1L
