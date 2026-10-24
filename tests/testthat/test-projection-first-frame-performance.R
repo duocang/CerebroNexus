@@ -180,6 +180,22 @@ test_that("projection auxiliary rows preserve plotted group order", {
   )
 })
 
+test_that("auxiliary rows refer to the cell-name resource when there is one", {
+  scope <- viewer_runtime_env()
+  resource <- list(protocol = "canonical-cell-names-v1", cells = 9L)
+  auxiliary <- scope$cerebroCellViewDeferredAux(
+    selection_rows = c(2L, 1L),
+    cell_barcodes = NULL,
+    hover = FALSE,
+    names_resource = resource,
+    cell_rows = c(7L, 3L)
+  )
+  expect_null(auxiliary$selection_key)
+  expect_identical(unclass(auxiliary$selection_index), c(2L, 6L))
+  expect_identical(auxiliary$cell_names_resource, resource)
+  expect_identical(auxiliary$hover$hoverinfo, "skip")
+})
+
 test_that("unmounted group filters preserve canonical rows without level scans", {
   scope <- new.env(parent = globalenv())
   scope$input <- list(test_percentage_cells_to_show = 100)

@@ -1428,11 +1428,15 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
 ## later render with the same cells lets the browser reuse those barcodes.
 .cerebro_cell_view_aux_served <- new.env(parent = emptyenv())
 
+## With a cell-name resource, `cell_rows` (canonical rows of the points) are
+## sent instead of `cell_barcodes`, and the browser looks the names up.
 cerebroCellViewDeferredAux <- function(
   selection_rows,
   cell_barcodes,
   hover_columns = list(),
-  hover = FALSE
+  hover = FALSE,
+  names_resource = NULL,
+  cell_rows = NULL
 ) {
   grouped <- is.list(selection_rows)
   reorder <- function(values) {
@@ -1449,11 +1453,21 @@ cerebroCellViewDeferredAux <- function(
   } else {
     list()
   }
-  list(
-    selection_key = reorder(as.character(cell_barcodes)),
-    hover = list(
-      hoverinfo = if (isTRUE(hover)) "text" else "skip",
-      columns = columns
+  keys <- if (is.list(names_resource)) {
+    list(
+      selection_index = reorder(as.integer(cell_rows) - 1L),
+      cell_names_resource = names_resource
+    )
+  } else {
+    list(selection_key = reorder(as.character(cell_barcodes)))
+  }
+  c(
+    keys,
+    list(
+      hover = list(
+        hoverinfo = if (isTRUE(hover)) "text" else "skip",
+        columns = columns
+      )
     )
   )
 }
