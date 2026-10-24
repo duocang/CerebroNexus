@@ -901,6 +901,22 @@ cv_spatial_data <- function(crb, nm) {
   crb$getSpatialData(nm, hydrate_molecules = FALSE)
 }
 
+## Canonical rows of a section's cells: the Viewer's section rows (the Viewer
+## Pack's index) when they are at hand, else the cells matched by name.
+cv_spatial_section_rows <- function(nm, coordinates, cells) {
+  rows <- if (exists("spatial_section_rows", mode = "function")) {
+    tryCatch(
+      spatial_section_rows(nm, coordinates),
+      error = function(error) NULL
+    )
+  }
+  rows %||% match(rownames(coordinates), cells)
+}
+
+## With `compact`, the scene carries only its own points: `rows` (0-based
+## canonical rows) with x/y in their order or, for a whole unrotated section,
+## the section's Pack geometry instead of x/y. Otherwise x/y cover every cell
+## of `cells`, NA outside the scene.
 cv_spatial_one <- function(
   crb,
   cells,
@@ -908,7 +924,8 @@ cv_spatial_one <- function(
   allow_external,
   roi_value = NULL,
   metadata = NULL,
-  spatial_data = NULL
+  spatial_data = NULL,
+  compact = FALSE
 ) {
   sd <- tryCatch(
     spatial_data %||% cv_spatial_data(crb, nm),
@@ -954,7 +971,36 @@ cv_spatial_one <- function(
     rownames(co),
     paste0("Spatial section `", nm, "`")
   )
-  sidx <- match(cells, spatial_cells)
+  rows <- NULL
+  geometry <- NULL
+  if (isTRUE(compact)) {
+    section_cells <- rownames(sd$coordinates)
+    section_rows <- cv_spatial_section_rows(nm, sd$coordinates, cells)
+    whole <- identical(spatial_cells, section_cells)
+    rows <- if (whole) {
+      section_rows
+    } else {
+      section_rows[match(spatial_cells, section_cells)]
+    }
+    present <- !is.na(rows)
+    if (!all(present)) {
+      co <- co[present, , drop = FALSE]
+      rows <- rows[present]
+      whole <- FALSE
+    }
+    if (
+      whole &&
+        !nzchar(roi_value) &&
+        exists("viewerSpatialGeometryAsset", mode = "function")
+    ) {
+      geometry <- tryCatch(
+        viewerSpatialGeometryAsset(nm, section_rows, rotation),
+        error = function(error) NULL
+      )
+    }
+  } else {
+    sidx <- match(cells, spatial_cells)
+  }
   xr <- range(co[, 1], na.rm = TRUE)
   yr <- range(co[, 2], na.rm = TRUE)
   ## Every background this section can be shown against, as objects with their
@@ -1117,8 +1163,22 @@ cv_spatial_one <- function(
     ),
     roi = if (nzchar(roi_value)) roi_value else NULL,
     is_roi_overview = !nzchar(roi_value) && length(rois) > 1L,
-    x = as.numeric(co[sidx, 1]),
-    y = as.numeric(co[sidx, 2]),
+    x = if (!isTRUE(compact)) {
+      as.numeric(co[sidx, 1])
+    } else if (is.null(geometry)) {
+      as.numeric(co[, 1])
+    } else {
+      numeric()
+    },
+    y = if (!isTRUE(compact)) {
+      as.numeric(co[sidx, 2])
+    } else if (is.null(geometry)) {
+      as.numeric(co[, 2])
+    } else {
+      numeric()
+    },
+    rows = if (isTRUE(compact)) I(as.integer(rows) - 1L),
+    geometry_resource = geometry,
     x_range = if (is.null(viewport)) {
       NULL
     } else {
@@ -1152,12 +1212,13 @@ cv_spatial_one <- function(
 ## travels in `$samples` so Linked views can switch between them client-side (the
 ## "Spatial data" picker), each donor's tissue section being its own coordinate
 ## system + image. Returns the space or NULL when there is no spatial.
-cv_build_spatial <- function(crb, cells) {
+cv_build_spatial <- function(crb, cells, metadata = NULL, compact = FALSE) {
   sp_names <- tryCatch(crb$availableSpatial(), error = function(e) NULL)
   if (!length(sp_names)) {
     return(NULL)
   }
-  metadata <- tryCatch(crb$getMetaData(), error = function(error) NULL)
+  metadata <- metadata %||%
+    tryCatch(crb$getMetaData(), error = function(error) NULL)
   built <- list()
   for (nm in sp_names) {
     sd <- tryCatch(cv_spatial_data(crb, nm), error = function(error) NULL)
@@ -1170,7 +1231,8 @@ cv_build_spatial <- function(crb, cells) {
       nm,
       TRUE,
       metadata = metadata,
-      spatial_data = sd
+      spatial_data = sd,
+      compact = compact
     )
     if (is.null(scene)) {
       next
@@ -1183,7 +1245,16 @@ cv_build_spatial <- function(crb, cells) {
     )$values
     if (length(rois) > 1L) {
       for (roi in rois) {
-        scene <- cv_spatial_one(crb, cells, nm, TRUE, roi, metadata, sd)
+        scene <- cv_spatial_one(
+          crb,
+          cells,
+          nm,
+          TRUE,
+          roi,
+          metadata,
+          sd,
+          compact = compact
+        )
         if (is.null(scene)) {
           next
         }
@@ -1203,6 +1274,8 @@ cv_build_spatial <- function(crb, cells) {
     first$x,
     first$y
   )
+  space$rows <- first$rows
+  space$geometry_resource <- first$geometry_resource
   ## Labels describe FOV/ROI scope; the persisted selection key stays stable.
   space$name <- first$name
   space$is_roi_overview <- first$is_roi_overview
@@ -1230,6 +1303,8 @@ cv_build_spatial <- function(crb, cells) {
         label = s$label %||% paste0(s$name, " (spatial)"),
         x = I(s$x),
         y = I(s$y),
+        rows = s$rows,
+        geometry_resource = s$geometry_resource,
         x_range = if (is.null(s$x_range)) NULL else I(s$x_range),
         y_range = if (is.null(s$y_range)) NULL else I(s$y_range),
         builder_point_opacity = s$builder_point_opacity,
@@ -2178,18 +2253,25 @@ cv_build_compact_supplement <- function(
     return(NULL)
   }
   projection_names <- names(first_frame$projections)
-  unsupported <- length(crb$availableSpatial()) || !is.null(crb$getTrekker())
-  if (unsupported) {
+  if (!is.null(crb$getTrekker())) {
     return(NULL)
   }
   metadata <- cv_build_deferred_metadata(crb, first_frame$meta_data, primary)
   ## Trajectory rows come from the Pack's index; the cell names are read only
   ## for a trajectory without a valid one.
-  spaces <- cv_build_trajectories(
+  cells <- function() cv_canonical_metadata(crb$getMetaData())$cell_barcode
+  spaces <- cv_build_trajectories(crb, cells = cells(), n = primary$n)
+  ## Spatial scenes take their rows from the Pack's section index too, and
+  ## sample and ROI facets from the first-frame metadata.
+  spatial <- cv_build_spatial(
     crb,
-    cells = cv_canonical_metadata(crb$getMetaData())$cell_barcode,
-    n = primary$n
+    cells = cells(),
+    metadata = first_frame$meta_data,
+    compact = TRUE
   )
+  if (!is.null(spatial)) {
+    spaces[[length(spaces) + 1L]] <- spatial
+  }
   clone <- if (isTRUE(include_clone)) {
     cv_build_clone(crb, seq_len(primary$n), primary$n, sparse = TRUE)
   } else {
@@ -2243,7 +2325,7 @@ cv_build_progressive_supplement <- function(
     error = function(e) character()
   )
   spaces <- cv_build_trajectories(crb, cells)
-  spatial <- cv_build_spatial(crb, cells)
+  spatial <- cv_build_spatial(crb, cells, metadata = md, compact = TRUE)
   if (!is.null(spatial)) {
     spaces[[length(spaces) + 1L]] <- spatial
   }

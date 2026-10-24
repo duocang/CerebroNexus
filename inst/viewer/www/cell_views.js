@@ -9099,6 +9099,42 @@
     return extra;
   }
 
+  // Spatial scenes of a supplement may carry only their own points: `rows`
+  // (0-based canonical rows) with x/y in the same order, either in the message
+  // or fetched from the section's Pack geometry. Linked views draws arrays over
+  // every cell, NaN outside the scene.
+  function linkedSpatialScenes(extra) {
+    var scenes = [];
+    (extra.spaces || []).forEach(function (space) {
+      if (!space || space.id !== 'spatial') return;
+      scenes.push(space);
+      (space.samples || []).forEach(function (sample) { scenes.push(sample); });
+    });
+    return scenes;
+  }
+  function hydrateSpatialScenes(extra) {
+    linkedSpatialScenes(extra).forEach(function (scene) {
+      var rows = scene.rows;
+      if (rows == null) return;
+      var xs = scene.x, ys = scene.y;
+      if (scene.geometry_resource || !xs || !ys || typeof rows.length !== 'number' ||
+          xs.length !== rows.length || ys.length !== rows.length) {
+        throw new Error('Invalid spatial scene');
+      }
+      var x = new Float32Array(D.n).fill(NaN), y = new Float32Array(D.n).fill(NaN);
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!Number.isInteger(row) || row < 0 || row >= D.n) throw new Error('Invalid spatial scene row');
+        x[row] = xs[i];
+        y[row] = ys[i];
+      }
+      scene.x = x;
+      scene.y = y;
+      delete scene.rows;
+    });
+    return extra;
+  }
+
   function hydrateSparseLinked(extra) {
     var cloneIndex = extra.clone && extra.clone.index;
     var hydrateGroups = function (groups) {
@@ -9300,7 +9336,9 @@
       if (holdSupplement({ buffer: buffer })) return;
       var finish = function () {
         if (!linkedSupplementFresh(extra) || holdSupplement({ buffer: buffer })) return;
-        extra = hydrateSparseLinked(hydrateLinkedGeometry(extra));
+        extra = hydrateSparseLinked(
+          hydrateLinkedGeometry(hydrateSpatialScenes(extra))
+        );
         var metric = CBViewState.telemetry.transport(
           extra.transport_profile,
           {bytes: buffer.byteLength, decodeMs: decodedAt - started},
@@ -9320,12 +9358,27 @@
         return projection && projection.projection_resource &&
           projection.projection_resource.url;
       });
-      if (!resourced.length) {
+      var geometric = linkedSpatialScenes(extra).filter(function (scene) {
+        return scene.geometry_resource && scene.geometry_resource.url;
+      });
+      if (!resourced.length && !geometric.length) {
         finish();
         return;
       }
       var bundle = linkedBundle;
-      Promise.all(resourced.map(function (name) {
+      var sceneGeometry = geometric.map(function (scene) {
+        var resource = scene.geometry_resource;
+        return fetchValidatedSingleGeometryResource(
+          resource,
+          { dataset_identity: linkedBundleResourceIdentity(bundle) },
+          Number(resource.cells)
+        ).then(function (result) {
+          scene.x = result.coordinates.x;
+          scene.y = result.coordinates.y;
+          delete scene.geometry_resource;
+        });
+      });
+      Promise.all(sceneGeometry.concat(resourced.map(function (name) {
         var projection = extra.projections[name];
         return fetchValidatedProjectionResource(
           projection.projection_resource,
@@ -9340,7 +9393,7 @@
           if (coordinates.yRange) projection.yRange = coordinates.yRange;
           delete projection.projection_resource;
         });
-      })).then(function () {
+      }))).then(function () {
         try {
           finish();
         } catch (error) {

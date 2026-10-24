@@ -2667,6 +2667,34 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
   expect_identical(single_space$name, "fov.2")
   expect_false(single_space$is_roi_overview)
   expect_identical(single_space$label, "fov.2 · A (spatial)")
+  # Compact scenes carry only their own points and expand to the same arrays.
+  expand <- function(scene, values) {
+    out <- rep(NA_real_, length(cells))
+    out[as.integer(scene$rows) + 1L] <- values
+    out
+  }
+  compact <- cv_env$cv_build_spatial(crb, cells, compact = TRUE)
+  expect_equal(expand(compact, compact$x), unclass(scenes[[1]]$x))
+  for (i in seq_along(scenes)) {
+    expect_null(compact$samples[[i]]$geometry_resource)
+    expect_equal(
+      expand(compact$samples[[i]], compact$samples[[i]]$x),
+      unclass(scenes[[i]]$x)
+    )
+    expect_equal(
+      expand(compact$samples[[i]], compact$samples[[i]]$y),
+      unclass(scenes[[i]]$y)
+    )
+  }
+  # A whole section without ROI or rotation takes its Pack geometry.
+  cv_env$viewerSpatialGeometryAsset <- function(name, rows, rotation) {
+    list(url = paste0(name, ".bin"), cells = length(rows))
+  }
+  whole <- cv_env$cv_spatial_one(crb, cells, "fov", TRUE, compact = TRUE)
+  rm("viewerSpatialGeometryAsset", envir = cv_env)
+  expect_identical(whole$geometry_resource$url, "fov.bin")
+  expect_length(whole$x, 0L)
+  expect_identical(unclass(whole$rows), 0:3)
   # Multiple matching images keep declaration order, independent of labels.
   cv_env$Cerebro.options$spatial_images$ds$fov.2 <- list(
     Zebra = image,
