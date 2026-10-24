@@ -300,7 +300,7 @@ cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
     NULL
   }
   projection_names <- tryCatch(
-    data_set()$availableProjections(),
+    availableProjections() %||% character(),
     error = function(error) character()
   )
   projection_resources <- Filter(

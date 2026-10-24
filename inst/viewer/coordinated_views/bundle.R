@@ -552,13 +552,21 @@ cv_space <- function(id, label, x, y) {
 ## coordinates, so a selection still has one identity across every panel.
 ## The trajectory row of each of `cells` (NA where the trajectory has none).
 ## A Viewer Pack in canonical order stores the cell index of every trajectory
-## row; using it avoids checking and matching a million row names.
-cv_trajectory_rows <- function(crb, cells, meta, method, name) {
+## row; using it avoids checking and matching a million row names. `n` is the
+## number of cells, so `cells` is only evaluated without a valid index.
+cv_trajectory_rows <- function(
+  crb,
+  cells,
+  meta,
+  method,
+  name,
+  n = length(cells)
+) {
   pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
   index <- if (
     is.list(pack) &&
       isTRUE(pack$canonical_order) &&
-      identical(as.integer(pack$cell_count), length(cells)) &&
+      identical(as.integer(pack$cell_count), as.integer(n)) &&
       exists("viewerPackTrajectoryIndex", mode = "function")
   ) {
     tryCatch(
@@ -569,10 +577,10 @@ cv_trajectory_rows <- function(crb, cells, meta, method, name) {
   if (
     length(index) == nrow(meta) &&
       !anyNA(index) &&
-      all(index >= 1L & index <= length(cells)) &&
+      all(index >= 1L & index <= n) &&
       !anyDuplicated(index)
   ) {
-    rows <- rep(NA_integer_, length(cells))
+    rows <- rep(NA_integer_, n)
     rows[index] <- seq_along(index)
     return(rows)
   }
@@ -587,7 +595,7 @@ cv_trajectory_rows <- function(crb, cells, meta, method, name) {
   match(cells, trajectory_cells)
 }
 
-cv_build_trajectories <- function(crb, cells) {
+cv_build_trajectories <- function(crb, cells, n = length(cells)) {
   methods <- tryCatch(
     crb$getMethodsForTrajectories(),
     error = function(e) character(0)
@@ -616,7 +624,14 @@ cv_build_trajectories <- function(crb, cells) {
       ) {
         next
       }
-      idx <- cv_trajectory_rows(crb, cells, meta, method, trajectory_name)
+      idx <- cv_trajectory_rows(
+        crb,
+        cells,
+        meta,
+        method,
+        trajectory_name,
+        n
+      )
       if (!any(!is.na(idx))) {
         next
       }
@@ -2163,19 +2178,25 @@ cv_build_compact_supplement <- function(
     return(NULL)
   }
   projection_names <- names(first_frame$projections)
-  unsupported <- length(crb$getMethodsForTrajectories()) ||
-    length(crb$availableSpatial()) ||
-    !is.null(crb$getTrekker())
+  unsupported <- length(crb$availableSpatial()) || !is.null(crb$getTrekker())
   if (unsupported) {
     return(NULL)
   }
   metadata <- cv_build_deferred_metadata(crb, first_frame$meta_data, primary)
+  ## Trajectory rows come from the Pack's index; the cell names are read only
+  ## for a trajectory without a valid one.
+  spaces <- cv_build_trajectories(
+    crb,
+    cells = cv_canonical_metadata(crb$getMetaData())$cell_barcode,
+    n = primary$n
+  )
   clone <- if (isTRUE(include_clone)) {
     cv_build_clone(crb, seq_len(primary$n), primary$n, sparse = TRUE)
   } else {
     NULL
   }
   if (!is.null(clone)) {
+    spaces[[length(spaces) + 1L]] <- clone$space
     metadata$groups[["clone_expansion"]] <- clone$group
   }
   cv_supplement(
@@ -2197,7 +2218,7 @@ cv_build_compact_supplement <- function(
       },
       first_frame$projections
     ),
-    spaces = if (is.null(clone)) list() else list(clone$space),
+    spaces = spaces,
     clone = clone$bundle
   )
 }

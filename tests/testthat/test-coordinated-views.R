@@ -1713,6 +1713,77 @@ test_that("compact supplement avoids full CRB hydration", {
   expect_length(metadata_only$spaces, 0L)
 })
 
+test_that("the compact supplement places trajectory cells by the Pack index", {
+  hydrated <- 0L
+  index <- c(4L, 2L)
+  cv_env$viewerPackTrajectoryIndex <- function(pack, method, name) index
+  on.exit(rm("viewerPackTrajectoryIndex", envir = cv_env), add = TRUE)
+  crb <- list(
+    getMetaData = function() {
+      hydrated <<- hydrated + 1L
+      data.frame(cell_barcode = paste0("c", 1:4))
+    },
+    getGroups = function() "cell_type",
+    getMethodsForTrajectories = function() "monocle2",
+    getNamesOfTrajectories = function(method) "path",
+    getTrajectory = function(method, name) {
+      list(
+        meta = data.frame(
+          DR_1 = c(40, 20),
+          DR_2 = c(4, 2),
+          row.names = c("c4", "c2")
+        ),
+        edges = NULL
+      )
+    },
+    availableSpatial = function() character(),
+    getTrekker = function() NULL
+  )
+  attr(crb, "cerebro_viewer_pack") <- list(
+    canonical_order = TRUE,
+    cell_count = 4L,
+    manifest = list(n_cells = 4L, cell_order_fingerprint = "order")
+  )
+  primary <- list(
+    dataset_id = "m1.crb",
+    dataset_fingerprint = "cells",
+    canonical_order_id = "order",
+    progressive_token = 1L,
+    n = 4L,
+    groups = list(cell_type = list()),
+    cat_extra = list(),
+    fields = list(),
+    projections = list(umap = list()),
+    spaces = list(list(id = "umap"))
+  )
+  first_frame <- list(
+    meta_data = data.frame(cell_type = factor(c("B", "T", "B", "T"))),
+    projections = list(umap = data.frame(x = 1:4, y = 4:1))
+  )
+
+  supplement <- cv_env$cv_build_compact_supplement(
+    crb,
+    primary,
+    first_frame,
+    include_clone = FALSE
+  )
+  expect_length(supplement$spaces, 1L)
+  expect_identical(supplement$spaces[[1]]$id, "trajectory::monocle2::path")
+  expect_equal(unclass(supplement$spaces[[1]]$x), c(NA, 20, NA, 40))
+  expect_identical(hydrated, 0L)
+
+  ## Without a valid index the rows are matched by name.
+  index <- NULL
+  supplement <- cv_env$cv_build_compact_supplement(
+    crb,
+    primary,
+    first_frame,
+    include_clone = FALSE
+  )
+  expect_equal(unclass(supplement$spaces[[1]]$x), c(NA, 20, NA, 40))
+  expect_identical(hydrated, 1L)
+})
+
 test_that("clone core omits duplicate indices and deferred labels", {
   clone <- cv_env$cv_build_clone_rows(
     clone = c("a", "a", "b"),
