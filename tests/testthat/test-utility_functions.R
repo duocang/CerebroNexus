@@ -113,6 +113,20 @@ test_that("control values stand in for a renderUI control until it binds", {
   )
 })
 
+test_that("an empty selection summary counts cells without the full metadata", {
+  scope <- viewer_runtime_env(new.env())
+  scope$getMetaData <- function() stop("full metadata was read")
+  scope$viewerProjectionFirstFrameMetadata <- function() {
+    data.frame(cluster = c("A", "A", "B"))
+  }
+  scope$getGroups <- function() "cluster"
+  scope$getObservationUnit <- function() list(plural = "cells")
+  scope$getParameters <- function() list(main_group = "cluster")
+  summary <- as.character(scope$cerebroSelectionSummary(character(0), "UMAP"))
+  expect_match(summary, "Selected", fixed = TRUE)
+  expect_match(summary, "/[[:space:]]*3[[:space:]]*cells")
+})
+
 test_that("Data Info uses the catalog before the full dataset", {
   withr::local_package("shinydashboard")
   shiny::testServer(

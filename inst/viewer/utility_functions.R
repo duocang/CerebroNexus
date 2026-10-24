@@ -2202,6 +2202,12 @@ cerebroSelectionSummary <- function(
   if (isTRUE(composition) && !length(keys)) {
     return(NULL)
   }
+  # Without keys the summary needs only the row count. The first-frame
+  # metadata has it; the getMetaData() default would read every cell name of
+  # a thin CRB first (1.9 s on 1.46 M cells, right after the first paint).
+  if (missing(metadata) && !length(keys)) {
+    metadata <- viewerProjectionFirstFrameMetadata()
+  }
   n_selected <- if (length(keys)) {
     length(keys)
   } else if (is.data.frame(selection)) {
