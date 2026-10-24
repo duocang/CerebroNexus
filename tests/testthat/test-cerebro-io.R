@@ -1707,7 +1707,8 @@ test_that("the cell names are read once for hydration and expression", {
   expect_equal(as.matrix(object$expression), fixture$counts)
   expect_identical(reads, 1L)
 
-  ## expression alone reads them once as well
+  ## The process keeps the check of this file version: expression of another
+  ## attach of it reads no names; hydration still needs them once.
   other <- runtime$.attachExternalExpression(
     runtime$read_cerebro_file(path),
     path
@@ -1716,7 +1717,7 @@ test_that("the cell names are read once for hydration and expression", {
   other$expression
   other$expression
   other$meta_data
-  expect_identical(reads, 2L)
+  expect_identical(reads, 1L)
 })
 
 test_that("a retired format that convertCerebro cannot repair says to re-export", {

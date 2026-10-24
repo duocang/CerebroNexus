@@ -281,8 +281,12 @@ if (
 ## This keeps the fast page-open path intact while moving one-time method and
 ## backend initialization out of the user's first gene selection.
 expression_projection_backend_warmed <- reactiveVal(FALSE)
+expression_projection_warm_retry <- reactiveVal(0L)
 observeEvent(
-  input[["expression_projection_rendered_state"]],
+  list(
+    input[["expression_projection_rendered_state"]],
+    expression_projection_warm_retry()
+  ),
   {
     req(expressionProjectionPaintedCurrent())
     if (isTRUE(expression_projection_backend_warmed())) {
@@ -290,6 +294,20 @@ observeEvent(
     }
     genes <- expression_selected_genes()[["genes_to_display_present"]]
     if (length(genes)) {
+      return()
+    }
+    ## A thin CRB's cell names are still being checked in a daemon: look again
+    ## later instead of waiting for it on the session's R thread.
+    pending <- attr(data_set(), "cerebro_h5_cells_pending", exact = TRUE)
+    if (is.function(pending) && isTRUE(pending())) {
+      later::later(
+        function() {
+          expression_projection_warm_retry(
+            isolate(expression_projection_warm_retry()) + 1L
+          )
+        },
+        0.25
+      )
       return()
     }
     available <- getGeneNames()

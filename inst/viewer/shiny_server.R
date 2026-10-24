@@ -218,11 +218,21 @@ server <- function(input, output, session) {
   }
   if (length(.crb_launch_state$prototypes)) {
     for (prototype_path in names(.crb_launch_state$prototypes)) {
+      prototype <- .crb_launch_state$prototypes[[prototype_path]]
       .cacheCrbPrototype(
         prototype_path,
-        .crb_launch_state$prototypes[[prototype_path]],
+        prototype,
         .runtimeBackendCacheIdentity(viewer_backend_plan(prototype_path))
       )
+      ## Check a thin CRB's H5 cell names while the user is on Data info.
+      check <- .thinCrbH5CellCheck(
+        prototype,
+        prototype_path,
+        viewer_backend_plan(prototype_path)
+      )
+      if (!is.null(check)) {
+        crb_h5_cell_check_start(check$path, check$expected)
+      }
     }
     .crb_launch_state$prototypes <- NULL
   }

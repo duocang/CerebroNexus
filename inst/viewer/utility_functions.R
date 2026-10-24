@@ -4018,6 +4018,33 @@ get_or_load_crb <- function(
   "Did the .h5 sibling get moved or dropped when the CRB was copied?"
 }
 
+## The H5 file a thin CRB attaches and the CRB's cell-name checksum, computed
+## as .attachExternalExpression() does; NULL for any other CRB or any problem.
+.thinCrbH5CellCheck <- function(obj, crb_path, effective_backend = NULL) {
+  tryCatch(
+    {
+      schema <- .readRuntimeCrbSchema(obj, crb_path)
+      be <- if (is.null(effective_backend)) {
+        .fallbackRuntimeBackendPlan(obj, crb_path)
+      } else {
+        .validateRuntimeBackendEntry(effective_backend, crb_path)
+      }
+      if (is.null(schema) || identical(be$mode, "embedded")) {
+        NULL
+      } else {
+        list(
+          path = file.path(
+            dirname(normalizePath(crb_path, mustWork = FALSE)),
+            be$location
+          ),
+          expected = schema$cell_names_hash
+        )
+      }
+    },
+    error = function(error) NULL
+  )
+}
+
 .attachExternalExpression <- function(
   obj,
   crb_path,
@@ -4089,8 +4116,21 @@ get_or_load_crb <- function(
   ## A thin CRB stores no cell names, so the H5 file's names are compared with
   ## its checksum here: the attach above only compared the cell count, and
   ## expression of another data set with as many cells must not be painted.
+  ## The Viewer's process cache (crb_cache.R) checks the names in a daemon.
+  process_check <- !is.null(crb_schema) &&
+    exists("crb_h5_cell_check_start", mode = "function")
+  if (process_check) {
+    crb_h5_cell_check_start(loc_abs, crb_schema$cell_names_hash)
+  }
   verify_cells <- function() {
     if (!is.null(crb_schema) && !isTRUE(cell_names_state$verified)) {
+      if (
+        process_check &&
+          crb_h5_cells_verified(loc_abs, crb_schema$cell_names_hash)
+      ) {
+        cell_names_state$verified <- TRUE
+        return(invisible())
+      }
       ## Callers often wrap the first expression access in tryCatch(), so the
       ## refusal is also logged.
       tryCatch(
@@ -4100,9 +4140,18 @@ get_or_load_crb <- function(
           stop(error)
         }
       )
+      if (process_check) {
+        crb_h5_cells_confirm(loc_abs, crb_schema$cell_names_hash)
+      }
     }
   }
   attr(obj, "cerebro_h5_rows") <- .h5ExpressionRows(loc_abs, verify_cells)
+  ## Lets optional work wait for the daemon without blocking the session.
+  attr(obj, "cerebro_h5_cells_pending") <- function() {
+    process_check &&
+      !isTRUE(cell_names_state$verified) &&
+      crb_h5_cells_pending(loc_abs, crb_schema$cell_names_hash)
+  }
   delayedAssign(
     "expression",
     {
