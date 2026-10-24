@@ -281,6 +281,36 @@ test_that("viewer source parsing is cached but evaluation stays local", {
   expect_identical(length(cache_env$.viewer_source_cache), 1L)
 })
 
+test_that("viewer source runs the installed byte code of a file's helpers", {
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "viewer", "page"), recursive = TRUE)
+  source_file <- file.path(root, "viewer", "page", "helpers.R")
+  writeLines(c("helper <- function(x) x + 1", "value <- 2L"), source_file)
+  .writeViewerBytecode(root)
+  expect_true(file.exists(
+    file.path(root, "viewer-bytecode", "page", "helpers.R.rds")
+  ))
+  compiled <- function(f) {
+    any(grepl("<bytecode", utils::capture.output(print(f)), fixed = TRUE))
+  }
+
+  cache_env <- new.env(parent = globalenv())
+  cache_env$Cerebro.options <- list(cerebro_root = root)
+  sys.source(viewer_test_path("source_cache.R"), envir = cache_env)
+  session <- new.env(parent = globalenv())
+  cache_env$viewerSource(source_file, session)
+  expect_true(compiled(session$helper))
+  expect_identical(session$helper(1), 2)
+  expect_identical(session$value, 2L)
+
+  ## An edited file no longer matches its byte code and runs as parsed.
+  writeLines(c("helper <- function(x) x + 10", "value <- 2L"), source_file)
+  edited <- new.env(parent = globalenv())
+  cache_env$viewerSource(source_file, edited)
+  expect_false(compiled(edited$helper))
+  expect_identical(edited$helper(1), 11)
+})
+
 test_that("viewer source reuses process-safe utility functions", {
   cache_env <- new.env(parent = globalenv())
   sys.source(viewer_test_path("source_cache.R"), envir = cache_env)

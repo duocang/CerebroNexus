@@ -71,6 +71,42 @@
   NA_character_
 }
 
+## The installed package's byte code for a Viewer file's helper functions
+## (written by R CMD INSTALL, see R/viewer_bytecode.R), or NULL when there is
+## none for this exact file and R version. Bundles have none.
+.viewerBytecode <- function(path) {
+  root <- tryCatch(Cerebro.options[["cerebro_root"]], error = function(e) NULL)
+  if (!is.character(root) || length(root) != 1L || !nzchar(root)) {
+    return(NULL)
+  }
+  viewer <- normalizePath(
+    file.path(root, "viewer"),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  source_path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  if (!startsWith(source_path, paste0(viewer, "/"))) {
+    return(NULL)
+  }
+  file <- file.path(
+    root,
+    "viewer-bytecode",
+    paste0(substring(source_path, nchar(viewer) + 2L), ".rds")
+  )
+  if (!file.exists(file)) {
+    return(NULL)
+  }
+  bytecode <- tryCatch(readRDS(file), error = function(e) NULL)
+  if (
+    !is.list(bytecode) ||
+      !identical(bytecode$r_version, R.version.string) ||
+      !identical(bytecode$md5, unname(tools::md5sum(path)))
+  ) {
+    return(NULL)
+  }
+  bytecode
+}
+
 viewerSource <- function(path, envir = parent.frame()) {
   path <- normalizePath(path, mustWork = TRUE)
   info <- file.info(path)
@@ -82,6 +118,11 @@ viewerSource <- function(path, envir = parent.frame()) {
       vapply(expressions, .viewerSourceAssignment, character(1))
     } else {
       rep(NA_character_, length(expressions))
+    }
+    ## Helpers then run compiled from their first call in this process.
+    bytecode <- .viewerBytecode(path)
+    if (!is.null(bytecode) && max(bytecode$index) <= length(expressions)) {
+      expressions[bytecode$index] <- bytecode$code
     }
     shared <- !is.na(shared_names) &
       shared_names %in% .viewer_process_function_names

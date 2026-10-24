@@ -16,19 +16,20 @@ cerebro_root_path <- function(...) {
 ## utility_functions.R stay inside server(): the former defines a top-level
 ## reactive (reactive_colors); the latter's helpers close over session-scope
 ## reactives (data_set(), preferences, ...).
-source(cerebro_root_path("viewer/plotting_functions.R"), local = TRUE)
-source(cerebro_root_path("viewer/color_config.R"), local = TRUE)
+## viewerSource() evaluates a file with the installed byte code of its helpers.
 source(cerebro_root_path("viewer/source_cache.R"), local = TRUE)
-source(cerebro_root_path("viewer/core/viewer_pack.R"), local = TRUE)
-source(cerebro_root_path("viewer/core/crb_contract.R"), local = TRUE)
+viewerSource(cerebro_root_path("viewer/plotting_functions.R"), environment())
+viewerSource(cerebro_root_path("viewer/color_config.R"), environment())
+viewerSource(cerebro_root_path("viewer/core/viewer_pack.R"), environment())
+viewerSource(cerebro_root_path("viewer/core/crb_contract.R"), environment())
 
 ## Generated Extra material tables are immutable. Share their lazy cache across
 ## sessions instead of reading the same sheet again for every browser tab.
 .extra_material_process_cache <- new.env(parent = emptyenv())
 
 ## Process-owned query/cache functions do not capture a browser session.
-source(cerebro_root_path("viewer/msigdb.R"), local = TRUE)
-source(cerebro_root_path("viewer/crb_cache.R"), local = TRUE)
+viewerSource(cerebro_root_path("viewer/msigdb.R"), environment())
+viewerSource(cerebro_root_path("viewer/crb_cache.R"), environment())
 .reserveCrbHeap(Cerebro.options[["crb_file_to_load"]])
 .viewer_pack_process_cache <- new.env(parent = emptyenv())
 ## CRBs without a stored cell fingerprint would otherwise hash every barcode on
@@ -88,7 +89,7 @@ source(cerebro_root_path("viewer/crb_cache.R"), local = TRUE)
   assign(key, value, envir = .viewer_cell_fingerprint_cache)
   value
 }
-source(cerebro_root_path("viewer/core/dataset_overview.R"), local = TRUE)
+viewerSource(cerebro_root_path("viewer/core/dataset_overview.R"), environment())
 .crb_launch_state <- new.env(parent = emptyenv())
 .crb_launch_state$prototypes <- Cerebro.options[[".dataset_prototypes"]]
 if (!is.list(.crb_launch_state$prototypes)) {
