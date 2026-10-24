@@ -878,7 +878,10 @@ viewerSharedProjectionName <- function(
     if (!exists("input", inherits = TRUE)) {
       return(NULL)
     }
-    shared <- input[["coordviews_shared_base"]]
+    ## A snapshot, not a dependency: the browser republishes the shared
+    ## geometry after every paint, and a render observer subscribed to it
+    ## would draw its frame a second time.
+    shared <- shiny::isolate(input[["coordviews_shared_base"]])
   }
   if (is.null(identity)) {
     if (!exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
