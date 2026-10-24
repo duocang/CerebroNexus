@@ -219,6 +219,22 @@ window.viewerScenarios = {
     t.check((await t.hover()).includes('NEW'),'New dataset retires old tooltip labels');
     return true;
   },
+  async auxAcrossLinked() {
+    const t=viewerTest;t.dataset();
+    const id='overview_projection';
+    const asked=()=>t.requests.filter(r=>r.name==='cell_view_aux_request'&&r.value.id===id).length;
+    const frame=await t.render({n:3,selection_key:null,wire_token:21},{},id);
+    t.equal(asked(),1,'A progressive frame asks for its cell names');
+    t.send('cell_view_aux_binary',t.wire({id,dataset_context:{...t.context},render_token:frame.render_token,
+      wire_token:21,selection_key:['a','b','c'],hover:{hoverinfo:'skip'}}));await t.settle();
+    t.linked();await t.settle();
+    await t.render({n:3,selection_key:null,wire_token:22,aux_reuse:21},{},id);
+    t.equal(asked(),1,'The first Linked views bundle keeps the delivered cell names');
+    t.dataset('B',2);t.linked();await t.settle();
+    await t.render({n:3,selection_key:null,wire_token:23,aux_reuse:21},{},id);
+    t.equal(asked(),2,'Another data set downloads its own cell names');
+    return true;
+  },
   async backgrounds() {
     const t=viewerTest;t.dataset();
     const image=document.createElement('canvas');image.width=2;image.height=2;
