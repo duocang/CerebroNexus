@@ -37,7 +37,7 @@ spatial_projection_scene <- reactive({
     }),
     spatial_names
   )
-  metadata <- getMetaData()
+  metadata <- viewerProjectionFirstFrameMetadata()
   sample_facets <- lapply(spatial_records, function(record) {
     spatial_metadata_facet(
       metadata,
@@ -309,7 +309,7 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
   selected_sample <- input[["spatial_projection_sample"]] %||% ""
   if (nzchar(selected_sample)) {
     current_sample <- spatial_metadata_facet(
-      getMetaData(),
+      viewerProjectionFirstFrameMetadata(),
       current_cells,
       spatial_sample_fields
     )
@@ -319,7 +319,7 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
     ]
   }
   roi_values <- spatial_metadata_facet(
-    getMetaData(),
+    viewerProjectionFirstFrameMetadata(),
     current_cells,
     spatial_roi_fields
   )$values

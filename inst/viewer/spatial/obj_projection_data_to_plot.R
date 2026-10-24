@@ -12,7 +12,7 @@ spatial_projection_roi_context <- function(spatial_name, rotation_angle) {
     function() {
       spatial_roi_transform_context(
         viewerSpatialCoordinates(spatial_name),
-        getMetaData(),
+        viewerProjectionFirstFrameMetadata(),
         sample_value,
         rotation_angle
       )

@@ -20,38 +20,7 @@ spatial_projection_cell_index <- reactive({
   req(spatial_name %in% availableSpatial())
   coordinates <- viewerSpatialCoordinates(spatial_name)
   req(coordinates)
-  spatial_cells <- rownames(coordinates)
-  pack <- viewerPackCurrent()
-  pack_cell_count <- suppressWarnings(as.integer(pack$cell_count))
-  valid_pack_count <- length(pack_cell_count) == 1L &&
-    !is.na(pack_cell_count)
-  index <- viewerPackSpatialIndex(pack, spatial_name)
-  valid_index <- length(index) == nrow(coordinates) &&
-    !anyNA(index) &&
-    isTRUE(all(index >= 1L))
-  if (!isTRUE(valid_index)) {
-    index <- NULL
-  }
-  pack_order_matches <-
-    is.null(index) &&
-    !is.null(pack) &&
-    is.list(pack) &&
-    valid_pack_count &&
-    length(spatial_cells) == pack_cell_count &&
-    identical(
-      viewerPackCellOrderFingerprint(spatial_cells),
-      as.character(pack$manifest$cell_order_fingerprint)
-    )
-  if (isTRUE(pack_order_matches)) {
-    index <- seq_len(pack_cell_count)
-  }
-  if (is.null(index)) {
-    index <- match(spatial_cells, getMetaData()[["cell_barcode"]])
-  }
-  if (length(index) != nrow(coordinates) || anyNA(index)) {
-    stop("Spatial cells do not match the canonical dataset order.")
-  }
-  as.integer(index)
+  spatial_section_rows(spatial_name, coordinates)
 })
 
 spatial_projection_cells_to_show_current <- reactive({

@@ -639,13 +639,95 @@ spatial_roi_value <- function(value) {
   if (spatial_roi_is_specific(value)) value else ""
 }
 
+## Canonical metadata rows of a section's cells: the Viewer Pack's index of the
+## section, all rows when the section is the Pack's cell order, otherwise the
+## cells matched against the metadata names (which hydrates a thin CRB).
+spatial_section_rows <- function(
+  spatial_name,
+  coordinates = viewerSpatialCoordinates(spatial_name)
+) {
+  spatial_cells <- rownames(coordinates)
+  pack <- viewerPackCurrent()
+  pack_cell_count <- suppressWarnings(as.integer(pack$cell_count))
+  valid_pack_count <- length(pack_cell_count) == 1L &&
+    !is.na(pack_cell_count)
+  index <- viewerPackSpatialIndex(pack, spatial_name)
+  valid_index <- length(index) == nrow(coordinates) &&
+    !anyNA(index) &&
+    isTRUE(all(index >= 1L))
+  if (!isTRUE(valid_index)) {
+    index <- NULL
+  }
+  pack_order_matches <-
+    is.null(index) &&
+    !is.null(pack) &&
+    is.list(pack) &&
+    valid_pack_count &&
+    length(spatial_cells) == pack_cell_count &&
+    identical(
+      viewerPackCellOrderFingerprint(spatial_cells),
+      as.character(pack$manifest$cell_order_fingerprint)
+    )
+  if (isTRUE(pack_order_matches)) {
+    index <- seq_len(pack_cell_count)
+  }
+  if (is.null(index)) {
+    index <- match(spatial_cells, getMetaData()[["cell_barcode"]])
+  }
+  if (length(index) != nrow(coordinates) || anyNA(index)) {
+    stop("Spatial cells do not match the canonical dataset order.")
+  }
+  as.integer(index)
+}
+
+## Canonical metadata rows of `cells` (NA when absent). Cells of one section,
+## all of them or some, are found through the section's rows, which reads no
+## cell names; anything else is matched against the metadata names.
+spatial_canonical_rows <- function(cells) {
+  section_rows <- function(name, coordinates) {
+    tryCatch(
+      spatial_section_rows(name, coordinates),
+      error = function(error) NULL
+    )
+  }
+  sections <- availableSpatial()
+  coordinates <- lapply(sections, viewerSpatialCoordinates)
+  for (i in seq_along(sections)) {
+    if (identical(rownames(coordinates[[i]]), cells)) {
+      rows <- section_rows(sections[[i]], coordinates[[i]])
+      if (!is.null(rows)) {
+        return(rows)
+      }
+    }
+  }
+  for (i in seq_along(sections)) {
+    position <- match(cells, rownames(coordinates[[i]]))
+    if (!anyNA(position)) {
+      rows <- section_rows(sections[[i]], coordinates[[i]])
+      if (!is.null(rows)) {
+        return(rows[position])
+      }
+    }
+  }
+  match(cells, getMetaData()[["cell_barcode"]])
+}
+
 ## Metadata row of each cell (NA when absent). match() hashes every metadata
 ## cell name on each call, and the Spatial controls ask for the facets of the
 ## same sections again and again (several per section on the first visit), so
 ## the rows of recent cell vectors are kept. identical() is immediate for the
 ## same vector and a pointer comparison per name for an equal copy.
+## Metadata without cell names and with automatic row names is the first-frame
+## metadata of a thin CRB, in canonical cell order; its rows come from the
+## sections (see spatial_canonical_rows()).
 .spatial_metadata_rows_cache <- new.env(parent = emptyenv())
 spatial_metadata_rows <- function(metadata, cells) {
+  if (
+    !"cell_barcode" %in% colnames(metadata) &&
+      .row_names_info(metadata) < 0L
+  ) {
+    return(spatial_canonical_rows(cells))
+  }
   metadata_cells <- if ("cell_barcode" %in% colnames(metadata)) {
     as.character(metadata[["cell_barcode"]])
   } else {

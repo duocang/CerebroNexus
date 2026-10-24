@@ -57,7 +57,7 @@ spatial_projection_scene_memo <- viewerMemoOne()
 spatial_projection_scene_defaults <- function() {
   spatial_projection_scene_memo(list(data_set()), function() {
     spatial_names <- availableSpatial()
-    metadata <- getMetaData()
+    metadata <- viewerProjectionFirstFrameMetadata()
     facets <- lapply(spatial_names, function(name) {
       record <- tryCatch(getSpatialData(name), error = function(error) list())
       spatial_metadata_facet(
@@ -337,7 +337,7 @@ spatial_projection_parameters_plot_current <- reactive({
       spatial_cells <- rownames(spatial_data$coordinates) %||% character()
       if (nzchar(selected_sample)) {
         sample_facet <- spatial_metadata_facet(
-          getMetaData(),
+          viewerProjectionFirstFrameMetadata(),
           spatial_cells,
           spatial_sample_fields
         )
@@ -347,7 +347,7 @@ spatial_projection_parameters_plot_current <- reactive({
         ]
       }
       spatial_metadata_facet(
-        getMetaData(),
+        viewerProjectionFirstFrameMetadata(),
         spatial_cells,
         spatial_roi_fields
       )
