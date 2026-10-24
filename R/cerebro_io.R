@@ -328,10 +328,17 @@
     return(object)
   }
   sidecar <- .cerebroSidecar(file, backend)
-  if (!requireNamespace("HDF5Array", quietly = TRUE)) {
+  ## Check the installation without loading the namespace: loading HDF5Array
+  ## and its S4 methods, then reading every cell name for the TENxMatrix, takes
+  ## seconds. The matrix is attached on first use of `expression`.
+  if (!nzchar(system.file(package = "HDF5Array"))) {
     stop("An H5-backed CRB requires the HDF5Array package.", call. = FALSE)
   }
-  object$expression <- t(HDF5Array::TENxMatrix(sidecar, group = "expression"))
+  delayedAssign(
+    "expression",
+    t(HDF5Array::TENxMatrix(sidecar, group = "expression")),
+    assign.env = object
+  )
   object
 }
 
@@ -342,7 +349,9 @@
   if (!identical(backend$type, "h5")) {
     stop("A thin CRB requires an H5 expression backend.", call. = FALSE)
   }
-  cells <- colnames(object$expression)
+  ## The H5 file's cell names, read with rhdf5 so that the expression matrix
+  ## stays unattached.
+  cells <- .h5CellNames(.cerebroSidecar(file, backend))
   if (!identical(.cerebroCellNamesHash(cells), schema$cell_names_hash)) {
     stop(
       "The H5 cell names do not match CRB '",
@@ -392,7 +401,9 @@
         call. = FALSE
       )
     }
-    rownames(projection) <- cells
+    ## `cells` passed .validCellNames() above; rownames<- would look for
+    ## duplicates again for every projection.
+    attr(projection, "row.names") <- cells
     object$projections[[name]] <- projection
   }
   rownames(metadata) <- NULL

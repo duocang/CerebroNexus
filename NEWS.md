@@ -25,6 +25,13 @@
   `published_pseudotime` (shown as "Published pseudotime"), for a pseudotime
   that comes with a data set rather than from a method run in CerebroNexus.
 
+## Changes
+
+- `readCerebro()` opens an H5-backed data file without loading HDF5Array: the
+  cell names are read from the H5 file with rhdf5, and the expression matrix is
+  attached when `$expression` is first used. Reading the 1.3 and 1.5 million
+  cell demo data sets takes about 1 s instead of 3-5 s.
+
 # CerebroNexus 5.4.0
 
 ## Viewer

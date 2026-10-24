@@ -228,6 +228,9 @@ test_that("thin v3 CRBs keep the cell names once, in the H5 file", {
 
   for (path in c(rds, qs)) {
     restored <- readCerebro(path)
+    ## The matrix is attached on first use; reading names its rows.
+    expect_true(rlang::env_binding_are_lazy(restored, "expression"))
+    expect_identical(rownames(restored$projections$umap), fixture$cells)
     expect_cerebro_fields(restored, fixture)
     expect_identical(restored$meta_data$sample, c("a", "a", "b", "b"))
     expect_identical(restored$crb_schema$version, 3L)
