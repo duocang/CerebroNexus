@@ -550,6 +550,43 @@ cv_space <- function(id, label, x, y) {
 ## Trajectories are ordinary linked spaces with one extra drawing layer: their
 ## fitted graph. Cells outside a trajectory stay in the shared index with NA
 ## coordinates, so a selection still has one identity across every panel.
+## The trajectory row of each of `cells` (NA where the trajectory has none).
+## A Viewer Pack in canonical order stores the cell index of every trajectory
+## row; using it avoids checking and matching a million row names.
+cv_trajectory_rows <- function(crb, cells, meta, method, name) {
+  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+  index <- if (
+    is.list(pack) &&
+      isTRUE(pack$canonical_order) &&
+      identical(as.integer(pack$cell_count), length(cells)) &&
+      exists("viewerPackTrajectoryIndex", mode = "function")
+  ) {
+    tryCatch(
+      viewerPackTrajectoryIndex(pack, method, name),
+      error = function(e) NULL
+    )
+  }
+  if (
+    length(index) == nrow(meta) &&
+      !anyNA(index) &&
+      all(index >= 1L & index <= length(cells)) &&
+      !anyDuplicated(index)
+  ) {
+    rows <- rep(NA_integer_, length(cells))
+    rows[index] <- seq_along(index)
+    return(rows)
+  }
+  trajectory_cells <- rownames(meta)
+  if ("cell_barcode" %in% colnames(meta)) {
+    trajectory_cells <- as.character(meta$cell_barcode)
+  }
+  trajectory_cells <- cv_cell_ids(
+    trajectory_cells,
+    paste0("Trajectory `", name, "`")
+  )
+  match(cells, trajectory_cells)
+}
+
 cv_build_trajectories <- function(crb, cells) {
   methods <- tryCatch(
     crb$getMethodsForTrajectories(),
@@ -579,15 +616,7 @@ cv_build_trajectories <- function(crb, cells) {
       ) {
         next
       }
-      trajectory_cells <- rownames(meta)
-      if ("cell_barcode" %in% colnames(meta)) {
-        trajectory_cells <- as.character(meta$cell_barcode)
-      }
-      trajectory_cells <- cv_cell_ids(
-        trajectory_cells,
-        paste0("Trajectory `", trajectory_name, "`")
-      )
-      idx <- match(cells, trajectory_cells)
+      idx <- cv_trajectory_rows(crb, cells, meta, method, trajectory_name)
       if (!any(!is.na(idx))) {
         next
       }

@@ -192,6 +192,34 @@ test_that("trajectory coordinates and graph enter Linked views", {
   expect_length(spaces[[1]]$edges, 1)
 })
 
+test_that("trajectory rows come from the Viewer Pack index when it is valid", {
+  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
+  meta <- data.frame(DR_1 = c(10, 20), row.names = c("cell_b", "cell_c"))
+  cells <- c("cell_a", "cell_b", "cell_c")
+  crb <- structure(
+    list(),
+    cerebro_viewer_pack = list(
+      canonical_order = TRUE,
+      cell_count = 3L
+    )
+  )
+  index <- c(3L, 2L)
+  ## The index wins over the row names it was built from.
+  cv_env$viewerPackTrajectoryIndex <- function(pack, method, name) index
+  on.exit(rm("viewerPackTrajectoryIndex", envir = cv_env), add = TRUE)
+  expect_identical(
+    cv_env$cv_trajectory_rows(crb, cells, meta, "m", "t"),
+    c(NA, 2L, 1L)
+  )
+  ## A missing, short or duplicated index falls back to the names.
+  for (index in list(NULL, 3L, c(2L, 2L))) {
+    expect_identical(
+      cv_env$cv_trajectory_rows(crb, cells, meta, "m", "t"),
+      c(NA, 1L, 2L)
+    )
+  }
+})
+
 run_config_transport_node <- function(body) {
   run_node_script(c(
     "const fs = require('fs');",
