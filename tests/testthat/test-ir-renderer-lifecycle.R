@@ -217,6 +217,8 @@ clonal_projection_server <- function(
     ## The clonal renderer reads the author display defaults through a
     ## server-level helper; this harness answers "no configured defaults".
     current_page_display_defaults <- function(page) list()
+    ## The renderer reads the tab through viewerControlValue() (tabs.R).
+    ir_tab <- function() input[["ir_tabs"]]
     viewerDatasetIdentity <- function() list(fingerprint = "A")
     builds <- barcode_reads <- repertoire_reads <- 0L
     if (!is.null(pack_index)) {

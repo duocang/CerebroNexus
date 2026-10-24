@@ -10,6 +10,16 @@ observeEvent(input$ir_tabs, {
   }
 })
 
+## The tab the strip opens on (see visualizations.R): the remembered tab, else
+## the first one, Clonal projection. The clonal projection reads it through
+## viewerControlValue() and is drawn before the strip reaches the browser.
+ir_tab <- viewerControlValue(input, "ir_tabs", function() {
+  if (!has_scRepertoire() || !ir_repertoire_available()) {
+    return(NULL)
+  }
+  isolate(ir_last_tab()) %||% "Clonal UMAP"
+})
+
 ## ---- Attach tooltips to tab links via JS ------------------------------ ##
 observe({
   tab <- input$ir_tabs

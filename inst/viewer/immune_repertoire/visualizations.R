@@ -462,7 +462,7 @@ observe(
     req(render_request)
     req(
       identical(input[["sidebar"]], "immune_repertoire"),
-      identical(input[["ir_tabs"]], "Clonal UMAP")
+      identical(ir_tab(), "Clonal UMAP")
     )
     group_by <- ir_param("ir_p_umap_group_by", "")
     grouped <- !is.null(group_by) && nzchar(group_by)
@@ -734,7 +734,9 @@ observe(
     )
     ir_clonal_umap_last_request(request_signature)
   },
-  priority = 1000
+  ## Ahead of the page's controls (priority 0), after the dataset's ready
+  ## message (priority 1000) that the browser must see before the frame.
+  priority = 100
 )
 
 ## ---- Clonal UMAP selection summaries ----------------------------------- ##
