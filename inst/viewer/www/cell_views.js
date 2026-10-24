@@ -8550,18 +8550,25 @@
     if (!linkedBundle) return;
     var state = linkedState;
     leaveSingle();
+    // Rebuilding the panels and restoring the workspace each redraw every
+    // panel (layout, projections, sections, colour, selection): eight full
+    // redraws of a million points. Paint once, with the final state.
+    var deferred = drawAllDeferred;
+    drawAllDeferred = true;
     rebuildingBase = true;
     try {
       onData(linkedBundle);
+      rebuildingBase = false;
+      if (state) restoreWorkspace(state);
+      var focusFrom = state && state._focusFrom || {};
+      panels.forEach(function (p) { p.focusFrom = focusFrom[p.spaceId] || null; });
+      (sel ? syncFocusButtons : leaveFocus)();
+      syncSharedScatter();
+      syncPointControls();
     } finally {
       rebuildingBase = false;
+      drawAllDeferred = deferred;
     }
-    if (state) restoreWorkspace(state);
-    var focusFrom = state && state._focusFrom || {};
-    panels.forEach(function (p) { p.focusFrom = focusFrom[p.spaceId] || null; });
-    (sel ? syncFocusButtons : leaveFocus)();
-    syncSharedScatter();
-    syncPointControls();
     drawAll();
     linkedState = null;
     var pending = deferredLinkedSupplements;

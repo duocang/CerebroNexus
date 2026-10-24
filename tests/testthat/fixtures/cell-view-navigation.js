@@ -19,6 +19,7 @@ function session() {
   const c = {D: base, linkedBundle: base, linkedState: {selection: [42]},
     singleActive: null, singleSpaceIds: [], singleSpaceModes: {},
     lastVis: null, page: 'linked', surfaceHome: {panes: {}}, rebuildingBase: false,
+    drawAllDeferred: false,
     deferredLinkedSupplements: [], pendingCloneSupplement: null, transportMetrics: {},
     linkedRequestTiming: {}, singleTiming: {}, saved: {}, restored: [], hydrated: [],
     frames: [], fallbacks: 0, performance: {now: () => 1},
@@ -39,7 +40,8 @@ function session() {
     restoreLinkedSurface: () => {}, showUnavailable: () => {c.D = null;},
     setLinkedPresentationReady: value => {c.presented = value;},
     workspaceSummary: () => ({primaryReady: true}), reportWorkspaceReady: () => {},
-    onData: bundle => {c.D = bundle;}, restoreWorkspace: state => c.restored.push(state),
+    onData: bundle => {c.D = bundle;},
+    restoreWorkspace: state => {c.restored.push(state); c.restoredDeferred = c.drawAllDeferred;},
     datasetMessageFresh: extra => !!extra && extra.dataset_context === 'generation-1',
     sameDatasetContext: (a, b) => a === b, configFingerprint: () => 'fp',
     hydrateLinkedGeometry: extra => {assert.strictEqual(c.D, c.linkedBundle); c.hydrated.push(extra); return extra;},
@@ -74,6 +76,8 @@ for (const from of ids) {
         assert.strictEqual(s.D, s.linkedBundle, `${from} -> ${via} -> Linked`);
         assert.strictEqual(s.singleActive, null);
         assert.deepStrictEqual(s.restored[0], {selection: [42]});
+        assert.strictEqual(s.restoredDeferred, true, 'Linked restore paints once, afterwards');
+        assert.strictEqual(s.drawAllDeferred, false);
       } else {
         assert.strictEqual(s.singleActive, to);
         assert.strictEqual(s.D.id, to);
