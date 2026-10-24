@@ -4641,6 +4641,90 @@ canonicalGeneSelection <- function(selected, genes) {
 ## Gene expression registers four selectors on the same gene list; a locale
 ## sort of a whole transcriptome takes about half a second. Share one.
 .viewer_sorted_gene_choices <- viewerMemoOne()
+
+## Server-side search for gene selectors, the protocol of
+## updateSelectizeInput(server = TRUE): the first `maxop` genes matching every
+## word of `query` (case-insensitive), plus the selected genes.
+viewerGeneChoicesJSON <- function(data, req) {
+  query <- shiny::parseQueryString(req$QUERY_STRING %||% "")
+  words <- unique(strsplit(tolower(query$query %||% ""), "\\s+")[[1L]])
+  words <- words[nzchar(words)]
+  limit <- suppressWarnings(as.integer(query$maxop))
+  if (!length(limit) || is.na(limit)) {
+    limit <- 1000L
+  }
+  index <- seq_along(data$genes)
+  if (length(words)) {
+    lower <- tolower(data$genes)
+    keep <- rep(TRUE, length(lower))
+    for (word in words) {
+      keep <- keep & grepl(word, lower, fixed = TRUE)
+    }
+    index <- which(keep)
+  }
+  index <- utils::head(index, limit)
+  selected <- stats::na.omit(match(data$selected, data$genes))
+  if (length(selected)) {
+    index <- sort(utils::head(unique(c(selected, index)), limit))
+  }
+  genes <- data$genes[index]
+  shiny::httpResponse(
+    200L,
+    "application/json",
+    enc2utf8(as.character(jsonlite::toJSON(
+      data.frame(label = genes, value = genes, stringsAsFactors = FALSE)
+    ))),
+    headers = list("Cache-Control" = "private, max-age=3600")
+  )
+}
+
+## One search URL per gene list and selection in a session. The gene selectors
+## of a page (single gene, R/G/B channels) share it, so their identical first
+## requests reach R once and the rest come from the browser's HTTP cache.
+viewerGeneChoicesUrl <- function(session, genes, selected = NULL) {
+  selected <- unique(as.character(unlist(selected, use.names = FALSE)))
+  selected <- selected[!is.na(selected) & nzchar(selected)]
+  cache <- session$userData$cerebro_gene_choice_urls
+  if (is.null(cache)) {
+    cache <- session$userData$cerebro_gene_choice_urls <- new.env(
+      parent = emptyenv()
+    )
+    cache$entries <- list()
+    cache$count <- 0L
+  }
+  for (entry in cache$entries) {
+    if (identical(entry$genes, genes) && identical(entry$selected, selected)) {
+      return(entry$url)
+    }
+  }
+  cache$count <- cache$count + 1L
+  url <- session$registerDataObj(
+    paste0("cerebro-gene-choices-", cache$count),
+    list(genes = genes, selected = selected),
+    viewerGeneChoicesJSON
+  )
+  cache$entries <- c(
+    list(list(genes = genes, selected = selected, url = url)),
+    utils::head(cache$entries, 7L)
+  )
+  url
+}
+
+## updateSelectizeInput(session, inputId, choices, selected, server = TRUE),
+## with a search URL shared by every selector of the same genes and selection.
+viewerUpdateGeneSelector <- function(session, inputId, choices, selected) {
+  session$sendInputMessage(
+    inputId,
+    Filter(
+      Negate(is.null),
+      list(
+        value = unname(selected),
+        url = viewerGeneChoicesUrl(session, choices, selected)
+      )
+    )
+  )
+}
+
 serverSideGeneSelector <- function(
   session,
   input_id,
@@ -4715,13 +4799,7 @@ serverSideGeneSelector <- function(
       if (isTRUE(canonical_selection)) {
         selected <- canonicalGeneSelection(selected, genes)
       }
-      updateSelectizeInput(
-        session,
-        input_id,
-        choices = genes,
-        selected = selected,
-        server = TRUE
-      )
+      viewerUpdateGeneSelector(session, input_id, genes, selected)
       if (!isTRUE(refresh_on_activation)) registered_dataset <<- dataset
     }
 
