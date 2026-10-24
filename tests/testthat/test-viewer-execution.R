@@ -62,6 +62,10 @@ test_that("Linked tooltips, deferred groups and selection survive hover toggles"
   viewer_browser_test("linked")
 })
 
+test_that("Single views take cell names from the canonical cell-name resource", {
+  viewer_browser_test("auxCellNames")
+})
+
 test_that("Cell names delivered to a single view survive the first Linked views bundle", {
   viewer_browser_test("auxAcrossLinked")
 })

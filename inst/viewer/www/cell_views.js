@@ -7025,6 +7025,71 @@
       });
     });
   }
+  // Canonical cell names (canonical-cell-names-v1): NUL-terminated UTF-8
+  // strings in canonical order, downloaded once and shared by every view of
+  // the data set. A view's aux message then carries canonical indices.
+  var cellNamesResourceCache = new Map();
+  function fetchCellNames(resource, identity) {
+    if (!resource || resource.protocol !== 'canonical-cell-names-v1' ||
+        !resource.url || !canonicalResourceIdentityMatches(resource, identity)) {
+      return Promise.reject(new Error('Cell names identity mismatch'));
+    }
+    var n = Number(resource.cells);
+    var key = resourceCacheKey(resource, '');
+    var pending = cellNamesResourceCache.get(key);
+    if (!pending) {
+      pending = window.fetch(String(resource.url), {
+        credentials: 'same-origin', cache: 'force-cache'
+      }).then(function (response) {
+        if (!response.ok) throw new Error('Cell names request failed');
+        var body = resource.encoding === 'gzip'
+          ? response.body.pipeThrough(new DecompressionStream('gzip'))
+          : response.body;
+        return new Response(body).arrayBuffer();
+      }).then(function (buffer) {
+        if (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes)) {
+          throw new Error('Cell names byte count mismatch');
+        }
+        var names = new TextDecoder('utf-8').decode(buffer).split('\0');
+        names.pop();
+        if (names.length !== n) throw new Error('Cell names length mismatch');
+        return {names: names};
+      });
+      cellNamesResourceCache.set(key, pending);
+      pending.catch(function () {
+        if (cellNamesResourceCache.get(key) === pending) cellNamesResourceCache.delete(key);
+      });
+    }
+    return pending;
+  }
+  // Turns canonical indices into selection keys before the message is applied.
+  function resolveAuxCellNames(message) {
+    var resource = message && message.cell_names_resource;
+    var index = message && message.selection_index;
+    if (!resource || index == null || message.selection_key != null) {
+      return Promise.resolve(message);
+    }
+    var view = singleView(message.id, message.dataset_context);
+    return fetchCellNames(resource, view && view.datasetIdentity).then(function (entry) {
+      var names = entry.names;
+      var lookup = function (rows) {
+        var keys = new Array(rows.length);
+        for (var i = 0; i < rows.length; i++) {
+          var name = names[rows[i]];
+          if (name === undefined) throw new Error('Cell index out of range');
+          keys[i] = name;
+        }
+        return keys;
+      };
+      var nested = Array.isArray(index) && index.length && typeof index[0] !== 'number';
+      var resolved = Object.assign({}, message, {
+        selection_key: nested ? index.map(lookup) : lookup(index)
+      });
+      delete resolved.selection_index;
+      delete resolved.cell_names_resource;
+      return resolved;
+    });
+  }
   var projectionResourceCache = new Map();
   function fetchProjectionResource(resource, expectedCells) {
     var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
@@ -9363,7 +9428,20 @@
     if (message && message.id) {
       recordSpecialistPayload('aux', message.id, buffer.byteLength);
     }
-    applySingleAux(message);
+    if (!message || !message.cell_names_resource) {
+      applySingleAux(message);
+      return;
+    }
+    resolveAuxCellNames(message).then(applySingleAux, function () {
+      // Without the file the names come in messages again: render the view
+      // once more, after telling the server not to offer the file.
+      if (typeof Shiny === 'undefined') return;
+      Shiny.setInputValue('cell_view_names_resource_failed',
+        String(message.cell_names_resource.url), {priority: 'event'});
+      Shiny.setInputValue(message.id + '_render_request',
+        {nonce: Date.now(), dataset_context: currentDatasetContext()},
+        {priority: 'event'});
+    });
   }
 
   function applySingleAux(message) {

@@ -219,6 +219,35 @@ window.viewerScenarios = {
     t.check((await t.hover()).includes('NEW'),'New dataset retires old tooltip labels');
     return true;
   },
+  async auxCellNames() {
+    const t=viewerTest;t.dataset();
+    const id='overview_projection';
+    const identity={cell_count:3,cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),
+      cell_order_fingerprint:'md5-cell-order-v1:'+'b'.repeat(32),pack_dataset_fingerprint:'md5-crb-v1:'+'c'.repeat(32)};
+    const resource={protocol:'canonical-cell-names-v1',cells:3,bytes:12,
+      url:URL.createObjectURL(new Blob(['c-0\0c-1\0c-2\0'])),
+      dataset_fingerprint:identity.cell_fingerprint,cell_order_fingerprint:identity.cell_order_fingerprint,
+      pack_dataset_fingerprint:identity.pack_dataset_fingerprint};
+    const deliver=async (token,index,extra={})=>{
+      const frame=await t.render({n:3,selection_key:null,wire_token:token},{},id,{dataset_identity:identity});
+      t.send('cell_view_aux_binary',t.wire({id,dataset_context:{...t.context},render_token:frame.render_token,
+        wire_token:token,selection_index:index,cell_names_resource:{...resource,...extra},hover:{hoverinfo:'skip'}}));
+      for(let i=0;i<5;i++)await t.settle();
+    };
+    await deliver(31,new Int32Array([2,0,1]));
+    t.check((await t.hover(0)).includes('Cell: c-2'),'Point 0 is the third canonical cell');
+    t.check((await t.hover(2)).includes('Cell: c-1'),'Point 2 is the second canonical cell');
+    const gzip=await new Response(new Blob(['g-0\0g-1\0g-2\0']).stream()
+      .pipeThrough(new CompressionStream('gzip'))).blob();
+    await deliver(33,new Int32Array([1,2,0]),{url:URL.createObjectURL(gzip),encoding:'gzip'});
+    t.check((await t.hover(0)).includes('Cell: g-1'),'A gzip resource is decompressed');
+    const failures=()=>t.requests.filter(r=>r.name==='cell_view_names_resource_failed').length;
+    t.equal(failures(),0);
+    await deliver(32,new Int32Array([0,1,2]),{cell_order_fingerprint:'md5-cell-order-v1:'+'d'.repeat(32)});
+    t.equal(failures(),1,'A resource of another cell order is refused and reported');
+    t.check(t.requests.some(r=>r.name===id+'_render_request'),'The view asks for a frame with names');
+    return true;
+  },
   async auxAcrossLinked() {
     const t=viewerTest;t.dataset();
     const id='overview_projection';

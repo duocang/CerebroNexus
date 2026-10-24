@@ -56,6 +56,35 @@ overview_projection_update_plot <- function(input) {
     NULL
   }
   core_aux <- function() {
+    hover <- isTRUE(plot_parameters[["hover_info"]])
+    names_resource <- if (
+      exists("viewerCellNamesResource", mode = "function")
+    ) {
+      viewerCellNamesResource()
+    }
+    if (
+      is.list(names_resource) &&
+        length(cell_indices) &&
+        max(cell_indices) <= names_resource$cells
+    ) {
+      ## Canonical rows (0-based) of the points; the browser takes their
+      ## names from the cell-name resource, so the metadata is not read here.
+      rows <- as.integer(cell_indices) - 1L
+      select <- function(selected) I(rows[selected])
+      return(list(
+        selection_index = if (is.list(selection_rows)) {
+          lapply(selection_rows, select)
+        } else {
+          select(selection_rows)
+        },
+        cell_names_resource = names_resource,
+        hover = list(
+          hoverinfo = if (hover) "text" else "skip",
+          columns = list(),
+          pending = hover
+        )
+      ))
+    }
     metadata <- if (is.null(data_snapshot)) {
       getMetaData()
     } else {

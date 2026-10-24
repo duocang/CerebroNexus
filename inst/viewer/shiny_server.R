@@ -1203,6 +1203,66 @@ server <- function(input, output, session) {
       lapply(names, viewerProjectionAsset)
     )
   }
+  ## The canonical cell names as one static file of NUL-terminated UTF-8
+  ## strings, gzip-compressed (26 MB -> 6.5 MB for 1.3 M cells, 0.15 s). A
+  ## view then sends the canonical index of its points and the browser
+  ## downloads the names once, instead of R encoding a million names into the
+  ## message of every view (about a second, and 29 MB). The file is written
+  ## once per process and cell order.
+  viewer_cell_name_resources <- new.env(parent = emptyenv())
+  viewerCellNamesResource <- function() {
+    pack <- viewerPackCurrent()
+    fingerprint <- as.character(pack$manifest$cell_order_fingerprint %||% "")
+    if (
+      !is.list(pack) ||
+        !isTRUE(pack$canonical_order) ||
+        length(fingerprint) != 1L ||
+        !nzchar(fingerprint)
+    ) {
+      return(NULL)
+    }
+    if (exists(fingerprint, envir = viewer_cell_name_resources)) {
+      descriptor <- get(fingerprint, envir = viewer_cell_name_resources)
+      ## A browser that could not read the file gets the names in messages.
+      failed <- isolate(input[["cell_view_names_resource_failed"]])
+      return(if (identical(failed, descriptor$url)) NULL else descriptor)
+    }
+    directory <- file.path(tempdir(), "cerebro-cell-names")
+    file <- file.path(
+      directory,
+      paste0(gsub("[^A-Za-z0-9_-]", "_", fingerprint), ".bin.gz")
+    )
+    cells <- viewerPackCellBarcodes(pack)
+    if (is.null(cells)) {
+      return(NULL)
+    }
+    cells <- enc2utf8(cells)
+    if (!file.exists(file)) {
+      dir.create(directory, showWarnings = FALSE, recursive = TRUE)
+      partial <- tempfile("cell-names-", directory)
+      connection <- gzfile(partial, "wb", compression = 1L)
+      writeBin(cells, connection)
+      close(connection)
+      file.rename(partial, file)
+    }
+    descriptor <- c(
+      list(
+        protocol = "canonical-cell-names-v1",
+        url = paste0(
+          viewerStaticResourcePrefix("cell-names", directory),
+          "/",
+          basename(file)
+        ),
+        encoding = "gzip",
+        cells = length(cells),
+        ## Decompressed size: every name and its terminating NUL.
+        bytes = sum(nchar(cells, type = "bytes")) + length(cells)
+      ),
+      viewerCanonicalResourceIdentity(pack)
+    )
+    assign(fingerprint, descriptor, envir = viewer_cell_name_resources)
+    descriptor
+  }
   ## Trajectory frames may bind an exact row subset to a canonical projection.
   ## The binding is published only by the Viewer Pack builder after exact
   ## coordinate comparison. Non-matching frames retain their dedicated geometry
