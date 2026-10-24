@@ -31,6 +31,12 @@
   cell names are read from the H5 file with rhdf5, and the expression matrix is
   attached when `$expression` is first used. Reading the 1.3 and 1.5 million
   cell demo data sets takes about 1 s instead of 3-5 s.
+- An H5-backed CRB stores repertoire barcodes that are cells of the data set
+  as cell indices (in the CRB or its `.immune` sidecar; thin-CRB schema
+  version 4, written only when there are such barcodes). `getImmuneRepertoire()`
+  returns them as barcodes. Reading the Ren repertoire takes 3.8 s instead of
+  5.0 s. CRBs written before read as before; an earlier release refuses a
+  version 4 CRB with an error naming the schema version.
 
 # CerebroNexus 5.4.0
 

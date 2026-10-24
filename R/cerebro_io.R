@@ -155,6 +155,83 @@
     !anyDuplicated(cells)
 }
 
+## ---- Barcodes stored by cell index (thin CRB schema version 4) ------------- ##
+## A thin CRB keeps the cell names once, in the H5 file. Version 4 also stores
+## the barcodes of repertoire samples whose barcodes are all cells as metadata
+## rows (the column named by the attribute "cerebro_cell_index_column" holds
+## integers). Reading restores the barcodes from the cell names in memory, which
+## costs a vector of pointers instead of decoding every barcode again.
+
+.validCellIndex <- function(index, n, n_cells) {
+  is.integer(index) &&
+    length(index) == n &&
+    !anyNA(index) &&
+    all(index >= 1L & index <= n_cells)
+}
+
+## Repertoire samples whose barcodes are all cells keep metadata rows instead.
+.indexRepertoireByCell <- function(repertoire, cells) {
+  lapply(repertoire, function(sample) {
+    barcodes <- if (is.data.frame(sample)) sample[["barcode"]]
+    if (!is.character(barcodes)) {
+      return(sample)
+    }
+    index <- match(barcodes, cells)
+    if (anyNA(index)) {
+      return(sample)
+    }
+    sample[["barcode"]] <- index
+    attr(sample, "cerebro_cell_index_column") <- "barcode"
+    sample
+  })
+}
+
+.restoreRepertoireByCell <- function(repertoire, cells) {
+  lapply(repertoire, function(sample) {
+    column <- attr(sample, "cerebro_cell_index_column", exact = TRUE)
+    if (is.null(column)) {
+      return(sample)
+    }
+    index <- sample[[column]]
+    if (
+      !identical(column, "barcode") ||
+        !.validCellIndex(index, nrow(sample), length(cells))
+    ) {
+      stop(
+        "The thin CRB stores an invalid repertoire cell index.",
+        call. = FALSE
+      )
+    }
+    attr(sample, "cerebro_cell_index_column") <- NULL
+    sample[[column]] <- cells[index]
+    sample
+  })
+}
+
+## The repertoire samples of a thin payload stored by cell index where their
+## barcodes allow it. Returns the names of the fields that changed.
+.indexThinPayloadByCell <- function(payload, cells) {
+  indexed <- character()
+  repertoire <- payload$immune_repertoire
+  if (is.list(repertoire) && length(repertoire)) {
+    compact <- .indexRepertoireByCell(repertoire, cells)
+    if (!identical(compact, repertoire)) {
+      payload$immune_repertoire <- compact
+      indexed <- union(indexed, "immune_repertoire")
+    }
+  }
+  indexed
+}
+
+## The reverse, for a payload read with its cell names.
+.restoreThinPayloadByCell <- function(object, cells) {
+  repertoire <- object$immune_repertoire
+  if (is.list(repertoire) && length(repertoire)) {
+    object$immune_repertoire <- .restoreRepertoireByCell(repertoire, cells)
+  }
+  object
+}
+
 ## ---- Immune repertoire sidecar -------------------------------------------- ##
 
 .immuneRepertoireSidecarName <- function(file, codec) {
@@ -314,12 +391,19 @@
   }
   payload$meta_data <- metadata
   payload$cell_fingerprint <- .cerebroCellFingerprint(cells)
+  indexed <- .indexThinPayloadByCell(payload, cells)
   payload$crb_schema <- list(
     version = 3L,
     cell_names_hash = .cerebroCellNamesHash(cells),
     projection_rownames = compact_projections,
     n_cells = length(cells)
   )
+  ## Version 4 only when something is stored by cell index, so that a release
+  ## that reads version 3 refuses it instead of showing rows without names.
+  if (length(indexed)) {
+    payload$crb_schema$version <- 4L
+    payload$crb_schema$cell_indexed <- indexed
+  }
   payload
 }
 
@@ -413,6 +497,10 @@
     check.names = FALSE,
     stringsAsFactors = FALSE
   )
+  ## A repertoire in its sidecar gets its barcodes back when it is read.
+  if (length(schema$cell_indexed)) {
+    object <- .restoreThinPayloadByCell(object, cells)
+  }
   object
 }
 
@@ -1006,7 +1094,10 @@ readCerebro <- function(file) {
     !(is.character(backend$type) &&
       length(backend$type) == 1L &&
       backend$type %in% .crbContract()$.runtimeBackendTypes)) ||
-    (is.list(schema) && !identical(schema$version, 3L)) ||
+    (is.list(schema) &&
+      !(is.integer(schema$version) &&
+        length(schema$version) == 1L &&
+        schema$version %in% .crbContract()$.runtimeThinSchemaVersions)) ||
     (is.list(immune) && !identical(immune$type, "file"))
   if (unrepairable) {
     stop(

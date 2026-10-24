@@ -3293,7 +3293,7 @@ getGroupLevels <- function(group) {
   }
   if (
     is.list(schema) &&
-      identical(schema$version, 3L) &&
+      isTRUE(schema$version %in% c(3L, 4L)) &&
       is.integer(schema$n_cells) &&
       length(schema$n_cells) == 1L &&
       !is.na(schema$n_cells)
