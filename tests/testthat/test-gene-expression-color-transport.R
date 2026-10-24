@@ -248,6 +248,10 @@ test_that("gene primary colours do not materialize metadata", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
+      ## Server code reads the display mode through viewerControlValue().
+      expression_projection_display_mode <- function() {
+        input[["expression_projection_genes_in_separate_panels"]]
+      }
       expression_projection_data <- getMetaData <- function(...) {
         stop("metadata was hydrated")
       }

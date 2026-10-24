@@ -73,6 +73,10 @@ test_that("RGB layout changes reuse expression rows while producing a new paint 
   shiny::testServer(
     function(input, output, session) {
       viewer_runtime_env(environment())
+      ## Server code reads the display mode through viewerControlValue().
+      expression_projection_display_mode <- function() {
+        input[["expression_projection_genes_in_separate_panels"]]
+      }
       sys.source(
         viewer_test_path("gene_expression", "func_expression_summary.R"),
         environment()

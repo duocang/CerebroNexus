@@ -1,11 +1,52 @@
 ##----------------------------------------------------------------------------##
 ## Collect parameters for projection plot.
 ##----------------------------------------------------------------------------##
+## The projection the selector starts with: the one Linked views shares, else
+## the first projection, else the first trajectory.
+expression_projection_default_projection <- function() {
+  available_projections <- availableProjections()
+  shared <- isolate(input[["coordviews_shared_base"]])
+  selected_projection <- as.character(shared$projection %||% "")
+  if (selected_projection %in% available_projections) {
+    return(selected_projection)
+  }
+  if (length(available_projections)) {
+    return(available_projections[[1L]])
+  }
+  available_trajectories <- available_trajectories()
+  if (length(available_trajectories)) available_trajectories[[1L]] else NULL
+}
+
+expression_projection_default_plotting_order <- function() {
+  identical(
+    current_page_display_defaults("gene")$plotting_order,
+    "Highest expression on top"
+  )
+}
+
+## Server code reads these controls through viewerControlValue(): the first
+## frame is drawn with the values below before the controls exist.
+expression_projection_projection <- viewerControlValue(
+  input,
+  "expression_projection_to_display",
+  expression_projection_default_projection
+)
+expression_projection_plotting_order <- viewerControlValue(
+  input,
+  "expression_projection_plotting_order",
+  expression_projection_default_plotting_order
+)
+expression_projection_display_mode <- viewerControlValue(
+  input,
+  "expression_projection_genes_in_separate_panels",
+  function() "combined"
+)
+
 cerebroObserveLocalAppearance("expression_projection", input, session)
 expression_projection_parameters_plot <- reactive({
   available_projections <- availableProjections()
   available_trajectory_names <- available_trajectories()
-  selected_projection <- input[["expression_projection_to_display"]]
+  selected_projection <- expression_projection_projection()
   if (
     is.null(selected_projection) ||
       !selected_projection %in%
@@ -28,7 +69,7 @@ expression_projection_parameters_plot <- reactive({
   }
   req(
     selected_projection,
-    !is.null(input[["expression_projection_plotting_order"]]),
+    !is.null(expression_projection_plotting_order()),
     !is.null(preferences[["show_hover_info_in_projections"]]),
     selected_projection %in%
       available_projections ||
@@ -49,7 +90,7 @@ expression_projection_parameters_plot <- reactive({
   display <- current_page_display_defaults("gene")
   parameters <- list(
     projection = selected_projection,
-    plot_order = if (isTRUE(input[["expression_projection_plotting_order"]])) {
+    plot_order = if (isTRUE(expression_projection_plotting_order())) {
       "Highest expression on top"
     } else {
       "Input order"
@@ -78,7 +119,17 @@ expression_projection_parameters_other <- reactiveValues(
   reset_axes = FALSE
 )
 
-##
-observeEvent(input[['expression_projection_to_display']], {
-  expression_projection_parameters_other[['reset_axes']] <- TRUE
+## Reset the axes when the user picks another projection. The first value
+## (the selector's default) is not a change: a stale TRUE would keep the next
+## gene selection from recolouring the frame in place.
+expression_projection_previous_projection <- NULL
+observeEvent(expression_projection_projection(), {
+  projection <- expression_projection_projection()
+  if (
+    !is.null(expression_projection_previous_projection) &&
+      !identical(projection, expression_projection_previous_projection)
+  ) {
+    expression_projection_parameters_other[['reset_axes']] <- TRUE
+  }
+  expression_projection_previous_projection <<- projection
 })

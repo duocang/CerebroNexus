@@ -749,6 +749,27 @@ viewerPublishChanged <- function(state, value) {
   invisible(value)
 }
 
+## A renderUI control's value as page code should read it: the bound input, or,
+## until the control has bound, `default()`, the value it will bind with. A
+## first frame then need not wait for the controls to reach the browser and
+## back, and the binding of an equal value invalidates nothing. Bound inputs
+## keep their value even when it is NULL (a cleared multi-select), so presence
+## in `input` separates "not yet bound" from "none".
+viewerControlValue <- function(input, id, default) {
+  value <- shiny::reactiveVal(NULL)
+  shiny::observe(
+    {
+      current <- input[[id]]
+      if (is.null(current) && !id %in% shiny::isolate(names(input))) {
+        current <- default()
+      }
+      viewerPublishChanged(value, current)
+    },
+    priority = 1000
+  )
+  value
+}
+
 ## A slider bounded by one preference's min/max/step limits.
 viewerLimitedSlider <- function(
   inputId,

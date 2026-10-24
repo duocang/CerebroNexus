@@ -25,7 +25,7 @@ expression_projection_data_to_plot_raw <- reactive({
     no_gene_selected ||
       nrow(coordinates) == length(expression_levels) ||
       nrow(coordinates) == length(expression_levels[[1]]),
-    !is.null(input[["expression_projection_genes_in_separate_panels"]])
+    !is.null(expression_projection_display_mode())
   )
   if (parameters[['is_trajectory']]) {
     req(
@@ -46,7 +46,7 @@ expression_projection_data_to_plot_raw <- reactive({
     color_settings = expression_projection_parameters_color(),
     metadata = metadata,
     trajectory = expression_projection_trajectory(),
-    display_mode = input[["expression_projection_genes_in_separate_panels"]],
+    display_mode = expression_projection_display_mode(),
     rgb_layout = input[["expression_rgb_layout"]],
     render_key = expression_projection_render_key(),
     cell_indices = expression_projection_cells_to_show(),
@@ -54,7 +54,7 @@ expression_projection_data_to_plot_raw <- reactive({
       "expression_projection_projection_resource_failed"
     ]],
     separate_panels = identical(
-      input[["expression_projection_genes_in_separate_panels"]],
+      expression_projection_display_mode(),
       "separate"
     )
   )

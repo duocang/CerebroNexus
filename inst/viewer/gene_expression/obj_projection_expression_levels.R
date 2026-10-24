@@ -216,7 +216,7 @@ expressionProjectionRenderKey <- function(
 expression_projection_render_key <- reactive({
   expressionProjectionRenderKey(
     expression_selected_genes(),
-    input[["expression_projection_genes_in_separate_panels"]],
+    expression_projection_display_mode(),
     input[["expression_rgb_layout"]]
   )
 })
@@ -440,7 +440,7 @@ expression_projection_expression_levels <- reactive({
     getGeneNames()
   )
   display_mode <- expressionSummaryMode(
-    input[["expression_projection_genes_in_separate_panels"]],
+    expression_projection_display_mode(),
     length(genes_present),
     ncol(expression_projection_coordinates())
   )
@@ -465,7 +465,7 @@ expression_summary_data <- reactive({
   req(
     expression_projection_cells_to_show(),
     expression_selected_genes(),
-    input[["expression_projection_genes_in_separate_panels"]]
+    expression_projection_display_mode()
   )
   genes <- unique(intersect(
     as.character(expression_selected_genes()[["genes_to_display_present"]]),
@@ -474,7 +474,7 @@ expression_summary_data <- reactive({
   req(length(genes) > 0)
 
   spec <- expressionSummarySpec(
-    input[["expression_projection_genes_in_separate_panels"]],
+    expression_projection_display_mode(),
     genes,
     expression_selected_genes()[["rgb_genes"]],
     ncol(expression_projection_coordinates())

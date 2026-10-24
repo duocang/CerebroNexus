@@ -228,6 +228,16 @@
     var api = datasetContextApi();
     return api && api.key ? api.key(currentDatasetContext()) : '';
   }
+  // Views are requested while their context is still pending. A frame that
+  // arrives before the context is ready (the server already had the dataset,
+  // as after a reconnect) cannot be drawn: forget its request, so the view is
+  // requested again once the context is ready.
+  function releaseEarlySingleRequest(message) {
+    var api = datasetContextApi();
+    if (!message || !message.id || !api || api.phase() !== 'pending' ||
+        api.key(message.dataset_context) !== currentDatasetContextKey()) return;
+    singleRequests.delete(singleRequestKey(message.id, message.dataset_context));
+  }
   function datasetMessageFresh(message) {
     var api = datasetContextApi();
     return !!(api && api.accepts && api.accepts(message));
@@ -9362,7 +9372,11 @@
     try {
       var decoded = window.CBViewWire.unpack(buffer);
       var decodedAt = performance.now();
-      if (!decoded || !decoded.id || !datasetMessageFresh(decoded)) return;
+      if (!decoded || !decoded.id) return;
+      if (!datasetMessageFresh(decoded)) {
+        releaseEarlySingleRequest(decoded);
+        return;
+      }
       recordSpecialistPayload('primary', decoded.id, buffer.byteLength);
       var profile = decoded.transport_profile || {};
       var transportTiming = CBViewState.telemetry.transport(
@@ -10571,7 +10585,11 @@
       if (!applyColorPatch(patch)) pendingColorPatch = patch;
     });
     Shiny.addCustomMessageHandler('cell_view_render', function (message) {
-      if (!message || !message.id || !datasetMessageFresh(message)) return;
+      if (!message || !message.id) return;
+      if (!datasetMessageFresh(message)) {
+        releaseEarlySingleRequest(message);
+        return;
+      }
       message = reuseSharedSingleProjection(message);
       if (!message) return;
       renderSingle(message);
@@ -10753,7 +10771,12 @@
     });
     function requestSingleView(id) {
       var context = currentDatasetContext();
-      if (!context || !datasetContextApi() || datasetContextApi().phase() !== 'ready') return false;
+      // A pending context is the one the server is loading: requesting the view
+      // with it lets the server draw the first frame as soon as the load ends,
+      // instead of after the page controls it builds in the same pass. The
+      // frame itself is accepted only once that context is ready.
+      var phase = datasetContextApi() && datasetContextApi().phase();
+      if (!context || (phase !== 'ready' && phase !== 'pending')) return false;
       var requestKey = singleRequestKey(id, context);
       if (!id || singleView(id) || singleRequests.has(requestKey) ||
           !Shiny.setInputValue) return false;
@@ -10847,6 +10870,9 @@
         stampLinkedRequest();
         Shiny.setInputValue('coordviews_visible', true, { priority: 'event' });
       }
+      // Ahead of the tab's own `sidebar` input: the server then has the request
+      // when the tab opens and draws the view before building its controls.
+      requestSingleView(tabSingleViewId(tabLink));
       setTimeout(function () {
         requestSingleView(tabSingleViewId(tabLink));
         reportVisibility();

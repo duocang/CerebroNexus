@@ -6,7 +6,7 @@ expression_projection_parameters_color <- reactive({
   genes <- expression_selected_genes()[["genes_to_display_present"]]
   no_gene_selected <- length(genes) == 0L
   rgb_mode <- identical(
-    input[["expression_projection_genes_in_separate_panels"]],
+    expression_projection_display_mode(),
     "rgb"
   )
   req(no_gene_selected || length(expression_levels) > 0L)

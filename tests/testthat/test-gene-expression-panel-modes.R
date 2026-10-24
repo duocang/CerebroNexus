@@ -129,6 +129,10 @@ test_that("RGB expression reads all channels in one backend call", {
   scope$input <- shiny::reactiveValues(
     expression_projection_genes_in_separate_panels = "rgb"
   )
+  ## Server code reads the display mode through viewerControlValue().
+  scope$expression_projection_display_mode <- function() {
+    scope$input[["expression_projection_genes_in_separate_panels"]]
+  }
 
   values <- matrix(
     c(1, 2, 3, 4, 5, 6),

@@ -83,6 +83,36 @@ test_that("catalog-backed Data Info defers the full dataset load", {
   expect_true(load_required("about", NULL))
 })
 
+test_that("control values stand in for a renderUI control until it binds", {
+  control_value <- utils_env$viewerControlValue
+  expect_true(is.function(control_value))
+  if (!is.function(control_value)) {
+    return()
+  }
+  shiny::testServer(
+    function(input, output, session) {
+      mode <- control_value(input, "mode", function() "combined")
+      runs <- new.env()
+      runs$n <- 0L
+      shiny::observe({
+        mode()
+        runs$n <- runs$n + 1L
+      })
+    },
+    {
+      session$flushReact()
+      expect_identical(mode(), "combined")
+      expect_identical(runs$n, 1L)
+      ## The control binds with the value the default stood in for.
+      session$setInputs(mode = "combined")
+      expect_identical(runs$n, 1L)
+      session$setInputs(mode = "separate")
+      expect_identical(mode(), "separate")
+      expect_identical(runs$n, 2L)
+    }
+  )
+})
+
 test_that("Data Info uses the catalog before the full dataset", {
   withr::local_package("shinydashboard")
   shiny::testServer(
