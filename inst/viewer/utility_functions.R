@@ -299,13 +299,17 @@ viewerDatasetLoadRequired <- function(
   is.null(info) || viewerDatasetLoadOnTab(FALSE, tab)
 }
 
+## Tabs that never read the selected dataset. Opening one keeps the CRB
+## unloaded until an analysis tab asks for it.
+viewer_dataset_free_tabs <- c("loadData", "about", "geneIdConversion")
+
 viewerDatasetLoadOnTab <- function(current, tab) {
   isTRUE(current) ||
     (is.character(tab) &&
       length(tab) == 1L &&
       !is.na(tab) &&
       nzchar(tab) &&
-      !identical(tab, "loadData"))
+      !tab %in% viewer_dataset_free_tabs)
 }
 
 viewerColourGroupChoices <- function(

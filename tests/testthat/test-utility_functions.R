@@ -73,8 +73,14 @@ test_that("catalog-backed Data Info defers the full dataset load", {
   ))
 
   expect_false(load_on_tab(FALSE, "loadData"))
+  expect_false(load_on_tab(FALSE, "about"))
+  expect_false(load_on_tab(FALSE, "geneIdConversion"))
   expect_true(load_on_tab(FALSE, "overview"))
+  expect_true(load_on_tab(FALSE, "color_management"))
   expect_true(load_on_tab(TRUE, "loadData"))
+  expect_true(load_on_tab(TRUE, "about"))
+  expect_false(load_required("about", info))
+  expect_true(load_required("about", NULL))
 })
 
 test_that("Data Info uses the catalog before the full dataset", {
