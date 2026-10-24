@@ -198,7 +198,10 @@ test_that("IR metadata joins preserve samples and only hydrate requested columns
 
 ## Server scope for the clonal projection observer. `pack_index` stands in for
 ## the Viewer Pack's clone index (NULL: no Pack, the repertoire table is used).
-clonal_projection_server <- function(pack_index = NULL) {
+clonal_projection_server <- function(
+  pack_index = NULL,
+  names_resource = NULL
+) {
   function(input, output, session) {
     scope <- environment()
     viewer_runtime_env(scope)
@@ -219,6 +222,9 @@ clonal_projection_server <- function(pack_index = NULL) {
     if (!is.null(pack_index)) {
       viewerPackCurrent <- function() list()
       viewerPackImmuneIndex <- function(pack, receptor) pack_index
+    }
+    if (!is.null(names_resource)) {
+      viewerCellNamesResource <- function() names_resource
     }
     ir_data_annotated <- function() {
       repertoire_reads <<- repertoire_reads + 1L
@@ -327,6 +333,30 @@ test_that("Clonal projection from the Pack clone index never reads the repertoir
       expect_length(scope$sent, 2)
       expect_equal(scope$builds, 1)
       expect_equal(scope$repertoire_reads, 0)
+    }
+  )
+})
+
+test_that("Clonal projection sends canonical rows when the cell names are a resource", {
+  resource <- list(protocol = "canonical-cell-names-v1", url = "names.bin.gz")
+  shiny::testServer(
+    clonal_projection_server(names_resource = resource),
+    {
+      session$setInputs(
+        sidebar = "immune_repertoire",
+        ir_tabs = "Clonal UMAP",
+        ir_clonalUMAP_projection_render_request = list(
+          nonce = 1,
+          dataset_context = context
+        )
+      )
+      aux <- scope$sent[[1]]$deferred_aux()
+      ## cell_index keys 2 and 1, sent 0-based; no names are looked up.
+      expect_identical(unclass(aux$selection_index[[1]]), c(1L, 0L))
+      expect_identical(aux$cell_names_resource, resource)
+      expect_null(aux$selection_key)
+      expect_null(aux$hover$text)
+      expect_equal(scope$barcode_reads, 0)
     }
   )
 })

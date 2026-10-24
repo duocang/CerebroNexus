@@ -643,7 +643,6 @@ observe(
       unname(IR_EXPANSION_COLORS[IR_CLONE_LABELS[trace_codes]])
     )
     trace_lengths <- lengths(render_data$x)
-    axes <- ir_projection_axis_names(projection)
     req(length(traces) > 0)
     deferred_aux <- function() {
       data_keys <- c(
@@ -659,6 +658,27 @@ observe(
       )
       uses_cell_index <- identical(render_data$key_type, "cell_index")
       key_lengths <- lengths(data_keys)
+      ## The single-view tooltip shows the cell name and the expansion level
+      ## from the frame; per-cell hover text would never be displayed.
+      hover <- list(
+        hoverinfo = as.list(ifelse(traces == "Other cells", "skip", "text"))
+      )
+      names_resource <- if (
+        isTRUE(uses_cell_index) &&
+          exists("viewerCellNamesResource", mode = "function")
+      ) {
+        viewerCellNamesResource()
+      }
+      if (is.list(names_resource)) {
+        ## Canonical rows (0-based); the browser has the names.
+        return(list(
+          selection_index = lapply(data_keys, function(keys) {
+            I(as.integer(keys) - 1L)
+          }),
+          cell_names_resource = names_resource,
+          hover = hover
+        ))
+      }
       if (isTRUE(uses_cell_index)) {
         flat_barcodes <- ir_clonal_umap_barcodes(data.frame(
           cell_index = unlist(data_keys, use.names = FALSE)
@@ -672,35 +692,7 @@ observe(
         barcodes_by_trace <- lapply(data_keys, as.character)
       }
       req(identical(lengths(barcodes_by_trace), key_lengths))
-      hover_info <- ifelse(traces == "Other cells", "skip", "text")
-      hover_text <- Map(
-        function(barcodes, x, y, label) {
-          if (identical(label, "Other cells")) {
-            return("")
-          }
-          paste0(
-            barcodes,
-            "<br>",
-            label,
-            "<br>",
-            axes[[1]],
-            ": ",
-            formatC(x, format = "f", digits = 2),
-            "<br>",
-            axes[[2]],
-            ": ",
-            formatC(y, format = "f", digits = 2)
-          )
-        },
-        barcodes_by_trace,
-        render_data$x,
-        render_data$y,
-        traces
-      )
-      list(
-        selection_key = barcodes_by_trace,
-        hover = list(hoverinfo = as.list(hover_info), text = hover_text)
-      )
+      list(selection_key = barcodes_by_trace, hover = hover)
     }
 
     output_meta <- list(
