@@ -1213,6 +1213,20 @@ server <- function(input, output, session) {
       count
     )
     shiny::addResourcePath(prefix, directory)
+    ## These files are binary arrays or already gzip files, which httpuv would
+    ## otherwise gzip again for every request (10 MB of coordinates by 7 %).
+    server <- shiny::getShinyOption("server", default = NULL)
+    if (!is.null(server)) {
+      server$setStaticPath(
+        .list = stats::setNames(
+          list(httpuv::staticPath(
+            normalizePath(directory, mustWork = TRUE),
+            headers = list(`Content-Encoding` = "identity")
+          )),
+          prefix
+        )
+      )
+    }
     assign(kind, count, envir = viewer_resource_counts)
     viewer_resource_prefixes <<- c(viewer_resource_prefixes, prefix)
     prefix
