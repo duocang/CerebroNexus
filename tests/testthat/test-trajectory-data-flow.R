@@ -48,6 +48,8 @@ test_that("trajectory static frames fall back when filters or resources change",
         names = c(
           "trajectory_projection_lines",
           "trajectory_active_group_filters",
+          "trajectory_client_percentage",
+          "trajectory_server_percentage",
           "trajectory_static_first_frame"
         )
       )
@@ -133,6 +135,7 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
       }
       preferences <- list(show_hover_info_in_projections = FALSE)
       trajectory_projection_cells_memo <- viewerMemoOne()
+      viewerPackCurrent <- function() NULL
       viewer_server_load(
         viewer_server_statements("trajectory", "projection_plot.R"),
         scope,
@@ -141,6 +144,8 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
           "trajectory_projection_feedback",
           "trajectory_projection_active",
           "trajectory_active_group_filters",
+          "trajectory_client_percentage",
+          "trajectory_server_percentage",
           "trajectory_projection_request",
           "trajectory_projection_prepared_raw",
           "trajectory_projection_prepared"
@@ -220,6 +225,7 @@ test_that("a control binding with its value keeps the same shuffled trajectory c
       trajectory_cells_reactive <- function(...) cells
       preferences <- list(show_hover_info_in_projections = FALSE)
       trajectory_projection_cells_memo <- viewerMemoOne()
+      viewerPackCurrent <- function() NULL
       viewer_server_load(
         viewer_server_statements("trajectory", "projection_plot.R"),
         scope,
@@ -228,6 +234,8 @@ test_that("a control binding with its value keeps the same shuffled trajectory c
           "trajectory_projection_feedback",
           "trajectory_projection_active",
           "trajectory_active_group_filters",
+          "trajectory_client_percentage",
+          "trajectory_server_percentage",
           "trajectory_projection_request",
           "trajectory_projection_prepared_raw"
         )
@@ -498,6 +506,78 @@ test_that("trajectory expression metric outputs keep their IDs, messages and cac
       expect_identical(
         keys,
         lapply(metrics, function(metric) list("m", "p", metric, "demo.crb"))
+      )
+    }
+  )
+})
+
+test_that("with a Viewer Pack, trajectory % of cells is left to the browser", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      viewer_runtime_env(scope)
+      viewer_loaded_dataset_context <- function() {
+        list(epoch = "s", dataset_key = "A", generation = 1)
+      }
+      trajectory_selection_ok <- function() TRUE
+      trajectory_data_reactive <- function() list(edges = data.frame())
+      trajectory_projection_appearance <- reactiveValues(
+        percentage_cells_to_show = 100,
+        point_size = 3,
+        point_opacity = .8,
+        draw_border = TRUE,
+        keep_square = FALSE
+      )
+      getGroups <- function() "group"
+      getGroupLevels <- function(group) c("A", "B")
+      cells <- data.frame(
+        group = rep(c("A", "B"), 25),
+        x = seq_len(50),
+        y = rev(seq_len(50))
+      )
+      trajectory_cells_reactive <- function(...) cells
+      preferences <- list(show_hover_info_in_projections = FALSE)
+      trajectory_projection_cells_memo <- viewerMemoOne()
+      viewerPackCurrent <- function() list(canonical_order = TRUE)
+      viewer_server_load(
+        viewer_server_statements("trajectory", "projection_plot.R"),
+        scope,
+        names = c(
+          "trajectory_projection_lines",
+          "trajectory_projection_feedback",
+          "trajectory_projection_active",
+          "trajectory_active_group_filters",
+          "trajectory_client_percentage",
+          "trajectory_server_percentage",
+          "trajectory_client_percentage_fields",
+          "trajectory_projection_request",
+          "trajectory_projection_prepared_raw"
+        )
+      )
+      seen <- list()
+      observe({
+        seen[[length(seen) + 1L]] <<- trajectory_projection_prepared_raw()
+      })
+    },
+    {
+      session$setInputs(
+        sidebar = "trajectory",
+        trajectory_point_color = "group"
+      )
+      first <- tail(scope$seen, 1)[[1]]
+      expect_equal(nrow(first$cells_df), 50)
+      trajectory_projection_appearance$percentage_cells_to_show <- 30
+      session$flushReact()
+      ## Every cell stays in the frame, which is not prepared again.
+      expect_length(scope$seen, 1L)
+      expect_equal(first$request$percentage, 100)
+      expect_equal(
+        isolate(scope$trajectory_projection_feedback())$trajectory_percentage_cells_to_show,
+        "30"
+      )
+      expect_identical(
+        isolate(scope$trajectory_client_percentage_fields()),
+        list(client_percentage = TRUE, percentage_cells_to_show = 30)
       )
     }
   )

@@ -117,13 +117,41 @@ trajectory_active_group_filters <- function() {
   filters[!everything]
 }
 
+## With a Viewer Pack the frame carries every cell and the browser hides a
+## deterministic share of them, as on Overview, so the "% of cells" slider does
+## not resample and resend the trajectory cells from R.
+trajectory_client_percentage <- reactive({
+  pack <- viewerPackCurrent()
+  is.list(pack) && isTRUE(pack$canonical_order)
+})
+## The share of cells R samples for the frame.
+trajectory_server_percentage <- function() {
+  if (isTRUE(trajectory_client_percentage())) {
+    100
+  } else {
+    trajectory_projection_appearance$percentage_cells_to_show
+  }
+}
+## Frame fields that hand "% of cells" to the browser.
+trajectory_client_percentage_fields <- function() {
+  if (!isTRUE(trajectory_client_percentage())) {
+    return(list())
+  }
+  list(
+    client_percentage = TRUE,
+    percentage_cells_to_show = isolate(
+      trajectory_projection_appearance$percentage_cells_to_show
+    )
+  )
+}
+
 ## What a frame is built for. The debounced frame is only sent once it matches
 ## the current request; an earlier one would show the previous state.
 trajectory_projection_request <- function() {
   list(
     color_variable = input[["trajectory_point_color"]],
     filters = trajectory_active_group_filters(),
-    percentage = trajectory_projection_appearance$percentage_cells_to_show
+    percentage = trajectory_server_percentage()
   )
 }
 
@@ -157,10 +185,7 @@ trajectory_projection_prepared_raw <- reactive({
       }
 
       ## randomly remove cells (if necessary)
-      cells_df <- randomlySubsetCells(
-        cells_df,
-        trajectory_projection_appearance$percentage_cells_to_show
-      )
+      cells_df <- randomlySubsetCells(cells_df, request$percentage)
 
       ## An empty frame is still sent, without trajectory lines, so clearing
       ## every filter cannot leave the previous Canvas frame visible.
@@ -262,10 +287,7 @@ trajectory_static_first_frame <- reactive({
     !isTRUE(input[["coordviews_wire_supported"]]) ||
       !(identical(color_variable, "state") ||
         isTRUE(color_variable %in% groups)) ||
-      !isTRUE(all.equal(
-        as.numeric(trajectory_projection_appearance$percentage_cells_to_show),
-        100
-      ))
+      !isTRUE(all.equal(as.numeric(trajectory_server_percentage()), 100))
   ) {
     return(NULL)
   }
@@ -402,9 +424,27 @@ observe({
     trajectory_projection_parameters_other[["reset_axes"]]
   )
 
+  ## "% of cells" reaches R first as the shared scatter edit (which may or may
+  ## not draw a frame) and then as the slider's own debounced value. Re-run on
+  ## the latter, so the drawn frame acknowledges it.
+  input[["trajectory_percentage_cells_to_show"]]
   static_frame <- trajectory_static_first_frame()
   if (!is.null(static_frame)) {
+    feedback <- trajectory_projection_feedback()
     if (!trajectory_projection_unsent(render_request, static_frame)) {
+      ## "% of cells" applied by the browser: acknowledge it on the drawn frame.
+      if (
+        !is.null(trajectory_projection_last$token) &&
+          !identical(feedback, trajectory_projection_last$feedback)
+      ) {
+        cerebroSendViewFeedback(
+          "trajectory_projection",
+          trajectory_projection_last$token,
+          current_context,
+          feedback
+        )
+        trajectory_projection_last$feedback <- feedback
+      }
       return()
     }
     resource <- static_frame$resource
@@ -432,6 +472,7 @@ observe({
       trajectory_frame_resource = resource,
       deferred_selection_lengths = resource$cells
     )
+    primary <- c(primary, trajectory_client_percentage_fields())
     deferred_aux <- function() {
       hover_cells <- trajectory_cells_reactive(
         c("nUMI", "nGene", getGroups()),
@@ -452,7 +493,7 @@ observe({
       )
     }
     trajectory_projection_parameters_other[["reset_axes"]] <- FALSE
-    cerebroCellViewRender(
+    trajectory_projection_last$token <- cerebroCellViewRender(
       "trajectory_projection",
       meta,
       primary,
@@ -460,8 +501,9 @@ observe({
       extra = list(shapes = static_frame$trajectory_lines),
       deferred_aux = deferred_aux,
       dataset_context = current_context,
-      feedback = trajectory_projection_feedback()
+      feedback = feedback
     )
+    trajectory_projection_last$feedback <- feedback
     if (!isolate(trajectory_projection_sent())) {
       session$onFlushed(
         function() trajectory_projection_sent(TRUE),
@@ -482,7 +524,9 @@ observe({
   }
   ## Control values are not part of the frame: when only they changed (the
   ## drawer's group filters binding), the drawn frame acknowledges them.
-  feedback <- trajectory_projection_full_feedback(prepared[["feedback"]])
+  feedback <- trajectory_projection_full_feedback(
+    trajectory_projection_feedback()
+  )
   if (
     !trajectory_projection_unsent(
       render_request,
@@ -551,6 +595,7 @@ observe({
     hover = FALSE,
     space_label = input[["trajectory_selected_name"]]
   )
+  payload$data <- c(payload$data, trajectory_client_percentage_fields())
   selection_rows <- payload$data$selection_key
   deferred_aux <- function() {
     hover_cells <- trajectory_cells_reactive(
