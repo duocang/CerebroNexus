@@ -616,8 +616,11 @@ test_that("authentication stylesheet implements the balanced responsive UI", {
   htmltools::save_html(ui, page, libdir = file.path(root, "lib"))
   browser <- chromote::ChromoteSession$new()
   on.exit(browser$close(), add = TRUE)
+  ## Listen before navigating: a local file can finish loading before a
+  ## listener attached afterwards, which then waits for an event already gone.
+  loaded <- browser$Page$loadEventFired(wait_ = FALSE)
   browser$Page$navigate(paste0("file:///", normalizePath(page, winslash = "/")))
-  browser$Page$loadEventFired()
+  browser$wait_for(loaded)
   for (width in c(1440, 360)) {
     browser$set_viewport_size(width = width, height = 900)
     result <- browser$Runtime$evaluate(
