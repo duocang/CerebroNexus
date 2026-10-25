@@ -273,9 +273,14 @@ clonal_projection_server <- function(
         "ir_projection_axis_names",
         "ir_projection_display_name",
         "ir_clonal_umap_last_request",
+        "ir_clonal_umap_drawn_appearance",
+        "ir_clonal_umap_appearance",
         "ir_clonal_umap_data_memo"
       ),
-      events = "ir_clonalUMAP_projection_render_request"
+      events = c(
+        "ir_clonalUMAP_projection_render_request",
+        "ir_clonalUMAP_point_border"
+      )
     )
   }
 }
@@ -309,10 +314,11 @@ test_that("Clonal projection paints before drawer binding and defers cell identi
         ir_clonalUMAP_group_labels = FALSE,
         ir_clonalUMAP_point_border = TRUE
       )
-      expect_length(scope$sent, 2)
-      expect_true(scope$sent[[2]]$meta$appearance$draw_border)
-      expect_false(scope$sent[[2]]$meta$appearance$group_labels)
-      ## Appearance-only changes repaint without rebuilding the coordinates.
+      ## Appearance is a browser patch: no new frame, no rebuilt coordinates.
+      expect_length(scope$sent, 1)
+      drawn <- ir_clonal_umap_drawn_appearance()$values
+      expect_true(drawn$draw_border)
+      expect_false(drawn$group_labels)
       expect_equal(scope$builds, 1)
     }
   )
@@ -332,7 +338,8 @@ test_that("Clonal projection from the Pack clone index never reads the repertoir
       )
       expect_length(scope$sent, 1)
       session$setInputs(ir_clonalUMAP_point_border = TRUE)
-      expect_length(scope$sent, 2)
+      expect_length(scope$sent, 1)
+      expect_true(ir_clonal_umap_drawn_appearance()$values$draw_border)
       expect_equal(scope$builds, 1)
       expect_equal(scope$repertoire_reads, 0)
     }

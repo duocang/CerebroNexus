@@ -449,6 +449,54 @@ ir_clonal_umap_panels <- function(df, projection) {
 }
 
 ir_clonal_umap_last_request <- reactiveVal(NULL)
+## Labels, border and square layout of the drawn frame. They are browser
+## patches, as on Projection: a change redraws the frame in place instead of
+## building and sending it again.
+ir_clonal_umap_drawn_appearance <- reactiveVal(NULL)
+ir_clonal_umap_appearance <- function(grouped) {
+  display <- current_page_display_defaults("ir")
+  list(
+    group_labels = !grouped &&
+      isTRUE(input[["ir_clonalUMAP_group_labels"]] %||% display$group_labels),
+    draw_border = isTRUE(
+      input[["ir_clonalUMAP_point_border"]] %||% display$draw_border
+    ),
+    keep_square = isTRUE(
+      input[["ir_clonalUMAP_keep_square"]] %||% display$keep_square
+    )
+  )
+}
+observeEvent(
+  list(
+    input[["ir_clonalUMAP_group_labels"]],
+    input[["ir_clonalUMAP_point_border"]],
+    input[["ir_clonalUMAP_keep_square"]]
+  ),
+  {
+    drawn <- ir_clonal_umap_drawn_appearance()
+    req(!is.null(drawn), identical(input[["sidebar"]], "immune_repertoire"))
+    values <- ir_clonal_umap_appearance(isTRUE(drawn$grouped))
+    if (identical(values, drawn$values)) {
+      return()
+    }
+    identity <- viewerDatasetIdentity()
+    req(identity$fingerprint)
+    session$sendCustomMessage(
+      "cell_view_appearance",
+      list(
+        id = "ir_clonalUMAP_projection",
+        dataset_context = viewer_loaded_dataset_context(),
+        dataset_fingerprint = identity$fingerprint,
+        values = values
+      )
+    )
+    ir_clonal_umap_drawn_appearance(utils::modifyList(
+      drawn,
+      list(values = values)
+    ))
+  },
+  ignoreInit = TRUE
+)
 ir_clonal_umap_data_memo <- viewerMemoOne()
 
 observe(
@@ -482,23 +530,18 @@ observe(
     })
     show_all <- ir_param("ir_p_umap_show_all", TRUE)
     req(receptor, projection)
-    group_labels <- input[["ir_clonalUMAP_group_labels"]]
-    display <- current_page_display_defaults("ir")
-    if (is.null(group_labels)) {
-      group_labels <- display$group_labels
-    }
-    point_border <- isTRUE(
-      input[["ir_clonalUMAP_point_border"]] %||% display$draw_border
-    )
-    keep_square <- isTRUE(
-      input[["ir_clonalUMAP_keep_square"]] %||% display$keep_square
-    )
+    ## Appearance is read without a dependency: labels, border and square are
+    ## patched by the observer above, point size and opacity by the browser.
+    display_values <- isolate(ir_clonal_umap_appearance(FALSE))
+    group_labels <- display_values$group_labels
+    point_border <- display_values$draw_border
+    keep_square <- display_values$keep_square
     clone_call <- "gene"
     show_all <- isTRUE(show_all)
     cells <- ir_umap_cells_to_show()
     appearance <- current_scatter_defaults()
-    point_size <- appearance$point_size
-    alpha <- appearance$point_opacity
+    point_size <- isolate(appearance$point_size)
+    alpha <- isolate(appearance$point_opacity)
     percentage <- appearance$percentage_cells_to_show
     identity <- tryCatch(viewerDatasetIdentity(), error = function(e) list())
     request_signature <- list(
@@ -509,12 +552,7 @@ observe(
       projection = as.character(projection),
       show_all = show_all,
       cells = cells,
-      point_size = point_size,
-      alpha = alpha,
       percentage = percentage,
-      group_labels = isTRUE(group_labels),
-      point_border = point_border,
-      keep_square = keep_square,
       group_by = if (grouped) as.character(group_by) else ""
     )
     previous_signature <- ir_clonal_umap_last_request()
@@ -587,6 +625,10 @@ observe(
         )
       )
       ir_clonal_umap_last_request(request_signature)
+      ir_clonal_umap_drawn_appearance(list(
+        grouped = TRUE,
+        values = isolate(ir_clonal_umap_appearance(TRUE))
+      ))
       return()
     }
     ## Appearance-only changes (labels, border, square, point size/opacity)
@@ -733,6 +775,10 @@ observe(
       )
     )
     ir_clonal_umap_last_request(request_signature)
+    ir_clonal_umap_drawn_appearance(list(
+      grouped = FALSE,
+      values = display_values
+    ))
   },
   ## Ahead of the page's controls (priority 0), after the dataset's ready
   ## message (priority 1000) that the browser must see before the frame.
