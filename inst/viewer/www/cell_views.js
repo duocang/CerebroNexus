@@ -8701,8 +8701,8 @@
       })) return false;
     } else if (!(Array.isArray(data.color) || ArrayBuffer.isView(data.color)) ||
         data.color.length !== D.n) return false;
-    // Legacy payloads may contain duplicate stringified IDs. Their Map-based
-    // alignment must keep its existing semantics rather than assuming an order.
+    // Writing values by position equals the Map-based alignment of the render
+    // only when every key is unique; the index is cached from that render.
     if (!pendingIds && singleIndex().size !== D.n) return false;
     var fieldName = 'single:' + id + ':0', mode;
     if (rgb) {

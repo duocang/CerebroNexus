@@ -6,6 +6,8 @@
   opened view comes back grouped, with its selection in its panel.
 - Gene expression summaries taller than four screens keep updating; they used
   to need a quarter of themselves on screen.
+- The spatial renderer takes a background image only from the resolved
+  descriptor, and finds rotation and geometry by dataset id, not `.crb` path.
 
 # CerebroNexus 5.3.1
 
