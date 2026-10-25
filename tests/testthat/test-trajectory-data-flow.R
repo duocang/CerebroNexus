@@ -50,7 +50,9 @@ test_that("trajectory static frames fall back when filters or resources change",
           "trajectory_active_group_filters",
           "trajectory_client_percentage",
           "trajectory_server_percentage",
-          "trajectory_static_first_frame"
+          "trajectory_static_first_frame",
+          "trajectory_static_frame",
+          "trajectory_client_filters"
         )
       )
     },
@@ -107,6 +109,16 @@ test_that("trajectory static frames fall back when filters or resources change",
       expect_identical(unname(frame$colors), c("#111111", "#222222"))
       expect_identical(frame$resource$group$url, "codes")
       expect_identical(frame$resource$state, resource$state)
+      ## With the group's Pack codes the browser filters the Pack frame.
+      session$setInputs(
+        trajectory_point_color = "state",
+        trajectory_projection_group_filter_group = "A"
+      )
+      expect_identical(
+        trajectory_static_first_frame()$resource$state,
+        resource$state
+      )
+      expect_identical(as.integer(trajectory_client_filters()[[1]]$allowed), 0L)
     }
   )
 })

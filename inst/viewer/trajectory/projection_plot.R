@@ -280,6 +280,38 @@ trajectory_projection_unsent <- function(render_request, frame) {
 ## sampling, non-state colour, unsupported transport, or failed resource uses
 ## the established R construction path below.
 trajectory_static_first_frame <- reactive({
+  static_frame <- trajectory_static_frame()
+  if (
+    length(trajectory_active_group_filters()) &&
+      is.null(trajectory_client_filters())
+  ) {
+    return(NULL)
+  }
+  static_frame
+})
+## The group filters for the browser to apply to the Viewer Pack frame, which
+## holds every trajectory cell and maps them to the Pack's codes (NULL: R
+## builds and filters the frame).
+trajectory_client_filters <- reactive({
+  if (
+    is.null(trajectory_static_frame()) ||
+      isTRUE(input[["trajectory_projection_client_filters_failed"]])
+  ) {
+    return(NULL)
+  }
+  viewerClientFilterDescriptors(trajectory_active_group_filters())
+})
+## The browser's filters follow the controls.
+observe({
+  req(trajectory_projection_active())
+  viewerSendClientFilters(
+    "trajectory_projection",
+    trajectory_client_filters(),
+    viewer_loaded_dataset_context()
+  )
+})
+## The Viewer Pack frame for every trajectory cell, filters aside.
+trajectory_static_frame <- reactive({
   req(trajectory_selection_ok())
   color_variable <- input[["trajectory_point_color"]]
   groups <- getGroups()
@@ -289,9 +321,6 @@ trajectory_static_first_frame <- reactive({
         isTRUE(color_variable %in% groups)) ||
       !isTRUE(all.equal(as.numeric(trajectory_server_percentage()), 100))
   ) {
-    return(NULL)
-  }
-  if (length(trajectory_active_group_filters())) {
     return(NULL)
   }
   method <- input[["trajectory_selected_method"]]
