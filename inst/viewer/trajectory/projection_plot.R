@@ -78,6 +78,40 @@ trajectory_projection_hover_columns <- function(hover_cells) {
 trajectory_projection_active <- function() {
   identical(input[["sidebar"]], "trajectory")
 }
+## Group filters that leave cells out. A filter that selects every level (what
+## the drawer's controls bind with) is no filter, so mounting the drawer does
+## not rebuild or resend the frame.
+trajectory_active_group_filters <- function() {
+  groups <- getGroups()
+  filters <- stats::setNames(
+    lapply(groups, function(group) {
+      input[[paste0("trajectory_projection_group_filter_", group)]]
+    }),
+    groups
+  )
+  filters <- filters[!vapply(filters, is.null, logical(1))]
+  everything <- vapply(
+    names(filters),
+    function(group) {
+      levels <- as.character(getGroupLevels(group))
+      length(levels) > 0L &&
+        setequal(as.character(filters[[group]]), levels)
+    },
+    logical(1)
+  )
+  filters[!everything]
+}
+
+## What a frame is built for. The debounced frame is only sent once it matches
+## the current request; an earlier one would show the previous state.
+trajectory_projection_request <- function() {
+  list(
+    color_variable = input[["trajectory_point_color"]],
+    filters = trajectory_active_group_filters(),
+    percentage = trajectory_projection_appearance$percentage_cells_to_show
+  )
+}
+
 trajectory_projection_prepared_raw <- reactive({
   req(trajectory_projection_active())
   dataset_context <- viewer_loaded_dataset_context()
@@ -88,16 +122,8 @@ trajectory_projection_prepared_raw <- reactive({
 
   trajectory_data <- trajectory_data_reactive()
 
-  groups <- getGroups()
-  group_filters <- stats::setNames(
-    lapply(groups, function(group) {
-      input[[paste0("trajectory_projection_group_filter_", group)]]
-    }),
-    groups
-  )
-  group_filters <- group_filters[
-    !vapply(group_filters, is.null, logical(1))
-  ]
+  request <- trajectory_projection_request()
+  group_filters <- request$filters
   color_variable <- input[["trajectory_point_color"]]
   cells_df <- trajectory_cells_reactive(c(
     color_variable,
@@ -131,6 +157,7 @@ trajectory_projection_prepared_raw <- reactive({
   }
 
   list(
+    request = request,
     dataset_context = dataset_context,
     feedback = trajectory_projection_feedback(),
     cells_df = cells_df,
@@ -139,8 +166,8 @@ trajectory_projection_prepared_raw <- reactive({
     color_variable = color_variable,
     point_size = isolate(trajectory_projection_appearance$point_size),
     point_opacity = isolate(trajectory_projection_appearance$point_opacity),
-    draw_border = trajectory_projection_appearance$draw_border,
-    keep_square = trajectory_projection_appearance$keep_square
+    draw_border = isolate(trajectory_projection_appearance$draw_border),
+    keep_square = isolate(trajectory_projection_appearance$keep_square)
   )
 })
 
@@ -183,6 +210,18 @@ observeEvent(
 ## Observer that pushes the prepared data to the shared JS renderer.
 ##----------------------------------------------------------------------------##
 trajectory_projection_sent <- reactiveVal(FALSE)
+## The render request and frame last sent. The observer also re-runs when a
+## control it reads binds with the value it already used (the drawer's group
+## filters); the same frame for the same request is not sent again.
+trajectory_projection_last <- new.env(parent = emptyenv())
+trajectory_projection_unsent <- function(render_request, frame) {
+  key <- list(render_request = render_request, frame = frame)
+  if (identical(key, trajectory_projection_last$key)) {
+    return(FALSE)
+  }
+  trajectory_projection_last$key <- key
+  TRUE
+}
 
 ## The default million-cell frame is already stored in the Viewer Pack in the
 ## exact trajectory row order. Keep this gate deliberately narrow: any filter,
@@ -203,10 +242,7 @@ trajectory_static_first_frame <- reactive({
   ) {
     return(NULL)
   }
-  filters <- lapply(groups, function(group) {
-    input[[paste0("trajectory_projection_group_filter_", group)]]
-  })
-  if (any(!vapply(filters, is.null, logical(1)))) {
+  if (length(trajectory_active_group_filters())) {
     return(NULL)
   }
   method <- input[["trajectory_selected_method"]]
@@ -338,20 +374,22 @@ observe({
   reset_axes_now <- isolate(
     trajectory_projection_parameters_other[["reset_axes"]]
   )
-  trajectory_projection_parameters_other[["reset_axes"]] <- FALSE
 
   static_frame <- trajectory_static_first_frame()
   if (!is.null(static_frame)) {
+    if (!trajectory_projection_unsent(render_request, static_frame)) {
+      return()
+    }
     resource <- static_frame$resource
     meta <- list(
       color_type = "categorical",
       color_variable = static_frame$color_variable,
       traces = as.list(static_frame$levels),
-      appearance = list(
+      appearance = isolate(list(
         group_labels = isTRUE(trajectory_projection_appearance$group_labels),
         draw_border = isTRUE(trajectory_projection_appearance$draw_border),
         keep_square = isTRUE(trajectory_projection_appearance$keep_square)
-      ),
+      )),
       space_label = input[["trajectory_selected_name"]]
     )
     primary <- list(
@@ -359,7 +397,7 @@ observe({
       point_size = isolate(trajectory_projection_appearance$point_size),
       point_opacity = isolate(trajectory_projection_appearance$point_opacity),
       point_line = trajectory_projection_point_line(
-        trajectory_projection_appearance$draw_border
+        isolate(trajectory_projection_appearance$draw_border)
       ),
       x_range = list(),
       y_range = list(),
@@ -386,6 +424,7 @@ observe({
         hover = static_frame$hover
       )
     }
+    trajectory_projection_parameters_other[["reset_axes"]] <- FALSE
     cerebroCellViewRender(
       "trajectory_projection",
       meta,
@@ -410,6 +449,13 @@ observe({
     prepared,
     viewerDatasetContextEqual(prepared$dataset_context, current_context)
   )
+  ## Wait for the debounced frame of this request; it re-runs this observer.
+  if (
+    !identical(prepared$request, trajectory_projection_request()) ||
+      !trajectory_projection_unsent(render_request, prepared)
+  ) {
+    return()
+  }
 
   cells_df <- prepared[["cells_df"]]
   color_variable <- prepared[["color_variable"]]
@@ -480,6 +526,7 @@ observe({
       hover = prepared[["hover"]]
     )
   }
+  trajectory_projection_parameters_other[["reset_axes"]] <- FALSE
   cerebroCellViewRender(
     "trajectory_projection",
     payload[["meta"]],

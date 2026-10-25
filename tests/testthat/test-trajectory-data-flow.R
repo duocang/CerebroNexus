@@ -47,6 +47,7 @@ test_that("trajectory static frames fall back when filters or resources change",
         scope,
         names = c(
           "trajectory_projection_lines",
+          "trajectory_active_group_filters",
           "trajectory_static_first_frame"
         )
       )
@@ -76,6 +77,9 @@ test_that("trajectory static frames fall back when filters or resources change",
         trajectory_projection_group_filter_group = "A"
       )
       expect_null(trajectory_static_first_frame())
+      ## A filter that keeps every level (as the drawer binds) is no filter.
+      session$setInputs(trajectory_projection_group_filter_group = c("B", "A"))
+      expect_identical(trajectory_static_first_frame()$resource, resource)
       session$setInputs(
         trajectory_projection_group_filter_group = NULL,
         trajectory_point_color = "group"
@@ -123,6 +127,7 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
         keep_square = FALSE
       )
       getGroups <- function() "group"
+      getGroupLevels <- function(group) c("A", "B")
       trajectory_cells_reactive <- function(...) {
         data.frame(group = c("A", "B"), x = 1:2, y = 3:4)
       }
@@ -134,6 +139,8 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
           "trajectory_projection_lines",
           "trajectory_projection_feedback",
           "trajectory_projection_active",
+          "trajectory_active_group_filters",
+          "trajectory_projection_request",
           "trajectory_projection_prepared_raw",
           "trajectory_projection_prepared"
         )
