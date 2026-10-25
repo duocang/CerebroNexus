@@ -73,3 +73,28 @@ test_that("the cell-name resource describes the finished file", {
   scope$input <- list(cell_view_names_resource_failed = descriptor$url)
   expect_null(scope$viewerCellNamesResource())
 })
+
+test_that("the same files keep one resource URL for the session", {
+  scope <- new.env(parent = globalenv())
+  scope$viewer_resource_by_directory <- new.env(parent = emptyenv())
+  viewer_server_load(
+    viewer_server_statements("shiny_server.R", server = TRUE),
+    scope,
+    names = c(
+      "viewer_resource_prefixes",
+      "viewer_resource_counts",
+      "viewerStaticResourcePrefix"
+    )
+  )
+  scope$session <- list(token = "tok")
+  first <- withr::local_tempdir()
+  second <- withr::local_tempdir()
+  names_prefix <- scope$viewerStaticResourcePrefix("cell-names", first)
+  ## Asked again for every frame: a new prefix would be a new URL, and the
+  ## browser would download and keep the 1.46M cell names once more.
+  expect_identical(scope$viewerStaticResourcePrefix("cell-names", first), names_prefix)
+  expect_false(identical(scope$viewerStaticResourcePrefix("cell-names", second), names_prefix))
+  expect_false(identical(scope$viewerStaticResourcePrefix("projection", first), names_prefix))
+  expect_length(scope$viewer_resource_prefixes, 3L)
+  for (prefix in scope$viewer_resource_prefixes) shiny::removeResourcePath(prefix)
+})

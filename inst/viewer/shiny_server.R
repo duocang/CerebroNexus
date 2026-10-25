@@ -1196,7 +1196,15 @@ server <- function(input, output, session) {
   ## directly instead of copying the same 8 MB through R and Shiny's websocket.
   viewer_resource_prefixes <- character()
   viewer_resource_counts <- new.env(parent = emptyenv())
+  viewer_resource_by_directory <- new.env(parent = emptyenv())
   viewerStaticResourcePrefix <- function(kind, directory) {
+    ## One prefix per directory and session: a new prefix for the same files
+    ## gives them a new URL, so the browser downloads and keeps them again
+    ## (the cell names, 1.46 million strings on Ren, on every frame).
+    directory_key <- paste(kind, normalizePath(directory, mustWork = FALSE))
+    if (exists(directory_key, envir = viewer_resource_by_directory, inherits = FALSE)) {
+      return(get(directory_key, envir = viewer_resource_by_directory, inherits = FALSE))
+    }
     count <- if (
       exists(kind, envir = viewer_resource_counts, inherits = FALSE)
     ) {
@@ -1228,6 +1236,7 @@ server <- function(input, output, session) {
       )
     }
     assign(kind, count, envir = viewer_resource_counts)
+    assign(directory_key, prefix, envir = viewer_resource_by_directory)
     viewer_resource_prefixes <<- c(viewer_resource_prefixes, prefix)
     prefix
   }
