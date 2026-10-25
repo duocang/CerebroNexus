@@ -103,6 +103,92 @@ test_that("an immune repertoire without heavy chains skips the isotype table", {
   expect_error(scope$bcr_isotype_plot(bcr), "isotype table was built")
 })
 
+test_that("sessions opening the same data set files share IR plots", {
+  render_value <- function(expr, ...) {
+    shiny::reactive(substitute(expr), env = parent.frame(), quoted = TRUE)
+  }
+  testthat::local_mocked_bindings(
+    renderPlotly = render_value,
+    .package = "plotly"
+  )
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    clonalHomeostasis = function(...) {
+      calls <<- calls + 1L
+      ggplot2::ggplot()
+    },
+    .package = "scRepertoire"
+  )
+  file <- withr::local_tempfile(fileext = ".crb")
+  writeLines("one", file)
+  path <- file
+  ## testServer() gives every mock session its own "app" cache, so stand in
+  ## for the process's app cache with one shared object.
+  app_cache <- cachem::cache_mem()
+  server <- function(input, output, session) {
+    scope <- environment()
+    output <- new.env()
+    `%>%` <- dplyr::`%>%`
+    available_crb_files <- reactiveValues(selected = "A")
+    data_set <- reactive(structure(list(), cerebro_dataset_path = path))
+    viewer_server_load(
+      viewer_server_statements("immune_repertoire", "server.R"),
+      scope,
+      names = c("ir_dataset_cache_key", "ir_bindCache")
+    )
+    expect_identical(formals(ir_bindCache)$cache, "app")
+    shared_bind_cache <- ir_bindCache
+    ir_bindCache <- function(x, ...) {
+      shared_bind_cache(x, ..., cache = app_cache)
+    }
+    viewer_server_load(
+      viewer_server_statements("immune_repertoire", "data.R"),
+      scope,
+      names = c(
+        "ir_dataset_process_key",
+        "ir_params",
+        "ir_param",
+        "ir_order_by",
+        "IR_CLONE_SIZE_NAMES",
+        "IR_CLONE_SIZE_DEFAULT",
+        "ir_clone_size"
+      )
+    )
+    req_plot_space <- function(...) NULL
+    req_scRepertoire <- function() NULL
+    getGroups <- function() "sample"
+    ir_data <- function() list(sample = data.frame(barcode = "c1"))
+    ir_render_ggplotly <- function(expr, ...) expr
+    viewer_server_load(
+      viewer_server_statements("immune_repertoire", "visualizations.R"),
+      scope,
+      names = c("IR_PALETTE", "output$ir_plot_clonalHomeostasis")
+    )
+  }
+  draw <- function() {
+    shiny::testServer(server, {
+      session$setInputs(
+        ir_cloneCall = "gene",
+        ir_chain = "TRB",
+        ir_groupBy = ""
+      )
+      scope$output$ir_plot_clonalHomeostasis()
+    })
+  }
+  draw()
+  expect_identical(calls, 1L)
+  draw()
+  expect_identical(calls, 1L)
+  writeLines("a longer second version", file)
+  draw()
+  expect_identical(calls, 2L)
+  ## Without a file on disk, each session keeps its own plots.
+  path <- NULL
+  draw()
+  draw()
+  expect_identical(calls, 4L)
+})
+
 test_that("sharing discovery labels first-frame rows with the Pack's cells", {
   scope <- new.env(parent = globalenv())
   eval(

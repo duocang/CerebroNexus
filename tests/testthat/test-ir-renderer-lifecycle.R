@@ -72,12 +72,13 @@ test_that("IR renderers update parameters and isolate their session caches", {
     viewer_server_load(
       viewer_server_statements("immune_repertoire", "server.R"),
       scope,
-      names = c("ir_bindCache", "safeRenderPlot")
+      names = c("ir_dataset_cache_key", "ir_bindCache", "safeRenderPlot")
     )
     viewer_server_load(
       viewer_server_statements("immune_repertoire", "data.R"),
       scope,
       names = c(
+        "ir_dataset_process_key",
         "ir_params",
         "ir_param",
         "ir_order_by",

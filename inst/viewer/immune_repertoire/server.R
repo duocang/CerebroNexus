@@ -326,16 +326,25 @@ detect_chains <- function(data) {
   )]
 }
 
-## cache = "session" ensures caches are NOT shared across users/sessions.
-## available_crb_files$selected is appended to every key so switching datasets
-## invalidates the cache (prevents stale plots from the previous dataset).
-ir_bindCache <- function(x, ..., cache = "session") {
+## The plots depend on the data set and their controls only (no session state:
+## palettes and the plot theme are constants), so sessions of the process that
+## open the same data set files share them: a new session, a reload or a
+## return to the data set used to redraw every plot (Clone Sharing 14 s on the
+## 187-sample T-cell atlas). The key carries the files' identity (ir_dataset_process_key());
+## a data set without a file on disk keeps a key private to its session.
+ir_dataset_cache_key <- reactive({
+  ds <- tryCatch(data_set(), error = function(e) NULL)
+  ir_dataset_process_key(ds) %||% list(session = session$token)
+})
+
+ir_bindCache <- function(x, ..., cache = "app") {
   # Keep only truly global plot state here. Plot-specific parameters belong
   # in each renderer's own bindCache call.
   shiny::bindCache(
     x,
     ...,
     available_crb_files$selected,
+    ir_dataset_cache_key(),
     cache = cache
   )
 }
