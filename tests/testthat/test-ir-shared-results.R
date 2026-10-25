@@ -84,6 +84,25 @@ test_that("sharing units match the barcodes once, not once per sample", {
   expect_identical(calls, 1L)
 })
 
+test_that("an immune repertoire without heavy chains skips the isotype table", {
+  scope <- new.env(parent = globalenv())
+  eval(
+    viewer_r_assignment(
+      viewer_test_path("immune_repertoire", "server.R"),
+      "bcr_isotype_plot"
+    ),
+    scope
+  )
+  scope$bcr_extract_isotype <- function(...) stop("isotype table was built")
+  tcr <- list(
+    a = data.frame(barcode = "c1", CTgene = "TRAV1.TRAJ2_TRBV3.TRBJ4"),
+    b = data.frame(barcode = "c2", CTgene = NA_character_)
+  )
+  expect_null(scope$bcr_isotype_plot(tcr))
+  bcr <- list(a = data.frame(barcode = "c1", CTgene = "IGHV1.IGHJ2.IGHG1"))
+  expect_error(scope$bcr_isotype_plot(bcr), "isotype table was built")
+})
+
 test_that("sharing discovery labels first-frame rows with the Pack's cells", {
   scope <- new.env(parent = globalenv())
   eval(

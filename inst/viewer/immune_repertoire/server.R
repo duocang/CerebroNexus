@@ -198,6 +198,20 @@ bcr_extract_isotype <- function(combined_BCR) {
 
 ## ---- BCR-specific: isotype distribution plot ---------------------------- ##
 bcr_isotype_plot <- function(combined, group_col = "sample") {
+  ## A TCR-only repertoire has no heavy chain: skip building a tibble of every
+  ## row (about a second for 169K cells) only to find no isotype in it.
+  has_heavy_chain <- vapply(
+    combined,
+    function(df) {
+      is.data.frame(df) &&
+        "CTgene" %in% colnames(df) &&
+        any(grepl("IGH", df$CTgene, fixed = TRUE))
+    },
+    logical(1)
+  )
+  if (!any(has_heavy_chain)) {
+    return(NULL)
+  }
   iso <- bcr_extract_isotype(combined)
 
   if (is.null(iso) || nrow(iso) == 0L || !(group_col %in% colnames(iso))) {
