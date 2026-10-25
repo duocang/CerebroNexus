@@ -1171,8 +1171,8 @@
     }
     syncCursors();
   }
-  // Size one panel to the rectangle assigned by resizeAll. Below 420px the
-  // header cannot hold title + toolbar, so the toolbar floats vertically.
+  // Size one panel to the rectangle assigned by resizeAll. Below 420px it is
+  // narrow, which shrinks the minimap.
   function resizePanel(p, width, height) {
     var dpr = window.devicePixelRatio || 1;
     p.W = width; p.H = height;
@@ -2637,14 +2637,14 @@
       panels.forEach(function (p) { if (p.key === focusPanel) focused = p; });
       var sp = focused && spaceById[focused.spaceId];
       if (text) {
-        text.textContent = 'Focused view: ' + ((sp && sp.label) || 'linked lens') +
+        text.textContent = 'Enlarged view: ' + ((sp && sp.label) || 'linked lens') +
           ' · other views remain visible and linked.';
       }
       if (overview) overview.style.display = '';
     } else {
       if (text) {
         text.textContent = 'Drag in any view to create an active cohort. ' +
-          'Use Focus to enlarge one lens while keeping the others linked.';
+          'Use Enlarge to make one view bigger while the others stay linked.';
       }
       if (overview) overview.style.display = 'none';
     }
@@ -2698,6 +2698,42 @@
     drawAll();
     return true;
   }
+  // Draws focusPanel: the enlarged pane first, the others as its context, and
+  // every Enlarge button and role badge to match.
+  function paintEnlarged() {
+    panels.forEach(function (p) {
+      if (!p.pane) return;
+      var primary = !!focusPanel && p.key === focusPanel;
+      var context = !!focusPanel && p.key !== focusPanel && !!p.spaceId;
+      p.pane.classList.toggle('cv-focus-primary', primary);
+      p.pane.classList.toggle('cv-focus-context', context);
+      p.pane.style.order = primary ? '0' : (context ? '1' : '');
+      var btn = p.pane.querySelector('.cv-focus-btn');
+      if (btn) {
+        btn.classList.toggle('is-on', primary);
+        btn.setAttribute('aria-pressed', primary ? 'true' : 'false');
+        var tip = primary ? 'Restore the overview' : 'Enlarge this view';
+        btn.setAttribute('data-tip', tip);
+        btn.setAttribute('aria-label', tip);
+        var label = btn.querySelector('.cv-focus-label');
+        if (label) label.textContent = primary ? 'Restore' : 'Enlarge';
+      }
+      var role = p.pane.querySelector('.cv-role-badge');
+      if (role) {
+        role.classList.remove('is-focus', 'is-context');
+        if (focusPanel && p.spaceId) {
+          role.style.display = '';
+          role.textContent = primary ? 'ENLARGED' : 'CONTEXT';
+          role.classList.add(primary ? 'is-focus' : 'is-context');
+        } else {
+          role.style.display = 'none';
+          role.textContent = '';
+        }
+      }
+    });
+    var host = panels[0] && panels[0].pane && panels[0].pane.parentElement;
+    if (host) host.classList.toggle('cv-has-focus', !!focusPanel);
+  }
   // Promote one lens without leaving the linked workspace. The focused pane
   // grows; every other pane remains visible as context and keeps its viewport.
   function setFocusPanel(key) {
@@ -2720,38 +2756,7 @@
     focusAnimating = true;
     if (host) host.classList.add('cv-focus-transitioning');
     focusPanel = (focusPanel === key) ? null : key;
-    panels.forEach(function (p) {
-      if (!p.pane) return;
-      var primary = !!focusPanel && p.key === focusPanel;
-      var context = !!focusPanel && p.key !== focusPanel && !!p.spaceId;
-      p.pane.classList.toggle('cv-focus-primary', primary);
-      p.pane.classList.toggle('cv-focus-context', context);
-      p.pane.style.order = primary ? '0' : (context ? '1' : '');
-      var btn = p.pane.querySelector('.cv-focus-btn');
-      if (btn) {
-        var on = primary;
-        btn.classList.toggle('is-on', on);
-        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-        var tip = on ? 'Exit focus and return to overview' : 'Make this the focus';
-        btn.setAttribute('data-tip', tip);
-        btn.setAttribute('aria-label', tip);
-        var label = btn.querySelector('.cv-focus-label');
-        if (label) label.textContent = on ? 'Exit focus' : 'Focus';
-      }
-      var role = p.pane.querySelector('.cv-role-badge');
-      if (role) {
-        role.classList.remove('is-focus', 'is-context');
-        if (focusPanel && p.spaceId) {
-          role.style.display = '';
-          role.textContent = primary ? 'FOCUS' : 'CONTEXT';
-          role.classList.add(primary ? 'is-focus' : 'is-context');
-        } else {
-          role.style.display = 'none';
-          role.textContent = '';
-        }
-      }
-    });
-    if (host) host.classList.toggle('cv-has-focus', !!focusPanel);
+    paintEnlarged();
     updateFocusButtons();
     renderWorkspaceGuide();
     resizeAll();
@@ -4770,7 +4775,9 @@
       }
     });
     p.pane.addEventListener('dblclick', function (e) {
-      if (!e.target.closest('.cv-canvas-wrap') || !canFocusPanel() || !p.spaceId) return;
+      // The plot, not the toolbar and badges floating on it.
+      if (!e.target.closest('.cv-canvas-wrap') || e.target.closest('button') ||
+          !canFocusPanel() || !p.spaceId) return;
       e.preventDefault();
       setFocusPanel(p.key);
     });
@@ -6300,29 +6307,7 @@
     // A new data set is a new set of spaces; the previous focus may no longer
     // exist in the new layout.
     focusPanel = null;
-    panels.forEach(function (p) {
-      if (p.pane) {
-        p.pane.classList.remove('cv-focus-primary', 'cv-focus-context');
-        p.pane.style.order = '';
-      }
-      var fb = p.pane && p.pane.querySelector('.cv-focus-btn');
-      if (fb) {
-        fb.classList.remove('is-on');
-        fb.setAttribute('aria-pressed', 'false');
-        fb.setAttribute('data-tip', 'Make this the focus');
-        fb.setAttribute('aria-label', 'Make this the focus');
-        var fl = fb.querySelector('.cv-focus-label');
-        if (fl) fl.textContent = 'Focus';
-      }
-      var rb = p.pane && p.pane.querySelector('.cv-role-badge');
-      if (rb) {
-        rb.style.display = 'none';
-        rb.textContent = '';
-        rb.classList.remove('is-focus', 'is-context');
-      }
-    });
-    var host0 = panels[0] && panels[0].pane && panels[0].pane.parentElement;
-    if (host0) host0.classList.remove('cv-has-focus');
+    paintEnlarged();
     panels.forEach(function (p, i) {
       if (i < order.length) {
         var reappearing = p.pane && p.pane.classList.contains('cv-hidden');
