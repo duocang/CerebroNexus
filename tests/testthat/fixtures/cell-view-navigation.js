@@ -31,6 +31,9 @@ function session() {
     singleView: id => c.missing === id ? null : {id},
     requestSingleView: () => {}, reportRendererStatus: () => {}, syncSharedScatter: () => {},
     syncPointControls: () => {}, drawAll: () => {},
+    // Linked views restores its Focus with its lenses; the browser tests cover
+    // the real zoom state.
+    panels: [], sel: null, syncFocusButtons: () => {}, leaveFocus: () => {},
     activateSingle: id => {c.stashSingleState(); c.singleActive = id; c.D = {id, n: 7};},
     stashSingleState: () => {if (c.singleActive) c.saved[c.singleActive] = c.D;},
     restoreLinkedSurface: () => {}, showUnavailable: () => {c.D = null;},
@@ -176,13 +179,19 @@ for (const via of ['direct', 'groups', 'loadData']) {
 // Internal restores keep ROI point defaults active; importing portable JSON
 // applies its display settings without leaking runtime-only fields to disk.
 {
-  const c = {exportWorkspace: () => ({view: {}}), pointSizeEdited: false, pointOpacityEdited: false};
+  const c = {exportWorkspace: () => ({view: {}}), pointSizeEdited: false, pointOpacityEdited: false,
+    panels: []};
   vm.createContext(c);
   vm.runInContext(fn('exportRuntimeWorkspace') + fn('workspacePointOverrides'), c);
   let saved = c.exportRuntimeWorkspace();
   assert.strictEqual(c.workspacePointOverrides(saved).size, false);
   assert.strictEqual(c.workspacePointOverrides(saved).opacity, false);
   assert.strictEqual(JSON.stringify(saved), '{"view":{}}');
+  // Focus travels with an internal restore, never into the JSON.
+  assert.strictEqual(JSON.stringify(saved._focusFrom), '{}');
+  c.panels = [{spaceId: 'umap', focusFrom: {view: null}}, {spaceId: null, focusFrom: {view: null}}];
+  assert.strictEqual(JSON.stringify(c.exportRuntimeWorkspace()._focusFrom), '{"umap":{"view":null}}');
+  assert.strictEqual(JSON.stringify(c.exportRuntimeWorkspace()), '{"view":{}}');
   assert.strictEqual(c.workspacePointOverrides(JSON.parse(JSON.stringify(saved))).size, true);
   c.pointSizeEdited = true;
   saved = c.exportRuntimeWorkspace();
