@@ -956,10 +956,20 @@ test_that("shared selection actions and layouts survive navigation and resize", 
 
   app$get_chromote_session()$set_viewport_size(width = 1200, height = 800)
   projection_share <- '#shiny-tab-overview .cerebro-toolbar-share'
+  # A click picks a cell; it must keep the brushed outline.
+  app$run_js(paste0(
+    "(() => {const pane=document.querySelector('#shiny-tab-overview ",
+    ".cv-pane:not(.cv-hidden)');const r=pane.querySelector('canvas:not(.cv-mini)')",
+    ".getBoundingClientRect();const at={bubbles:true,button:0,",
+    "clientX:r.left+r.width/2,clientY:r.top+r.height/2};",
+    "pane.dispatchEvent(new MouseEvent('mousedown',at));",
+    "window.dispatchEvent(new MouseEvent('mouseup',at));})()"
+  ))
   selected_projection <- download_view_config(projection_share)
   expect_identical(selected_projection$schema, "cerebronexus-specialist-view")
   expect_identical(selected_projection$page$id, "overview_projection")
   expect_gt(length(selected_projection$selection$cells), 0L)
+  expect_false(is.null(selected_projection$selection$geometry))
   app$click(selector = "#overview_projection_focus_selection")
   app$wait_for_js(paste0(projection, ".capture().view.viewport !== null"))
   zoomed <- app$get_js(paste0(projection, ".capture().view.viewport"))

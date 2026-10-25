@@ -11,6 +11,7 @@
 - Focus and Clear work the same on every page, and each page keeps its own
   selection and Focus while another page is open.
 - The HLA & TCR Motifs network says why it draws nothing instead of spinning.
+- Clicking a plot after brushing keeps the brushed outline.
 
 # CerebroNexus 5.3.1
 
