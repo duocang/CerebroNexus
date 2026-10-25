@@ -84,7 +84,17 @@ overview_projection_parameters_other <- reactiveValues(
   reset_axes = TRUE
 )
 
-##
+## Reset the axes when the user picks another projection. The selector binding
+## with its first value is not a change: a stale TRUE would reset the view on
+## the next colour or filter change.
+overview_projection_previous_projection <- NULL
 observeEvent(input[['overview_projection_to_display']], {
-  overview_projection_parameters_other[['reset_axes']] <- TRUE
+  projection <- input[['overview_projection_to_display']]
+  if (
+    !is.null(overview_projection_previous_projection) &&
+      !identical(projection, overview_projection_previous_projection)
+  ) {
+    overview_projection_parameters_other[['reset_axes']] <- TRUE
+  }
+  overview_projection_previous_projection <<- projection
 })

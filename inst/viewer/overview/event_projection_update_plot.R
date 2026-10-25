@@ -21,10 +21,12 @@ observe({
     data <- overview_projection_data_to_plot_raw()
   }
   req(data, viewerDatasetContextEqual(data$dataset_context, current_context))
+  ## reset_axes is cleared after each frame; a later evaluation of the same
+  ## data (a control binding with its current value) must not resend it.
   render <- list(
     request = render_request,
     projection_resource_failed = projection_resource_failed,
-    data = data[setdiff(names(data), "feedback")]
+    data = data[setdiff(names(data), c("feedback", "reset_axes"))]
   )
   if (identical(render, overview_projection_last_render)) {
     cerebroSendViewFeedback(

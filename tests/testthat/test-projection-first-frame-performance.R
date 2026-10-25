@@ -387,7 +387,13 @@ test_that("a new projection mount redraws unchanged data", {
     viewerDatasetContextEqual <- function(a, b) identical(a, b)
     overview_projection_data_to_plot <- reactive({
       input[["late_bound_control"]]
-      list(value = 1L, dataset_context = context)
+      ## As in the page code: the flag is read without a dependency and is
+      ## cleared after the first frame, so a late binding sees FALSE.
+      list(
+        value = 1L,
+        dataset_context = context,
+        reset_axes = isolate(overview_projection_parameters_other[["reset_axes"]])
+      )
     })
     overview_projection_data_to_plot_raw <- overview_projection_data_to_plot
     overview_projection_update_plot <- function(data) {
@@ -433,6 +439,27 @@ test_that("a new projection mount redraws unchanged data", {
       )
     )
     expect_identical(session$userData$render_count(), 2L)
+  })
+})
+
+test_that("only another projection resets the Projection axes", {
+  server <- function(input, output, session) {
+    cerebroObserveLocalAppearance <- function(...) invisible(NULL)
+    sys.source(
+      viewer_test_path("overview", "obj_projection_parameters_plot.R"),
+      envir = environment()
+    )
+    session$userData$flags <- overview_projection_parameters_other
+  }
+
+  shiny::testServer(server, {
+    flags <- session$userData$flags
+    flags[["reset_axes"]] <- FALSE
+    ## The selector binding with its first value: the view stays as it is.
+    session$setInputs(overview_projection_to_display = "umap")
+    expect_false(isolate(flags[["reset_axes"]]))
+    session$setInputs(overview_projection_to_display = "tsne")
+    expect_true(isolate(flags[["reset_axes"]]))
   })
 })
 
