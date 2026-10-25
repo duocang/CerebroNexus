@@ -344,6 +344,33 @@ test_that("the prefetch time limit counts from when a switch starts to wait", {
   expect_identical(cache$crb_prefetch_waited(key), 0)
 })
 
+test_that("a background task sees the Viewer's run-time library paths", {
+  skip_on_cran()
+  skip_if_not_installed("mirai")
+  cache <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("crb_cache.R"), cache)
+  runtime_lib <- normalizePath(withr::local_tempdir(), winslash = "/")
+  withr::local_libpaths(runtime_lib, action = "prefix")
+  seen_by_child <- function() {
+    task <- cache$.viewerMirai(
+      list(paths = .libPaths(), value = value),
+      value = 7L,
+      .timeout = 60000L
+    )
+    mirai::call_mirai(task)$data
+  }
+
+  ## A child that cannot load mirai resolves to an errorValue, not a list.
+  for (previous in c(NA_character_, "kept-by-the-user")) {
+    withr::with_envvar(c(R_LIBS = previous), {
+      child <- seen_by_child()
+      expect_true(runtime_lib %in% normalizePath(child$paths, winslash = "/"))
+      expect_identical(child$value, 7L)
+      expect_identical(Sys.getenv("R_LIBS", unset = NA_character_), previous)
+    })
+  }
+})
+
 test_that("a user who left and came back starts a new wait", {
   cache <- new.env(parent = globalenv())
   sys.source(viewer_test_path("crb_cache.R"), cache)

@@ -89,7 +89,7 @@ coordviews_clone_task <- shiny::ExtendedTask$new(function(
   clone_contract_file,
   viewer_pack_file
 ) {
-  mirai::mirai(
+  .viewerMirai(
     {
       started <- proc.time()[["elapsed"]]
       scope <- new.env(parent = globalenv())
