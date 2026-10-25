@@ -118,6 +118,10 @@ test_that("A paint-order patch reorders the drawn cells", {
   viewer_browser_test("paintOrderPatch")
 })
 
+test_that("Group filters sent as codes filter the drawn frame in the browser", {
+  viewer_browser_test("singleClientFilters")
+})
+
 test_that("A colour change that resizes the legend draws once", {
   viewer_browser_test("legendRelayout")
 })

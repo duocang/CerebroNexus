@@ -979,20 +979,8 @@ viewerTrajectoryCellIndex <- function(trajectory, method, name) {
   as.integer(index)
 }
 
-## Apply the shared projection filters and sample original metadata row ids.
-viewerProjectionCellIndices <- function(
-  prefix,
-  metadata = getMetaData(),
-  percentage = input[[paste0(prefix, "_percentage_cells_to_show")]]
-) {
-  ## A `percentage` random sample of the given cells.
-  sample_of <- function(indices) {
-    if (!length(indices) || percentage >= 100) {
-      return(indices)
-    }
-    size <- ceiling(length(indices) * percentage / 100)
-    indices[sample.int(length(indices), size)]
-  }
+## The group filters of `prefix` that leave cells out: group -> allowed levels.
+viewerProjectionGroupFilters <- function(prefix, metadata = getMetaData()) {
   groups <- getGroups()
   filter_ids <- paste0(prefix, "_group_filter_", groups)
   bound_inputs <- shiny::isolate(names(input))
@@ -1003,7 +991,7 @@ viewerProjectionCellIndices <- function(
     groups
   )
   if (!length(groups) || !any(filter_ids %in% bound_inputs)) {
-    return(sample_of(seq_len(nrow(metadata))))
+    return(list())
   }
   filters <- stats::setNames(
     lapply(groups, function(group) {
@@ -1043,10 +1031,64 @@ viewerProjectionCellIndices <- function(
       logical(1)
     )
   ]
+  filters
+}
+
+## Apply the shared projection filters and sample original metadata row ids.
+viewerProjectionCellIndices <- function(
+  prefix,
+  metadata = getMetaData(),
+  percentage = input[[paste0(prefix, "_percentage_cells_to_show")]],
+  filters = viewerProjectionGroupFilters(prefix, metadata)
+) {
+  ## A `percentage` random sample of the given cells.
+  sample_of <- function(indices) {
+    if (!length(indices) || percentage >= 100) {
+      return(indices)
+    }
+    size <- ceiling(length(indices) * percentage / 100)
+    indices[sample.int(length(indices), size)]
+  }
   if (!length(filters)) {
     return(sample_of(seq_len(nrow(metadata))))
   }
   sample_of(which(cerebroGroupFilterMask(metadata, filters)))
+}
+
+## The group filters as the browser applies them to a frame of every cell:
+## each group's Viewer Pack codes and the indices of its allowed levels. NULL
+## when a filtered group has no Pack codes; the server then filters the frame.
+viewerClientFilterDescriptors <- function(filters) {
+  descriptors <- lapply(names(filters), function(group) {
+    levels <- as.character(getGroupLevels(group))
+    resource <- viewerMetadataCodesAsset(group, levels)
+    if (is.null(resource)) {
+      return(NULL)
+    }
+    allowed <- match(as.character(filters[[group]]), levels) - 1L
+    list(
+      name = group,
+      levels = I(levels),
+      allowed = I(allowed[!is.na(allowed)]),
+      resource = resource
+    )
+  })
+  if (any(vapply(descriptors, is.null, logical(1)))) {
+    return(NULL)
+  }
+  descriptors
+}
+
+## Tell the browser which group filters to apply to the drawn frame of `id`.
+viewerSendClientFilters <- function(id, descriptors, dataset_context) {
+  session$sendCustomMessage(
+    "cell_view_filters",
+    list(
+      id = id,
+      dataset_context = dataset_context,
+      filters = unname(descriptors %||% list())
+    )
+  )
 }
 
 viewerProjectionMetadataColumns <- function(

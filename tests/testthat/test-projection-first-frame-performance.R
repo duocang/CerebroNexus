@@ -396,6 +396,9 @@ test_that("a new projection mount redraws unchanged data", {
       )
     })
     overview_projection_data_to_plot_raw <- overview_projection_data_to_plot
+    overview_projection_group_filters <- function() list()
+    cerebroFeedbackControls <- function(...) list()
+    cerebroSendViewFeedback <- function(...) invisible(NULL)
     overview_projection_update_plot <- function(data) {
       renders <<- renders + 1L
     }

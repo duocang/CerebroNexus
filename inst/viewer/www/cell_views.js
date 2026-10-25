@@ -964,6 +964,8 @@
   // After a filter / subsample change: drop now-inactive cells from the current
   // selection, then redraw. Keeps the coordinated selection consistent.
   function applyActiveChange() {
+    // A single view's legend counts the cells it shows.
+    if (singleActive) renderLegend();
     if (sel) {
       var s = new Set();
       sel.forEach(function (i) { if (panels.some(function (p) { return p.spaceId && shown(i, p); })) s.add(i); });
@@ -3967,8 +3969,17 @@
     renderColorbar(false);
     var g = catOf(colorBy);
     if (!g) { appendEvidenceLegend(); return; }
-    var counts = {};
-    for (var i = 0; i < D.n; i++) counts[g.values[i]] = (counts[g.values[i]] || 0) + 1;
+    // A single view counts the cells it shows, also when "% of cells" and the
+    // group filters are applied here rather than by the server.
+    var counts = new Float64Array(g.levels.length + 1), values = g.values;
+    var mask = singleActive ? pctMask : null;
+    var filtered = !!singleActive && Object.keys(groupFilter).length > 0;
+    for (var i = 0; i < D.n; i++) {
+      if (mask && !mask[i]) continue;
+      if (filtered && !activeCell(i)) continue;
+      var level = values[i];
+      if (level != null && level >= 0 && level < g.levels.length) counts[level]++;
+    }
     g.levels.forEach(function (nm, li) {
       var col = cssColor((g.colors && g.colors[li]) || PAL[li % PAL.length]);
       item('cv-lg' + (hidden.has(li) ? ' off' : ''),
@@ -6297,6 +6308,71 @@
     applyActiveChange();
   }
 
+  // ---- single-view group filters applied in the browser --------------------
+  // A single view whose frame carries every cell (a Viewer Pack) is filtered
+  // here: the server sends each filtered group's canonical codes resource and
+  // its allowed levels instead of a new frame. The groups are kept under the
+  // '__single_' prefix, which the Linked views filter chips skip.
+  var SINGLE_FILTER_PREFIX = '__single_filter_';
+  function singleFilterCodes(view, values) {
+    var data = view && view.data || {}, n = Number(data.n) || (data.x ? data.x.length : 0);
+    if (data.canonical_subset) {
+      return materializeCanonicalCodes(values, data.canonical_subset, n);
+    }
+    return values.length === n ? values : null;
+  }
+  function applySingleClientFilters(id) {
+    var view = singleView(id);
+    if (singleActive !== id || !view || !D || !D.groups) return;
+    Object.keys(groupFilter).forEach(function (name) {
+      if (name.indexOf(SINGLE_FILTER_PREFIX) === 0) delete groupFilter[name];
+    });
+    Object.keys(D.groups).forEach(function (name) {
+      if (name.indexOf(SINGLE_FILTER_PREFIX) === 0) delete D.groups[name];
+    });
+    var filters = view.clientFilters || {};
+    Object.keys(filters).forEach(function (name) {
+      var filter = filters[name];
+      if (!filter.values || filter.values.length !== D.n) return;
+      D.groups[SINGLE_FILTER_PREFIX + name] = { levels: filter.levels, values: filter.values };
+      groupFilter[SINGLE_FILTER_PREFIX + name] = new Set(filter.allowed);
+    });
+  }
+  function updateSingleClientFilters(message) {
+    if (!message || !message.id || !datasetMessageFresh(message)) return;
+    var view = singleView(message.id, message.dataset_context);
+    if (!view) return;
+    var token = (view.filterToken || 0) + 1, wanted = message.filters || [];
+    view.filterToken = token;
+    view.filterCodes = view.filterCodes || {};
+    Promise.all(wanted.map(function (filter) {
+      var cached = view.filterCodes[filter.name];
+      if (cached && cached.url === filter.resource.url) return Promise.resolve(cached);
+      return fetchValidatedMetadataCodesResource(
+        filter.resource, Number(filter.resource.cells), view.datasetIdentity
+      ).then(function (result) {
+        return { url: filter.resource.url, values: result.values };
+      });
+    })).then(function (codes) {
+      if (view.filterToken !== token) return;
+      var filters = {};
+      wanted.forEach(function (filter, index) {
+        view.filterCodes[filter.name] = codes[index];
+        filters[filter.name] = { levels: filter.levels, allowed: filter.allowed,
+          values: singleFilterCodes(view, codes[index].values) };
+      });
+      view.clientFilters = filters;
+      if (singleActive !== message.id) return;
+      applySingleClientFilters(message.id);
+      applyActiveChange();
+    }).catch(function () {
+      if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+        Shiny.setInputValue(message.id + '_client_filters_failed', true,
+          { priority: 'event' });
+      }
+    });
+  }
+
   // Read the client-owned histology-image controls into the active section's
   // image state. Missing
   // controls (before render / no image) leave the current value unchanged.
@@ -7705,6 +7781,8 @@
         );
         coordinates = materialized.coordinates;
       }
+      // Group filters applied here map canonical codes to the frame's cells.
+      if (subsetResult) data.canonical_subset = subsetResult;
       if (coordinates) {
         data.x = coordinates.x;
         data.y = coordinates.y;
@@ -8661,6 +8739,7 @@
     });
     colorBy = singleSpaceModes[singleSpaceIds[0]] || colorBy;
     hidden = new Set(); groupFilter = {}; deferredColorRequest = null;
+    applySingleClientFilters(id);
     sel = null; selectionSource = null;
     selectionSourceSpace = null;
     pick = null; hoverCell = null; focusPanel = previousFocus;
@@ -10859,6 +10938,7 @@
       });
       drawAll();
     });
+    Shiny.addCustomMessageHandler('cell_view_filters', updateSingleClientFilters);
     Shiny.addCustomMessageHandler('cell_view_appearance', function (message) {
       if (!message || !message.id || !message.values || !datasetMessageFresh(message)) return;
       var view = singleView(message.id, message.dataset_context);

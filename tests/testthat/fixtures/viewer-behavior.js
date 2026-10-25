@@ -533,6 +533,28 @@ window.viewerScenarios = {
     t.equal(order(),[0,1,2],'Input order again');
     return true;
   },
+  async singleClientFilters() {
+    const t=viewerTest;t.dataset();const id='overview_projection';
+    const identity={cell_count:3,cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),
+      cell_order_fingerprint:'md5-cell-order-v1:'+'b'.repeat(32),pack_dataset_fingerprint:'md5-crb-v1:'+'c'.repeat(32)};
+    let downloads=0;
+    window.fetch=async()=>{downloads++;return {ok:true,arrayBuffer:async()=>new Uint8Array([1,2,1]).buffer};};
+    await t.render({},{},id,{dataset_identity:identity});
+    t.equal(t.arcs().length,3,'Every cell is drawn');
+    const resource={protocol:'canonical-metadata-codes-v1',url:'codes.bin',cells:3,dtype:'uint8',bytes:3,
+      checksum:'',dataset_fingerprint:identity.cell_fingerprint,cell_order_fingerprint:identity.cell_order_fingerprint,
+      pack_dataset_fingerprint:identity.pack_dataset_fingerprint,metadata_name:'cluster',levels:['A','B'],code_map:[-1,0,1]};
+    const filters=allowed=>t.send('cell_view_filters',{id,dataset_context:{...t.context},
+      filters:allowed?[{name:'cluster',levels:['A','B'],allowed,resource}]:[]});
+    t.resetPaint();filters([1]);for(let i=0;i<3;i++)await t.settle();
+    t.equal(t.arcs().length,1,'Only the allowed group is drawn');
+    t.resetPaint();filters([0]);for(let i=0;i<3;i++)await t.settle();
+    t.equal(t.arcs().length,2,'Another level, from the same codes');
+    t.equal(downloads,1,'The codes are downloaded once');
+    t.resetPaint();filters(null);for(let i=0;i<3;i++)await t.settle();
+    t.equal(t.arcs().length,3,'No filter draws every cell again');
+    return true;
+  },
   async legendRelayout() {
     const t=viewerTest;t.dataset();
     const many=Array.from({length:60},(_,i)=>'a fairly long group name '+i);
