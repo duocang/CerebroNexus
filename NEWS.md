@@ -1,4 +1,4 @@
-# CerebroNexus (development version)
+# CerebroNexus 5.5.0
 
 ## New
 
