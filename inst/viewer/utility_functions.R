@@ -941,6 +941,44 @@ viewerProjectionDefaults <- function(
   )
 }
 
+## The canonical metadata row of each row of a trajectory, in the trajectory's
+## order: from the Viewer Pack index, the Pack cell order, or the cell names.
+viewerTrajectoryCellIndex <- function(trajectory, method, name) {
+  trajectory_cells <- rownames(trajectory[["meta"]])
+  pack <- viewerPackCurrent()
+  pack_cell_count <- suppressWarnings(as.integer(pack$cell_count))
+  valid_pack_count <- length(pack_cell_count) == 1L &&
+    !is.na(pack_cell_count)
+  index <- viewerPackTrajectoryIndex(pack, method, name)
+  valid_index <- length(index) == nrow(trajectory[["meta"]]) &&
+    !anyNA(index) &&
+    isTRUE(all(index >= 1L))
+  if (!isTRUE(valid_index)) {
+    index <- NULL
+  }
+  pack_order_matches <-
+    is.null(index) &&
+    !is.null(pack) &&
+    is.list(pack) &&
+    valid_pack_count &&
+    length(trajectory_cells) == pack_cell_count &&
+    identical(
+      viewerPackCellOrderFingerprint(trajectory_cells),
+      as.character(pack$manifest$cell_order_fingerprint)
+    )
+  if (isTRUE(pack_order_matches)) {
+    index <- seq_len(pack_cell_count)
+  }
+  if (is.null(index)) {
+    metadata <- getMetaData()
+    index <- match(trajectory_cells, metadata[["cell_barcode"]])
+  }
+  if (anyNA(index)) {
+    stop("Trajectory cells do not match the canonical dataset order.")
+  }
+  as.integer(index)
+}
+
 ## Apply the shared projection filters and sample original metadata row ids.
 viewerProjectionCellIndices <- function(
   prefix,

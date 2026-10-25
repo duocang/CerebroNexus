@@ -3,6 +3,8 @@ test_that("Gene expression leaves % of cells to the browser with a Viewer Pack",
     shiny::testServer(
       function(input, output, session) {
         viewerPackCurrent <- function() pack
+        expression_projection_selected_projection <- function() "umap"
+        available_trajectories <- function() character()
         viewerProjectionFirstFrameMetadata <- function() data.frame(x = 1:10)
         current_scatter_percentage <- reactiveVal(100)
         viewerProjectionCellIndices <- function(prefix, metadata, percentage) {

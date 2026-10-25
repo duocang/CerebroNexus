@@ -43,7 +43,9 @@ expression_projection_display_mode <- viewerControlValue(
 )
 
 cerebroObserveLocalAppearance("expression_projection", input, session)
-expression_projection_parameters_plot <- reactive({
+## The projection or trajectory drawn: the selector's value when it is one of
+## them, else the one Linked views shares, else the first one.
+expression_projection_selected_projection <- reactive({
   available_projections <- availableProjections()
   available_trajectory_names <- available_trajectories()
   selected_projection <- expression_projection_projection()
@@ -69,13 +71,20 @@ expression_projection_parameters_plot <- reactive({
   }
   req(
     selected_projection,
-    !is.null(expression_projection_plotting_order()),
-    !is.null(preferences[["show_hover_info_in_projections"]]),
     selected_projection %in%
       available_projections ||
       selected_projection %in% available_trajectory_names
   )
-  if (selected_projection %in% available_projections) {
+  selected_projection
+})
+
+expression_projection_parameters_plot <- reactive({
+  selected_projection <- expression_projection_selected_projection()
+  req(
+    !is.null(expression_projection_plotting_order()),
+    !is.null(preferences[["show_hover_info_in_projections"]])
+  )
+  if (selected_projection %in% availableProjections()) {
     is_trajectory <- FALSE
     range_data <- viewerProjectionFirstFrameCoordinates(selected_projection)
     n_dimensions <- ncol(range_data)

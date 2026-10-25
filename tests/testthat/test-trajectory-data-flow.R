@@ -263,6 +263,7 @@ test_that("trajectory consumers share row mapping and invalidate it on dataset c
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
+      viewer_runtime_env(scope)
       reads <- 0L
       metadata <- reactive({
         if (identical(input$revision, 2)) {
