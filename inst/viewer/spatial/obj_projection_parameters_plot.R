@@ -540,7 +540,7 @@ spatial_projection_parameters_plot_current <- reactive({
     draw_border = isolate(spatial_projection_appearance$draw_border),
     group_labels = isolate(spatial_projection_appearance$group_labels),
     keep_square = isolate(spatial_projection_appearance$keep_square),
-    show_region_outlines = spatial_projection_region_outlines(),
+    show_region_outlines = isolate(spatial_projection_region_outlines()),
     x_range = NULL,
     y_range = NULL,
     background_image = background_image,

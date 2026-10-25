@@ -204,8 +204,12 @@ test_that("Spatial defaults and appearance updates do not repeat primary computa
       original
     )
     expect_length(spatial_projection_group_hulls(), 0L)
+    frames <- scope$frames
     session$setInputs(spatial_projection_show_region_outlines = TRUE)
-    expect_length(spatial_projection_data_to_plot_raw()$group_hulls, 1L)
+    ## Outlines are an overlay patched onto the drawn frame: they are built,
+    ## and the frame is not.
+    expect_length(spatial_projection_group_hulls(), 1L)
+    expect_identical(scope$frames, frames)
   })
 })
 

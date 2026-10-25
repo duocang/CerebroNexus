@@ -1,3 +1,23 @@
+## Region outlines of a frame, in the form the browser draws: one polygon per
+## coloured group present in the frame.
+spatial_projection_output_hulls <- function(
+  hulls,
+  color_assignments,
+  unsupported,
+  show
+) {
+  if (isTRUE(unsupported) || !isTRUE(show) || !length(hulls)) {
+    return(list())
+  }
+  present <- intersect(names(hulls), names(color_assignments))
+  list(
+    x = unname(lapply(hulls[present], `[[`, "x")),
+    y = unname(lapply(hulls[present], `[[`, "y")),
+    color = unname(as.list(color_assignments[present]))
+  )
+}
+spatial_projection_drawn_hulls <- list()
+
 ##----------------------------------------------------------------------------##
 ## Function that updates projections.
 ##----------------------------------------------------------------------------##
@@ -463,20 +483,13 @@ spatial_projection_update_plot <- function(input) {
     }
   }
 
-  output_hulls <- list()
-  if (
-    !is.numeric(color_input) &&
-      n_dimensions == 2 &&
-      isTRUE(plot_parameters[["show_region_outlines"]])
-  ) {
-    hulls <- input[["group_hulls"]]
-    present <- intersect(names(hulls), names(color_assignments))
-    output_hulls <- list(
-      x = unname(lapply(hulls[present], `[[`, "x")),
-      y = unname(lapply(hulls[present], `[[`, "y")),
-      color = unname(as.list(color_assignments[present]))
-    )
-  }
+  output_hulls <- spatial_projection_output_hulls(
+    input[["group_hulls"]],
+    color_assignments,
+    is.numeric(color_input) || n_dimensions != 2,
+    plot_parameters[["show_region_outlines"]]
+  )
+  spatial_projection_drawn_hulls <<- output_hulls
   cerebroCellViewRender(
     "spatial_projection",
     payload[["meta"]],

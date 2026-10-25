@@ -417,6 +417,19 @@ window.viewerScenarios = {
     t.equal(after.colors,expected,'Colours of the kept geometry follow the new grouping');
     return true;
   },
+  async outlinePatch() {
+    const t=viewerTest;t.dataset();const id='spatial_projection';
+    await t.render({},{is_spatial:true},id);
+    t.check(!t.paints.some(p=>p.method==='fill'&&p.fill==='#654321'),'No outlines before the patch');
+    const patch=hulls=>t.send('cell_view_extra',{id,dataset_context:{...t.context},
+      dataset_fingerprint:'fp-'+t.context.dataset_key,extra:{group_hulls:hulls}});
+    t.resetPaint();patch({x:[[0,10,0]],y:[[0,0,10]],color:['#654321']});await t.settle();
+    t.check(t.paints.some(p=>p.method==='fill'&&p.fill==='#654321'),'Patched outlines are drawn');
+    t.check(t.arcs('cv-cv-a').length===3,'The cells are still drawn');
+    t.resetPaint();patch([]);await t.settle();
+    t.check(!t.paints.some(p=>p.method==='fill'&&p.fill==='#654321'),'Removed outlines are not drawn');
+    return true;
+  },
   async linkedResources() {
     const t=viewerTest;t.dataset();let downloads=[];
     const identity={cell_count:3,cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),

@@ -189,8 +189,7 @@ spatial_projection_data_to_plot_raw <- reactive({
     isTRUE(full_canonical_frame) &&
     !is.numeric(full_color) &&
     isTRUE(background_geometry_ready) &&
-    !roi_rotation_needed &&
-    !isTRUE(plot_parameters[["show_region_outlines"]])
+    !roi_rotation_needed
   ## Only the resource-first path uses these; the others assign colours from
   ## the plotted frame below.
   color_assignments <- if (!resource_first_candidate) {
@@ -355,20 +354,17 @@ spatial_projection_data_to_plot_raw <- reactive({
     reset_axes <- FALSE
   }
 
-  ## return collect data
+  ## return collect data. Region outlines are an overlay patched onto the drawn
+  ## frame (event_projection_update_plot.R), and control values are added by
+  ## the sender: neither makes a new frame.
   to_return <- list(
     dataset_context = dataset_context,
-    feedback = cerebroFeedbackControls("spatial_projection", input),
     cells_df = metadata,
     coordinates = coordinates,
     reset_axes = reset_axes,
     plot_parameters = plot_parameters,
     color_assignments = color_assignments,
-    group_hulls = if (resource_first) {
-      list()
-    } else {
-      spatial_projection_group_hulls()
-    },
+    group_hulls = isolate(spatial_projection_group_hulls()),
     geometry_resource = geometry_resource,
     categorical_resource = categorical_resource,
     resource_first = resource_first,

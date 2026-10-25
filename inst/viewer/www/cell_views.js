@@ -10755,6 +10755,25 @@
     Shiny.addCustomMessageHandler('cell_view_background', function (message) {
       updateSingleBackground(message);
     });
+    // Overlay data (region outlines) for the drawn frame: replaced in place,
+    // without touching the frame's cells or their GPU data.
+    Shiny.addCustomMessageHandler('cell_view_extra', function (message) {
+      if (!message || !message.id || !message.extra || !datasetMessageFresh(message)) return;
+      var view = singleView(message.id, message.dataset_context);
+      var identity = view && view.datasetIdentity || {};
+      if (!view || String(identity.cell_fingerprint || '') !==
+          String(message.dataset_fingerprint || '')) return;
+      view.extra = Object.assign({}, view.extra || {}, message.extra);
+      if (singleActive !== message.id || !('group_hulls' in message.extra)) return;
+      var hulls = singleHulls(view.extra);
+      panels.forEach(function (p) {
+        var space = p.spaceId && spaceById[p.spaceId];
+        if (!space) return;
+        if (hulls.length) space.hulls = hulls; else delete space.hulls;
+        p.cloneBase = null;
+      });
+      drawAll();
+    });
     Shiny.addCustomMessageHandler('cell_view_appearance', function (message) {
       if (!message || !message.id || !message.values || !datasetMessageFresh(message)) return;
       var view = singleView(message.id, message.dataset_context);
