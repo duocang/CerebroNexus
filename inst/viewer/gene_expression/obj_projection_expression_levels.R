@@ -302,6 +302,13 @@ observeEvent(
     if (is.function(pending) && isTRUE(pending())) {
       later::later(
         function() {
+          ## later() callbacks outlive a closed session. Reading its reactives
+          ## then raises outside any session and stops the whole app.
+          if (
+            isTRUE(tryCatch(session$isClosed(), error = function(error) FALSE))
+          ) {
+            return(invisible(NULL))
+          }
           expression_projection_warm_retry(
             isolate(expression_projection_warm_retry()) + 1L
           )
