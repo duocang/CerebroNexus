@@ -40,11 +40,16 @@ ir_requested_metadata_fields <- function(
   tab,
   group_by = NULL,
   umap_group = NULL,
-  sharing_unit = NULL
+  sharing_unit = NULL,
+  x_axis = NULL
 ) {
   requested <- group_by
   if (identical(tab, "Clonal UMAP")) {
     requested <- c(requested, umap_group)
+  }
+  ## Diversity can place a metadata column on its x-axis.
+  if (identical(tab, "Diversity")) {
+    requested <- c(requested, x_axis)
   }
   if (identical(tab, "Clone Sharing") && !identical(sharing_unit, "sample")) {
     requested <- c(requested, sharing_unit)
@@ -62,7 +67,8 @@ observe(
       input[["ir_tabs"]],
       input[["ir_groupBy"]],
       input[["ir_p_umap_group_by"]],
-      input[["ir_sharing_unit"]]
+      input[["ir_sharing_unit"]],
+      input[["ir_p_x_axis"]]
     ))
   },
   priority = 100

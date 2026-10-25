@@ -56,6 +56,15 @@ test_that("immune metadata joins follow only active analysis controls", {
   )
   expect_identical(fields("SizeDist", "sample"), "sample")
   expect_identical(fields("Clone Sharing", "", NULL, "sample"), character())
+  ## Diversity's x-axis column is read by scRepertoire as well.
+  expect_identical(
+    fields("Diversity", "sample", NULL, NULL, "cell_type"),
+    c("sample", "cell_type")
+  )
+  expect_identical(
+    fields("Abundance", "sample", NULL, NULL, "cell_type"),
+    "sample"
+  )
 })
 
 ir_parse_segments <- ir_env$ir_parse_segments
