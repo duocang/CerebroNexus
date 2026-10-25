@@ -19,6 +19,57 @@ test_that("shared selection actions and layouts survive navigation and resize", 
     jsonlite::fromJSON(json, simplifyVector = FALSE)
   }
 
+  # Box most of the Projection canvas, as the brush reads a drag.
+  select_projection <- function() {
+    app$wait_for_js(
+      paste0(
+        "document.querySelector('#shiny-tab-overview ",
+        ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
+        "?.getBoundingClientRect().width > 100"
+      ),
+      timeout = 30000
+    )
+    app$click(
+      selector = paste0(
+        "#shiny-tab-overview .cv-pane:not(.cv-hidden) ",
+        ".cv-tbtn[data-act='box']"
+      )
+    )
+    app$run_js(paste0(
+      "(() => {const pane=document.querySelector('#shiny-tab-overview ",
+      ".cv-pane:not(.cv-hidden)');const r=pane.querySelector('canvas:not(.cv-mini)')",
+      ".getBoundingClientRect();const at=(f,b)=>({bubbles:true,button:0,buttons:b,",
+      "clientX:r.left+r.width*f,clientY:r.top+r.height*f});",
+      "pane.dispatchEvent(new MouseEvent('mousedown',at(.08,0)));",
+      "window.dispatchEvent(new MouseEvent('mousemove',at(.92,1)));",
+      "window.dispatchEvent(new MouseEvent('mouseup',at(.92,0)));})()"
+    ))
+    app$wait_for_js(
+      paste0(
+        "document.querySelector('#shiny-tab-overview ",
+        ".cerebro-selection-composition-drag')?.getClientRects().length > 0"
+      ),
+      timeout = 10000
+    )
+  }
+  projection <- "window.cerebroSpecialistViews.get('overview_projection')"
+  projection_cells <- function() {
+    app$get_js(paste0(projection, ".capture().selection.cells.length"))
+  }
+  projection_focus <- function() {
+    app$get_js(
+      "document.getElementById('overview_projection_focus_selection').getAttribute('aria-pressed')"
+    )
+  }
+
+  ## A single page keeps its selection when Linked views loads for the first
+  ## time; that load used to reset every single page.
+  app$click(selector = 'a[href="#shiny-tab-overview"]')
+  app$wait_for_js(paste0(projection, "?.ready()"), timeout = 30000)
+  select_projection()
+  kept_projection <- projection_cells()
+  expect_gt(kept_projection, 0L)
+
   app$wait_for_js(
     'document.querySelector(\'a[href="#shiny-tab-coordinated_views"]\') !== null',
     timeout = 30000
@@ -214,7 +265,30 @@ test_that("shared selection actions and layouts survive navigation and resize", 
     "document.querySelectorAll('.cv-mini.is-on').length === 0",
     timeout = 10000
   )
+  ## Focus survives leaving Linked views; Clear then leaves it too.
+  linked_focus <- "document.getElementById('cv-zsel').getAttribute('aria-pressed') === 'true'"
+  app$run_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-ptitle'))",
+    ".find(el => el.textContent.includes('B cell maturation'))",
+    ".closest('.cv-pane').querySelector('.cv-zsel-btn').click()"
+  ))
+  app$wait_for_js(linked_focus)
+  app$click(selector = 'a[href="#shiny-tab-overview"]')
+  app$wait_for_js(paste0(projection, "?.ready()"), timeout = 30000)
+  expect_identical(projection_focus(), "false")
+  app$click(selector = 'a[href="#shiny-tab-coordinated_views"]')
+  app$wait_for_js(
+    paste0(
+      linked_focus,
+      " && document.querySelectorAll('.cv-mini.is-on').length === 1"
+    ),
+    timeout = 30000
+  )
   app$run_js("document.querySelector('#cv-clear span').click()")
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-mini.is-on').length === 0",
+    timeout = 10000
+  )
   app$wait_for_js(
     "document.getElementById('cv-selbar').classList.contains('cv-collapse')",
     timeout = 10000
@@ -568,6 +642,9 @@ test_that("shared selection actions and layouts survive navigation and resize", 
     "document.getElementById('overview_projection_point_color')?.value === 'seurat_clusters'",
     timeout = 30000
   )
+  expect_identical(projection_cells(), kept_projection)
+  app$click(selector = "#overview_projection_clear_selection")
+  app$wait_for_js(paste0(projection, ".capture().selection.cells.length === 0"))
   expect_true(isTRUE(app$get_js(
     "document.getElementById('overview_projection_keep_square') !== null"
   )))
@@ -764,51 +841,7 @@ test_that("shared selection actions and layouts survive navigation and resize", 
     "window.innerWidth === 1200 && window.innerHeight === 800",
     timeout = 10000
   )
-  app$wait_for_js(
-    paste0(
-      "document.querySelector('#shiny-tab-overview ",
-      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
-      "?.getBoundingClientRect().width > 100"
-    ),
-    timeout = 30000
-  )
-  app$click(
-    selector = paste0(
-      "#shiny-tab-overview .cv-pane:not(.cv-hidden) ",
-      ".cv-tbtn[data-act='box']"
-    )
-  )
-  projection_box <- app$get_js(paste0(
-    "(() => {const r=document.querySelector('#shiny-tab-overview ",
-    ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)').getBoundingClientRect();",
-    "return {x1:r.left+r.width*.08,y1:r.top+r.height*.08,",
-    "x2:r.right-r.width*.08,y2:r.bottom-r.height*.08};})()"
-  ))
-  app$run_js(sprintf(
-    paste0(
-      "(() => {const pane=document.querySelector('#shiny-tab-overview ",
-      ".cv-pane:not(.cv-hidden)');",
-      "pane.dispatchEvent(new MouseEvent('mousedown',",
-      "{bubbles:true,button:0,clientX:%f,clientY:%f}));",
-      "window.dispatchEvent(new MouseEvent('mousemove',",
-      "{bubbles:true,buttons:1,clientX:%f,clientY:%f}));",
-      "window.dispatchEvent(new MouseEvent('mouseup',",
-      "{bubbles:true,button:0,clientX:%f,clientY:%f}));})()"
-    ),
-    projection_box$x1,
-    projection_box$y1,
-    projection_box$x2,
-    projection_box$y2,
-    projection_box$x2,
-    projection_box$y2
-  ))
-  app$wait_for_js(
-    paste0(
-      "document.querySelector('#shiny-tab-overview ",
-      ".cerebro-selection-composition-drag')?.getClientRects().length > 0"
-    ),
-    timeout = 10000
-  )
+  select_projection()
   app$wait_for_idle(timeout = 10000)
   card_before <- app$get_js(paste0(
     "(() => {const r=document.querySelector('#shiny-tab-overview ",
@@ -927,12 +960,28 @@ test_that("shared selection actions and layouts survive navigation and resize", 
   expect_identical(selected_projection$schema, "cerebronexus-specialist-view")
   expect_identical(selected_projection$page$id, "overview_projection")
   expect_gt(length(selected_projection$selection$cells), 0L)
+  app$click(selector = "#overview_projection_focus_selection")
+  app$wait_for_js(paste0(projection, ".capture().view.viewport !== null"))
+  zoomed <- app$get_js(paste0(projection, ".capture().view.viewport"))
+  app$click(selector = 'a[href="#shiny-tab-groups"]')
+  app$wait_for_js(
+    "document.getElementById('shiny-tab-groups').classList.contains('active')"
+  )
+  app$click(selector = 'a[href="#shiny-tab-overview"]')
+  app$wait_for_js(paste0(projection, "?.ready()"), timeout = 30000)
+  expect_identical(
+    app$get_js(paste0(projection, ".capture().view.viewport")),
+    zoomed
+  )
+  expect_identical(projection_focus(), "true")
   app$click(selector = "#overview_projection_clear_selection")
   app$wait_for_js(paste0(
     "document.getElementById('overview_projection_selection_guide')",
     ".getClientRects().length > 0 && ",
     "!document.querySelector('#shiny-tab-overview .cerebro-selection-composition-drag')"
   ))
+  expect_null(app$get_js(paste0(projection, ".capture().view.viewport")))
+  expect_identical(projection_focus(), "false")
   cleared_projection <- download_view_config(projection_share)
   expect_length(cleared_projection$selection$cells, 0L)
   expect_null(cleared_projection$selection$geometry)

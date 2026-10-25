@@ -87,7 +87,6 @@
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var gpuAcceleration = true;   // session preference, independent of data/page
   var sel = null;               // Set of selected cell indices (null = none)
-  var selectionZoomed = false;
   var selectionSource = null;   // label of the lens that created the active cohort
   var selectionSourceSpace = null; // space id of the lens that created it
   var pick = null;              // hovered/clicked cell index
@@ -2590,6 +2589,8 @@
     if (!sel) {
       selectionSource = null;
       selectionSourceSpace = null;
+      // No selection, no Focus: every way of losing it is a Clear.
+      leaveFocus();
     } else if (source) {
       selectionSource = selectionSourceLabel(source);
       if (typeof source === 'string') selectionSourceSpace = null;
@@ -2657,18 +2658,31 @@
     var hasNiche = !hasSel && pick != null && !!nicheSet;
     revealEl($('cv-selactions'), hasSel || hasNiche);
   }
-  // Zoom one requested panel to the bounding box of its selected cells.
-  function setSelectionZoomed(on) {
-    selectionZoomed = !!on;
+  // Focus zooms panels to the selection. Each focused panel keeps the view it
+  // had before (p.focusFrom), so Focus is on exactly while one does, and leaving
+  // it -- Focus again, Clear, or losing the selection -- puts every panel back.
+  // Zooming or panning inside Focus stays inside it.
+  function syncFocusButtons() {
+    var on = panels.some(function (p) { return p.spaceId && p.focusFrom; });
     document.querySelectorAll(
       '[data-cell-view-action="focus"], #cv-zsel'
     ).forEach(function (button) {
-      button.classList.toggle('is-on', selectionZoomed);
-      button.setAttribute('aria-pressed', selectionZoomed ? 'true' : 'false');
+      button.classList.toggle('is-on', on);
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+    return on;
   }
+  function leaveFocus() {
+    panels.forEach(function (p) {
+      if (!p.focusFrom) return;
+      p.view = p.focusFrom.view; p.focusFrom = null; project(p);
+    });
+    syncFocusButtons();
+  }
+  // Zoom one requested panel to the bounding box of its selected cells.
   function zoomToSelection(p) {
     if (!canZoomPanel(p)) return false;
+    if (!p.focusFrom) p.focusFrom = { view: p.view };
     var u = spaceById[p.spaceId]._unit;
     var nx0 = Infinity, nx1 = -Infinity, ny0 = Infinity, ny1 = -Infinity;
     sel.forEach(function (i) {
@@ -2680,7 +2694,7 @@
     p.view = clampView(p, CBGeom.fitView(
       nx0, nx1, ny0, ny1, 1.25, 0.02
     ));
-    setSelectionZoomed(true);
+    syncFocusButtons();
     project(p);
     drawAll();
     return true;
@@ -2822,21 +2836,9 @@
     sel.forEach(function (i) { if (u.ok[i]) any = true; });
     return any;
   }
-  function resetZoom(only) {
-    var any = false;
-    panels.forEach(function (p) {
-      if (only && p !== only) return;
-      if (p.view) { p.view = null; project(p); any = true; }
-    });
-    setSelectionZoomed(false);
-    if (any) drawAll();
-  }
   function toggleSelectionFocus(id) {
     if (id && singleActive !== id) return;
-    if (selectionZoomed) {
-      resetZoom();
-      return;
-    }
+    if (syncFocusButtons()) { leaveFocus(); drawAll(); return; }
     panels.forEach(function (panel) {
       if (canZoomPanel(panel)) zoomToSelection(panel);
     });
@@ -2915,7 +2917,7 @@
   // space on a data-set switch -- and a field cleared in only one of them
   // survives into a data set it was never computed for.
   function clearPanelView(p) {
-    p.view = null; p.lasso = null; p.lassoData = null;
+    p.view = null; p.lasso = null; p.lassoData = null; p.focusFrom = null;
     p.rot = null; p.depth = null; p.miniBg = null;
   }
   function resetSpaceViews(spaceId) {
@@ -2930,7 +2932,6 @@
   // panel centre gives the plain in/out of the toolbar buttons.
   function zoomAt(p, mx, my, factor) {
     if (!p._SX || !p._SY) return;
-    setSelectionZoomed(false);
     var zx = (mx - p._sox) / p._SX;
     var zy = (p._soy + p._SY - my) / p._SY;
     var next = CBGeom.zoomView(p.view, factor, [zx, zy], 0.04);
@@ -8266,7 +8267,7 @@
     }).filter(function (name) { return name != null; }) : [];
     view.mode = selectMode;
     view.lenses = panels.filter(function (p) { return p.spaceId; }).map(function (p) {
-      return { spaceId: p.spaceId,
+      return { spaceId: p.spaceId, focusFrom: p.focusFrom,
         view: p.view && Object.assign({}, p.view), rot: p.rot && Object.assign({}, p.rot),
         lassoData: p.lassoData && p.lassoData.map(function (q) { return q.slice(); }) };
     });
@@ -8375,7 +8376,6 @@
     var previousFocus = reuseSurface ? focusPanel : null;
     if (!reuseSurface) restoreLinkedSurface();
     singleActive = id; singleSpaceIds = []; singleSpaceModes = {};
-    if (!reuseSurface) setSelectionZoomed(false);
     if (!reuseSurface && !mountSingleSurface(id)) { singleActive = null; return false; }
     var base = singlePayloadBundle(id, payload);
     D = Object.assign({}, base, {
@@ -8511,7 +8511,8 @@
       var lens = window.CBViewState.lensForSpace(saved, p.spaceId, index);
       if (!lens) return;
       p.view = lens.view || null; p.rot = lens.rot || null;
-      p.lassoData = lens.lassoData || null; project(p);
+      p.lassoData = lens.lassoData || null; p.focusFrom = lens.focusFrom || null;
+      project(p);
     });
     if (Array.isArray(payload.selection) && payload.selection.length) {
       var cells = singleIndex(), restored = new Set();
@@ -8520,6 +8521,7 @@
       });
       sel = restored.size ? restored : null;
     }
+    if (!reuseSurface) (sel ? syncFocusButtons : leaveFocus)();
     var drawStarted = performance.now();
     timing.preDrawMs = drawStarted - activationStarted;
     renderLegend();
@@ -8573,6 +8575,9 @@
       rebuildingBase = false;
     }
     if (state) restoreWorkspace(state);
+    var focusFrom = state && state._focusFrom || {};
+    panels.forEach(function (p) { p.focusFrom = focusFrom[p.spaceId] || null; });
+    (sel ? syncFocusButtons : leaveFocus)();
     syncSharedScatter();
     syncPointControls();
     drawAll();
@@ -8776,10 +8781,7 @@
     view.selection = []; view.lenses = (view.lenses || []).map(function (lens) {
       return Object.assign({}, lens, { lassoData: null });
     });
-    if (singleActive === id) {
-      if (selectionZoomed) resetZoom();
-      clearSelection();
-    }
+    if (singleActive === id) clearSelection();
   }
 
   function captureSingleState(id) {
@@ -9496,7 +9498,9 @@
     var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
     if (dataChanged) {
-      resetSingleViews();
+      // Not the single pages: dataShown is also unset on the first Linked
+      // bundle of a data set, and their selections, Focus and lenses must
+      // survive that. A real switch resets them (invalidateDatasetViewState).
       imgStates = {};
       imgChoice = {};
       pendingCloneDetails.clear();
@@ -9814,6 +9818,11 @@
     Object.defineProperty(config, '_pointOverrides', {
       value: { size: pointSizeEdited, opacity: pointOpacityEdited }
     });
+    var focusFrom = {};
+    panels.forEach(function (p) {
+      if (p.spaceId && p.focusFrom) focusFrom[p.spaceId] = p.focusFrom;
+    });
+    Object.defineProperty(config, '_focusFrom', { value: focusFrom });
     return config;
   }
   function workspacePointOverrides(config) {
@@ -10896,7 +10905,7 @@
             // rotation is part of "where you are looking" too
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
-            setSelectionZoomed(false);
+            pp.focusFrom = null; syncFocusButtons();
             drawAll();
           }
         }
@@ -10907,7 +10916,6 @@
         return;
       }
       if (t.closest('#cv-clear')) {
-        if (selectionZoomed) resetZoom();
         clearSelection();
         return;
       }
