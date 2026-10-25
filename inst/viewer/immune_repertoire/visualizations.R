@@ -879,8 +879,10 @@ output$ir_ui_pairedScatter <- renderUI({
   if (is.null(pair_mode) || !(pair_mode %in% pair_choices)) {
     pair_mode <- ""
   }
-  x <- input$ir_pair_x_group
-  y <- input$ir_pair_y_group
+  ## The groups only preselect the controls: choosing another group must not
+  ## rebuild them, and the plot output with them.
+  x <- isolate(input$ir_pair_x_group)
+  y <- isolate(input$ir_pair_y_group)
   if (is.null(x) || !(x %in% groups)) {
     x <- groups[1]
   }
@@ -964,6 +966,20 @@ ir_paired_plotly_output <- function() {
     )
   )
 }
+
+## Picking the X group as the Y group moves Y to another group, as rebuilding
+## the controls used to.
+observeEvent(list(input$ir_pair_x_group, input$ir_pair_y_group), {
+  x <- input$ir_pair_x_group
+  y <- input$ir_pair_y_group
+  groups <- ir_compare_groups()
+  req(length(groups) >= 2, identical(x, y))
+  updateSelectInput(
+    session,
+    "ir_pair_y_group",
+    selected = setdiff(groups, x)[[1]]
+  )
+})
 
 output$ir_ui_pairedScatter_plot <- renderUI({
   pair_mode <- input$ir_pair_compare
@@ -1049,17 +1065,22 @@ output$ir_plot_pairedScatter <- plotly::renderPlotly({
   groups <- ir_compare_groups()
   req(length(groups) >= 2)
   pair_mode <- input$ir_pair_compare
+  ## Groups of the previous grouping, before its controls are rebuilt: keep the
+  ## drawn plot until the controls send the new groups.
+  if (is.null(pair_mode) || !nzchar(pair_mode)) {
+    req(
+      isTRUE(input$ir_pair_x_group %in% groups),
+      isTRUE(input$ir_pair_y_group %in% groups),
+      cancelOutput = TRUE
+    )
+  }
 
   ir_render_ggplotly(
     {
       if (is.null(pair_mode) || !nzchar(pair_mode)) {
         x <- input$ir_pair_x_group
         y <- input$ir_pair_y_group
-        validate(
-          need(x %in% groups, "Select an X group."),
-          need(y %in% groups, "Select a Y group."),
-          need(x != y, "Select two different groups.")
-        )
+        validate(need(x != y, "Select two different groups."))
         ir_paired_scatter_panel(
           data,
           pars,
@@ -1267,6 +1288,9 @@ output$ir_plot_clonalCompare <- plotly::renderPlotly({
   req_plot_space("ir_plot_clonalCompare")
   samples <- input$ir_compare_samples
   req(!is.null(samples) && length(samples) >= 2)
+  ## Samples of the previous grouping, before its selector is rebuilt: keep the
+  ## drawn plot until the selector sends the new groups.
+  req(all(samples %in% ir_compare_groups()), cancelOutput = TRUE)
   data <- ir_data()
   req(!is.null(data))
   pars <- ir_params()
