@@ -446,6 +446,21 @@ window.viewerScenarios = {
     t.equal(t.paints.filter(p=>p.canvas.id==='cv-cv-b').length,0,'Resetting one view leaves the other');
     return true;
   },
+  async geneUnavailable() {
+    const t=viewerTest;t.dataset();t.linked({});
+    for(let i=0;i<3;i++)await t.settle();
+    const draws=()=>t.paints.filter(p=>p.canvas.id==='cv-cv-a'&&p.method==='clearRect').length;
+    const reply=(extra)=>t.send('coordviews_geneval',{dataset_context:{...t.context},...extra});
+    t.change('cv-pick-color','__gene__');for(let i=0;i<2;i++)await t.settle();
+    const canvas=document.getElementById('cv-cv-a'),size=()=>canvas.width+'x'+canvas.height,before=size();
+    t.resetPaint();reply({gene:'',ok:false});await t.settle();
+    // No gene before and none now: only the colour bar's room can call for a draw.
+    t.equal(draws(),size()===before?0:1,'Drawn only for a new panel size, and once');
+    reply({gene:'G',ok:true,v:[0,128,255],max:3});await t.settle();
+    t.resetPaint();reply({gene:'G',ok:false});await t.settle();
+    t.check(draws()>0,'A gene that is no longer available is drawn away');
+    return true;
+  },
   async deferredFilter() {
     const t=viewerTest;t.dataset();
     t.linked({groups:{cluster:{levels:['A','B'],values:[0,1,0],colors:['#ff0000','#0000ff']},

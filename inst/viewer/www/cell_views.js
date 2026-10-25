@@ -10924,11 +10924,15 @@
       geneWanted = null;
       if (!m.ok) {
         // Nothing to draw. Say so rather than keep showing the last gene.
+        var hadGene = !!D.gene;
         window.CBViewState.clearExpression(D, 'gene');
         clipRange();
         if (colorBy === GENE_MODE) {
           renderColorbar(true, null, m.gene + ' — not available');
-          drawAll(); updateMoranBadges();
+          // Without a previous gene the points are already drawn without one:
+          // only the colour bar can have moved the panels.
+          if (hadGene) drawAll(); else resizeAll(true);
+          updateMoranBadges();
         }
         return;
       }

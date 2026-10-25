@@ -98,6 +98,10 @@ test_that("Zooming one linked panel redraws only that panel", {
   viewer_browser_test("zoomOnePanel")
 })
 
+test_that("An unavailable gene redraws only when a gene was drawn", {
+  viewer_browser_test("geneUnavailable")
+})
+
 test_that("A filter on a deferred group draws once its values arrive", {
   viewer_browser_test("deferredFilter")
 })
