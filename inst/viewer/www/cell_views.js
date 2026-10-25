@@ -6763,7 +6763,10 @@
         p.pane.style.width = paneWidth + 'px';
         p.pane.style.height = '';
       }
-      if (ifChanged && p.W === width && p.H === height &&
+      // The pane chrome is measured around the canvas drawn before, so the
+      // check after a page is shown can differ by a pixel or two from the
+      // fit just drawn. That is no reason to draw every point again.
+      if (ifChanged && p.W === width && Math.abs(p.H - height) <= 2 &&
           p._dpr === (window.devicePixelRatio || 1)) return;
       resized = true;
       resizePanel(p, width, height);
