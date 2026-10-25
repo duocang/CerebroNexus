@@ -14,6 +14,8 @@
 - Clicking a plot after brushing keeps the brushed outline.
 - The Linked views panel button is now Enlarge / Restore, so Focus only zooms
   to the selection; the plot toolbar floats in the plot's top-right corner.
+- Background tasks see libraries added at run time (`.libPaths()`, renv); with
+  mirai or qs2 installed there, they used to stop silently.
 
 # CerebroNexus 5.3.1
 

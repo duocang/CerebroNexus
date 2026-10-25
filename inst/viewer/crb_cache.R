@@ -119,6 +119,27 @@ crb_prefetch_abandon <- function(key) {
   })
 }
 
+## mirai() for the Viewer; use it for every background task. Without daemons()
+## each call starts a fresh Rscript, which sees only the library paths R derives
+## from its environment, not those the Viewer added at run time (.libPaths(),
+## renv, a launcher script). When mirai or qs2 lives there the child dies on
+## loadNamespace() and mirai discards its stderr, so the task never answers. The
+## child reads R_LIBS as it starts: set it to the Viewer's paths around the call
+## that spawns it, then restore it.
+.viewerMirai <- function(.expr, ...) {
+  expr <- substitute(.expr)
+  previous <- Sys.getenv("R_LIBS", unset = NA)
+  Sys.setenv(R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep))
+  on.exit(
+    if (is.na(previous)) {
+      Sys.unsetenv("R_LIBS")
+    } else {
+      Sys.setenv(R_LIBS = previous)
+    }
+  )
+  mirai::mirai(expr, ...)
+}
+
 start_crb_prefetch <- function(path, backend_identity) {
   path <- as.character(path[[1L]])
   if (!file.exists(path)) {
@@ -138,7 +159,7 @@ start_crb_prefetch <- function(path, backend_identity) {
   prefetch_task <- shiny::withReactiveDomain(
     NULL,
     shiny::ExtendedTask$new(function(path) {
-      task <- mirai::mirai(
+      task <- .viewerMirai(
         {
           connection <- file(path, open = "rb")
           on.exit(close(connection), add = TRUE)
