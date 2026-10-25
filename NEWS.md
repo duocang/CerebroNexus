@@ -1,3 +1,10 @@
+# CerebroNexus 5.4.0
+
+## Viewer
+
+- Share is offered on the grouped Immune repertoire Clonal projection too. An
+  opened view comes back grouped, with its selection in its panel.
+
 # CerebroNexus 5.3.1
 
 ## Fixes

@@ -140,3 +140,52 @@ viewer_set_selectize <- function(app, input_id, value) {
 viewer_test_text <- function(path) {
   paste(readLines(path, warn = FALSE), collapse = "\n")
 }
+
+## Shares a view through its Share dialog and returns the JSON it downloads, as
+## text. The real dialog, server request and download run; only the blob is
+## read. The dialog stays open.
+viewer_share_json <- function(app, share_selector) {
+  app$run_js(paste0(
+    "(() => {const original=URL.createObjectURL;window.__testViewJSON=null;",
+    "window.__restoreViewDownload=()=>{URL.createObjectURL=original;",
+    "delete window.__restoreViewDownload;delete window.__testViewJSON;};",
+    "URL.createObjectURL=function(blob){",
+    "if(blob.type.startsWith('application/json'))",
+    "blob.text().then(text=>{window.__testViewJSON=text;});",
+    "return original.call(URL,blob);};})()"
+  ))
+  on.exit(app$run_js("window.__restoreViewDownload()"), add = TRUE)
+  app$click(selector = share_selector)
+  app$wait_for_js(
+    "document.getElementById('cv-config-dialog').open && !document.getElementById('cv-config-download').disabled",
+    timeout = 10000
+  )
+  app$click(selector = "#cv-config-download")
+  app$wait_for_js("window.__testViewJSON !== null", timeout = 15000)
+  app$get_js("window.__testViewJSON")
+}
+
+## Opens a view JSON through the Share dialog's file input, as a user would.
+## The dialog stays open.
+viewer_open_view_json <- function(app, share_selector, json) {
+  app$click(selector = share_selector)
+  app$wait_for_js(
+    "document.getElementById('cv-config-dialog').open",
+    timeout = 10000
+  )
+  app$run_js(sprintf(
+    paste0(
+      "(() => {const input=document.getElementById('coordviews_config_upload');",
+      "const transfer=new DataTransfer();",
+      "transfer.items.add(new File([%s],'view.json',",
+      "{type:'application/json'}));",
+      "input.files=transfer.files;",
+      "input.dispatchEvent(new Event('change',{bubbles:true}));})()"
+    ),
+    jsonlite::toJSON(json, auto_unbox = TRUE)
+  ))
+  app$wait_for_js(
+    "document.getElementById('cv-config-status').classList.contains('is-success')",
+    timeout = 15000
+  )
+}

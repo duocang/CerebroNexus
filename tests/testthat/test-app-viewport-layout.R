@@ -14,29 +14,9 @@ test_that("shared selection actions and layouts survive navigation and resize", 
   # Observe the actual JSON blob after the server has validated the export.
   # Keep the real adapter, Shiny request, download handler and click behavior.
   download_view_config <- function(share_selector) {
-    app$run_js(paste0(
-      "(() => {const original=URL.createObjectURL;window.__testViewJSON=null;",
-      "window.__restoreViewDownload=()=>{URL.createObjectURL=original;",
-      "delete window.__restoreViewDownload;delete window.__testViewJSON;};",
-      "URL.createObjectURL=function(blob){",
-      "if(blob.type.startsWith('application/json'))",
-      "blob.text().then(text=>{window.__testViewJSON=text;});",
-      "return original.call(URL,blob);};})()"
-    ))
-    on.exit(app$run_js("window.__restoreViewDownload()"), add = TRUE)
-    app$click(selector = share_selector)
-    app$wait_for_js(
-      "document.getElementById('cv-config-dialog').open && !document.getElementById('cv-config-download').disabled",
-      timeout = 10000
-    )
-    app$click(selector = "#cv-config-download")
-    app$wait_for_js("window.__testViewJSON !== null", timeout = 15000)
-    config <- jsonlite::fromJSON(
-      app$get_js("window.__testViewJSON"),
-      simplifyVector = FALSE
-    )
+    json <- viewer_share_json(app, share_selector)
     app$click(selector = "#cv-config-close")
-    config
+    jsonlite::fromJSON(json, simplifyVector = FALSE)
   }
 
   app$wait_for_js(

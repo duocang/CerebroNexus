@@ -74,6 +74,8 @@ activate_ir_tab <- function(app, timeout = 60000) {
 ##   * tests that assert INITIAL state ("Group by" empty, Clonal UMAP
 ##     ungrouped) — a reused app carries prior selections;
 ##   * the info-dialog test — it leaves a modal open over the page.
+##     The grouped Clonal UMAP test also relies on an app that has never
+##     opened Linked views, whose server answers Share.
 shared_app <- viewer_shared_app("ir_shared", inst_dir)
 
 test_that("immune_repertoire tab is present with example data (has TCR)", {
@@ -509,7 +511,7 @@ test_that("Clonal UMAP has Show-all toggle and group filters", {
   )))
 })
 
-test_that("Clonal UMAP groups into interactive panels that brush their own cells", {
+test_that("grouped Clonal UMAP panels brush their own cells and share them", {
   local_app_support(inst_dir)
   app <- AppDriver$new(
     inst_dir,
@@ -522,6 +524,7 @@ test_that("Clonal UMAP groups into interactive panels that brush their own cells
   activate_ir_tab(app)
 
   host <- "#ir_clonalUMAP_projection_cell_view_host"
+  share <- ".cerebro-config-open[data-view-id=\"ir_clonalUMAP_projection\"]"
   state <- "window.cerebroSpecialistViews.get('ir_clonalUMAP_projection')"
   visible_boxes <- paste0(
     "Array.from(document.querySelectorAll('",
@@ -577,7 +580,10 @@ test_that("Clonal UMAP groups into interactive panels that brush their own cells
     box$y + box$h * .98
   )
   app$wait_for_js(paste0(state, ".capture().selection.cells.length > 0"))
-  selected <- unlist(app$get_js(paste0(state, ".capture().selection.cells")))
+  selected <- sort(unlist(app$get_js(paste0(
+    state,
+    ".capture().selection.cells"
+  ))))
   chosen <- unique(metadata$sample[match(selected, metadata$cell_barcode)])
   expect_length(chosen, 1L)
   expect_identical(
@@ -588,8 +594,76 @@ test_that("Clonal UMAP groups into interactive panels that brush their own cells
     "document.getElementById('ir_clonalUMAP_number_of_selected_cells').textContent.includes('Selected')"
   )
 
+  ## Share is offered in grouped mode, and the JSON it downloads carries the
+  ## grouping column, the selected cells and the panel they were brushed in.
+  ## This app has never opened Linked views, whose server answers Share.
+  app$wait_for_js(
+    paste0(
+      "(b=>!!b && b.getClientRects().length>0 && !b.disabled)(",
+      "document.querySelector('",
+      share,
+      "'))"
+    ),
+    timeout = 15000
+  )
+  json <- viewer_share_json(app, share)
+  ## The PNG holds every panel; it must still download from the grouped view.
+  app$click(selector = "#cv-config-png")
+  expect_identical(
+    app$get_js("document.getElementById('cv-config-status').textContent"),
+    "PNG download started."
+  )
+  app$click(selector = "#cv-config-close")
+  config <- jsonlite::fromJSON(json, simplifyVector = FALSE)
+  saved_group <- Filter(
+    function(control) identical(control$id, "ir_p_umap_group_by"),
+    config$controls
+  )
+  expect_length(saved_group, 1L)
+  expect_identical(saved_group[[1L]]$values[[1L]], "sample")
+  expect_identical(sort(unlist(config$selection$cells)), selected)
+  expect_identical(config$selection$geometry$panel, 1L)
+
+  ## Reset the page: ungroup and clear the selection.
   app$set_inputs(ir_p_umap_group_by = "", wait_ = FALSE)
-  app$wait_for_js(paste0(visible_boxes, ".length === 1"), timeout = 45000)
+  clear <- paste0(
+    "Array.from(document.querySelectorAll('",
+    host,
+    " .cv-clear-btn')).find(b=>b.getClientRects().length>0)"
+  )
+  app$wait_for_js(
+    paste0(visible_boxes, ".length === 1 && !!", clear),
+    timeout = 45000
+  )
+  app$run_js(paste0(clear, ".click()"))
+  app$wait_for_js(paste0(state, ".capture().selection.cells.length === 0"))
+
+  viewer_open_view_json(app, share, json)
+  app$click(selector = "#cv-config-close")
+
+  ## Grouping comes back first, then the selection lands in its panel.
+  app$wait_for_js(
+    paste0(
+      visible_boxes,
+      ".length === ",
+      panels,
+      " && ",
+      state,
+      ".capture().selection.cells.length === ",
+      length(selected)
+    ),
+    timeout = 45000
+  )
+  expect_identical(
+    app$get_js("document.getElementById('ir_p_umap_group_by').value"),
+    "sample"
+  )
+  restored <- app$get_js(paste0(state, ".capture()"))
+  expect_identical(sort(unlist(restored$selection$cells)), selected)
+  expect_identical(restored$selection$geometry$panel, 1L)
+  app$wait_for_js(
+    "document.getElementById('ir_clonalUMAP_number_of_selected_cells').textContent.includes('Selected')"
+  )
   logs <- app$get_logs()
   expect_false(any(grepl("Error in|Invalid IHDR", logs$message)))
 })
