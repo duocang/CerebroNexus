@@ -864,15 +864,75 @@ ir_sample_meta <- reactive({
   sample_level_meta(data)
 })
 
+## Whether there are two groups to compare, published on change only: another
+## grouping updates the choices of the controls in place (below) instead of
+## rebuilding them and the plot container, which drew the plot a second time.
+ir_paired_scatter_ready <- reactiveVal(NULL)
+observe({
+  viewerPublishChanged(
+    ir_paired_scatter_ready,
+    length(ir_compare_groups()) >= 2
+  )
+})
+observeEvent(
+  ir_sample_meta(),
+  {
+    choices <- ir_paired_scatter_choices(ir_sample_meta())
+    pair_choices <- c("Manual group comparison" = "", choices$compare_candidates)
+    pair_mode <- isolate(input$ir_pair_compare)
+    req(!is.null(pair_mode))
+    if (!(pair_mode %in% pair_choices)) {
+      pair_mode <- ""
+    }
+    updateSelectInput(
+      session,
+      "ir_pair_compare",
+      choices = pair_choices,
+      selected = pair_mode
+    )
+    facet <- isolate(input$ir_pair_facet)
+    if (!is.null(facet)) {
+      updateSelectInput(
+        session,
+        "ir_pair_facet",
+        choices = c("(none)" = "", choices$facet_candidates),
+        selected = if (facet %in% choices$facet_candidates) facet else ""
+      )
+    }
+  },
+  ignoreInit = TRUE
+)
+observeEvent(
+  ir_compare_groups(),
+  {
+    groups <- ir_compare_groups()
+    req(length(groups) >= 2)
+    x <- isolate(input$ir_pair_x_group)
+    y <- isolate(input$ir_pair_y_group)
+    req(!is.null(x), !is.null(y))
+    if (!(x %in% groups)) {
+      x <- groups[1]
+    }
+    if (!(y %in% groups) || identical(y, x)) {
+      y <- setdiff(groups, x)[[1]]
+    }
+    updateSelectInput(session, "ir_pair_x_group", choices = groups, selected = x)
+    updateSelectInput(session, "ir_pair_y_group", choices = groups, selected = y)
+  },
+  ignoreInit = TRUE
+)
+
 output$ir_ui_pairedScatter <- renderUI({
-  groups <- ir_compare_groups()
-  if (length(groups) < 2) {
+  ready <- ir_paired_scatter_ready()
+  req(!is.null(ready))
+  groups <- isolate(ir_compare_groups())
+  if (!isTRUE(ready)) {
     return(div(
       class = "alert alert-info",
       "Paired scatter needs at least two groups. Choose a multi-group column in Compare by."
     ))
   }
-  meta <- ir_sample_meta()
+  meta <- isolate(ir_sample_meta())
   choices <- ir_paired_scatter_choices(meta)
   pair_choices <- c("Manual group comparison" = "", choices$compare_candidates)
   pair_mode <- input$ir_pair_compare

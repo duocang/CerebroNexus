@@ -871,10 +871,11 @@ test_that("a new grouping draws Paired scatter and Compare once, from its own gr
   count_outputs()
   regroup()
   ## One plot from the new groups, no "Select an X group" step, and the
-  ## controls rebuilt once (for the new groups), not again for their values.
+  ## controls (and the plot container in them) kept: their choices are
+  ## updated in place, so the plot is not drawn again into a new container.
   expect_identical(counted("irValues", "ir_plot_pairedScatter"), 1)
   expect_identical(counted("irErrors", "ir_plot_pairedScatter"), 0)
-  expect_identical(counted("irValues", "ir_ui_pairedScatter"), 1)
+  expect_identical(counted("irValues", "ir_ui_pairedScatter"), 0)
 
   app$set_inputs(ir_tabs = "Compare", wait_ = FALSE)
   app$wait_for_js(
