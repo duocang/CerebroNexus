@@ -248,7 +248,9 @@ observe({
     list(spatial_panel, umap_panel)
   )
   levels <- if (categorical) sort(unique(group)) else character()
-  appearance <- current_scatter_defaults()
+  ## The browser applies point size, opacity and "% of cells" itself; an edit
+  ## must not rebuild and resend the frame.
+  appearance <- isolate(current_scatter_defaults())
   cerebroCellViewRender(
     "trekker_projection",
     meta = list(
