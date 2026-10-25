@@ -118,7 +118,12 @@ test_that("IR controls use descriptor chains and retain legacy detection", {
   env$ir_data_raw <- function() stop("unexpected sidecar hydration")
   env$detect_chains <- function(raw) if (is.null(raw)) character() else "TRD"
   env$ir_global_control_visible <- function(...) TRUE
-  env$getMetaData <- function() data.frame(group = character())
+  ## Column names come from the first-frame metadata; the full table would
+  ## read every cell name of a thin CRB from its H5 file.
+  env$viewerProjectionFirstFrameMetadata <- function() {
+    data.frame(group = character())
+  }
+  env$getMetaData <- function() stop("unexpected metadata hydration")
   env$getGroups <- function() c("group", "missing")
   env$input <- list(ir_groupBy = "group")
   env$ir_flow_controls <- function(x) do.call(shiny::tagList, x)

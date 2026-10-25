@@ -55,8 +55,11 @@ output$ir_main_params_UI <- shiny::bindEvent(
     # rather than only columns embedded in the IR table itself.
     available_groups <- character(0)
     if (ir_global_control_visible("ir_groupBy", tab)) {
+      # Column names only: the first-frame metadata has every column but the
+      # cell names, which a thin CRB reads from its H5 file and checks when
+      # the full table is hydrated (seconds for 398K cells).
       metadata_cols <- tryCatch(
-        colnames(getMetaData()),
+        colnames(viewerProjectionFirstFrameMetadata()),
         error = function(e) character()
       )
       data_cols <- union(
