@@ -1014,7 +1014,8 @@ ir_paired_scatter_panel <- function(
   x_axis,
   y_axis,
   title,
-  show_title = TRUE
+  show_title = TRUE,
+  group_by = NULL
 ) {
   dot_size <- ir_param("ir_p_dot_size", "total")
   needed <- unique(c(
@@ -1031,6 +1032,7 @@ ir_paired_scatter_panel <- function(
     chain = pars$chain,
     x.axis = x_axis,
     y.axis = y_axis,
+    group.by = group_by,
     dot.size = dot_size,
     graph = ir_param("ir_p_graph", "proportion"),
     exportTable = FALSE,
@@ -1087,7 +1089,9 @@ output$ir_plot_pairedScatter <- plotly::renderPlotly({
           x,
           y,
           paste(x, "vs", y),
-          show_title = FALSE
+          show_title = FALSE,
+          ## X and Y are levels of the grouping column, not samples.
+          group_by = pars$groupBy
         )
       } else {
         req(!is.null(meta))

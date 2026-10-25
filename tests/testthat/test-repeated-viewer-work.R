@@ -267,3 +267,39 @@ test_that("paired scatter retains a third dot-size sample", {
     ggplot2::ggplot_build(subset)$data
   )
 })
+
+test_that("paired scatter compares levels of the grouping column", {
+  skip_if_not_installed("scRepertoire")
+  env <- new.env(parent = globalenv())
+  repeat_definitions(
+    viewer_test_path("immune_repertoire", "visualizations.R"),
+    env
+  )
+  env$IR_PALETTE <- "inferno"
+  env$ir_param <- function(name, default) default
+  raw <- list(
+    s1 = data.frame(
+      barcode = c("a", "b", "c"),
+      CTgene = c("x", "x", "y"),
+      cell_type = c("T", "T", "B")
+    ),
+    s2 = data.frame(
+      barcode = c("d", "e"),
+      CTgene = c("x", "z"),
+      cell_type = c("B", "T")
+    )
+  )
+  pars <- list(cloneCall = "gene", chain = "both")
+  ## X and Y are cell types, not samples: without group.by scRepertoire finds
+  ## no such list elements and fails ("'names' attribute [2] ...").
+  plot <- env$ir_paired_scatter_panel(
+    raw,
+    pars,
+    "T",
+    "B",
+    "T vs B",
+    group_by = "cell_type"
+  )
+  points <- ggplot2::ggplot_build(plot)$data[[1]]
+  expect_gt(nrow(points), 0L)
+})
