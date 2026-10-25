@@ -1101,10 +1101,9 @@
     return CBGeom.screenToUnit(p.view, panelRect(p), lasso);
   }
   function lassoToScreen(p) {
-    var lasso = p.lassoData || p.lasso;
-    if (!lasso || !p._SX || !p._SY) return lasso;
-    if (!p.lassoData) return lasso;
-    return CBGeom.unitToScreen(p.view, panelRect(p), lasso);
+    if ((p.drag && p.moved) || !p.lassoData) return p.lasso;
+    if (!p._SX || !p._SY) return p.lassoData;
+    return CBGeom.unitToScreen(p.view, panelRect(p), p.lassoData);
   }
 
   // The rotation project() applies, as a function. Anything that has to land
@@ -4626,12 +4625,9 @@
         p.canvas.classList.add('cv-grabbing');
         return;
       }
-      // a fresh brush supersedes any committed lasso (this panel's is replaced,
-      // the other panel's is dropped)
-      panels.forEach(function (o) {
-        if (o !== p) { o.lasso = null; o.lassoData = null; }
-      });
-      p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start]; p.lassoData = null;
+      // The committed outline stays until this brush selects (it replaces every
+      // panel's) or comes up empty (the selection goes); a click keeps it.
+      p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start];
     });
     window.addEventListener('mousemove', function (e) {
       if (p.orbiting) {
@@ -4700,8 +4696,7 @@
       }
       if (!p.drag) return;
       p.drag = false;
-      if (!D || !p.ok) { p.lasso = null; p.lassoData = null; return; }  // not projected yet
-      var keep = false;
+      if (!D || !p.ok) { p.lasso = null; return; }  // not projected yet
       if (p.moved && p.lasso && p.lasso.length > 2) {
         ensureScreenProjection(p);
         var s = new Set();
@@ -4712,9 +4707,11 @@
         // BEFORE setSelection so its drawAll() drops the stale orange pick ring
         // (that ring is not gated on `!sel`). An empty lasso keeps the pick.
         // a lasso is a different question from "tell me about this one cell"
+        var brushed = s.size ? lassoToUnit(p, p.lasso) : null;
+        clearLassos();
         if (s.size) {
-          pick = null; unpinTip(); closeCard(); setSelection(s, p);
-          p.lassoData = lassoToUnit(p, p.lasso); keep = true;
+          pick = null; unpinTip(); closeCard();
+          p.lassoData = brushed; setSelection(s, p);
         } else { setSelection(null); }
       } else {
         var m = pos(e), k = nearest(p, m[0], m[1]);
@@ -4727,7 +4724,7 @@
         // it is also the click that undoes it.
         pickCell(p, k);
       }
-      if (!keep) { p.lasso = null; p.lassoData = null; }
+      p.lasso = null;
       draw(p);
     });
   }
