@@ -78,7 +78,7 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
         function apply() {
           if (!window.CerebroDatasetContext?.accepts(message)) return;
           var source = document.getElementById('expression_genes_input')?.selectize;
-          if (!source || typeof source.settings.load !== 'function' || source.loading) {
+          if (!window.CerebroGeneSelector?.ready(source)) {
             if (++attempts < 400) setTimeout(apply, 25);
             return;
           }
@@ -102,8 +102,8 @@ output[["expression_projection_input_type_UI"]] <- renderUI({
           var controls = ['r', 'g', 'b'].map(function (channel) {
             return document.getElementById('expression_rgb_gene_' + channel)?.selectize;
           });
-          // A late initial search response must not clear the seeded channels.
-          if (controls.some(c => !c || typeof c.settings.load !== 'function' || c.loading)) {
+          // Seed the channels once their gene lists are in.
+          if (!controls.every(c => window.CerebroGeneSelector?.ready(c))) {
             setTimeout(apply, 25);
             return;
           }

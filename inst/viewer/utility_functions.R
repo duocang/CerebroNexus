@@ -4746,48 +4746,27 @@ canonicalGeneSelection <- function(selected, genes) {
 ## sort of a whole transcriptome takes about half a second. Share one.
 .viewer_sorted_gene_choices <- viewerMemoOne()
 
-## Server-side search for gene selectors, the protocol of
-## updateSelectizeInput(server = TRUE): the first `maxop` genes matching every
-## word of `query` (case-insensitive), plus the selected genes.
+## Gene selectors search the whole gene list in the browser (www/gene-selector.js).
+## A server-side search answered from the first 1000 genes until the typed
+## text's request returned, so typing "CD4" highlighted ABCD4 and Enter chose
+## it; text typed before the search existed was never searched at all. The
+## list is about 270 KB of JSON for 28,000 genes; encode it once per process.
+.viewer_gene_choices_json <- viewerMemoOne()
+
 viewerGeneChoicesJSON <- function(data, req) {
-  query <- shiny::parseQueryString(req$QUERY_STRING %||% "")
-  words <- unique(strsplit(tolower(query$query %||% ""), "\\s+")[[1L]])
-  words <- words[nzchar(words)]
-  limit <- suppressWarnings(as.integer(query$maxop))
-  if (!length(limit) || is.na(limit)) {
-    limit <- 1000L
-  }
-  index <- seq_along(data$genes)
-  if (length(words)) {
-    lower <- tolower(data$genes)
-    keep <- rep(TRUE, length(lower))
-    for (word in words) {
-      keep <- keep & grepl(word, lower, fixed = TRUE)
-    }
-    index <- which(keep)
-  }
-  index <- utils::head(index, limit)
-  selected <- stats::na.omit(match(data$selected, data$genes))
-  if (length(selected)) {
-    index <- sort(utils::head(unique(c(selected, index)), limit))
-  }
-  genes <- data$genes[index]
   shiny::httpResponse(
     200L,
     "application/json",
-    enc2utf8(as.character(jsonlite::toJSON(
-      data.frame(label = genes, value = genes, stringsAsFactors = FALSE)
-    ))),
+    .viewer_gene_choices_json(list(data$genes), function() {
+      enc2utf8(as.character(jsonlite::toJSON(as.character(data$genes))))
+    }),
     headers = list("Cache-Control" = "private, max-age=3600")
   )
 }
 
-## One search URL per gene list and selection in a session. The gene selectors
-## of a page (single gene, R/G/B channels) share it, so their identical first
-## requests reach R once and the rest come from the browser's HTTP cache.
-viewerGeneChoicesUrl <- function(session, genes, selected = NULL) {
-  selected <- unique(as.character(unlist(selected, use.names = FALSE)))
-  selected <- selected[!is.na(selected) & nzchar(selected)]
+## One gene list URL per gene list in a session. The gene selectors of a page
+## (single gene, R/G/B channels) share it, so the list reaches the browser once.
+viewerGeneChoicesUrl <- function(session, genes) {
   cache <- session$userData$cerebro_gene_choice_urls
   if (is.null(cache)) {
     cache <- session$userData$cerebro_gene_choice_urls <- new.env(
@@ -4797,25 +4776,26 @@ viewerGeneChoicesUrl <- function(session, genes, selected = NULL) {
     cache$count <- 0L
   }
   for (entry in cache$entries) {
-    if (identical(entry$genes, genes) && identical(entry$selected, selected)) {
+    if (identical(entry$genes, genes)) {
       return(entry$url)
     }
   }
   cache$count <- cache$count + 1L
   url <- session$registerDataObj(
     paste0("cerebro-gene-choices-", cache$count),
-    list(genes = genes, selected = selected),
+    list(genes = genes),
     viewerGeneChoicesJSON
   )
   cache$entries <- c(
-    list(list(genes = genes, selected = selected, url = url)),
+    list(list(genes = genes, url = url)),
     utils::head(cache$entries, 7L)
   )
   url
 }
 
-## updateSelectizeInput(session, inputId, choices, selected, server = TRUE),
-## with a search URL shared by every selector of the same genes and selection.
+## Like updateSelectizeInput(session, inputId, choices, selected), but the
+## browser fetches the choices from a URL shared by every selector of the same
+## genes and searches them itself (www/gene-selector.js).
 viewerUpdateGeneSelector <- function(session, inputId, choices, selected) {
   session$sendInputMessage(
     inputId,
@@ -4823,7 +4803,7 @@ viewerUpdateGeneSelector <- function(session, inputId, choices, selected) {
       Negate(is.null),
       list(
         value = unname(selected),
-        url = viewerGeneChoicesUrl(session, choices, selected)
+        cerebro_gene_choices = viewerGeneChoicesUrl(session, choices)
       )
     )
   )
@@ -4907,7 +4887,7 @@ serverSideGeneSelector <- function(
       if (!isTRUE(refresh_on_activation)) registered_dataset <<- dataset
     }
 
-    ## Dynamic renderUI() + updateSelectizeInput(server=TRUE) race on the
+    ## Dynamic renderUI() + a selector's input message race on the
     ## client: the selectize binding initialises asynchronously, so an update
     ## message can arrive while the binding doesn't yet exist and gets silently
     ## dropped. onFlushed fires right after R's flush but before the browser

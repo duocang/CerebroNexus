@@ -322,7 +322,7 @@ test_that("genes chosen in RGB channels carry over to the gene list", {
   app$wait_for_js(
     paste0(
       "!!document.getElementById('expression_projection_genes_in_separate_panels') && ",
-      "typeof document.getElementById('expression_genes_input')?.selectize?.settings.load === 'function'"
+      "window.CerebroGeneSelector?.ready(document.getElementById('expression_genes_input')?.selectize)"
     ),
     timeout = 30000
   )
