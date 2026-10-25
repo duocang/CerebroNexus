@@ -1200,7 +1200,17 @@ cerebroCellViewMessage <- function(
 
   nested <- identical(meta$color_type, "categorical") && is.null(data$panels)
   for (field in intersect(
-    c("x", "y", "z", "selection_key", "color", "group", "point_sizes"),
+    c(
+      "x",
+      "y",
+      "z",
+      "selection_key",
+      "selection_index",
+      "color",
+      "group",
+      "group_code",
+      "point_sizes"
+    ),
     names(data)
   )) {
     value <- data[[field]]

@@ -4103,6 +4103,14 @@
           esc(lines.join('\n')).replace(/\n/g, '<br>') + '</div>';
       }
       var raw = singleSpace && singleNestedValue(singleSpace, singleSpace._hover, i);
+      var codedGroup = !raw && activeSingleView && activeSingleView.data &&
+        activeSingleView.data.group_code != null && catOf(colorBy);
+      if (codedGroup) {
+        // Coded frames carry no per-cell text: name the cell and its colour level.
+        var codedLevel = codedGroup.levels[codedGroup.values[i]];
+        raw = 'Cell: ' + cellLabel(i) + '\n' + activeSingleView.meta.color_variable +
+          ': ' + (codedLevel == null ? 'NA' : codedLevel);
+      }
       var text = String(raw || cellLabel(i))
         .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
       return '<div class="cv-tip-row">' + esc(text).replace(/\n/g, '<br>') + '</div>';
@@ -7208,6 +7216,31 @@
       return resolved;
     });
   }
+  // A frame may name its cells by canonical row (`data.selection_index`) with
+  // the cell-name resource instead of carrying every name: resolve them before
+  // the frame is used, so everything downstream sees `data.selection_key`.
+  function frameNeedsCellNames(message) {
+    var data = message && message.data;
+    return !!(data && data.selection_key == null && data.selection_index != null &&
+      data.cell_names_resource);
+  }
+  function resolveFrameCellNames(message) {
+    var data = message && message.data;
+    if (!frameNeedsCellNames(message)) return Promise.resolve(message);
+    return fetchCellNames(data.cell_names_resource, message.dataset_identity).then(function (entry) {
+      var names = entry.names, rows = data.selection_index;
+      var keys = new Array(rows.length);
+      for (var i = 0; i < rows.length; i++) {
+        var name = names[rows[i]];
+        if (name === undefined) throw new Error('Cell index out of range');
+        keys[i] = name;
+      }
+      var resolved = Object.assign({}, data, {selection_key: keys});
+      delete resolved.selection_index;
+      delete resolved.cell_names_resource;
+      return Object.assign({}, message, {data: resolved});
+    });
+  }
   var projectionResourceCache = new Map();
   function fetchProjectionResource(resource, expectedCells) {
     var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
@@ -8157,6 +8190,14 @@
     });
     return out;
   }
+  // Position of each of `keys` in the current view's cells (null if absent).
+  function alignedRows(keys) {
+    var index = singleIndex();
+    return (keys || []).map(function (key) {
+      var at = index.get(String(key));
+      return at == null ? null : at;
+    });
+  }
   function buildSpecialistPanels(id, payload) {
     var meta = payload.meta || {}, data = payload.data || {},
       extra = payload.extra || {};
@@ -8166,10 +8207,20 @@
     var spaces = [], modes = {}, mode;
     if (meta.color_type === 'categorical') {
       var levels = Array.isArray(meta.traces) ? meta.traces.map(String) : [];
-      var rawGroups = alignFlatValues(keys, data.group || [], null);
-      var groups = rawGroups.map(function (value) {
-        var at = levels.indexOf(String(value)); return at < 0 ? -1 : at;
-      });
+      var groups;
+      if (data.group_code != null) {
+        // Codes index the traces directly, in the frame's cell order.
+        groups = emptyVector(-1);
+        alignedRows(keys).forEach(function (at, i) {
+          var code = Number(data.group_code[i]);
+          if (at != null) groups[at] = code >= 0 && code < levels.length ? code : -1;
+        });
+      } else {
+        var rawGroups = alignFlatValues(keys, data.group || [], null);
+        groups = rawGroups.map(function (value) {
+          var at = levels.indexOf(String(value)); return at < 0 ? -1 : at;
+        });
+      }
       var groupName = '__single_group__' + id;
       var group = {
         values: groups,
@@ -8189,9 +8240,14 @@
       );
       mode = FIELD_PREFIX + fieldName;
     }
+    var frameRows = null;
     data.panels.forEach(function (panel, panelIndex) {
-      var panelKeys = Array.isArray(panel.selection_key)
-        ? panel.selection_key : keys;
+      // A slice panel draws rows [start, start + count) of the frame's x, y
+      // and keys instead of carrying its own copies.
+      var slice = panel.start != null && panel.count != null;
+      var start = slice ? Number(panel.start) : 0, count = slice ? Number(panel.count) : 0;
+      var panelKeys = slice ? keys.slice(start, start + count)
+        : Array.isArray(panel.selection_key) ? panel.selection_key : keys;
       var t = Math.max(0, Math.min(1, Number(panel.transition) || 0));
       var xs = panel.x || [];
       var ys = panel.y || [];
@@ -8203,14 +8259,23 @@
           return Number(value) + (Number(panel.to_y[i]) - Number(value)) * t;
         });
       }
+      var sliceValues = function (values) {
+        var out = emptyVector(null);
+        frameRows = frameRows || alignedRows(keys);
+        for (var j = 0; j < count; j++) {
+          var at = frameRows[start + j], value = values && values[start + j];
+          if (at != null) out[at] = value != null ? value : null;
+        }
+        return out;
+      };
       var spaceId = 'single::' + id + '::' + (panel.id || panelIndex);
       var space = {
         id: spaceId,
         _role: panel.id || null,
         label: panel.label || panel.id || id,
-        x: alignFlatValues(panelKeys, xs, null),
-        y: alignFlatValues(panelKeys, ys, null),
-        _hover: alignFlatValues(panelKeys, panel.hover || [], ''),
+        x: slice ? sliceValues(data.x) : alignFlatValues(panelKeys, xs, null),
+        y: slice ? sliceValues(data.y) : alignFlatValues(panelKeys, ys, null),
+        _hover: slice ? emptyVector('') : alignFlatValues(panelKeys, panel.hover || [], ''),
         _hoverEnabled: true,
         _hoverMask: emptyVector(true)
       };
@@ -9570,7 +9635,9 @@
         return;
       }
       if (!datasetMessageFresh(message)) return;
-      hydrateSingleProjectionResource(message).then(function (hydrated) {
+      (frameNeedsCellNames(message)
+        ? resolveFrameCellNames(message).then(hydrateSingleProjectionResource)
+        : hydrateSingleProjectionResource(message)).then(function (hydrated) {
         if (!datasetMessageFresh(hydrated)) return;
         if (hydrated.dataset_identity) {
           window.cerebroSavedViewDataset = hydrated.dataset_identity;
@@ -10759,7 +10826,10 @@
       }
       message = reuseSharedSingleProjection(message);
       if (!message) return;
-      renderSingle(message);
+      if (!frameNeedsCellNames(message)) { renderSingle(message); return; }
+      resolveFrameCellNames(message).then(function (resolved) {
+        if (datasetMessageFresh(resolved)) renderSingle(resolved);
+      }, function () {});
     });
     Shiny.addCustomMessageHandler('cell_view_background', function (message) {
       updateSingleBackground(message);

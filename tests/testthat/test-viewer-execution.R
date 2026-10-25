@@ -98,6 +98,10 @@ test_that("Zooming one linked panel redraws only that panel", {
   viewer_browser_test("zoomOnePanel")
 })
 
+test_that("Slice panels draw shared rows named through the cell-name resource", {
+  viewer_browser_test("slicePanels")
+})
+
 test_that("An appearance patch with the drawn values does not redraw", {
   viewer_browser_test("appearanceUnchanged")
 })

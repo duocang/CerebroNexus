@@ -237,6 +237,9 @@ ir_umap_grouped_data <- function(df, group_by) {
     match(df$barcode, md$cell_barcode)
   }
   df$barcode <- as.character(md$cell_barcode[idx])
+  ## Canonical (metadata) row of each cell: the grouped frame can name cells by
+  ## row against the cell-name resource instead of carrying every barcode.
+  df$.cell_row <- as.integer(idx)
   group_values <- as.character(md[[group_by]][idx])
   group_levels <- tryCatch(getGroupLevels(group_by), error = function(e) NULL)
   if (is.null(group_levels) || length(group_levels) == 0) {
@@ -374,18 +377,23 @@ output[["ir_selection_status_UI"]] <- renderUI({
 ## One panel per group, all drawn by the same engine view. `df` has one row per
 ## cell (x, y, expansion, barcode and the group in `.umap_group`), so every cell
 ## belongs to exactly one panel and a brush selects the barcodes drawn inside it.
-## Cells without the receptor come first and the most expanded clones last, so
-## they are painted on top. Panels share axis ranges and are titled with their
-## group and the number of cells that carry the receptor.
+## Rows are ordered by group, so each panel is one slice (`start`, 0-based, and
+## `count`) of the frame's x, y and keys; the frame carries every cell once.
+## Within a panel, cells without the receptor come first and the most expanded
+## clones last, so they are painted on top. Panels share axis ranges and are
+## titled with their group and the number of cells that carry the receptor.
 ir_clonal_umap_panels <- function(df, projection) {
   present <- as.character(df$expansion)
   present[is.na(present)] <- "Other cells"
+  groups <- df$.umap_group
   order_rows <- order(
+    as.integer(groups),
     !is.na(df$expansion),
     as.integer(df$expansion),
     na.last = FALSE
   )
   df <- df[order_rows, , drop = FALSE]
+  groups <- groups[order_rows]
   label <- present[order_rows]
   levels <- c(
     if (any(label == "Other cells")) "Other cells",
@@ -401,14 +409,13 @@ ir_clonal_umap_panels <- function(df, projection) {
   }
   x_range <- pad(df$x)
   y_range <- pad(df$y)
-  axes <- ir_projection_axis_names(projection)
-  keys <- as.character(df$barcode)
-  groups <- df$.umap_group
+  counts <- tabulate(as.integer(groups), nbins = nlevels(groups))
+  starts <- cumsum(c(0L, counts))[seq_along(counts)]
   panels <- lapply(seq_along(levels(groups)), function(index) {
-    rows <- which(groups == levels(groups)[[index]])
-    if (!length(rows)) {
+    if (!counts[[index]]) {
       return(NULL)
     }
+    rows <- starts[[index]] + seq_len(counts[[index]])
     carriers <- sum(!is.na(df$expansion[rows]))
     list(
       id = paste0("group", index),
@@ -419,29 +426,19 @@ ir_clonal_umap_panels <- function(df, projection) {
         if (carriers == 1L) " cell" else " cells",
         " with receptor"
       ),
-      selection_key = keys[rows],
-      x = as.numeric(df$x[rows]),
-      y = as.numeric(df$y[rows]),
+      start = as.integer(starts[[index]]),
+      count = as.integer(counts[[index]]),
       x_range = x_range,
-      y_range = y_range,
-      hover = paste0(
-        keys[rows],
-        "<br>",
-        label[rows],
-        "<br>",
-        axes[[1]],
-        ": ",
-        formatC(df$x[rows], format = "f", digits = 2),
-        "<br>",
-        axes[[2]],
-        ": ",
-        formatC(df$y[rows], format = "f", digits = 2)
-      )
+      y_range = y_range
     )
   })
   list(
-    keys = keys,
+    keys = as.character(df$barcode),
+    rows = if (".cell_row" %in% names(df)) as.integer(df$.cell_row),
+    x = as.numeric(df$x),
+    y = as.numeric(df$y),
     group = label,
+    group_code = match(label, levels) - 1L,
     levels = levels,
     colors = colors,
     panels = panels[!vapply(panels, is.null, logical(1))]
@@ -589,6 +586,26 @@ observe(
     if (grouped) {
       df <- grouping$df
       grouped_view <- ir_clonal_umap_panels(df, projection)
+      ## Name cells by canonical row when the browser can resolve the rows from
+      ## the cell-name resource; otherwise the frame carries the barcodes.
+      names_resource <- if (
+        !is.null(grouped_view$rows) &&
+          exists("viewerCellNamesResource", mode = "function")
+      ) {
+        viewerCellNamesResource()
+      }
+      by_row <- is.list(names_resource) &&
+        !anyNA(grouped_view$rows) &&
+        all(grouped_view$rows >= 1L) &&
+        all(grouped_view$rows <= as.integer(names_resource$cells))
+      cell_names <- if (by_row) {
+        list(
+          selection_index = grouped_view$rows - 1L,
+          cell_names_resource = names_resource
+        )
+      } else {
+        list(selection_key = grouped_view$keys)
+      }
       isolate(
         cerebroCellViewRender(
           "ir_clonalUMAP_projection",
@@ -607,9 +624,10 @@ observe(
               keep_square = keep_square
             )
           ),
-          list(
-            selection_key = grouped_view$keys,
-            group = grouped_view$group,
+          c(cell_names, list(
+            group_code = grouped_view$group_code,
+            x = grouped_view$x,
+            y = grouped_view$y,
             panels = grouped_view$panels,
             point_size = point_size,
             point_opacity = alpha,
@@ -619,7 +637,7 @@ observe(
               list()
             },
             reset_axes = TRUE
-          ),
+          )),
           list(hoverinfo = "text"),
           dataset_context = dataset_context
         )

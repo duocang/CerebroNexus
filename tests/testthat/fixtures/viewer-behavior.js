@@ -446,6 +446,28 @@ window.viewerScenarios = {
     t.equal(t.paints.filter(p=>p.canvas.id==='cv-cv-b').length,0,'Resetting one view leaves the other');
     return true;
   },
+  async slicePanels() {
+    const t=viewerTest;t.dataset();const id='trajectory_projection';
+    const identity={cell_count:5,cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),
+      cell_order_fingerprint:'md5-cell-order-v1:'+'b'.repeat(32),pack_dataset_fingerprint:'md5-crb-v1:'+'c'.repeat(32)};
+    const resource={protocol:'canonical-cell-names-v1',cells:5,bytes:20,
+      url:URL.createObjectURL(new Blob(['c-0\0c-1\0c-2\0c-3\0c-4\0'])),
+      dataset_fingerprint:identity.cell_fingerprint,cell_order_fingerprint:identity.cell_order_fingerprint,
+      pack_dataset_fingerprint:identity.pack_dataset_fingerprint};
+    const range={x_range:[-1,11],y_range:[-1,11]};
+    await t.render({selection_key:null,selection_index:new Int32Array([4,0,3,1,2]),cell_names_resource:resource,
+      group_code:new Int8Array([0,1,0,1,1]),x:[0,10,0,5,10],y:[0,10,10,5,0],color:null,
+      panels:[{id:'group1',label:'A',start:0,count:2,...range},{id:'group2',label:'B',start:2,count:3,...range}]},
+      {color_type:'categorical',color_variable:'expansion',traces:['Other cells','Single'],
+        group_colors:['#d9d9d9','#ff0000']},id,{dataset_identity:identity},true);
+    for(let i=0;i<5;i++)await t.settle();
+    t.equal(t.arcs('cv-cv-a').length,2,'The first panel draws its slice');
+    t.equal(t.arcs('cv-cv-b').length,3,'The second panel draws its slice');
+    const tips=[await t.hover(0),await t.hover(1)].join(' ');
+    t.check(tips.includes('Cell: c-4')&&tips.includes('expansion: Other cells'),'Rows are named and coloured by code');
+    t.check(tips.includes('Cell: c-0')&&tips.includes('expansion: Single'),'Rows are named and coloured by code');
+    return true;
+  },
   async appearanceUnchanged() {
     const t=viewerTest;t.dataset();const id='overview_projection';
     await t.render({},{},id);
