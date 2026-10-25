@@ -8928,6 +8928,26 @@
     return singleViews[cacheKey];
   }
 
+  // The HLA network's legend is a row above its canvas, sent with the outputs
+  // of the server flush that also sends the frame. The binary frame arrives
+  // first: drawn at once, it is drawn again when the new legend resizes the
+  // canvas. While that flush is still busy, draw it once its outputs are in:
+  // Shiny sends them right after "idle", so wait two frames past it.
+  var OUTPUT_SIZED_VIEWS = ['hla_motif_network'];
+  function renderSingleAfterOutputs(message) {
+    if (OUTPUT_SIZED_VIEWS.indexOf(message.id) >= 0 && window.jQuery &&
+        document.documentElement.classList.contains('shiny-busy')) {
+      window.jQuery(document).one('shiny:idle', function () {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            if (datasetMessageFresh(message)) renderSingle(message);
+          });
+        });
+      });
+      return;
+    }
+    renderSingle(message);
+  }
   function renderSingle(message) {
     if (!message || !message.id || !datasetMessageFresh(message)) return false;
     var api = datasetContextApi();
@@ -9733,7 +9753,7 @@
         if (hydrated.dataset_identity) {
           window.cerebroSavedViewDataset = hydrated.dataset_identity;
         }
-        renderSingle(hydrated);
+        renderSingleAfterOutputs(hydrated);
       }).catch(function () {
         if (!datasetMessageFresh(message)) return;
         var failed = message.data && (
