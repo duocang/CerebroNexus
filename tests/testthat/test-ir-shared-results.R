@@ -103,6 +103,65 @@ test_that("an immune repertoire without heavy chains skips the isotype table", {
   expect_error(scope$bcr_isotype_plot(bcr), "isotype table was built")
 })
 
+test_that("Abundance lines match plot_ly's split and colour mapping", {
+  scope <- new.env(parent = globalenv())
+  eval(
+    viewer_r_assignment(
+      viewer_test_path("immune_repertoire", "visualizations.R"),
+      "ir_clonal_abundance_plotly"
+    ),
+    scope
+  )
+  scope$`%>%` <- dplyr::`%>%`
+  scope$cerebro_plotly_axis <- function(...) list()
+  scope$cerebro_plotly_hoverlabel <- function() list()
+  scope$cerebro_plotly_theme <- function() list(transparent = "rgba(0,0,0,0)")
+  scope$cerebro_plotly_toolbar <- identity
+  for (n_samples in c(2L, 5L, 12L)) {
+    samples <- sprintf("s%02d", rev(seq_len(n_samples)))
+    counts <- data.frame(
+      sample = rep(samples, each = 2L),
+      abundance = rep(c(1L, 3L), n_samples),
+      n_clones = seq_len(2L * n_samples)
+    )
+    built <- plotly::plotly_build(scope$ir_clonal_abundance_plotly(
+      counts
+    ))$x$data
+    counts$hover <- paste0(
+      "<b>",
+      counts$sample,
+      "</b><br>",
+      "Abundance: ",
+      formatC(counts$abundance, format = "d"),
+      "<br>",
+      "Clones: ",
+      formatC(counts$n_clones, format = "d")
+    )
+    expected <- suppressWarnings(plotly::plotly_build(plotly::plot_ly(
+      counts,
+      x = ~abundance,
+      y = ~n_clones,
+      split = ~sample,
+      color = ~sample,
+      type = "scatter",
+      mode = "lines",
+      text = ~hover,
+      hoverinfo = "text"
+    )))$x$data
+    expect_length(built, length(expected))
+    field <- function(traces, f, ...) lapply(traces, f, ...)
+    expect_identical(field(built, `[[`, "name"), field(expected, `[[`, "name"))
+    expect_equal(field(built, `[[`, "x"), field(expected, `[[`, "x"))
+    expect_equal(field(built, `[[`, "y"), field(expected, `[[`, "y"))
+    expect_identical(
+      field(built, function(t) as.character(t$text)),
+      field(expected, function(t) as.character(t$text))
+    )
+    colour <- function(t) as.character(t$line$color)
+    expect_identical(field(built, colour), field(expected, colour))
+  }
+})
+
 test_that("sessions opening the same data set files share IR plots", {
   render_value <- function(expr, ...) {
     shiny::reactive(substitute(expr), env = parent.frame(), quoted = TRUE)
