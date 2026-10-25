@@ -10549,7 +10549,10 @@
       Object.keys(scatterControlFields).forEach(function (id) {
         setLinkedSliderValue(id, message.values[scatterControlFields[id]]);
       });
+      // The echo of an edit this page already drew changes nothing on screen.
+      var drawn = [ps, pointOpacity, pctShow];
       syncSharedScatter();
+      if (drawn[0] === ps && drawn[1] === pointOpacity && drawn[2] === pctShow) return;
       if (D && (!singleActive || singleClientPercentage())) { applyActiveChange(); }
       else if (D && singleActive !== 'spatial_projection') { drawAll(); }
     });
