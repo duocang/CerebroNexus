@@ -10714,8 +10714,10 @@
       if (Object.prototype.hasOwnProperty.call(message.values, 'keep_square')) {
         keepPlotsSquare = !!message.values.keep_square;
       }
-      if (Object.prototype.hasOwnProperty.call(message.values, 'keep_square')) resizeAll();
-      drawAll();
+      // A layout change draws in resizeAll(); draw here only when it did not.
+      var resized = Object.prototype.hasOwnProperty.call(message.values, 'keep_square') &&
+        resizeAll();
+      if (!resized) drawAll();
       window.dispatchEvent(new CustomEvent('cerebro:view-appearance', { detail: {
         id: message.id, values: message.values, dataset_context: message.dataset_context
       } }));
