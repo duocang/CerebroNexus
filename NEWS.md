@@ -4,6 +4,8 @@
 
 - Share is offered on the grouped Immune repertoire Clonal projection too. An
   opened view comes back grouped, with its selection in its panel.
+- Gene expression summaries taller than four screens keep updating; they used
+  to need a quarter of themselves on screen.
 
 # CerebroNexus 5.3.1
 

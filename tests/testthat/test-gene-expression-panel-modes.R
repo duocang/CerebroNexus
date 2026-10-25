@@ -269,20 +269,6 @@ test_that("gene summary hosts change only when their layout changes", {
   )
 })
 
-## Summaries update only while visible (expression_summary_viewport_request).
-## Scroll on every poll: the page may still grow and push the gate back out.
-viewer_show_expression_summary <- function(app) {
-  app$wait_for_js(
-    paste0(
-      "(() => {document.getElementById('expression_summary_gate')",
-      "?.scrollIntoView();",
-      "return Shiny.shinyapp.$inputValues",
-      ".expression_summary_viewport_request === true;})()"
-    ),
-    timeout = 60000
-  )
-}
-
 ## Wait for summary content. A repaint (e.g. switching to RGB) can resize the
 ## projection after the summary was scrolled into view and push it out again,
 ## where it intentionally stops updating; keep it in view while waiting.
@@ -447,5 +433,32 @@ test_that("gene expression panels follow gene, selection, and display mode", {
       "!text.includes('B ·')"
     )
   )
+
+  ## A gate taller than four viewports still counts as visible. Many groups or
+  ## genes make the summaries this tall; filled with the gate, the viewport
+  ## shows a fifth of it, below the 0.25 ratio a short gate needs. The spacer
+  ## keeps the gate out of view at the top.
+  app$run_js(paste0(
+    "(() => {const gate=document.getElementById('expression_summary_gate');",
+    "gate.style.minHeight=(5*window.innerHeight)+'px';",
+    "const spacer=document.createElement('div');",
+    "spacer.style.height=(2*window.innerHeight)+'px';",
+    "gate.before(spacer);",
+    "window.scrollTo(0,0);",
+    "document.querySelector('.content-wrapper').scrollTop=0;})()"
+  ))
+  hidden <- "Shiny.shinyapp.$inputValues.expression_summary_viewport_request === false"
+  app$wait_for_js(hidden, timeout = 30000)
+  expect_lt(
+    app$get_js(
+      "window.innerHeight/document.getElementById('expression_summary_gate').offsetHeight"
+    ),
+    0.25
+  )
+  viewer_show_expression_summary(app, timeout = 15000)
+  app$run_js(
+    "window.scrollTo(0,0);document.querySelector('.content-wrapper').scrollTop=0"
+  )
+  app$wait_for_js(hidden, timeout = 30000)
   expect_length(app$get_js("genePanelErrors"), 0L)
 })
