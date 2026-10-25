@@ -98,6 +98,10 @@ test_that("Zooming one linked panel redraws only that panel", {
   viewer_browser_test("zoomOnePanel")
 })
 
+test_that("A colour change that resizes the legend draws once", {
+  viewer_browser_test("legendRelayout")
+})
+
 test_that("Linked resource hydration validates the primary bundle identity", {
   viewer_browser_test("linkedResources")
 })

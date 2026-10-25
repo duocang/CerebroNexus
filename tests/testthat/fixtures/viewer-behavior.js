@@ -446,6 +446,18 @@ window.viewerScenarios = {
     t.equal(t.paints.filter(p=>p.canvas.id==='cv-cv-b').length,0,'Resetting one view leaves the other');
     return true;
   },
+  async legendRelayout() {
+    const t=viewerTest;t.dataset();
+    const many=Array.from({length:60},(_,i)=>'a fairly long group name '+i);
+    t.linked({groups:{many:{levels:many,values:[0,1,2],colors:many.map((_,i)=>'#'+(100000+i*997).toString(16).slice(-6))},
+      few:{levels:['p'],values:[0,0,0],colors:['#123456']}}});
+    for(let i=0;i<4;i++)await t.settle();
+    const legend=document.getElementById('cv-legend'),before=legend.offsetHeight;
+    t.resetPaint();t.change('cv-pick-color','few');await t.settle();await t.settle();
+    t.check(legend.offsetHeight<before,'The shorter legend frees height');
+    t.equal(t.paints.filter(p=>p.canvas.id==='cv-cv-a'&&p.method==='clearRect').length,1,'A colour change draws once');
+    return true;
+  },
   async linkedResources() {
     const t=viewerTest;t.dataset();let downloads=[];
     const identity={cell_count:3,cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),

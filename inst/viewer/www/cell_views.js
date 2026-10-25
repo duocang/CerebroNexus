@@ -5634,7 +5634,9 @@
       var order = orderedSpaces();
       ensurePanelSlots(Math.min(12, order.length)); buildPanels(); layoutPanels();
     }
-    renderLegend(); drawAll(); renderReadout(); updateMoranBadges();
+    // The new legend can change height and with it the panels: lay them out
+    // before drawing, or the resize that follows redraws everything again.
+    renderLegend(); if (!resizeAll(true)) drawAll(); renderReadout(); updateMoranBadges();
     if (!singleActive && mode !== GENE_MODE) viewOperation('linked', 'Colour mode changed');
   }
 
