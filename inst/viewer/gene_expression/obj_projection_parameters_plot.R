@@ -17,6 +17,10 @@ expression_projection_default_projection <- function() {
   if (length(available_trajectories)) available_trajectories[[1L]] else NULL
 }
 
+expressionPlotOrderLabel <- function(highest_on_top) {
+  if (isTRUE(highest_on_top)) "Highest expression on top" else "Input order"
+}
+
 expression_projection_default_plotting_order <- function() {
   identical(
     current_page_display_defaults("gene")$plotting_order,
@@ -81,7 +85,7 @@ expression_projection_selected_projection <- reactive({
 expression_projection_parameters_plot <- reactive({
   selected_projection <- expression_projection_selected_projection()
   req(
-    !is.null(expression_projection_plotting_order()),
+    !is.null(isolate(expression_projection_plotting_order())),
     !is.null(preferences[["show_hover_info_in_projections"]])
   )
   if (selected_projection %in% availableProjections()) {
@@ -99,11 +103,10 @@ expression_projection_parameters_plot <- reactive({
   display <- current_page_display_defaults("gene")
   parameters <- list(
     projection = selected_projection,
-    plot_order = if (isTRUE(expression_projection_plotting_order())) {
-      "Highest expression on top"
-    } else {
-      "Input order"
-    },
+    ## Not a dependency: the order is a browser patch (event_projection_update_plot.R).
+    plot_order = expressionPlotOrderLabel(
+      isolate(expression_projection_plotting_order())
+    ),
     n_dimensions = n_dimensions,
     is_trajectory = is_trajectory,
     point_size = isolate(current_scatter_defaults()$point_size),

@@ -114,6 +114,10 @@ test_that("An appearance patch with the drawn values does not redraw", {
   viewer_browser_test("appearanceUnchanged")
 })
 
+test_that("A paint-order patch reorders the drawn cells", {
+  viewer_browser_test("paintOrderPatch")
+})
+
 test_that("A colour change that resizes the legend draws once", {
   viewer_browser_test("legendRelayout")
 })

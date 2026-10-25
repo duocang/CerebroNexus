@@ -114,6 +114,8 @@ test_that("the drawn Gene expression frame acknowledges the % slider's value", {
     expression_projection_data_to_plot_raw <- expression_projection_data_to_plot
     expressionProjectionProgressUpdate <- function(...) invisible(NULL)
     expressionProjectionProgressClose <- function(...) invisible(NULL)
+    expression_projection_plotting_order <- function() FALSE
+    expressionPlotOrderLabel <- function(highest_on_top) "Input order"
     cerebroFeedbackControls <- function(id, input) {
       isolate(list(
         expression_projection_percentage_cells_to_show = as.character(

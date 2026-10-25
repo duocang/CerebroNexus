@@ -774,15 +774,15 @@
   }
   function paintOrder(p) {
     if (!D) return null;
-    var mode = panelColorMode(p);
-    var key = mode + '|' + (D.gene ? D.gene.gene : '');
+    var mode = panelColorMode(p), f = fieldForMode(mode);
+    var key = mode + '|' + (D.gene ? D.gene.gene : '') + '|' +
+      !!(f && f.paintOrder !== false);
     if (_ordD === D && _ordKey === key) return _ordVal;
     var vals = null, span = 255;
     if (mode === GENE_MODE && D.gene) {
       vals = D.gene.v;
-    } else {
-      var f = fieldForMode(mode);
-      if (f && f.paintOrder !== false) { vals = f.v; span = f.scale || 255; }
+    } else if (f && f.paintOrder !== false) {
+      vals = f.v; span = f.scale || 255;
     }
     // Expression fields keep full-precision values: match Seurat's ascending
     // order, with missing values first and stable ties. Quantised-only sources
@@ -1796,6 +1796,7 @@
       fieldColors: field && field.colors,
       fieldPalette: field && field.palette && field.palette.join(','),
       fieldConstantColor: field && field.constantColor,
+      fieldPaintOrder: !!(field && field.paintOrder),
       groupValues: group && group.values,
       groupColors: group && group.colors && group.colors.join(','),
       pctMask: panelPctMask(p),
@@ -8080,6 +8081,7 @@
     }
     return { label: label, v: q, raw: values, min: min, max: max, scale: 1000,
       paintOrder: !!data && data.paint_order === 'highest',
+      followsPaintOrder: true,
       unclipped: true,
       palette: singlePalette(panelScale || (data && data.colorscale),
         panelScale ? false : data && data.reversescale) };
@@ -10877,7 +10879,22 @@
           view.pointAppearance[key] = message.values[key];
         }
       });
+      // "Highest expression on top" reorders the expression fields drawn.
+      var reordered = false;
+      if (Object.prototype.hasOwnProperty.call(message.values, 'paint_order')) {
+        view.data.paint_order = message.values.paint_order;
+        if (singleActive === message.id && D && D.fields) {
+          var highest = message.values.paint_order === 'highest';
+          Object.keys(D.fields).forEach(function (name) {
+            var field = D.fields[name];
+            if (field && field.followsPaintOrder && field.paintOrder !== highest) {
+              field.paintOrder = highest; reordered = true;
+            }
+          });
+        }
+      }
       if (singleActive !== message.id) return;
+      if (reordered) drawAll();
       var drawn = [ps, pointOpacity, labelsOn, bordersOn, keepPlotsSquare].join('|');
       if (Number.isFinite(message.values.point_size)) {
         ps = Math.max(1, Math.min(20, message.values.point_size)); pointSizeEdited = true;

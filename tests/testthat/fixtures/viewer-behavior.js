@@ -519,6 +519,20 @@ window.viewerScenarios = {
     t.check(draws()>0,'A changed value redraws');
     return true;
   },
+  async paintOrderPatch() {
+    const t=viewerTest;t.dataset();const id='expression_projection';
+    await t.render({color:[2,0,1],paint_order:'natural'},{},id);
+    const order=()=>{const xs=t.arcs().map(p=>p.args[0]),sorted=xs.slice().sort((a,b)=>a-b);
+      return xs.map(x=>sorted.indexOf(x));};
+    const patch=values=>t.send('cell_view_appearance',{id,dataset_context:{...t.context},
+      dataset_fingerprint:'fp-'+t.context.dataset_key,values});
+    t.equal(order(),[0,1,2],'Cells are drawn in input order');
+    t.resetPaint();patch({paint_order:'highest'});await t.settle();
+    t.equal(order(),[1,2,0],'The highest expression is drawn last');
+    t.resetPaint();patch({paint_order:'natural'});await t.settle();
+    t.equal(order(),[0,1,2],'Input order again');
+    return true;
+  },
   async legendRelayout() {
     const t=viewerTest;t.dataset();
     const many=Array.from({length:60},(_,i)=>'a fairly long group name '+i);

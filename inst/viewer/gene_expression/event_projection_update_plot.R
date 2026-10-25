@@ -59,6 +59,10 @@ observe({
   }
   expression_projection_last_drawn <<- data
   data$feedback <- feedback
+  ## The order the browser was last told (a patch since the parameters).
+  data$plot_parameters$plot_order <- expressionPlotOrderLabel(
+    isolate(expression_projection_plotting_order())
+  )
   expression_projection_parameters_other[['reset_axes']] <- FALSE
   ## Payload construction consults browser-published transport/cache state.
   ## Those reads are snapshots for this render, not plot dependencies: the
@@ -79,3 +83,28 @@ observe({
   }
   expressionProjectionProgressUpdate(0.9, "Drawing expression colours...")
 }, priority = 100)
+
+## "Highest expression on top" reorders the drawn points in the browser: the
+## frame keeps its cells and colours.
+observeEvent(
+  expression_projection_plotting_order(),
+  {
+    req(!is.null(expression_projection_last_token))
+    session$sendCustomMessage(
+      "cell_view_appearance",
+      list(
+        id = "expression_projection",
+        dataset_context = viewer_loaded_dataset_context(),
+        dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
+        values = list(
+          paint_order = if (isTRUE(expression_projection_plotting_order())) {
+            "highest"
+          } else {
+            "natural"
+          }
+        )
+      )
+    )
+  },
+  ignoreInit = TRUE
+)
