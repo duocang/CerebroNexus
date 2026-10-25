@@ -418,8 +418,8 @@ hla_visnet <- reactive({
   snapshot <- is.list(g) &&
     identical(g$version, 1L) &&
     is.list(g$vertex_attrs)
-  # A tripped size guard returns NA carrying a message; surface it as a note
-  # (handled by output$hla_motif_note) and draw nothing.
+  # A tripped size guard returns NA carrying a message; hla_motif_blocked()
+  # reports it and nothing is drawn.
   if (!snapshot && !hla_motif_graph_ok(g)) {
     return(NULL)
   }
@@ -730,54 +730,72 @@ output$hla_export_analysis <- downloadHandler(
   }
 )
 
-## ---- Note under the network (guard messages / empty state) ------------- ##
-output$hla_motif_note <- renderUI({
-  hla_require_active_page()
+## ---- Why the network is not drawn (NULL while it is) ------------------- ##
+## The plot's own status box reports it (view-feedback.js); the note under the
+## network only explains a drawn one.
+hla_motif_blocked <- reactive({
   if (!hla_has_deps()) {
-    return(tags$p(
-      class = "text-muted",
-      `data-view-state` = "empty",
-      "The motif network requires the 'visNetwork' and 'stringdist' packages."
+    return(list(
+      kind = "empty",
+      text = "The motif network requires the 'visNetwork' and 'stringdist' packages."
     ))
   }
   seg <- hla_segments()
   if (is.null(seg) || nrow(seg) == 0) {
-    return(tags$p(
-      class = "text-muted",
-      `data-view-state` = "empty",
-      sprintf(
+    return(list(
+      kind = "empty",
+      text = sprintf(
         "No %s cells with a complete V / J / CDR3 to build a network.",
         hla_active_chain()
       )
     ))
   }
   g <- hla_motif_graph()
-  guard <- attr(g, "guard")
-  if (!is.null(guard)) {
-    return(tags$p(class = "text-danger", `data-view-state` = "error", guard))
-  }
-  if (hla_motif_graph_ok(g) && igraph::vcount(g) > HLA_MOTIF_MAX_RENDER) {
-    return(tags$p(
-      class = "text-danger",
-      `data-view-state` = "error",
-      sprintf(
-        "The filtered graph has %s nodes; interactive rendering is capped at %s. Increase motif size or filter the repertoire.",
-        format(igraph::vcount(g), big.mark = ","),
-        format(HLA_MOTIF_MAX_RENDER, big.mark = ",")
-      )
-    ))
+  if (!is.null(attr(g, "guard"))) {
+    return(list(kind = "error", text = attr(g, "guard")))
   }
   if (!hla_motif_graph_ok(g)) {
-    return(tags$p(
-      class = "text-muted",
-      `data-view-state` = "empty",
-      paste(
+    return(list(
+      kind = "empty",
+      text = paste(
         "No CDR3 motif clusters at Hamming distance 1 with the current",
         "settings. Try lowering the minimum motif size or enabling",
         "'Show unconnected CDR3s'."
       )
     ))
   }
+  if (igraph::vcount(g) > HLA_MOTIF_MAX_RENDER) {
+    return(list(
+      kind = "error",
+      text = sprintf(
+        "The filtered graph has %s nodes; interactive rendering is capped at %s. Increase motif size or filter the repertoire.",
+        format(igraph::vcount(g), big.mark = ","),
+        format(HLA_MOTIF_MAX_RENDER, big.mark = ",")
+      )
+    ))
+  }
+  NULL
+})
+
+observe({
+  hla_require_active_page()
+  blocked <- req(hla_motif_blocked())
+  session$sendCustomMessage(
+    "cerebro_view_terminal",
+    c(
+      blocked,
+      list(
+        id = "hla_motif_network",
+        dataset_context = viewer_loaded_dataset_context()
+      )
+    )
+  )
+})
+
+## ---- Note under a drawn network ---------------------------------------- ##
+output$hla_motif_note <- renderUI({
+  hla_require_active_page()
+  req(is.null(hla_motif_blocked()))
   # The definitional "what a node / edge / motif is" text lives in the info guide
   # (the info button in the page header), so it no longer clutters the page below the
   # plot. Keep on the page only the two things a reader must not misread from the

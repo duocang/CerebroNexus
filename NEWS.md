@@ -8,6 +8,7 @@
   to need a quarter of themselves on screen.
 - The spatial renderer takes a background image only from the resolved
   descriptor, and finds rotation and geometry by dataset id, not `.crb` path.
+- The HLA & TCR Motifs network says why it draws nothing instead of spinning.
 
 # CerebroNexus 5.3.1
 

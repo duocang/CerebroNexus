@@ -2111,6 +2111,20 @@ body .shiny-spinner-output-container > .load-container {
 }
 .cerebro-local-feedback[hidden] { display: none; }
 .cerebro-local-feedback.is-error { pointer-events: auto; }
+/* Nothing to draw: the message is the view, so it takes the plot's place. */
+.cerebro-local-feedback.is-empty {
+  top: 120px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(560px, calc(100% - 24px));
+  padding: 14px 18px;
+  font-size: 14px;
+  text-align: center;
+  color: var(--c-text);
+  border-color: var(--c-amber-700);
+}
 body .cerebro-local-feedback.is-pending::before {
   width: 12px; height: 12px; vertical-align: -2px; margin-right: 6px;
 }
