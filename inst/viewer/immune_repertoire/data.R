@@ -246,10 +246,17 @@ ir_discover_sharing_units <- function(data, metadata = NULL) {
   )
   categorical <- function(x) is.character(x) || is.factor(x)
   # One barcode match, then inspect one candidate column at a time. No wide join.
+  # match() hashes the metadata's barcodes on every call: one call per sample
+  # took 12 s for 187 samples against 398K cells, one call over all 0.1 s.
   indices <- if (
     is.data.frame(metadata) && "cell_barcode" %in% names(metadata)
   ) {
-    lapply(data, function(df) match(df$barcode, metadata$cell_barcode))
+    barcodes <- lapply(data, function(df) as.character(df$barcode))
+    sample_of <- rep.int(seq_along(data), lengths(barcodes))
+    unname(split(
+      match(unlist(barcodes, use.names = FALSE), metadata$cell_barcode),
+      factor(sample_of, levels = seq_along(data))
+    ))
   } else {
     rep(list(integer()), length(data))
   }
@@ -266,9 +273,11 @@ ir_discover_sharing_units <- function(data, metadata = NULL) {
         if (!categorical(values)) {
           return(FALSE)
         }
-        values <- as.character(values)
+        # Distinct values first: a factor's unique() works on its codes, so
+        # only a few strings are converted and checked per sample.
+        values <- as.character(unique(values))
         values <- values[!is.na(values) & nzchar(values)]
-        seen <- unique(c(seen, unique(values)))
+        seen <- unique(c(seen, values))
       }
       length(seen) > 1L
     },
@@ -285,15 +294,88 @@ ir_discover_sharing_units <- function(data, metadata = NULL) {
   }
 }
 
+## ---- Results shared by the sessions of a process ----------------------- ##
+## Every session gets its own copy of a cached data set, so a value computed
+## from the data set's files alone is keyed by those files instead: the CRB
+## (path, size, modification time) and the repertoire sidecar's checksum. A
+## data set without a file on disk has no key and is not shared.
+ir_dataset_process_key <- function(ds) {
+  path <- attr(ds, "cerebro_dataset_path", exact = TRUE)
+  if (
+    !is.character(path) ||
+      length(path) != 1L ||
+      is.na(path) ||
+      !file.exists(path)
+  ) {
+    return(NULL)
+  }
+  info <- file.info(path)
+  backend <- tryCatch(ds$immune_repertoire_backend, error = function(e) NULL)
+  list(
+    path = normalizePath(path, winslash = "/"),
+    size = as.numeric(info$size),
+    mtime = as.numeric(info$mtime),
+    repertoire = if (is.list(backend)) as.character(backend$md5 %||% "") else ""
+  )
+}
+
+ir_process_cache <- if (exists(".ir_process_cache", inherits = TRUE)) {
+  get(".ir_process_cache", inherits = TRUE)
+} else {
+  new.env(parent = emptyenv())
+}
+
+## compute() once per (name, key) in the process; without a key, every call.
+ir_process_memo <- function(name, key, compute, cache = ir_process_cache) {
+  if (is.null(key)) {
+    return(compute())
+  }
+  id <- paste0(name, ":", rlang::hash(key))
+  if (!exists(id, envir = cache, inherits = FALSE)) {
+    assign(id, compute(), envir = cache)
+  }
+  get(id, envir = cache, inherits = FALSE)
+}
+
+## Metadata with cell barcodes for discovery. A thin CRB's first-frame table is
+## in the Viewer Pack's canonical cell order, so the Pack's cell names label its
+## rows; hydrating the full table instead reads every cell name from the H5
+## file and checks them (0.3 s for the Pack's 398K names, 0.6 s for the H5's
+## before the check).
+ir_sharing_unit_metadata <- function() {
+  metadata <- tryCatch(
+    viewerProjectionFirstFrameCache()$meta_data,
+    error = function(e) NULL
+  )
+  pack <- tryCatch(viewerPackCurrent(), error = function(e) NULL)
+  if (
+    is.data.frame(metadata) && is.list(pack) && isTRUE(pack$canonical_order)
+  ) {
+    cells <- viewerPackCellBarcodes(pack)
+    if (length(cells) == nrow(metadata)) {
+      metadata$cell_barcode <- cells
+      return(metadata)
+    }
+  }
+  getMetaData()
+}
+
 ## Discovery scans the whole repertoire and metadata (seconds for large data)
 ## and depends only on the loaded dataset, not on the visit to this tab.
 ir_sharing_unit_memo <- viewerMemoOne()
 ir_sharing_unit_choices <- reactive({
   req(identical(input[["ir_tabs"]], "Clone Sharing"))
   # Discovery is independent of ir_data_annotated and the selected sharing unit.
-  ir_sharing_unit_memo(data_set(), function() {
-    ir_discover_sharing_units(ir_data_raw(), getMetaData())
-  })
+  ds <- data_set()
+  discover <- function() {
+    ir_discover_sharing_units(ir_data_raw(), ir_sharing_unit_metadata())
+  }
+  key <- ir_dataset_process_key(ds)
+  if (is.null(key)) {
+    ir_sharing_unit_memo(ds, discover)
+  } else {
+    ir_process_memo("sharing_units", key, discover)
+  }
 })
 
 ## ---- Reactive: parameters --------------------------------------------- ##

@@ -38,6 +38,10 @@ viewerSource(cerebro_root_path("viewer/crb_cache.R"), environment())
 ## Pack is opened: decoding a million names took 0.7-2 s of the R thread right
 ## after the first view of a page.
 .viewer_cell_names_files <- new.env(parent = emptyenv())
+## Immune repertoire results that depend only on a data set's files (control
+## choices scanned from the whole repertoire), shared by every session of the
+## process that opens the same files (see ir_process_memo()).
+.ir_process_cache <- new.env(parent = emptyenv())
 ## Evaluated in a mirai daemon with `cells` (or NULL and the Pack's
 ## `asset_file`), the cell count `n` and the target `file`.
 .viewer_cell_names_job <- quote({
