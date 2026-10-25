@@ -12,6 +12,8 @@ test_that("Groups reads only the active columns after its viewport gate", {
         unused = 5:6
       )
       getGroups <- function() "sample"
+      current <- metadata
+      viewerProjectionFirstFrameMetadata <- function() current
       getMetaData <- reactive_colors <- function() {
         stop("full metadata or colour scan")
       }
@@ -57,6 +59,11 @@ test_that("Groups reads only the active columns after its viewport gate", {
       )
       expect_identical(scope$colour_reads, c("sample", "sample"))
       session$setInputs(groups_selected_group = "old-dataset-group")
+      expect_error(output$groups_nGene_plot, class = "shiny.silent.error")
+      expect_length(scope$reads, 2L)
+      ## A data set without the metric shown: no read of a missing column.
+      scope$current <- metadata[c("sample", "nUMI")]
+      session$setInputs(groups_selected_group = "sample")
       expect_error(output$groups_nGene_plot, class = "shiny.silent.error")
       expect_length(scope$reads, 2L)
     }

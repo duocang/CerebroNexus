@@ -74,7 +74,10 @@ for (metric in names(groups_metric_specs)) {
       req(
         input[["groups_expression_metrics_render_request"]],
         identical(input[["groups_expression_metrics_tabs"]], spec$title),
-        input[["groups_selected_group"]] %in% getGroups()
+        input[["groups_selected_group"]] %in% getGroups(),
+        ## The tab input outlives a data set switch until the tabs are built
+        ## again; a data set without this metric has no plot for it.
+        metric %in% colnames(viewerProjectionFirstFrameMetadata())
       )
       plotlyViolin(
         table = groupsMetricData(input[["groups_selected_group"]], metric),
