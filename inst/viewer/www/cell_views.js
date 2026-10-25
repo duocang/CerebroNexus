@@ -6330,9 +6330,15 @@
     Object.keys(D.groups).forEach(function (name) {
       if (name.indexOf(SINGLE_FILTER_PREFIX) === 0) delete D.groups[name];
     });
+    // The codes are canonical; map them to the cells of the frame now drawn
+    // (filters can arrive before the frame they were sent for).
     var filters = view.clientFilters || {};
     Object.keys(filters).forEach(function (name) {
       var filter = filters[name];
+      if (filter.data !== view.data) {
+        filter.data = view.data; filter.values = null;
+        try { filter.values = singleFilterCodes(view, filter.canonical); } catch (error) {}
+      }
       if (!filter.values || filter.values.length !== D.n) return;
       D.groups[SINGLE_FILTER_PREFIX + name] = { levels: filter.levels, values: filter.values };
       groupFilter[SINGLE_FILTER_PREFIX + name] = new Set(filter.allowed);
@@ -6359,7 +6365,7 @@
       wanted.forEach(function (filter, index) {
         view.filterCodes[filter.name] = codes[index];
         filters[filter.name] = { levels: filter.levels, allowed: filter.allowed,
-          values: singleFilterCodes(view, codes[index].values) };
+          canonical: codes[index].values };
       });
       view.clientFilters = filters;
       if (singleActive !== message.id) return;

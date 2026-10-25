@@ -153,6 +153,7 @@ test_that("Gene rejects obsolete group columns and clears rather than retaining 
   }
   env$reactive_colors <- function() list(new_group = c(a = "red", b = "blue"))
   env$plotExpressionSummary <- function(series, groups, colors) groups
+  env$expression_projection_shown_rows <- function() NULL
   error <- tryCatch(eval(body, env), error = identity)
   expect_s3_class(error, "shiny.silent.error")
   expect_false(inherits(error, "shiny.output.cancel"))

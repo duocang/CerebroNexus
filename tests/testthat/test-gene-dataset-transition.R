@@ -143,6 +143,7 @@ test_that("summaries wait for visibility without recomputing on scroll alone", {
         list(series = list(list(values = c(0, 1))))
       })
       reactive_colors <- function() list(cluster = c(a = "red", b = "blue"))
+      expression_projection_shown_rows <- function() NULL
       plotExpressionSummary <- function(...) {
         reads <<- reads + 1L
         plotly::plot_ly(x = 1:2, y = 1:2)

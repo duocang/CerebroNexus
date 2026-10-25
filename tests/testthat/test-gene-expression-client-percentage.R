@@ -5,9 +5,18 @@ test_that("Gene expression leaves % of cells to the browser with a Viewer Pack",
         viewerPackCurrent <- function() pack
         expression_projection_selected_projection <- function() "umap"
         available_trajectories <- function() character()
+        viewerProjectionGroupFilters <- function(...) list()
+        viewerClientFilterDescriptors <- function(filters) list()
+        viewerSendClientFilters <- function(...) invisible(NULL)
+        viewer_loaded_dataset_context <- function() "context"
         viewerProjectionFirstFrameMetadata <- function() data.frame(x = 1:10)
         current_scatter_percentage <- reactiveVal(100)
-        viewerProjectionCellIndices <- function(prefix, metadata, percentage) {
+        viewerProjectionCellIndices <- function(
+          prefix,
+          metadata,
+          percentage,
+          filters
+        ) {
           seq_len(ceiling(nrow(metadata) * percentage / 100))
         }
         sys.source(
@@ -115,6 +124,7 @@ test_that("the drawn Gene expression frame acknowledges the % slider's value", {
     expressionProjectionProgressUpdate <- function(...) invisible(NULL)
     expressionProjectionProgressClose <- function(...) invisible(NULL)
     expression_projection_plotting_order <- function() FALSE
+    expression_projection_group_filters <- function() list()
     expressionPlotOrderLabel <- function(highest_on_top) "Input order"
     cerebroFeedbackControls <- function(id, input) {
       isolate(list(
@@ -161,4 +171,59 @@ test_that("the drawn Gene expression frame acknowledges the % slider's value", {
       "50"
     )
   })
+})
+
+test_that("Gene expression leaves its group filters to the browser with a Viewer Pack", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      viewer_runtime_env(scope)
+      metadata <- data.frame(cluster = factor(c("A", "B", "A", "B")))
+      viewerPackCurrent <- function() list(canonical_order = TRUE)
+      viewerProjectionFirstFrameMetadata <- function() metadata
+      getGroups <- function() "cluster"
+      getGroupLevels <- function(group) c("A", "B")
+      viewerMetadataCodesAsset <- function(name, levels) list(url = "codes")
+      current_scatter_percentage <- function() 100
+      viewer_loaded_dataset_context <- function() "context"
+      expression_projection_selected_projection <- function() "umap"
+      available_trajectories <- function() character()
+      sent <- list()
+      viewerSendClientFilters <- function(id, descriptors, context) {
+        sent[length(sent) + 1L] <<- list(descriptors)
+      }
+      sys.source(
+        viewer_test_path("gene_expression", "obj_projection_cells_to_show.R"),
+        envir = scope
+      )
+      reads <- 0L
+      observe({
+        expression_projection_cells_to_show()
+        reads <<- reads + 1L
+      })
+      session$userData$state <- function() {
+        list(
+          reads = reads,
+          sent = sent,
+          cells = isolate(expression_projection_cells_to_show()),
+          rows = isolate(expression_projection_shown_rows())
+        )
+      }
+    },
+    {
+      session$setInputs(
+        sidebar = "geneExpression",
+        expression_projection_group_filter_cluster = c("A", "B")
+      )
+      before <- session$userData$state()
+      expect_null(before$rows)
+      session$setInputs(expression_projection_group_filter_cluster = "A")
+      after <- session$userData$state()
+      ## The frame keeps every cell; the summaries keep the filtered ones.
+      expect_identical(after$cells, 1:4)
+      expect_identical(after$reads, before$reads)
+      expect_identical(after$rows, c(1L, 3L))
+      expect_identical(as.integer(tail(after$sent, 1)[[1]][[1]]$allowed), 0L)
+    }
+  )
 })

@@ -15,6 +15,9 @@ test_that("Gene expression on a trajectory pairs each point with its own cell", 
         row.names = c("b", "d", "e")
       )
       getMetaData <- function() metadata
+      getGroups <- function() "group"
+      getGroupLevels <- function(group) c("x", "y")
+      viewer_loaded_dataset_context <- function() "context"
       viewerProjectionFirstFrameMetadata <- function() metadata
       viewerPackCurrent <- function() NULL
       viewerPackTrajectoryIndex <- function(...) NULL
@@ -29,7 +32,12 @@ test_that("Gene expression on a trajectory pairs each point with its own cell", 
         list(projection = "m // t")
       }
       ## Group filter "x" keeps cells a, b and e.
-      viewerProjectionCellIndices <- function(prefix, metadata, percentage) {
+      viewerProjectionCellIndices <- function(
+        prefix,
+        metadata,
+        percentage,
+        filters
+      ) {
         keep <- input$group %||% c("x", "y")
         which(metadata$group %in% keep)
       }

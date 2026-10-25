@@ -86,9 +86,20 @@ output[["expression_by_group"]] <- plotly::renderPlotly({
     selected_group %in% colnames(cells_df),
     length(cells_df[[selected_group]]) == nrow(cells_df)
   )
+  series <- expression_summary_data()$series
+  groups <- cells_df[[selected_group]]
+  ## Group filters applied in the browser leave every cell in the frame.
+  rows <- expression_projection_shown_rows()
+  if (!is.null(rows)) {
+    series <- lapply(series, function(entry) {
+      entry$values <- entry$values[rows]
+      entry
+    })
+    groups <- groups[rows]
+  }
   plotExpressionSummary(
-    expression_summary_data()$series,
-    cells_df[[selected_group]],
+    series,
+    groups,
     reactive_colors()[[selected_group]]
   )
 })
