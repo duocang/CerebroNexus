@@ -273,6 +273,7 @@ test_that("gene primary colours do not materialize metadata", {
       expression_projection_parameters_other <- list(reset_axes = FALSE)
       expression_projection_render_key <- function() "key"
       expression_projection_cells_to_show <- function() 1:2
+      expression_projection_client_percentage <- function() FALSE
       sys.source(
         viewer_test_path("gene_expression", "obj_projection_data_to_plot.R"),
         scope

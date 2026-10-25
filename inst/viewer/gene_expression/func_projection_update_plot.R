@@ -142,6 +142,14 @@ expression_projection_update_plot <- function(input) {
     reset_axes = reset_axes
   )
   output_data[["render_key"]] <- render_key
+  if (isTRUE(input[["client_percentage"]])) {
+    ## The browser applies "% of cells" to this full frame; later slider edits
+    ## arrive through the shared scatter defaults without a new frame.
+    output_data[["client_percentage"]] <- TRUE
+    output_data[["percentage_cells_to_show"]] <- isolate(
+      current_scatter_percentage()
+    )
+  }
   if (is.list(expression_levels)) {
     output_data[["color"]] <- NULL
     if (!identical(display_mode, "rgb")) {

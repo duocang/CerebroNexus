@@ -28,6 +28,10 @@ observe({
     identical(data$dataset, data_set()),
     viewerDatasetContextEqual(data$dataset_context, current_context)
   )
+  ## "% of cells" reaches R first as the shared scatter edit (which may or may
+  ## not draw a frame) and then as the slider's own debounced value. Re-run on
+  ## the latter, so the drawn frame acknowledges it.
+  input[["expression_projection_percentage_cells_to_show"]]
   feedback <- cerebroFeedbackControls("expression_projection", input)
   ## The debounce timer later delivers the value drawn here. Controls that
   ## change without changing the frame (the drawer's controls binding, or an
