@@ -238,6 +238,40 @@ test_that("ordinary Viewer tables escape HTML by default", {
   expect_identical(attr(empty$x$options, "escapeIdx"), "true")
 })
 
+test_that("numeric columns with missing values are coloured by their known values", {
+  env <- viewer_runtime_env(new.env())
+  ## No grouping or cell-cycle column to colour by palette.
+  env$getGroups <- function() character()
+  env$getCellCycle <- function() character()
+  ## A published pseudotime exists only for the cells of one lineage; a
+  ## selection of other cells has none of it.
+  table <- data.frame(
+    cell_barcode = c("a", "b", "c"),
+    cd8_dpt = c(0.85, NA, 0.88),
+    age = c(NA_real_, NA_real_, NA_real_),
+    score = c(0.1, 0.5, 0.9)
+  )
+
+  ## As the Table of selected cells calls it.
+  widget <- env$prettifyTable(
+    table,
+    filter = "none",
+    dom = "t",
+    number_formatting = TRUE,
+    color_highlighting = TRUE,
+    hide_long_columns = TRUE
+  )
+
+  styles <- paste(
+    deparse(widget$x$options$rowCallback),
+    collapse = "
+"
+  )
+  ## cd8_dpt is ramped over its known values 0.85..0.88; age has none.
+  expect_match(styles, "0.8503", fixed = TRUE)
+  expect_match(styles, "0.8797", fixed = TRUE)
+})
+
 test_that("Viewer tables can explicitly opt out of HTML escaping", {
   table <- data.frame(label = "<strong>trusted</strong>")
 

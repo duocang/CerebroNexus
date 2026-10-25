@@ -2908,7 +2908,14 @@ prettifyTable <- function(
         return(table)
       }
       for (i in columns) {
-        range <- range(table_original[[i]])
+        ## Over the known values: a column may be NA for some cells (a
+        ## pseudotime that exists for one lineage only) or for all of them.
+        values <- table_original[[i]]
+        values <- values[is.finite(values)]
+        if (length(values) < 2L) {
+          next
+        }
+        range <- range(values)
         if (range[1] != range[2]) {
           table <- table %>%
             DT::formatStyle(
