@@ -446,6 +446,28 @@ window.viewerScenarios = {
     t.equal(t.paints.filter(p=>p.canvas.id==='cv-cv-b').length,0,'Resetting one view leaves the other');
     return true;
   },
+  async deferredFilter() {
+    const t=viewerTest;t.dataset();
+    t.linked({groups:{cluster:{levels:['A','B'],values:[0,1,0],colors:['#ff0000','#0000ff']},
+      sample:{levels:['s1','s2'],values:null,deferred:true}}});
+    for(let i=0;i<3;i++)await t.settle();
+    const draws=()=>t.paints.filter(p=>p.canvas.id==='cv-cv-a'&&p.method==='clearRect').length;
+    const asked=()=>t.requests.filter(r=>r.name==='coordviews_attribute_request'&&r.value.name==='sample');
+    const boxes=document.querySelectorAll('.cv-filt[data-group="sample"] .cv-filt-menu input[type=checkbox]');
+    t.check(boxes.length===2,'The deferred group has a filter');
+    // What "None" does (settings_drawer.js): clear every level, one change event.
+    t.resetPaint();boxes.forEach(b=>{b.checked=false;});
+    boxes[0].dispatchEvent(new Event('change',{bubbles:true}));await t.settle();
+    t.equal(asked().length,1,'The filter asks for the group values');
+    t.equal(draws(),0,'Nothing is drawn before the values arrive');
+    t.send('coordviews_attribute',t.wire({dataset_id:t.context.dataset_key,dataset_context:{...t.context},
+      dataset_fingerprint:asked()[0].value.dataset_fingerprint,kind:'groups',name:'sample',
+      value:{levels:['s1','s2'],values:[0,1,0]}}));
+    await t.settle();
+    t.equal(draws(),1,'The arriving values are drawn once');
+    t.equal(t.arcs('cv-cv-a').length,0,'None hides every cell');
+    return true;
+  },
   async slicePanels() {
     const t=viewerTest;t.dataset();const id='trajectory_projection';
     const identity={cell_count:5,cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),

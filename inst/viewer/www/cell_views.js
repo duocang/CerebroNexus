@@ -6289,6 +6289,10 @@
     if (k >= total) delete groupFilter[gname];   // all levels on = no filter
     else groupFilter[gname] = chosen;
     if (groupFilter[gname]) requestDeferredGroup(gname);
+    // A group whose values are still on their way cannot filter yet: drawing
+    // now would only be drawn over when they arrive (onBinaryAttribute).
+    var group = D.groups && D.groups[gname];
+    if (groupFilter[gname] && group && group.deferred) return;
     applyActiveChange();
   }
 

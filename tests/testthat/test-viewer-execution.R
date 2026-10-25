@@ -98,6 +98,10 @@ test_that("Zooming one linked panel redraws only that panel", {
   viewer_browser_test("zoomOnePanel")
 })
 
+test_that("A filter on a deferred group draws once its values arrive", {
+  viewer_browser_test("deferredFilter")
+})
+
 test_that("Slice panels draw shared rows named through the cell-name resource", {
   viewer_browser_test("slicePanels")
 })
