@@ -11168,7 +11168,8 @@
         return true;
       }
       if (id === 'cv-backgrounds') {
-        setLinkedBackgrounds(target.checked);
+        // Both `input` and `change` arrive here for one click.
+        if (linkedBackgroundsOn !== !!target.checked) setLinkedBackgrounds(target.checked);
         return true;
       }
       if (id === 'cv-labels') {
