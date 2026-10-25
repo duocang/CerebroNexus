@@ -418,7 +418,10 @@ hla_default_min_nodes <- reactive({
   if (!is.null(first) && hla_motif_graph_ok(first$graph_raw)) {
     n_cdr3 <- igraph::vcount(first$graph_raw)
   } else {
-    seg <- hla_segments()
+    ## The data set's size, not the filtered cohort's: the slider is built
+    ## from this default, so a filter change would rebuild it and override the
+    ## chosen size, and then build the graph again.
+    seg <- hla_unfiltered_segments()
     if (is.null(seg) || nrow(seg) == 0) {
       return(2L)
     }
