@@ -2003,7 +2003,8 @@
     var previous = p.gpuData, oldState = p.gpuDataState;
     if (!previous || !oldState || !previous.opaque || !previous.vertexIndex ||
         panelColorMode(p) === RGB_MODE || Object.keys(state).some(function (key) {
-          return key !== 'selection' && key !== 'niche' && state[key] !== oldState[key];
+          return key !== 'selection' && key !== 'niche' && key !== 'opacity' &&
+            state[key] !== oldState[key];
         })) return null;
     // Selection only changes alpha and foreground layers. Keep the sorted
     // positions and RGB bytes; the vertex map preserves filtered/invalid cells.
@@ -2021,7 +2022,63 @@
     p.gpuDataState = state;
     p.gpuData = {positions: previous.positions, colors: colors, layers: layers,
       count: previous.count, foreground: foreground, opaque: true,
-      vertexIndex: previous.vertexIndex};
+      vertexIndex: previous.vertexIndex, ordered: previous.ordered};
+    return p.gpuData;
+  }
+
+  // A colour-only change (colour variable, palette, gene values, opacity,
+  // selection) of a panel that still draws the same cells in the same order
+  // keeps its positions: only colour and layer bytes are rebuilt, and the
+  // renderer uploads no new geometry.
+  var GPU_COLOUR_KEYS = ['mode', 'gene', 'fieldValues', 'fieldColors', 'fieldPalette',
+    'fieldConstantColor', 'groupValues', 'groupColors', 'clip', 'opacity', 'selection', 'niche'];
+  function updateGpuColors(p, state, hiSet, shownMask) {
+    var previous = p.gpuData, oldState = p.gpuDataState, unit = state.unit;
+    if (!previous || !oldState || !previous.vertexIndex || previous.ordered ||
+        !unit || unit._pending || panelColorMode(p) === RGB_MODE || paintOrder(p) ||
+        Object.keys(state).some(function (key) {
+          return GPU_COLOUR_KEYS.indexOf(key) < 0 && state[key] !== oldState[key];
+        })) return null;
+    var n = D.n, vertexIndex = previous.vertexIndex, space = spaceById[p.spaceId];
+    var cells = space && space._cells && space._cells.length <= n ? space._cells : null;
+    var visits = cells ? cells.length : n, drawn = 0, at, i;
+    for (at = 0; at < visits; at++) {
+      i = cells ? cells[at] : at;
+      var shown = !!(unit.ok[i] && shownMask[i]);
+      if (shown !== (vertexIndex[i] > 0)) return null;
+      if (shown) drawn++;
+    }
+    if (drawn !== previous.count) return null;
+    var colors = new Uint8Array(previous.colors.length);
+    var layers = new Uint32Array(previous.layers.length);
+    var group = catOf(panelColorMode(p));
+    var palette = group ? group.levels.map(function (_level, index) {
+      return gpuColor((group.colors && group.colors[index]) || PAL[index % PAL.length]);
+    }) : null;
+    var missing = group ? gpuColor('#cccccc') : null;
+    var opacity = pointOpacityOf(p), opaque = true, foreground = false;
+    for (at = 0; at < visits; at++) {
+      i = cells ? cells[at] : at;
+      var vertex = vertexIndex[i] - 1;
+      if (vertex < 0) continue;
+      var fg = !!(hiSet && hiSet.has(i));
+      var alpha = hiSet ? (fg ? 0.95 : 0.05) : opacity;
+      var category = group && group.values[i];
+      var rgba = group
+        ? (category == null || category < 0 || category >= palette.length ? missing : palette[category])
+        : gpuColor(colorOf(i, p));
+      if (rgba[3] !== 255) opaque = false;
+      colors[vertex * 4] = rgba[0];
+      colors[vertex * 4 + 1] = rgba[1];
+      colors[vertex * 4 + 2] = rgba[2];
+      colors[vertex * 4 + 3] = Math.round(rgba[3] * alpha);
+      layers[vertex] = fg ? 1 : 0;
+      foreground = foreground || fg;
+    }
+    p.gpuDataState = state;
+    p.gpuData = {positions: previous.positions, colors: colors, layers: layers,
+      count: previous.count, foreground: foreground, opaque: opaque,
+      vertexIndex: vertexIndex, ordered: false};
     return p.gpuData;
   }
 
@@ -2032,6 +2089,8 @@
     var hiSet = (sel && sel.size) ? sel : nicheSet;
     var selectionData = updateGpuSelection(p, state, hiSet);
     if (selectionData) return selectionData;
+    var colourData = updateGpuColors(p, state, hiSet, shownMask);
+    if (colourData) return colourData;
     var unit = state.unit, order = paintOrder(p), n = D.n;
     var shared = window.CerebroSharedDatasetState;
     var sharedName = null;
@@ -2171,7 +2230,8 @@
       count: out,
       opaque: !rgb && opaque,
       vertexIndex: vertexIndex,
-      foreground: foreground
+      foreground: foreground,
+      ordered: !!order
     };
     return p.gpuData;
   }

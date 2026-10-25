@@ -86,6 +86,10 @@ test_that("Spatial GPU buffers cover their scene and survive an unused gene", {
   viewer_browser_test("spatialGpu")
 })
 
+test_that("A colour change keeps GPU geometry and recolours every point", {
+  viewer_browser_test("gpuColour")
+})
+
 test_that("Linked resource hydration validates the primary bundle identity", {
   viewer_browser_test("linkedResources")
 })

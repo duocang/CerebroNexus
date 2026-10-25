@@ -397,6 +397,26 @@ window.viewerScenarios = {
     for(const [canvas,positions] of after) t.check(before.get(canvas)===positions,'An unused gene keeps the GPU data');
     return true;
   },
+  async gpuColour() {
+    const t=viewerTest;t.dataset();const n=20000;
+    const x=Float32Array.from({length:n},(_,i)=>i/n),y=Float32Array.from(x,v=>1-v);x[7]=NaN;
+    const first=Array.from({length:n},(_,i)=>i%3),second=Array.from({length:n},(_,i)=>(i*7)%5);
+    const shades=['#111111','#222222','#333333','#444444','#555555'];
+    t.linked({n,cells:Array.from({length:n},(_,i)=>'c'+i),
+      groups:{first:{levels:['A','B','C'],values:first,colors:['#ff0000','#00ff00','#0000ff']},
+        second:{levels:['p','q','r','s','u'],values:second,colors:shades}},
+      projections:{UMAP:{x,y}},spaces:[{id:'expression',x,y}]});
+    await t.settle();
+    const before=t.uploads.at(-1);t.check(before&&before.count===n-1,'Initial GPU upload');
+    t.change('cv-pick-color','second');await t.settle();
+    const after=t.uploads.filter(u=>u.canvas===before.canvas).at(-1);
+    t.check(after.positionSource===before.positionSource,'A colour change keeps the GPU geometry');
+    const expected=[];
+    const alpha=before.colors[3];
+    for(let i=0;i<n;i++){if(i===7)continue;const v=parseInt(shades[second[i]].slice(1,3),16);expected.push(v,v,v,alpha);}
+    t.equal(after.colors,expected,'Colours of the kept geometry follow the new grouping');
+    return true;
+  },
   async linkedResources() {
     const t=viewerTest;t.dataset();let downloads=[];
     const identity={cell_count:3,cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),
