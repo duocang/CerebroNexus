@@ -125,14 +125,24 @@ spatial_projection_update_plot <- function(input) {
   } else {
     seq_len(nrow(metadata))
   }
+  aux_cells <- if (resource_first) {
+    input[["cell_indices"]]
+  } else if ("cell_index" %in% colnames(metadata)) {
+    metadata[["cell_index"]]
+  } else {
+    seq_len(nrow(metadata))
+  }
+  ## The auxiliary data depend only on these. A colour change keeps them, so
+  ## the browser need not download the cells' rows and hover data again.
+  aux_key <- function(selection_rows) {
+    list(
+      cells = aux_cells,
+      selection_rows = selection_rows,
+      hover = isTRUE(plot_parameters[["hover_info"]])
+    )
+  }
   build_deferred_aux <- function(selection_rows) {
-    cell_index <- if (resource_first) {
-      input[["cell_indices"]]
-    } else if ("cell_index" %in% colnames(metadata)) {
-      metadata[["cell_index"]]
-    } else {
-      seq_len(nrow(metadata))
-    }
+    cell_index <- aux_cells
     hover <- isTRUE(plot_parameters[["hover_info"]])
     first_frame <- viewerProjectionFirstFrameMetadata()
     columns <- viewerProjectionMetadataColumns(
@@ -303,7 +313,8 @@ spatial_projection_update_plot <- function(input) {
         build_deferred_aux(output_data[["selection_key"]])
       },
       dataset_context = input[["dataset_context"]],
-      feedback = input[["feedback"]]
+      feedback = input[["feedback"]],
+      aux_key = aux_key(output_data[["selection_key"]])
     )
     return(invisible(NULL))
   }
@@ -490,6 +501,11 @@ spatial_projection_update_plot <- function(input) {
     plot_parameters[["show_region_outlines"]]
   )
   spatial_projection_drawn_hulls <<- output_hulls
+  aux_rows <- if (resource_first) {
+    seq_len(input[["cell_count"]])
+  } else {
+    payload[["data"]][["selection_key"]]
+  }
   cerebroCellViewRender(
     "spatial_projection",
     payload[["meta"]],
@@ -497,15 +513,10 @@ spatial_projection_update_plot <- function(input) {
     payload[["hover"]],
     extra = list(group_hulls = output_hulls),
     deferred_aux = function() {
-      build_deferred_aux(
-        if (resource_first) {
-          seq_len(input[["cell_count"]])
-        } else {
-          payload[["data"]][["selection_key"]]
-        }
-      )
+      build_deferred_aux(aux_rows)
     },
     dataset_context = input[["dataset_context"]],
-    feedback = input[["feedback"]]
+    feedback = input[["feedback"]],
+    aux_key = aux_key(aux_rows)
   )
 }

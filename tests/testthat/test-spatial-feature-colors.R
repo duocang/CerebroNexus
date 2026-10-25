@@ -15,7 +15,8 @@ test_that("ImageFeaturePlot preserves values and uses the saved expression palet
     extra,
     deferred_aux,
     dataset_context,
-    feedback = NULL
+    feedback = NULL,
+    aux_key = NULL
   ) {
     rendered <<- list(meta = meta, data = data)
   }

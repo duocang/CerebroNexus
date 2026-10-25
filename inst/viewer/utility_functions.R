@@ -1696,6 +1696,20 @@ cerebroCellViewAuxRequest <- function(request) {
     "cell_view_aux_binary",
     cv_wire_pack_message(message)
   )
+  ## All of it was sent at once: a later frame of the same cells names it, as
+  ## after a core delivery above.
+  if (
+    !core_sent &&
+      !is.null(message$aux_key) &&
+      !(is.null(message$selection_key) && is.null(message$selection_index)) &&
+      !isTRUE(message$hover$pending)
+  ) {
+    .cerebro_cell_view_aux_served[[message$id]] <- list(
+      key = message$aux_key,
+      wire_token = message$wire_token,
+      dataset_context = message$dataset_context
+    )
+  }
   invisible(TRUE)
 }
 
