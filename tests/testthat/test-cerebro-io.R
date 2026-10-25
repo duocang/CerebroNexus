@@ -497,7 +497,15 @@ test_that("the Viewer hydrates a thin CRB lazily and checks it against the H5 fi
     "cell count"
   )
 
-  ## a foreign H5 file fails when the metadata is first read
+  ## a foreign H5 file fails when the metadata is first read. The background
+  ## cell-name checks of the first file must finish first: a check started
+  ## late (a loaded machine) opens the path while it is being rewritten, and
+  ## its lock makes the writer's next open fail.
+  for (entry in as.list(runtime$.crb_h5_cell_checks)) {
+    if (inherits(entry$task, "mirai")) {
+      mirai::call_mirai(entry$task)
+    }
+  }
   write_h5_matrix(h5_counts(h5_cells("other-")), fixture$h5)
   foreign <- runtime$.attachExternalExpression(
     runtime$read_cerebro_file(qs),
