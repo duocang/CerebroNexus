@@ -446,6 +446,20 @@ window.viewerScenarios = {
     t.equal(t.paints.filter(p=>p.canvas.id==='cv-cv-b').length,0,'Resetting one view leaves the other');
     return true;
   },
+  async appearanceUnchanged() {
+    const t=viewerTest;t.dataset();const id='overview_projection';
+    await t.render({},{},id);
+    const patch=values=>t.send('cell_view_appearance',{id,dataset_context:{...t.context},
+      dataset_fingerprint:'fp-'+t.context.dataset_key,values});
+    const draws=()=>t.paints.filter(p=>p.canvas.id==='cv-cv-a'&&p.method==='clearRect').length;
+    const shown={group_labels:false,draw_border:true,keep_square:false};
+    patch(shown);await t.settle();await t.settle();
+    t.resetPaint();patch(shown);await t.settle();
+    t.equal(draws(),0,'Values already drawn do not redraw');
+    t.resetPaint();patch({...shown,draw_border:false});await t.settle();
+    t.check(draws()>0,'A changed value redraws');
+    return true;
+  },
   async legendRelayout() {
     const t=viewerTest;t.dataset();
     const many=Array.from({length:60},(_,i)=>'a fairly long group name '+i);

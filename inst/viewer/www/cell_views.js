@@ -10804,6 +10804,7 @@
         }
       });
       if (singleActive !== message.id) return;
+      var drawn = [ps, pointOpacity, labelsOn, bordersOn, keepPlotsSquare].join('|');
       if (Number.isFinite(message.values.point_size)) {
         ps = Math.max(1, Math.min(20, message.values.point_size)); pointSizeEdited = true;
       }
@@ -10819,10 +10820,16 @@
       if (Object.prototype.hasOwnProperty.call(message.values, 'keep_square')) {
         keepPlotsSquare = !!message.values.keep_square;
       }
-      // A layout change draws in resizeAll(); draw here only when it did not.
-      var resized = Object.prototype.hasOwnProperty.call(message.values, 'keep_square') &&
-        resizeAll();
-      if (!resized) drawAll();
+      // Controls binding with the values already drawn change nothing: lay
+      // out only if the panels' size changed meanwhile.
+      if ([ps, pointOpacity, labelsOn, bordersOn, keepPlotsSquare].join('|') === drawn) {
+        resizeAll(true);
+      } else {
+        // A layout change draws in resizeAll(); draw here only when it did not.
+        var resized = Object.prototype.hasOwnProperty.call(message.values, 'keep_square') &&
+          resizeAll();
+        if (!resized) drawAll();
+      }
       window.dispatchEvent(new CustomEvent('cerebro:view-appearance', { detail: {
         id: message.id, values: message.values, dataset_context: message.dataset_context
       } }));
