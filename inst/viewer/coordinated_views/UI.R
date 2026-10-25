@@ -111,8 +111,7 @@ cv_pane <- function(key) {
         `aria-label` = "Trekker coordinate source, QC and Moran's I",
         icon("circle-info")
       ),
-      cv_panebar(key),
-      ## Focus is a primary workspace action, not an advanced plotting tool.
+      ## Enlarge is a primary workspace action, not an advanced plotting tool.
       ## Keep it labelled and visible; the title click and canvas double-click
       ## remain shortcuts rather than the only way to discover the capability.
       tags$button(
@@ -120,11 +119,11 @@ cv_pane <- function(key) {
         class = "cv-tbtn cv-focus-btn",
         `data-act` = "focus",
         `data-panel` = key,
-        `data-tip` = "Make this the focus",
-        `aria-label` = "Make this the focus",
+        `data-tip` = "Enlarge this view",
+        `aria-label` = "Enlarge this view",
         `aria-pressed` = "false",
         icon("expand"),
-        tags$span(class = "cv-focus-label", "Focus")
+        tags$span(class = "cv-focus-label", "Enlarge")
       )
     ),
     ## The canvas gets a positioned wrapper so the minimap can sit at the
@@ -153,6 +152,9 @@ cv_pane <- function(key) {
         id = paste0("cv-mini-", low),
         `aria-hidden` = "true"
       ),
+      ## The toolbar floats down the canvas's top-right corner, so it is the
+      ## same on every page and panel size and never moves the header.
+      cv_panebar(key),
       ## Inside the wrapper, so the coordinates the hover code computes (which
       ## are relative to the CANVAS) are the coordinates this is positioned by.
       ## As a child of the pane it was offset by the header's height.
@@ -516,7 +518,7 @@ tab_coordinated_views <- tabItem(
           tags$span(
             class = "cv-workspace-guide-text",
             id = "cv-workspace-guide-text",
-            "Drag in any view to create an active cohort. Use Focus to enlarge one lens while keeping the others linked."
+            "Drag in any view to create an active cohort. Use Enlarge to make one view bigger while the others stay linked."
           ),
           div(
             class = "cv-workspace-actions",

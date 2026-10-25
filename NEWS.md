@@ -12,6 +12,8 @@
   selection and Focus while another page is open.
 - The HLA & TCR Motifs network says why it draws nothing instead of spinning.
 - Clicking a plot after brushing keeps the brushed outline.
+- The Linked views panel button is now Enlarge / Restore, so Focus only zooms
+  to the selection; the plot toolbar floats in the plot's top-right corner.
 
 # CerebroNexus 5.3.1
 
