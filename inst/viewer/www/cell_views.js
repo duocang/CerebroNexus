@@ -2539,6 +2539,13 @@
     if (first) renderShownCount(first.count);
     updateResetButtons();
   }
+  // One panel whose own view changed (zoom, reset): the others are unchanged.
+  function drawPanel(p) {
+    if (drawAllDeferred || !p || !p.spaceId) return;
+    var state = shownState(p);
+    draw(p, state.mask, state.count);
+    updateResetButtons();
+  }
   // Drop any committed lasso outlines when an interaction deliberately changes
   // what the region means (for example a new selection or selection zoom).
   // Returns true if anything was cleared.
@@ -3033,7 +3040,7 @@
       p.view = clampView(p, next);
       project(p);
     }
-    drawAll();
+    drawPanel(p);
   }
   function zoomStep(p, factor) {
     if (!p._SX || !p._SY) return;
@@ -11178,7 +11185,7 @@
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
             pp.focusFrom = null; syncFocusButtons();
-            drawAll();
+            drawPanel(pp);
           }
         }
         return;

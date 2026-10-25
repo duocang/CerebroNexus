@@ -94,6 +94,10 @@ test_that("Region outlines patch the drawn frame in place", {
   viewer_browser_test("outlinePatch")
 })
 
+test_that("Zooming one linked panel redraws only that panel", {
+  viewer_browser_test("zoomOnePanel")
+})
+
 test_that("Linked resource hydration validates the primary bundle identity", {
   viewer_browser_test("linkedResources")
 })

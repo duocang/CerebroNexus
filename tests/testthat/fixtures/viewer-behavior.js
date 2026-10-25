@@ -430,6 +430,22 @@ window.viewerScenarios = {
     t.check(!t.paints.some(p=>p.method==='fill'&&p.fill==='#654321'),'Removed outlines are not drawn');
     return true;
   },
+  async zoomOnePanel() {
+    const t=viewerTest;t.dataset();
+    t.linked({projections:{UMAP:{x:[0,10,20],y:[0,10,0]},TSNE:{x:[5,1,9],y:[2,8,4]}},
+      initial_projections:['UMAP','TSNE']});
+    // Let the switch from the previous view finish its layout passes first.
+    for(let i=0;i<4;i++)await t.settle();
+    t.check(document.querySelector('[data-panel="B"][data-act="zin"]'),'Two panels are shown');
+    t.resetPaint();
+    document.querySelector('[data-panel="A"][data-act="zin"]').click();await t.settle();
+    t.check(t.arcs('cv-cv-a').length>0,'The zoomed panel redraws');
+    t.equal(t.paints.filter(p=>p.canvas.id==='cv-cv-b').length,0,'The other panel is not redrawn');
+    t.resetPaint();
+    document.querySelector('[data-panel="A"][data-act="reset"]').click();await t.settle();
+    t.equal(t.paints.filter(p=>p.canvas.id==='cv-cv-b').length,0,'Resetting one view leaves the other');
+    return true;
+  },
   async linkedResources() {
     const t=viewerTest;t.dataset();let downloads=[];
     const identity={cell_count:3,cell_fingerprint:'md5-cell-set-v1:'+'a'.repeat(32),
