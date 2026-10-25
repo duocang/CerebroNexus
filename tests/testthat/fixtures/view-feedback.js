@@ -68,9 +68,12 @@ paint('overview_projection',4,1);check(row('overview_projection').textContent.in
 const el=elements.overview_projection_point_color;document.activeElement=null;handlers.change({target:el});
 check(!row('overview_projection').textContent.includes('Updating'));
 paint('hla_motif_network',7);
-handlers['shiny:value']({target:{id:'hla_motif_note',querySelector:()=>({textContent:'No motifs',getAttribute:()=> 'empty'})}});
+messages.cerebro_view_terminal({id:'hla_motif_network',text:'No motifs',kind:'empty',dataset_context:{generation}});
 check(row('hla_motif_network').textContent.includes('No motifs'));
 check(!row('hla_motif_network').classList.contains('is-error'));
+// Settled: nothing more will arrive, so no spinner even though nothing painted.
+check(!row('hla_motif_network').classList.contains('is-pending'));
+check(row('hla_motif_network').classList.contains('is-empty'));
 check(window.CerebroPageLifecycle.isTerminal(elements['shiny-tab-hla_tcr_motifs']));
 check(header('hla_motif_network').hidden);
 paint('hla_motif_network',7);check(row('hla_motif_network').textContent.includes('No motifs'));

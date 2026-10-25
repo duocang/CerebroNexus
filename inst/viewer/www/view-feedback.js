@@ -128,9 +128,13 @@
     if (status) {
       status.textContent = text;
       status.hidden = !text;
-      status.classList.toggle('is-pending', !!text && !failed && !s.empty &&
+      // A terminal result is settled: a view that never painted is not "still
+      // loading" once the server has said why it will not draw.
+      var settled = !!s.terminal && !pending.length;
+      status.classList.toggle('is-pending', !!text && !failed && !s.empty && !settled &&
         (!s.ready || pending.length > 0 || /loading|updating/i.test(text)));
       status.classList.toggle('is-error', failed);
+      status.classList.toggle('is-empty', settled && !failed);
     }
     var pane = el.closest('.tab-pane');
     var host = document.getElementById(id + '_cell_view_host');
@@ -265,6 +269,10 @@
       s.expression = !genes.length || message.ok ? '' : 'Expression unavailable for this selection';
       draw('linked');
     });
+    // The server's reason a view will not draw (an empty or refused result).
+    window.Shiny.addCustomMessageHandler('cerebro_view_terminal', function (message) {
+      if (specs[message.id] && fresh(message)) terminal(message.id, message.text, message.kind);
+    });
   }
   function terminal(id, text, kind) {
     var s = state(id);
@@ -303,14 +311,6 @@
       .on('change.cerebroViewFeedback shiny:inputchanged.cerebroViewFeedback', changed)
       .on('shiny:connected.cerebroViewFeedback', install)
       .on('shown.bs.tab.cerebroViewFeedback', function () { Object.keys(specs).forEach(draw); })
-      .on('shiny:value.cerebroViewFeedback', function (event) {
-        if (event.target.id !== 'hla_motif_note') return;
-        // Shiny inserts the HTML after delivering the value event.
-        window.setTimeout(function () {
-          var marker = event.target.querySelector('[data-view-state]');
-          if (marker) terminal('hla_motif_network', marker.textContent.trim(), marker.getAttribute('data-view-state'));
-        }, 0);
-      })
       .on('shiny:error.cerebroViewFeedback', function (event) {
         if (!event.error || !event.error.message) return;
         // Shiny reports an output that has no bound element on `document`
