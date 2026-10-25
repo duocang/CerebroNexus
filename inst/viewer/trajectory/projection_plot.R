@@ -37,6 +37,21 @@ trajectory_projection_feedback <- function() {
   )
 }
 
+## The feedback a frame is sent with, with the current point size and opacity.
+trajectory_projection_full_feedback <- function(feedback) {
+  utils::modifyList(
+    feedback,
+    list(
+      trajectory_point_size = as.character(
+        isolate(trajectory_projection_appearance$point_size)
+      ),
+      trajectory_point_opacity = as.character(
+        isolate(trajectory_projection_appearance$point_opacity)
+      )
+    )
+  )
+}
+
 trajectory_projection_point_line <- function(draw_border) {
   if (draw_border) {
     list(color = cerebro_plotly_theme()$axis, width = 1)
@@ -112,6 +127,7 @@ trajectory_projection_request <- function() {
   )
 }
 
+trajectory_projection_cells_memo <- viewerMemoOne()
 trajectory_projection_prepared_raw <- reactive({
   req(trajectory_projection_active())
   dataset_context <- viewer_loaded_dataset_context()
@@ -129,32 +145,43 @@ trajectory_projection_prepared_raw <- reactive({
     color_variable,
     names(group_filters)
   ))
-  keep <- cerebroGroupFilterMask(cells_df, group_filters)
-  if (!all(keep)) {
-    cells_df <- cells_df[keep, , drop = FALSE]
-  }
+  ## Sampling and shuffling are random. The same cells and request (evaluated
+  ## again because a control bound with its current value) reuse the drawn
+  ## cells, so the frame is identical and is not sent again.
+  built <- trajectory_projection_cells_memo(
+    list(dataset_context, trajectory_data, cells_df, request, color_variable),
+    function() {
+      keep <- cerebroGroupFilterMask(cells_df, group_filters)
+      if (!all(keep)) {
+        cells_df <- cells_df[keep, , drop = FALSE]
+      }
 
-  ## randomly remove cells (if necessary)
-  cells_df <- randomlySubsetCells(
-    cells_df,
-    trajectory_projection_appearance$percentage_cells_to_show
-  )
+      ## randomly remove cells (if necessary)
+      cells_df <- randomlySubsetCells(
+        cells_df,
+        trajectory_projection_appearance$percentage_cells_to_show
+      )
 
-  ## An empty frame is still sent, without trajectory lines, so clearing every
-  ## filter cannot leave the previous Canvas frame visible.
-  trajectory_lines <- list()
-  if (nrow(cells_df) > 0L) {
-    ## Categorical payloads are split into one trace per group below, so
-    ## shuffling rows within a trace cannot change paint order. Continuous
-    ## colours stay shuffled so the original overlap behaviour is preserved.
-    if (is.numeric(cells_df[[color_variable]])) {
-      cells_df <- cells_df[sample.int(nrow(cells_df)), , drop = FALSE]
+      ## An empty frame is still sent, without trajectory lines, so clearing
+      ## every filter cannot leave the previous Canvas frame visible.
+      trajectory_lines <- list()
+      if (nrow(cells_df) > 0L) {
+        ## Categorical payloads are split into one trace per group below, so
+        ## shuffling rows within a trace cannot change paint order. Continuous
+        ## colours stay shuffled so the original overlap behaviour is preserved.
+        if (is.numeric(cells_df[[color_variable]])) {
+          cells_df <- cells_df[sample.int(nrow(cells_df)), , drop = FALSE]
+        }
+
+        ## trajectory path as line-segment shapes (warm near-black, the theme
+        ## title colour), drawn under the points as the structural backbone
+        trajectory_lines <- trajectory_projection_lines(trajectory_data[["edges"]])
+      }
+      list(cells_df = cells_df, trajectory_lines = trajectory_lines)
     }
-
-    ## trajectory path as line-segment shapes (warm near-black, the theme title
-    ## colour), drawn under the points as the structural backbone
-    trajectory_lines <- trajectory_projection_lines(trajectory_data[["edges"]])
-  }
+  )
+  cells_df <- built$cells_df
+  trajectory_lines <- built$trajectory_lines
 
   list(
     request = request,
@@ -450,10 +477,30 @@ observe({
     viewerDatasetContextEqual(prepared$dataset_context, current_context)
   )
   ## Wait for the debounced frame of this request; it re-runs this observer.
+  if (!identical(prepared$request, trajectory_projection_request())) {
+    return()
+  }
+  ## Control values are not part of the frame: when only they changed (the
+  ## drawer's group filters binding), the drawn frame acknowledges them.
+  feedback <- trajectory_projection_full_feedback(prepared[["feedback"]])
   if (
-    !identical(prepared$request, trajectory_projection_request()) ||
-      !trajectory_projection_unsent(render_request, prepared)
+    !trajectory_projection_unsent(
+      render_request,
+      prepared[setdiff(names(prepared), "feedback")]
+    )
   ) {
+    if (
+      !is.null(trajectory_projection_last$token) &&
+        !identical(feedback, trajectory_projection_last$feedback)
+    ) {
+      cerebroSendViewFeedback(
+        "trajectory_projection",
+        trajectory_projection_last$token,
+        current_context,
+        feedback
+      )
+      trajectory_projection_last$feedback <- feedback
+    }
     return()
   }
 
@@ -527,7 +574,7 @@ observe({
     )
   }
   trajectory_projection_parameters_other[["reset_axes"]] <- FALSE
-  cerebroCellViewRender(
+  trajectory_projection_last$token <- cerebroCellViewRender(
     "trajectory_projection",
     payload[["meta"]],
     payload[["data"]],
@@ -535,18 +582,9 @@ observe({
     extra = list(shapes = prepared[["trajectory_lines"]]),
     deferred_aux = deferred_aux,
     dataset_context = prepared[["dataset_context"]],
-    feedback = utils::modifyList(
-      prepared[["feedback"]],
-      list(
-        trajectory_point_size = as.character(
-          isolate(trajectory_projection_appearance$point_size)
-        ),
-        trajectory_point_opacity = as.character(
-          isolate(trajectory_projection_appearance$point_opacity)
-        )
-      )
-    )
+    feedback = feedback
   )
+  trajectory_projection_last$feedback <- feedback
   if (!isolate(trajectory_projection_sent())) {
     session$onFlushed(
       function() trajectory_projection_sent(TRUE),

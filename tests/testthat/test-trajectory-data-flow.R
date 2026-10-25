@@ -132,6 +132,7 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
         data.frame(group = c("A", "B"), x = 1:2, y = 3:4)
       }
       preferences <- list(show_hover_info_in_projections = FALSE)
+      trajectory_projection_cells_memo <- viewerMemoOne()
       viewer_server_load(
         viewer_server_statements("trajectory", "projection_plot.R"),
         scope,
@@ -187,6 +188,65 @@ test_that("trajectory preparation emits the first frame and coalesces rapid chan
       session$setInputs(trajectory_projection_group_filter_group = c("A", "B"))
       session$elapse(1000)
       expect_equal(nrow(tail(scope$seen, 1)[[1]]$cells_df), 2)
+    }
+  )
+})
+
+test_that("a control binding with its value keeps the same shuffled trajectory cells", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      viewer_runtime_env(scope)
+      viewer_loaded_dataset_context <- function() {
+        list(epoch = "s", dataset_key = "A", generation = 1)
+      }
+      trajectory_selection_ok <- function() TRUE
+      trajectory_data_reactive <- function() list(edges = data.frame())
+      trajectory_projection_appearance <- reactiveValues(
+        percentage_cells_to_show = 100,
+        point_size = 3,
+        point_opacity = .8,
+        draw_border = TRUE,
+        keep_square = FALSE
+      )
+      getGroups <- function() "group"
+      getGroupLevels <- function(group) c("A", "B")
+      cells <- data.frame(
+        group = rep(c("A", "B"), 25),
+        value = seq_len(50) / 10,
+        x = seq_len(50),
+        y = rev(seq_len(50))
+      )
+      trajectory_cells_reactive <- function(...) cells
+      preferences <- list(show_hover_info_in_projections = FALSE)
+      trajectory_projection_cells_memo <- viewerMemoOne()
+      viewer_server_load(
+        viewer_server_statements("trajectory", "projection_plot.R"),
+        scope,
+        names = c(
+          "trajectory_projection_lines",
+          "trajectory_projection_feedback",
+          "trajectory_projection_active",
+          "trajectory_active_group_filters",
+          "trajectory_projection_request",
+          "trajectory_projection_prepared_raw"
+        )
+      )
+      seen <- list()
+      observe({
+        seen[[length(seen) + 1L]] <<- trajectory_projection_prepared_raw()$cells_df
+      })
+    },
+    {
+      session$setInputs(sidebar = "trajectory", trajectory_point_color = "value")
+      first <- tail(scope$seen, 1)[[1]]
+      ## The settings drawer's filter binds with every level: no filter.
+      session$setInputs(trajectory_projection_group_filter_group = c("A", "B"))
+      expect_gt(length(scope$seen), 1L)
+      expect_identical(tail(scope$seen, 1)[[1]], first)
+      ## A real change still builds new cells.
+      session$setInputs(trajectory_projection_group_filter_group = "A")
+      expect_identical(unique(tail(scope$seen, 1)[[1]]$group), "A")
     }
   )
 })
