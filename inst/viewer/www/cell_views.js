@@ -1190,7 +1190,7 @@
   // narrow, which shrinks the minimap.
   function resizePanel(p, width, height) {
     var dpr = window.devicePixelRatio || 1;
-    p.W = width; p.H = height;
+    p.W = width; p.H = height; p._dpr = dpr; p._resizedUndrawn = true;
     resizePanelLayers(p, width, height, dpr);
     if (p.pane) {
       p.pane.classList.toggle('cv-narrow', width < 420);
@@ -2268,6 +2268,7 @@
   }
 
   function draw(p, shownMask, shownCount) {
+    p._resizedUndrawn = false;
     var c = p.ctx; clearPanelLayers(p);
     if (needsUnderlay(p)) attachUnderlay(p);
     var underlay = p.underlayCtx || c;
@@ -4851,7 +4852,7 @@
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(function () {
           if (!D || focusAnimating) return;
-          resizeAll();
+          resizeAll(true);
           reportWorkspaceReady();
         }, 30);
       });
@@ -6467,7 +6468,9 @@
     return balanced[0];
   }
 
-  function resizeAll() {
+  // `ifChanged` (the ResizeObserver): leave canvases untouched, and do not
+  // draw, when no panel's size changes. Assigning a canvas size clears it.
+  function resizeAll(ifChanged) {
     if (!D || !panels.length) return false;
     var panes = panels[0].pane && panels[0].pane.parentElement;
     if (!panes) return false;
@@ -6477,6 +6480,7 @@
     var availW = panes.clientWidth;
     if (availW < 20) return false;           // tab still hidden; observer re-runs
     var key = layoutInputs(panes);
+    var passKey = _layoutKey, pass = _layoutPass;
     if (key === _layoutKey) {
       if (_layoutPass >= 2) return false;
       _layoutPass++;
@@ -6579,6 +6583,7 @@
     var primaryWidth = cols > 1
       ? Math.max(panelWidth, Math.floor(colW * 2 + gap - chromeX))
       : panelWidth;
+    var resized = false;
     vis.forEach(function (p) {
       var primary = !!focusPanel && p.key === focusPanel;
       var width = primary ? primaryWidth : panelWidth;
@@ -6594,8 +6599,17 @@
         p.pane.style.width = paneWidth + 'px';
         p.pane.style.height = '';
       }
+      if (ifChanged && p.W === width && p.H === height &&
+          p._dpr === (window.devicePixelRatio || 1)) return;
+      resized = true;
       resizePanel(p, width, height);
     });
+    // A panel resized while drawing was deferred is blank: draw it now.
+    if (ifChanged && !resized && !vis.some(function (p) { return p._resizedUndrawn; })) {
+      // Nothing was redrawn, so this check does not use up a layout pass.
+      _layoutKey = passKey; _layoutPass = pass;
+      return false;
+    }
     if (!psSeeded) autoPointSize(side);
     // Visibility of focus affordances depends on how many linked lenses remain.
     updateFocusButtons();

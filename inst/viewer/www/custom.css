@@ -3068,6 +3068,13 @@ body .shiny-bound-output.cerebro-output-waiting {
 .cerebro-viz-page-heading:has(.cerebro-page-feedback:not([hidden])) {
   flex-wrap: wrap;
 }
+/* The layout switch hides while a frame updates and returns once it is painted.
+   Reserve its height (28px buttons + 3px padding + 1px border, twice), or the
+   panes below move by 2px and every update is drawn twice. */
+.cerebro-viz-page-heading:has(> .cerebro-page-feedback) { min-height: 36px; }
+@media (pointer: coarse) {
+  .cerebro-viz-page-heading:has(> .cerebro-page-feedback) { min-height: 52px; }
+}
 .cerebro-viz-page-heading > .cerebro-page-feedback {
   flex: 0 0 auto; min-height: 0; max-width: 100%; margin: 0; padding: 0;
   border: 0; background: transparent; box-shadow: none;
