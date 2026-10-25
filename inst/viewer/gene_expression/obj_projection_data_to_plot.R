@@ -32,9 +32,10 @@ expression_projection_data_to_plot_raw <- reactive({
       nrow(coordinates) == nrow(expression_projection_trajectory()[['meta']])
     )
   }
+  ## Control values (feedback) are not part of the frame: the sender adds
+  ## them, so a control that binds without changing the frame sends none.
   to_return <- list(
     dataset_context = dataset_context,
-    feedback = cerebroFeedbackControls("expression_projection", input),
     dataset = data_set(),
     render_request = input[["expression_projection_render_request"]],
     coordinates = coordinates,
