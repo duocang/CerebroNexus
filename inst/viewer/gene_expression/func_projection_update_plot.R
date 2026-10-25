@@ -203,6 +203,34 @@ expression_projection_update_plot <- function(input) {
     output_data[["y"]] <- NULL
     output_data[["projection_resource"]] <- projection_asset
   }
+  ## A trajectory drawn on a Viewer Pack projection with all its cells: the
+  ## browser takes the projection and the trajectory's cell subset from the
+  ## Pack, as on the Trajectory page, instead of a million coordinates here.
+  trajectory_asset <- if (
+    isTRUE(plot_parameters[["is_trajectory"]]) &&
+      length(cell_indices) &&
+      identical(cell_indices, input[["trajectory_rows"]]) &&
+      exists("viewerTrajectoryFrameAsset", mode = "function", inherits = TRUE)
+  ) {
+    selection <- strsplit(plot_parameters[["projection"]], split = " // ")[[1]]
+    viewerTrajectoryFrameAsset(selection[[1]], selection[[2]])
+  }
+  if (
+    is.list(trajectory_asset) &&
+      identical(
+        as.character(trajectory_asset$geometry_kind),
+        "canonical_projection"
+      ) &&
+      identical(as.integer(trajectory_asset$cells), length(cell_indices)) &&
+      is.list(trajectory_asset$projection) &&
+      is.list(trajectory_asset$subset) &&
+      !identical(as.character(failed_asset), trajectory_asset$projection$url)
+  ) {
+    output_data[["x"]] <- NULL
+    output_data[["y"]] <- NULL
+    output_data[["projection_resource"]] <- trajectory_asset$projection
+    output_data[["projection_subset_resource"]] <- trajectory_asset$subset
+  }
   if (plot_parameters[["draw_border"]]) {
     output_data[['point_line']] <- list(
       color = "rgb(196,196,196)",

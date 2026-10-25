@@ -51,6 +51,7 @@ expression_projection_data_to_plot_raw <- reactive({
     rgb_layout = input[["expression_rgb_layout"]],
     render_key = expression_projection_render_key(),
     cell_indices = expression_projection_cells_to_show(),
+    trajectory_rows = expression_projection_trajectory_rows(),
     client_percentage = isTRUE(expression_projection_client_percentage()),
     projection_resource_failed = input[[
       "expression_projection_projection_resource_failed"

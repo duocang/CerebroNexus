@@ -55,3 +55,74 @@ test_that("Gene expression on a trajectory pairs each point with its own cell", 
     }
   )
 })
+
+test_that("a whole trajectory takes its geometry from the Viewer Pack", {
+  runtime <- new.env(parent = globalenv())
+  runtime$`%||%` <- function(x, y) if (is.null(x)) y else x
+  runtime$expressionColorScale <- function(...) "scale"
+  runtime$expressionReverseColorScale <- function(...) FALSE
+  runtime$cerebroCellViewRender <- function(id, meta, data, ...) {
+    runtime$captured <- data
+  }
+  runtime$cerebroCellViewRecolor <- runtime$cerebroCellViewRender
+  runtime$viewerTrajectoryFrameAsset <- function(method, name) {
+    list(
+      cells = 3L,
+      geometry_kind = "canonical_projection",
+      projection = list(url = "projection/001.bin", cells = 5L),
+      subset = list(kind = "exclude_uint32", url = "trajectory/001.subset.bin")
+    )
+  }
+  sys.source(
+    viewer_test_path("gene_expression", "func_projection_update_plot.R"),
+    envir = runtime
+  )
+  frame <- function(cells) {
+    runtime$expression_projection_render_state$geometry <- NULL
+    runtime$expression_projection_update_plot(list(
+      coordinates = data.frame(
+        DR_1 = c(20, 40, 50)[seq_along(cells)],
+        DR_2 = 0
+      ),
+      reset_axes = FALSE,
+      expression_levels = c(0, 1, 2)[seq_along(cells)],
+      plot_parameters = list(
+        draw_border = FALSE,
+        keep_square = TRUE,
+        plot_order = "Input order",
+        point_size = 1,
+        point_opacity = 1,
+        x_range = c(0, 50),
+        y_range = c(0, 1),
+        is_trajectory = TRUE,
+        hover_info = FALSE,
+        projection = "m // t",
+        n_dimensions = 2L
+      ),
+      color_settings = list(
+        color_scale = "Viridis",
+        color_range = c(0, 2),
+        color_mode = "same",
+        genes = "GeneA"
+      ),
+      metadata = NULL,
+      trajectory = list(edges = data.frame()),
+      display_mode = "single",
+      cell_indices = cells,
+      trajectory_rows = c(2L, 4L, 5L),
+      projection_resource_failed = NULL,
+      separate_panels = FALSE
+    ))
+    runtime$captured
+  }
+  whole <- frame(c(2L, 4L, 5L))
+  expect_null(whole[["x"]])
+  expect_identical(whole$projection_resource$url, "projection/001.bin")
+  expect_identical(
+    whole$projection_subset_resource$url,
+    "trajectory/001.subset.bin"
+  )
+  filtered <- frame(c(2L, 5L))
+  expect_identical(filtered[["x"]], c(20, 40))
+  expect_null(filtered$projection_resource)
+})
