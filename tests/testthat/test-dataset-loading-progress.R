@@ -369,6 +369,32 @@ test_that("a background task sees the Viewer's run-time library paths", {
       expect_identical(Sys.getenv("R_LIBS", unset = NA_character_), previous)
     })
   }
+
+  ## A job given as a quoted expression through do.call() runs the same way.
+  task <- do.call(
+    cache$.viewerMirai,
+    list(.expr = quote(list(paths = .libPaths(), value = value)), value = 8L)
+  )
+  child <- mirai::call_mirai(task)$data
+  expect_true(runtime_lib %in% normalizePath(child$paths, winslash = "/"))
+  expect_identical(child$value, 8L)
+})
+
+test_that("every Viewer background task starts through .viewerMirai()", {
+  files <- list.files(
+    viewer_test_path(),
+    pattern = "[.]R$",
+    recursive = TRUE,
+    full.names = TRUE
+  )
+  direct <- unlist(lapply(files, function(file) {
+    lines <- readLines(file, warn = FALSE)
+    hits <- grep("mirai::mirai\\b", lines)
+    hits <- hits[!grepl("^\\s*#", lines[hits])]
+    if (length(hits)) paste0(basename(file), ": ", trimws(lines[hits]))
+  }))
+  ## The one direct call is the one inside .viewerMirai() itself.
+  expect_identical(direct, "crb_cache.R: mirai::mirai(expr, ...)")
 })
 
 test_that("a user who left and came back starts a new wait", {

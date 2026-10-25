@@ -106,11 +106,11 @@ viewerCellNamesFile <- function(pack) {
     n = pack$cell_count,
     file = entry$file
   )
-  ## A daemon that cannot start (a library path the child R does not see, a
-  ## blocked socket) times out; the file is then written in the session.
+  ## A daemon that cannot start (a blocked socket) times out; the file is then
+  ## written in the session. .viewerMirai() gives it the Viewer's library paths.
   entry$task <- tryCatch(
     do.call(
-      mirai::mirai,
+      .viewerMirai,
       c(
         list(.expr = .viewer_cell_names_job, .timeout = 10000),
         entry$arguments

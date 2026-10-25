@@ -271,7 +271,7 @@ crb_h5_cell_check_start <- function(path, expected) {
   if (!exists(key, envir = .crb_h5_cell_checks, inherits = FALSE)) {
     entry <- new.env(parent = emptyenv())
     entry$task <- tryCatch(
-      mirai::mirai(
+      .viewerMirai(
         rlang::hash(enc2utf8(as.character(as.vector(
           rhdf5::h5read(path, "expression/genes")
         )))),
