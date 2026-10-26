@@ -180,33 +180,14 @@ test_that("a CSR assay goes straight to a sidecar laid out as the writer lays it
     methods::as(Matrix::t(assay_x(plain)), "CsparseMatrix"),
     reference
   )
-  layout <- function(file, name) {
-    fid <- rhdf5::H5Fopen(file)
-    on.exit(rhdf5::H5Fclose(fid))
-    d <- rhdf5::H5Dopen(fid, paste0("expression/", name))
-    on.exit(rhdf5::H5Dclose(d), add = TRUE, after = FALSE)
-    plist <- rhdf5::H5Dget_create_plist(d)
-    type <- rhdf5::H5Dget_type(d)
-    n_filters <- rhdf5::H5Pget_nfilters(plist)
-    list(
-      rhdf5::H5Sget_simple_extent_dims(rhdf5::H5Dget_space(d)),
-      rhdf5::H5Pget_chunk(plist),
-      vapply(
-        seq_len(n_filters),
-        function(i) rhdf5::H5Pget_filter(plist, i)[[2]],
-        ""
-      ),
-      rhdf5::H5Tget_class(type),
-      rhdf5::H5Tget_size(type)
-    )
-  }
   for (name in c("shape", "genes", "barcodes", "data", "indices", "indptr")) {
-    layout_sidecar <- layout(sidecar, name)
-    layout_reference <- layout(reference, name)
+    layout_sidecar <- h5_writer_layout(sidecar, name)
+    layout_reference <- h5_writer_layout(reference, name)
     if (identical(name, "data")) {
       ## the fixture's float32 values stay float32
-      expect_identical(layout_sidecar[[5]], 4L)
-      layout_sidecar[[5]] <- layout_reference[[5]]
+      expect_identical(layout_sidecar$type_size, 4L)
+      layout_sidecar[c("type_size", "type_precision")] <-
+        layout_reference[c("type_size", "type_precision")]
     }
     expect_identical(layout_sidecar, layout_reference, info = name)
     expect_identical(
@@ -436,37 +417,48 @@ test_that("convertH5adToCerebro picks layers and backends, rejects wrong calls",
     as.numeric(rhdf5::h5read(sidecar, "expression/data")),
     expected@x
   )
+  ## the top expressed genes summed from the file are the ones the per-group
+  ## subsets of the dense counts give
+  meta <- as.data.frame(SummarizedExperiment::colData(read_fixture(
+    "small_csr.h5ad"
+  )))
   expect_equal(
     obj$getMostExpressedGenes("cell_type"),
-    readCerebro(suppressMessages(suppressWarnings(convertH5adToCerebro(
-      fixture("small_csr.h5ad"),
-      withr::local_tempdir(),
-      assay = "counts",
-      groups = "cell_type",
-      viewer_binary = "never",
-      verbose = FALSE
-    ))))$getMostExpressedGenes("cell_type")
+    .convertComputeGroupSummaries(
+      list(),
+      meta,
+      counts,
+      "cell_type",
+      FALSE
+    )$most_expressed_genes$cell_type
   )
 
-  ## a QC column the file lacks is computed from the counts layer, which
-  ## needs the full read
-  messages <- character()
-  withCallingHandlers(
-    suppressWarnings(convertH5adToCerebro(
+  ## a QC column the file lacks is computed from the counts layer, so the
+  ## whole file is read again, as in the other modes; the export itself is
+  ## the one above, so it is left out
+  local({
+    handed <- NULL
+    testthat::local_mocked_bindings(
+      convertSCEToCerebro = function(sce_file, ...) {
+        handed <<- sce_file
+        invisible(NULL)
+      }
+    )
+    dir <- withr::local_tempdir()
+    suppressMessages(suppressWarnings(convertH5adToCerebro(
       fixture("small_csr.h5ad"),
-      withr::local_tempdir(),
+      dir,
       groups = "cell_type",
       nUMI = "umi_missing",
       expression_matrix_mode = "h5",
       viewer_binary = "never",
       verbose = FALSE
-    )),
-    message = function(m) {
-      messages <<- c(messages, conditionMessage(m))
-      invokeRestart("muffleMessage")
-    }
-  )
-  expect_true(any(grepl("from assay `counts`", messages)))
+    )))
+    expect_identical(SummarizedExperiment::assayNames(handed), c("X", "counts"))
+    expect_s4_class(assay_x(handed), "dgCMatrix")
+    ## the sidecar of the first read is not left behind
+    expect_identical(list.files(dir), character(0))
+  })
 
   expect_error(
     convertH5adToCerebro(fixture("small_csr.h5ad"), out),
