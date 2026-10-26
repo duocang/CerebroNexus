@@ -16,6 +16,8 @@
   to the selection; the plot toolbar floats in the plot's top-right corner.
 - Background tasks see libraries added at run time (`.libPaths()`, renv); with
   mirai or qs2 installed there, they used to stop silently.
+- Linked views paints its first frame in the configured colours; it used to
+  flash the default palette first.
 
 # CerebroNexus 5.3.1
 
