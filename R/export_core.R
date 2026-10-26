@@ -423,19 +423,6 @@
       }
     }
 
-    ## transpose genes x cells -> cells x genes for storage, unless the
-    ## matrix is held cells x genes already
-    m_disk <- .cellsByGenesSeed(expression_data)
-    if (is.null(m_disk)) {
-      m_disk <- if (
-        inherits(expression_data, c("RleMatrix", "DelayedMatrix"))
-      ) {
-        DelayedArray::t(expression_data)
-      } else {
-        methods::as(Matrix::t(expression_data), "CsparseMatrix")
-      }
-    }
-
     if (verbose) {
       message(sprintf(
         "[%s] Writing expression matrix to TENx HDF5 file: %s",
@@ -444,7 +431,22 @@
       ))
     }
 
-    .writeTENxH5(m_disk, h5_abs, group = "expression")
+    ## A dgCMatrix is transposed and written by compiled code; a matrix held
+    ## cells x genes already is written as it is; anything else is transposed
+    ## genes x cells -> cells x genes here first.
+    if (!.writeSidecarFromGenesByCells(expression_data, h5_abs)) {
+      m_disk <- .cellsByGenesSeed(expression_data)
+      if (is.null(m_disk)) {
+        m_disk <- if (
+          inherits(expression_data, c("RleMatrix", "DelayedMatrix"))
+        ) {
+          DelayedArray::t(expression_data)
+        } else {
+          methods::as(Matrix::t(expression_data), "CsparseMatrix")
+        }
+      }
+      .writeTENxH5(m_disk, h5_abs, group = "expression")
+    }
 
     ## self$expression stays NULL — saveRDS therefore does not embed the
     ## matrix inside the .crb. The runtime attach reads the sibling back

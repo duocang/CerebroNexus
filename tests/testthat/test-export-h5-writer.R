@@ -167,3 +167,114 @@ test_that(".writeTENxH5 keeps the HDF5Array path for what it does not handle", {
   .writeTENxH5(delayed, written, group = "expression", level = 0L)
   expect_same_tenx_h5(written, expected)
 })
+
+test_that("a genes x cells dgCMatrix goes to the sidecar by compiled code, as .writeTENxH5 writes its transpose", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("rhdf5")
+  fixtures <- list(
+    tiny = h5_writer_matrix(7L, 5L, 0.5),
+    wide = h5_writer_matrix(3000L, 200L, 0.12),
+    utf8 = h5_writer_matrix(30L, 40L, 0.3, utf8 = TRUE)
+  )
+  for (name in names(fixtures)) {
+    cells_by_genes <- fixtures[[name]]
+    genes_by_cells <- methods::as(Matrix::t(cells_by_genes), "CsparseMatrix")
+    for (level in c(0L, 6L)) {
+      expected <- withr::local_tempfile(fileext = ".h5")
+      written <- withr::local_tempfile(fileext = ".h5")
+      .writeTENxH5(
+        cells_by_genes,
+        expected,
+        group = "expression",
+        level = level
+      )
+      expect_true(.writeSidecarFromGenesByCells(
+        genes_by_cells,
+        written,
+        group = "expression",
+        level = level
+      ))
+      expect_same_tenx_h5(written, expected, info = paste(name, "level", level))
+    }
+  }
+})
+
+test_that("the compiled sidecar writer leaves to the R path what it does not handle", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("DelayedArray")
+  skip_if_not_installed("rhdf5")
+  genes_by_cells <- methods::as(
+    Matrix::t(h5_writer_matrix()),
+    "CsparseMatrix"
+  )
+  unnamed <- genes_by_cells
+  dimnames(unnamed) <- NULL
+  ## a gene listed twice for a cell, which no valid dgCMatrix holds
+  twice <- genes_by_cells
+  first <- seq(twice@p[[1]] + 1L, twice@p[[2]])
+  skip_if(length(first) < 2L, "first cell has fewer than two values")
+  twice@i[first[[2]]] <- twice@i[first[[1]]]
+  for (case in list(
+    unnamed = list(unnamed, "expression"),
+    delayed = list(DelayedArray::DelayedArray(genes_by_cells), "expression"),
+    other_group = list(genes_by_cells, "matrix"),
+    twice = list(twice, "expression")
+  )) {
+    file <- withr::local_tempfile(fileext = ".h5")
+    expect_false(.writeSidecarFromGenesByCells(
+      case[[1]],
+      file,
+      group = case[[2]]
+    ))
+    expect_false(file.exists(file))
+  }
+})
+
+test_that("Seurat and SCE exports write the same sidecar with and without the compiled writer", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("rhdf5")
+  skip_if_not_installed("SingleCellExperiment")
+  genes_by_cells <- methods::as(
+    Matrix::t(h5_writer_matrix(300L, 50L, 0.2)),
+    "CsparseMatrix"
+  )
+  sce <- SingleCellExperiment::SingleCellExperiment(
+    assays = list(logcounts = genes_by_cells),
+    colData = S4Vectors::DataFrame(
+      cluster = rep(c("a", "b", "c"), length.out = ncol(genes_by_cells)),
+      nUMI = 1,
+      nGene = 1,
+      row.names = colnames(genes_by_cells)
+    ),
+    reducedDims = list(
+      UMAP = matrix(
+        stats::runif(2L * ncol(genes_by_cells)),
+        ncol = 2L,
+        dimnames = list(colnames(genes_by_cells), c("UMAP_1", "UMAP_2"))
+      )
+    )
+  )
+  export <- function(dir) {
+    suppressMessages(suppressWarnings(exportFromSCE(
+      sce,
+      file = file.path(dir, "x.crb"),
+      experiment_name = "sidecar",
+      organism = "hg",
+      groups = "cluster",
+      nUMI = "nUMI",
+      nGene = "nGene",
+      expression_matrix_mode = "h5",
+      viewer_binary = "never",
+      verbose = FALSE
+    )))
+    list.files(dir, "[.]h5$", full.names = TRUE)
+  }
+  compiled <- export(withr::local_tempdir())
+  local({
+    testthat::local_mocked_bindings(
+      .writeSidecarFromGenesByCells = function(...) FALSE
+    )
+    reference <- export(withr::local_tempdir())
+    expect_same_tenx_h5(compiled, reference)
+  })
+})

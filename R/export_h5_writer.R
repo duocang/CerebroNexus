@@ -193,6 +193,51 @@
   }
 }
 
+#' Write a genes x cells dgCMatrix as the cells x genes sidecar by compiled
+#' code: its slots already list each cell's genes, so they are transposed on
+#' several threads and written without a transposed copy in R. The file is
+#' the one `.writeTENxH5(t(x), file, group, level)` writes. FALSE (and no
+#' file) when it cannot: anything but a named, non-empty dgCMatrix, a group
+#' other than "expression", or a gene listed twice for a cell. The caller
+#' then transposes and writes as before.
+#' @keywords internal
+#' @noRd
+.writeSidecarFromGenesByCells <- function(
+  x,
+  file,
+  group = "expression",
+  level = NULL
+) {
+  if (!identical(group, "expression") || !.canWriteTENxDirect(x)) {
+    return(FALSE)
+  }
+  if (is.null(level)) {
+    level <- HDF5Array::getHDF5DumpCompressionLevel()
+  }
+  written <- tryCatch(
+    dgcToSidecarCpp(
+      x@i,
+      x@p,
+      x@x,
+      nrow(x),
+      ncol(x),
+      file,
+      .sidecarThreads(),
+      as.integer(level)
+    ),
+    error = function(e) {
+      unlink(file)
+      stop(conditionMessage(e), call. = FALSE)
+    }
+  )
+  if (!isTRUE(written$written)) {
+    unlink(file)
+    return(FALSE)
+  }
+  .writeTENxNames(file, group, c(ncol(x), nrow(x)), colnames(x), rownames(x))
+  TRUE
+}
+
 #' Write a dgCMatrix as a TENx sparse HDF5 group, like
 #' `HDF5Array::writeTENxMatrix(x, file, group = group, level = level)`.
 #' @keywords internal

@@ -1,5 +1,6 @@
-// The H5 expression sidecar straight from an AnnData CSR matrix, and group
-// summaries straight from a sidecar, without the matrix in R.
+// The H5 expression sidecar straight from an AnnData CSR matrix or from the
+// slots of a genes x cells dgCMatrix, and group summaries straight from a
+// sidecar, without a transposed copy of the matrix in R.
 //
 // An AnnData CSR matrix is stored cell by cell (cells x genes); the sidecar
 // holds the same matrix gene by gene (the CSC of cells x genes) so that the
@@ -124,21 +125,18 @@ bool add_group_stats(const int64_t *gene_ptr, int g0, int g1, const uint32_t *ce
   return !bad;
 }
 
+// The sidecar of a matrix stored cell by cell: `ptr` (n_cells + 1 offsets)
+// over `ind` (each value's gene, from 0) and `x`. It is transposed to gene
+// order, checked for genes listed twice, summarised for `groupings` and
+// written to `out`. `label` names the matrix in errors.
 template <class V>
-List csr_to_sidecar(hid_t in, const std::string &matrix, const std::string &out, int n_cells, int n_genes,
-                    int threads, int level, hid_t value_memtype, List groupings, IntegerVector group_sizes) {
-  std::vector<int64_t> ptr;
-  std::vector<int32_t> ind;
-  std::vector<V> x;
-  read_all(in, matrix + "/indptr", H5T_NATIVE_INT64, ptr);
-  read_all(in, matrix + "/indices", H5T_NATIVE_INT32, ind);
-  read_all(in, matrix + "/data", value_memtype, x);
-  const size_t nnz = x.size();
-  if (ptr.size() != (size_t)n_cells + 1 || ind.size() != nnz || ptr[0] != 0 || (size_t)ptr[n_cells] != nnz) {
-    stop("`" + matrix + "` has inconsistent indptr/indices/data lengths.");
-  }
+List transpose_to_sidecar(const int64_t *ptr, size_t n_ptr, const int32_t *ind, const V *x, size_t nnz,
+                          const std::string &label, const std::string &out, int n_cells, int n_genes, int threads,
+                          int level, List groupings, IntegerVector group_sizes) {
+  const std::string inconsistent = label + " has inconsistent indptr/indices/data lengths.";
+  if (n_ptr != (size_t)n_cells + 1 || ptr[0] != 0 || (size_t)ptr[n_cells] != nnz) stop(inconsistent);
   for (int c = 0; c < n_cells; c++) {
-    if (ptr[c + 1] < ptr[c]) stop("`" + matrix + "` has inconsistent indptr/indices/data lengths.");
+    if (ptr[c + 1] < ptr[c]) stop(inconsistent);
   }
   if (nnz == 0) return List::create(_["written"] = false, _["reason"] = "empty");
   const int T = thread_count(threads);
@@ -150,7 +148,7 @@ List csr_to_sidecar(hid_t in, const std::string &matrix, const std::string &out,
     if (ind[k] < lowest) lowest = ind[k];
     if (ind[k] > highest) highest = ind[k];
   }
-  if (lowest < 0 || highest >= n_genes) stop("`" + matrix + "` has inconsistent indptr/indices/data lengths.");
+  if (lowest < 0 || highest >= n_genes) stop(inconsistent);
 
   // cells cut into one block per thread with about the same number of values;
   // a gene receives the blocks' cells block after block, so in cell order
@@ -194,8 +192,6 @@ List csr_to_sidecar(hid_t in, const std::string &matrix, const std::string &out,
       }
     }
   }
-  std::vector<V>().swap(x);
-  std::vector<int32_t>().swap(ind);
   std::vector<int64_t>().swap(next);
 
   // a gene listed twice for one cell: left to the R reader, which sums them
@@ -233,6 +229,20 @@ List csr_to_sidecar(hid_t in, const std::string &matrix, const std::string &out,
   return List::create(_["written"] = true, _["reason"] = "", _["group_stats"] = stats);
 }
 
+template <class V>
+List h5ad_to_sidecar(hid_t in, const std::string &matrix, const std::string &out, int n_cells, int n_genes,
+                     int threads, int level, hid_t value_memtype, List groupings, IntegerVector group_sizes) {
+  std::vector<int64_t> ptr;
+  std::vector<int32_t> ind;
+  std::vector<V> x;
+  read_all(in, matrix + "/indptr", H5T_NATIVE_INT64, ptr);
+  read_all(in, matrix + "/indices", H5T_NATIVE_INT32, ind);
+  read_all(in, matrix + "/data", value_memtype, x);
+  if (ind.size() != x.size()) stop("`" + matrix + "` has inconsistent indptr/indices/data lengths.");
+  return transpose_to_sidecar<V>(ptr.data(), ptr.size(), ind.data(), x.data(), x.size(), "`" + matrix + "`", out,
+                                 n_cells, n_genes, threads, level, groupings, group_sizes);
+}
+
 }  // namespace
 
 // Write the sidecar arrays for the CSR matrix at `matrix` of `h5ad` to a new
@@ -248,11 +258,25 @@ List h5adCsrToSidecarCpp(std::string h5ad, std::string matrix, std::string out, 
   Handle in(H5Fopen(h5ad.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT), H5Fclose);
   if (in.id < 0) stop("Cannot open `" + h5ad + "`.");
   if (is_float32(in.id, matrix + "/data")) {
-    return csr_to_sidecar<float>(in.id, matrix, out, n_cells, n_genes, threads, level, H5T_NATIVE_FLOAT, groupings,
-                                 group_sizes);
+    return h5ad_to_sidecar<float>(in.id, matrix, out, n_cells, n_genes, threads, level, H5T_NATIVE_FLOAT, groupings,
+                                  group_sizes);
   }
-  return csr_to_sidecar<double>(in.id, matrix, out, n_cells, n_genes, threads, level, H5T_NATIVE_DOUBLE, groupings,
-                                group_sizes);
+  return h5ad_to_sidecar<double>(in.id, matrix, out, n_cells, n_genes, threads, level, H5T_NATIVE_DOUBLE, groupings,
+                                 group_sizes);
+}
+
+// Write the sidecar arrays of a genes x cells dgCMatrix, given by its slots
+// (`i`, `p`, `x`), to a new file `out`: the matrix is already stored cell by
+// cell, so it goes through the same transpose without a copy of its values.
+// Returns list(written, reason) as h5adCsrToSidecarCpp() does.
+// [[Rcpp::export]]
+List dgcToSidecarCpp(IntegerVector i, IntegerVector p, NumericVector x, int n_genes, int n_cells, std::string out,
+                     int threads, int level) {
+  if (i.size() != x.size()) stop("The expression matrix has inconsistent indptr/indices/data lengths.");
+  std::vector<int64_t> ptr(p.begin(), p.end());
+  return transpose_to_sidecar<double>(ptr.data(), ptr.size(), i.begin(), x.begin(), (size_t)x.size(),
+                                      "The expression matrix", out, n_cells, n_genes, threads, level, List(),
+                                      IntegerVector());
 }
 
 // Per gene (sidecar column) and group: the sum of the values and the number of

@@ -1083,13 +1083,6 @@ exportFromSeurat <- function(
       }
     }
 
-    ## transpose genes x cells -> cells x genes for storage
-    m_disk <- if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
-      DelayedArray::t(expression_data)
-    } else {
-      methods::as(Matrix::t(expression_data), "CsparseMatrix")
-    }
-
     if (verbose) {
       .logStep("Writing expression matrix to TENx HDF5 file: ", h5_abs)
     }
@@ -1101,12 +1094,30 @@ exportFromSeurat <- function(
     ## shuffle and deflate filters are still applied). On 1.3-1.5M-cell
     ## sources it reads single genes ~30% faster than HDF5Array's default
     ## level 6, at roughly 7x the file size.
-    .writeTENxH5(
-      m_disk,
-      h5_abs,
-      group = "expression",
-      level = h5_compression_level
-    )
+    ## A dgCMatrix is transposed and written by compiled code; anything else
+    ## is transposed genes x cells -> cells x genes here first.
+    if (
+      !.writeSidecarFromGenesByCells(
+        expression_data,
+        h5_abs,
+        group = "expression",
+        level = h5_compression_level
+      )
+    ) {
+      m_disk <- if (
+        inherits(expression_data, c("RleMatrix", "DelayedMatrix"))
+      ) {
+        DelayedArray::t(expression_data)
+      } else {
+        methods::as(Matrix::t(expression_data), "CsparseMatrix")
+      }
+      .writeTENxH5(
+        m_disk,
+        h5_abs,
+        group = "expression",
+        level = h5_compression_level
+      )
+    }
 
     ## self$expression stays NULL — saveRDS therefore does not embed the
     ## matrix inside the .crb. The runtime attach reads the sibling back

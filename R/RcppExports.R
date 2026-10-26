@@ -5,6 +5,10 @@ h5adCsrToSidecarCpp <- function(h5ad, matrix, out, n_cells, n_genes, threads, le
     .Call(`_CerebroNexus_h5adCsrToSidecarCpp`, h5ad, matrix, out, n_cells, n_genes, threads, level, groupings, group_sizes)
 }
 
+dgcToSidecarCpp <- function(i, p, x, n_genes, n_cells, out, threads, level) {
+    .Call(`_CerebroNexus_dgcToSidecarCpp`, i, p, x, n_genes, n_cells, out, threads, level)
+}
+
 sidecarGroupStatsCpp <- function(file, group, codes, n_groups, threads) {
     .Call(`_CerebroNexus_sidecarGroupStatsCpp`, file, group, codes, n_groups, threads)
 }
