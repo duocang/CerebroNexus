@@ -47,3 +47,24 @@ apply_configured_colors <- function(defaults, configured) {
   defaults[shared] <- as.character(configured[shared])
   defaults
 }
+
+## Default colours a data set carries for the levels of one group
+## (technical_info$group_colors, e.g. from scanpy's uns[<column>_colors]).
+## Only valid "#RRGGBB" entries for levels the group actually has are returned;
+## NULL when there is nothing usable. Palettes configured when the app was built
+## and colours picked in the Viewer are applied on top of these.
+stored_group_colors <- function(technical_info, group_name, levels) {
+  stored <- tryCatch(
+    technical_info[["group_colors"]][[group_name]],
+    error = function(error) NULL
+  )
+  if (!is.character(stored) || is.null(names(stored))) {
+    return(NULL)
+  }
+  stored <- stored[intersect(levels, names(stored))]
+  stored <- stored[grepl("^#[0-9A-Fa-f]{6}$", stored)]
+  if (!length(stored)) {
+    return(NULL)
+  }
+  stored
+}
