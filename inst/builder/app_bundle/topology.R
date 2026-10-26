@@ -581,6 +581,16 @@
       .builder_app_without_system_metadata(identity),
       relative_root
     )
+    if (identical(relative_root, "viewer")) {
+      ## createShinyApp() writes the HLA core into the bundle from the
+      ## package R/ directory; it is not part of the Viewer template.
+      generated <- c("hla_tcr_motifs/core", "hla_tcr_motifs/core/hla_core.R")
+      core <- actual[["hla_tcr_motifs/core/hla_core.R"]]
+      if (is.null(core) || !identical(core$type, "file")) {
+        stop("The staged App differs from its trusted template.", call. = FALSE)
+      }
+      actual <- actual[!names(actual) %in% generated]
+    }
     if (!identical(actual, expected)) {
       stop("The staged App differs from its trusted template.", call. = FALSE)
     }
