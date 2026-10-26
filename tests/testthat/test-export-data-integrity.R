@@ -55,6 +55,7 @@ test_that("the export stage and new artifacts are owner-only", {
   output <- file.path(root, "dataset.crb")
   stage <- .createPrivateExportStage(output)
   withr::defer(unlink(stage, recursive = TRUE, force = TRUE))
+  expect_match(basename(stage), "^\\.crb-stage-")
   expect_identical(artifact_mode(stage), "700")
 
   .publishCerebroExport(
@@ -80,6 +81,67 @@ test_that("the export stage and new artifacts are owner-only", {
     artifact_mode(file.path(root, sidecar_name)),
     "600"
   )
+})
+
+test_that("CRB publication uses the fast gzip profile", {
+  root <- withr::local_tempdir()
+  output <- file.path(root, "dataset.crb")
+  stage <- file.path(root, "stage")
+  dir.create(stage)
+  opened <- NULL
+  open_gz <- function(
+    description,
+    open = "",
+    encoding = getOption("encoding"),
+    compression = 6
+  ) {
+    opened <<- list(open = open, compression = compression)
+    base::gzfile(description, open, encoding, compression)
+  }
+
+  .publishCerebroExport(
+    export = minimal_export(),
+    final_file = output,
+    stage_dir = stage,
+    expression_matrix_mode = "embedded",
+    .open_gz = open_gz
+  )
+
+  expect_identical(opened, list(open = "wb", compression = 1L))
+  expect_s3_class(readRDS(output), "Cerebro")
+})
+
+test_that("export stage failures are actionable without exposing local paths", {
+  root <- file.path("private", "lab", "project")
+  stage <- file.path(root, ".crb-stage-example")
+
+  unwritable <- .exportStageFailureMessage(
+    root,
+    stage,
+    writable = FALSE,
+    os_type = "unix"
+  )
+  expect_match(unwritable, "not writable", fixed = TRUE)
+  expect_match(unwritable, "writable local folder", fixed = TRUE)
+
+  long_windows_path <- paste0("C:/", strrep("deep/", 55L), ".crb-stage-example")
+  too_long <- .exportStageFailureMessage(
+    dirname(long_windows_path),
+    long_windows_path,
+    writable = TRUE,
+    os_type = "windows"
+  )
+  expect_match(too_long, "path is too long", fixed = TRUE)
+  expect_match(too_long, "shorter folder", fixed = TRUE)
+
+  rejected <- .exportStageFailureMessage(
+    root,
+    stage,
+    writable = TRUE,
+    os_type = "unix"
+  )
+  expect_match(rejected, "synced or network folder", fixed = TRUE)
+  expect_false(grepl(root, rejected, fixed = TRUE))
 })
 
 test_that("replacing a CRB preserves its existing mode", {
@@ -345,7 +407,11 @@ test_that("a publication error restores the previous H5 export", {
   expect_identical(unname(tools::md5sum(output)), before_crb)
   expect_identical(unname(tools::md5sum(old_sidecar)), before_sidecar)
   expect_length(
-    list.files(root, all.files = TRUE, pattern = "-backup-"),
+    list.files(
+      root,
+      all.files = TRUE,
+      pattern = "^\\.(crb|side|spatial|immune)-b-"
+    ),
     0L
   )
 })
@@ -494,7 +560,14 @@ test_that("re-exporting replaces the owned immune sidecar", {
     readCerebro(output)$getImmuneRepertoire()$donorA$CTaa[[1L]],
     "CHANGED"
   )
-  expect_length(list.files(root, all.files = TRUE, pattern = "-backup-"), 0L)
+  expect_length(
+    list.files(
+      root,
+      all.files = TRUE,
+      pattern = "^\\.(crb|side|spatial|immune)-b-"
+    ),
+    0L
+  )
 })
 
 test_that("an export refuses to overwrite a foreign immune sidecar name", {
@@ -565,7 +638,14 @@ test_that("a failure after the immune sidecar is installed restores the old one"
   )
   expect_identical(unname(tools::md5sum(output)), before_crb)
   expect_identical(unname(tools::md5sum(sidecar)), before_sidecar)
-  expect_length(list.files(root, all.files = TRUE, pattern = "-backup-"), 0L)
+  expect_length(
+    list.files(
+      root,
+      all.files = TRUE,
+      pattern = "^\\.(crb|side|spatial|immune)-b-"
+    ),
+    0L
+  )
 })
 
 test_that(".readPublishedImmuneBackend reads only a stored file descriptor", {

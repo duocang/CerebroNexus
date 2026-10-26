@@ -65,6 +65,62 @@ test_that("exportFromSeurat carries the spatial extraction path", {
   expected <- SeuratObject::GetTissueCoordinates(object[["fov"]])
   expect_equal(coordinates$x, expected$x)
   expect_equal(coordinates$y, expected$y)
+  fn_text <- paste(deparse(exportFromSeurat), collapse = "\n")
+  expect_match(fn_text, ".getSpatialBoundaries", fixed = TRUE)
+})
+
+test_that("exportFromSeurat exports a spatial reduction without an image", {
+  skip_if_not_installed("SeuratObject")
+  skip_if_not_installed("Seurat")
+
+  set.seed(7)
+  counts <- matrix(
+    stats::rpois(12L * 8L, lambda = 3),
+    nrow = 12L,
+    dimnames = list(paste0("Gene", seq_len(12L)), paste0("Cell", seq_len(8L)))
+  )
+  object <- SeuratObject::CreateSeuratObject(
+    counts = methods::as(counts, "CsparseMatrix")
+  )
+  object <- Seurat::NormalizeData(object, verbose = FALSE)
+  object$cluster <- rep(c("A", "B"), each = 4L)
+  make_reduction <- function(key) {
+    values <- matrix(
+      stats::rnorm(16L),
+      nrow = 8L,
+      dimnames = list(colnames(object), paste0(key, seq_len(2L)))
+    )
+    SeuratObject::CreateDimReducObject(
+      embeddings = values,
+      key = key,
+      assay = "RNA"
+    )
+  }
+  object[["umap"]] <- make_reduction("UMAP_")
+  object[["spatial"]] <- make_reduction("SPATIAL_")
+  path <- tempfile(fileext = ".crb")
+  on.exit(unlink(path), add = TRUE)
+
+  exportFromSeurat(
+    object = object,
+    assay = "RNA",
+    slot = "data",
+    file = path,
+    experiment_name = "spatial reduction",
+    organism = "hg",
+    groups = "cluster",
+    nUMI = "nCount_RNA",
+    nGene = "nFeature_RNA",
+    add_all_meta_data = TRUE,
+    projections = "umap",
+    verbose = FALSE
+  )
+
+  crb <- readCerebro(path)
+  expect_identical(crb$availableSpatial(), "spatial")
+  spatial <- crb$getSpatialData("spatial")
+  expect_equal(nrow(spatial$coordinates), ncol(object))
+  expect_identical(rownames(spatial$coordinates), colnames(object))
 })
 
 ##----------------------------------------------------------------------------##
@@ -578,6 +634,9 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
     ),
     envir = renderer
   )
+  renderer$viewerPrivateImageUrl <- function(path, session = NULL) {
+    paste0("session/", basename(path))
+  }
   rendered <- NULL
   renderer$cerebroCellViewRender <- function(id, meta, data, ...) {
     rendered <<- c(list(meta = meta, data = data), list(...))
@@ -595,7 +654,8 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
       source = "external",
       label = "Atlas",
       path = "spatial-assets/atlas.png",
-      bounds = c(xmin = -10, xmax = 110, ymin = -20, ymax = 120)
+      bounds = c(xmin = -10, xmax = 110, ymin = -20, ymax = 120),
+      viewport_bounds = c(xmin = -50, xmax = 150, ymin = -90, ymax = 190)
     ),
     background_identity = list(
       dataset = "Atlas",
@@ -619,17 +679,33 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
     point_size = 5,
     point_opacity = 1,
     draw_border = FALSE,
+    show_cell_boundaries = TRUE,
+    show_molecules = TRUE,
+    molecule_gene = "Gene1",
     hover_info = FALSE
   )
-  call_renderer <- function(plot_parameters) {
+  call_renderer <- function(plot_parameters, assignments = character()) {
     renderer$spatial_projection_update_plot(list(
       dataset_context = dataset_context,
-      cells_df = data.frame(score = c(1, 2)),
+      cells_df = data.frame(
+        cell_barcode = c("cell-1", "cell-2"),
+        score = c(1, 2),
+        cluster = factor(c("C1", "C2")),
+        sample_roi = c("lesion", "border")
+      ),
       coordinates = data.frame(x = c(20, 80), y = c(30, 70)),
       reset_axes = FALSE,
-      color_assignments = character(),
+      color_assignments = assignments,
       group_hulls = list(),
       hover_columns = list(),
+      hover_info = c("first", "second"),
+      cell_boundaries = list(
+        cell_barcode = rep(c("cell-1", "cell-2"), each = 4L),
+        part = rep("1", 8L),
+        x = c(0, 1, 1, 0, 2, 3, 3, 2),
+        y = c(0, 0, 1, 1, 2, 2, 3, 3)
+      ),
+      molecule_points = list(x = c(1, 2), y = c(3, 4)),
       plot_parameters = plot_parameters
     ))
   }
@@ -645,6 +721,8 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   expect_identical(as.numeric(rendered$data$x), c(20, 80))
   expect_identical(as.numeric(rendered$data$y), c(30, 70))
   expect_identical(rendered$meta$background_rotation, 37)
+  expect_null(rendered$extra$cell_boundaries)
+  expect_null(rendered$extra$molecule_points)
   expect_identical(
     rendered$meta$background_identity,
     params$background_identity
@@ -667,6 +745,120 @@ test_that("renderer uses selected descriptor bounds without changing cell axes",
   expect_identical(rendered$data$y_range, c(10, 90))
   expect_identical(as.numeric(rendered$data$x), c(20, 80))
   expect_identical(as.numeric(rendered$data$y), c(30, 70))
+
+  params$background_image <- "external::Atlas"
+  params$background_descriptor <- list(
+    source = "external",
+    label = "Atlas",
+    path = "spatial-assets/atlas.png",
+    bounds = c(xmin = -10, xmax = 110, ymin = -20, ymax = 120)
+  )
+  params$color_variable <- "cluster"
+  params$plot_type <- "ImageDimPlot"
+  params$split_by <- "sample_roi"
+  call_renderer(params, c(C1 = "#111111", C2 = "#eeeeee"))
+  expect_identical(
+    vapply(rendered$data$panels, `[[`, character(1), "label"),
+    c("lesion", "border")
+  )
+  expect_identical(
+    lapply(rendered$data$panels, `[[`, "selection_key"),
+    list("cell-1", "cell-2")
+  )
+  expect_true(nzchar(rendered$meta$background_image))
+  expect_true(all(vapply(
+    rendered$data$panels,
+    function(panel) is.null(panel$background_image),
+    logical(1)
+  )))
+  expect_true(all(vapply(
+    rendered$data$panels,
+    function(panel) {
+      identical(panel$x_range, c(0, 100)) &&
+        identical(panel$y_range, c(10, 90))
+    },
+    logical(1)
+  )))
+  expect_identical(
+    as.character(rendered$data$selection_key),
+    c("1", "2")
+  )
+  expect_identical(rendered$data$group, c("C1", "C2"))
+  expect_identical(unlist(rendered$meta$traces), c("C1", "C2"))
+  expect_identical(rendered$meta$group_colors, c("#111111", "#eeeeee"))
+
+  panel_preset <- list(
+    flipX = FALSE,
+    flipY = FALSE,
+    scaleX = 1,
+    scaleY = 1,
+    offsetX = 0,
+    offsetY = 0,
+    rotation = 0,
+    opacity = 0.8
+  )
+  panel_config <- function(roi, label, bounds) {
+    list(
+      descriptor = list(
+        source = "external",
+        label = label,
+        path = "spatial-assets/atlas.png",
+        bounds = bounds,
+        viewport_bounds = c(xmin = 0, xmax = 100, ymin = 10, ymax = 90)
+      ),
+      identity = list(
+        dataset = "Atlas",
+        spatial_name = "section",
+        source = "external",
+        label = label,
+        roi = roi
+      ),
+      preset = panel_preset,
+      image_allowlist = "spatial-assets/atlas.png"
+    )
+  }
+  params$background_image <- "none"
+  params$background_descriptor <- NULL
+  params$background_identity <- NULL
+  params$background_image_allowlist <- character()
+  params$roi_mode <- "separate"
+  params$roi_order <- c("border", "lesion")
+  params$roi_backgrounds <- list(
+    lesion = panel_config(
+      "lesion",
+      "Lesion H&E",
+      c(xmin = 10, xmax = 30, ymin = 20, ymax = 40)
+    ),
+    border = panel_config(
+      "border",
+      "Border H&E",
+      c(xmin = 70, xmax = 90, ymin = 60, ymax = 80)
+    )
+  )
+  call_renderer(params, c(C1 = "#111111", C2 = "#eeeeee"))
+
+  expect_null(rendered$meta$background_image)
+  expect_true(all(vapply(
+    rendered$data$panels,
+    function(panel) nzchar(panel$background_image),
+    logical(1)
+  )))
+  expect_identical(
+    vapply(rendered$data$panels, `[[`, character(1), "image_label"),
+    c("Border H&E", "Lesion H&E")
+  )
+  expect_identical(
+    lapply(rendered$data$panels, function(panel) panel$image_identity$roi),
+    list("border", "lesion")
+  )
+  expect_identical(
+    lapply(rendered$data$panels, `[[`, "x_range"),
+    list(c(79, 81), c(19, 21))
+  )
+  expect_identical(
+    lapply(rendered$data$panels, `[[`, "y_range"),
+    list(c(69, 71), c(29, 31))
+  )
 })
 
 test_that("external spatial images are streamed from session-private files", {

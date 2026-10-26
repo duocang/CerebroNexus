@@ -168,6 +168,16 @@ reactive_group_colors <- function(group_name) {
   if ("N/A" %in% levels) {
     defaults["N/A"] <- "#898989"
   }
+  ## colours the data set brings along (e.g. scanpy's) replace the built-in
+  ## defaults; app-level configuration and the user's picks still win
+  defaults <- apply_configured_colors(
+    defaults,
+    stored_group_colors(
+      tryCatch(data_set()$technical_info, error = function(error) NULL),
+      group_name,
+      levels
+    )
+  )
   resolve_reactive_palette(group_name, levels, defaults)
 }
 
