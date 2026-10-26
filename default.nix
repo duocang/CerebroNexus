@@ -57,7 +57,9 @@
 #  > "tidyselect",
 #  > "visNetwork"),
 #  > system_pkgs = c("chromium",
+#  > "curl",
 #  > "nodejs",
+#  > "openssl",
 #  > "pandoc"),
 #  > ide = "none",
 #  > project_path = ".",
@@ -132,9 +134,11 @@ let
   system_packages = builtins.attrValues {
     inherit (pkgs) 
       chromium
+      curl
       glibcLocales
       nix
       nodejs
+      openssl
       pandoc
       R;
   };
