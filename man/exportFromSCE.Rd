@@ -16,7 +16,7 @@ exportFromSCE(
   nGene = "nGene",
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
-  expression_matrix_mode = c("embedded", "bpcells", "h5"),
+  expression_matrix_mode = c("embedded", "h5"),
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
@@ -69,10 +69,10 @@ such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
 \code{expression_matrix_mode} is set to an external backend.}
 
 \item{expression_matrix_mode}{How to persist the expression matrix. One of
-\code{"embedded"} (default), \code{"bpcells"} or \code{"h5"}; identical to
-\code{\link{exportFromSeurat}}. External backends write a sibling
-\code{<stem>.bpcells/} directory or \code{<stem>.h5} file next to the
-\code{.crb}, and \code{file} must then end in \code{.crb}.}
+\code{"embedded"} (default) or \code{"h5"}; identical to
+\code{\link{exportFromSeurat}}. The \code{"h5"} backend writes a sibling
+\code{<stem>.h5} file next to the \code{.crb}, and \code{file} must then
+end in \code{.crb}.}
 
 \item{codec}{Serialization codec for the CRB payload. Defaults to
 \code{"qs2"}; use \code{"rds"} when direct compatibility with
