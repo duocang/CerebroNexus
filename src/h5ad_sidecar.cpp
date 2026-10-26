@@ -7,8 +7,8 @@
 // Viewer reads one gene with one hyperslab. The arrays are read with the HDF5
 // C API as stored (float32 values stay 4 bytes, 64-bit offsets stay 64-bit),
 // transposed by a counting sort on several threads, and written with the
-// datasets, types, chunks, filters and maximum sizes that
-// HDF5Array::writeTENxMatrix() and .writeTENxH5() write. R adds the shape and
+// datasets, chunks and maximum sizes that .writeTENxH5() writes; values stay
+// float32 when they were, and at level 0 data and indices have no filters. R adds the shape and
 // the names.
 
 #include <Rcpp.h>
@@ -72,15 +72,20 @@ void read_all(hid_t file, const std::string &name, hid_t memtype, std::vector<T>
   read_range(file, name, memtype, 0, out.size(), out.data());
 }
 
-// a chunked 1-d dataset as rhdf5::h5createDataset(chunk, level, maxdims) makes it
+// a chunked 1-d dataset as rhdf5::h5createDataset(chunk, level, maxdims) makes
+// it; `filtered` = false leaves out the shuffle and deflate filters at level
+// 0, where they store the values as they are and only cost time on every
+// write and read
 void write_all(hid_t file, const std::string &name, hid_t filetype, hid_t memtype, const void *values, hsize_t n,
-               hsize_t maxn, hsize_t chunk, int level) {
+               hsize_t maxn, hsize_t chunk, int level, bool filtered) {
   if (chunk > maxn) chunk = maxn;
   Handle space(H5Screate_simple(1, &n, &maxn), H5Sclose);
   Handle dcpl(H5Pcreate(H5P_DATASET_CREATE), H5Pclose);
   H5Pset_chunk(dcpl.id, 1, &chunk);
-  H5Pset_shuffle(dcpl.id);
-  H5Pset_deflate(dcpl.id, (unsigned)level);
+  if (filtered) {
+    H5Pset_shuffle(dcpl.id);
+    H5Pset_deflate(dcpl.id, (unsigned)level);
+  }
   Handle d(H5Dcreate2(file, name.c_str(), filetype, space.id, H5P_DEFAULT, dcpl.id, H5P_DEFAULT), H5Dclose);
   if (d.id < 0) stop("Cannot create dataset `" + name + "`.");
   if (n > 0 && H5Dwrite(d.id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, values) < 0) {
@@ -101,7 +106,8 @@ int thread_count(int threads) {
 // values above zero, each gene's cells added in order. `cell` and `value`
 // start at gene g0's first value; `code` gives every cell's group from 0, or a
 // negative number for none. FALSE for a cell outside the matrix.
-bool add_group_stats(const int64_t *gene_ptr, int g0, int g1, const uint32_t *cell, const double *value,
+template <class O>
+bool add_group_stats(const int64_t *gene_ptr, int g0, int g1, const uint32_t *cell, const O *value,
                      const int *code, int n_cells, int n_groups, int n_genes, double *total, double *positive,
                      int threads) {
   bool bad = false;
@@ -118,8 +124,9 @@ bool add_group_stats(const int64_t *gene_ptr, int g0, int g1, const uint32_t *ce
       }
       int grp = code[c];
       if (grp < 0 || grp >= n_groups) continue;
-      total[(size_t)grp * n_genes + g] += value[k];
-      if (value[k] > 0) positive[(size_t)grp * n_genes + g] += 1;
+      const double v = (double)value[k];
+      total[(size_t)grp * n_genes + g] += v;
+      if (v > 0) positive[(size_t)grp * n_genes + g] += 1;
     }
   }
   return !bad;
@@ -128,8 +135,9 @@ bool add_group_stats(const int64_t *gene_ptr, int g0, int g1, const uint32_t *ce
 // The sidecar of a matrix stored cell by cell: `ptr` (n_cells + 1 offsets)
 // over `ind` (each value's gene, from 0) and `x`. It is transposed to gene
 // order, checked for genes listed twice, summarised for `groupings` and
-// written to `out`. `label` names the matrix in errors.
-template <class V>
+// written to `out` with values of type O (float for float sources, which loses
+// nothing, else double). `label` names the matrix in errors.
+template <class V, class O>
 List transpose_to_sidecar(const int64_t *ptr, size_t n_ptr, const int32_t *ind, const V *x, size_t nnz,
                           const std::string &label, const std::string &out, int n_cells, int n_genes, int threads,
                           int level, List groupings, IntegerVector group_sizes) {
@@ -178,7 +186,7 @@ List transpose_to_sidecar(const int64_t *ptr, size_t n_ptr, const int32_t *ind, 
   }
   gene_ptr[n_genes] = total;
   std::vector<uint32_t> cell(nnz);
-  std::vector<double> value(nnz);
+  std::vector<O> value(nnz);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(T)
 #endif
@@ -188,7 +196,7 @@ List transpose_to_sidecar(const int64_t *ptr, size_t n_ptr, const int32_t *ind, 
       for (int64_t k = ptr[c]; k < ptr[c + 1]; k++) {
         int64_t d = slot[ind[k]]++;
         cell[d] = (uint32_t)c;
-        value[d] = (double)x[k];
+        value[d] = (O)x[k];
       }
     }
   }
@@ -222,10 +230,13 @@ List transpose_to_sidecar(const int64_t *ptr, size_t n_ptr, const int32_t *ind, 
   if (o.id < 0) stop("Cannot create `" + out + "`.");
   Handle group(H5Gcreate2(o.id, "expression", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT), H5Gclose);
   hsize_t max_nnz = (hsize_t)n_cells * (hsize_t)n_genes;
-  write_all(o.id, "expression/data", H5T_IEEE_F64LE, H5T_NATIVE_DOUBLE, value.data(), nnz, max_nnz, DATA_CHUNK, level);
-  write_all(o.id, "expression/indices", H5T_STD_U32LE, H5T_NATIVE_UINT32, cell.data(), nnz, max_nnz, DATA_CHUNK, level);
+  const bool single = sizeof(O) == 4;
+  write_all(o.id, "expression/data", single ? H5T_IEEE_F32LE : H5T_IEEE_F64LE,
+            single ? H5T_NATIVE_FLOAT : H5T_NATIVE_DOUBLE, value.data(), nnz, max_nnz, DATA_CHUNK, level, level > 0);
+  write_all(o.id, "expression/indices", H5T_STD_U32LE, H5T_NATIVE_UINT32, cell.data(), nnz, max_nnz, DATA_CHUNK, level,
+            level > 0);
   write_all(o.id, "expression/indptr", H5T_STD_I64LE, H5T_NATIVE_INT64, gene_ptr.data(), (hsize_t)n_genes + 1,
-            (hsize_t)n_genes + 1, INDPTR_CHUNK, 0);
+            (hsize_t)n_genes + 1, INDPTR_CHUNK, 0, true);
   return List::create(_["written"] = true, _["reason"] = "", _["group_stats"] = stats);
 }
 
@@ -239,7 +250,7 @@ List h5ad_to_sidecar(hid_t in, const std::string &matrix, const std::string &out
   read_all(in, matrix + "/indices", H5T_NATIVE_INT32, ind);
   read_all(in, matrix + "/data", value_memtype, x);
   if (ind.size() != x.size()) stop("`" + matrix + "` has inconsistent indptr/indices/data lengths.");
-  return transpose_to_sidecar<V>(ptr.data(), ptr.size(), ind.data(), x.data(), x.size(), "`" + matrix + "`", out,
+  return transpose_to_sidecar<V, V>(ptr.data(), ptr.size(), ind.data(), x.data(), x.size(), "`" + matrix + "`", out,
                                  n_cells, n_genes, threads, level, groupings, group_sizes);
 }
 
@@ -274,7 +285,7 @@ List dgcToSidecarCpp(IntegerVector i, IntegerVector p, NumericVector x, int n_ge
                      int threads, int level) {
   if (i.size() != x.size()) stop("The expression matrix has inconsistent indptr/indices/data lengths.");
   std::vector<int64_t> ptr(p.begin(), p.end());
-  return transpose_to_sidecar<double>(ptr.data(), ptr.size(), i.begin(), x.begin(), (size_t)x.size(),
+  return transpose_to_sidecar<double, double>(ptr.data(), ptr.size(), i.begin(), x.begin(), (size_t)x.size(),
                                       "The expression matrix", out, n_cells, n_genes, threads, level, List(),
                                       IntegerVector());
 }

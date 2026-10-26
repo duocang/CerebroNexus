@@ -45,7 +45,14 @@ h5_writer_layout <- function(file, dataset) {
   )
 }
 
-expect_same_tenx_h5 <- function(written, expected, info = NULL) {
+## `unfiltered`: data and indices of `written` have no filters (level 0)
+## where `expected`, from writeTENxMatrix(), has shuffle and deflate
+expect_same_tenx_h5 <- function(
+  written,
+  expected,
+  info = NULL,
+  unfiltered = FALSE
+) {
   datasets <- c("data", "indices", "indptr", "shape", "genes", "barcodes")
   expect_setequal(
     rhdf5::h5ls(written, recursive = TRUE)$name,
@@ -65,9 +72,20 @@ expect_same_tenx_h5 <- function(written, expected, info = NULL) {
       )),
       info = paste(info, dataset, "values")
     )
+    layout_written <- h5_writer_layout(written, dataset)
+    layout_expected <- h5_writer_layout(expected, dataset)
+    if (unfiltered && dataset %in% c("data", "indices")) {
+      expect_identical(
+        layout_written$n_filters,
+        0L,
+        info = paste(info, dataset, "filters")
+      )
+      layout_written$n_filters <- NULL
+      layout_expected$n_filters <- NULL
+    }
     expect_identical(
-      h5_writer_layout(written, dataset),
-      h5_writer_layout(expected, dataset),
+      layout_written,
+      layout_expected,
       info = paste(info, dataset, "layout")
     )
   }
@@ -98,7 +116,12 @@ test_that(".writeTENxH5 writes the file writeTENxMatrix writes", {
         group = "expression",
         level = level
       )
-      expect_same_tenx_h5(written, expected, info = paste(name, "level", level))
+      expect_same_tenx_h5(
+        written,
+        expected,
+        info = paste(name, "level", level),
+        unfiltered = level == 0L
+      )
     }
   }
 })
@@ -115,7 +138,7 @@ test_that(".writeTENxH5 writes values past one slab, and slabs that do not divid
   written <- withr::local_tempfile(fileext = ".h5")
   HDF5Array::writeTENxMatrix(matrix, expected, group = "expression", level = 0L)
   .writeTENxH5(matrix, written, group = "expression", level = 0L)
-  expect_same_tenx_h5(written, expected)
+  expect_same_tenx_h5(written, expected, unfiltered = TRUE)
 })
 
 test_that(".writeTENxH5 is read back by the Cerebro readers and by TENxMatrix", {

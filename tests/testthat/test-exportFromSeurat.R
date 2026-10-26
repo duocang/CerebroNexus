@@ -315,7 +315,7 @@ h5_data_filter <- function(path) {
   )
 }
 
-test_that("exportFromSeurat: h5 data is written at gzip level 0 by default", {
+test_that("exportFromSeurat: h5 data is written without compression by default", {
   skip_if_not_installed("HDF5Array")
   skip_if_not_installed("rhdf5")
 
@@ -327,18 +327,18 @@ test_that("exportFromSeurat: h5 data is written at gzip level 0 by default", {
     do.call(exportFromSeurat, c(args, list(...)))
     file.path(out_dir, paste0(name, ".h5"))
   }
+  ## level 0: no shuffle or deflate filter at all
   default <- h5_data_filter(export_h5("default"))
-  expect_true("deflate" %in% default$filters)
+  expect_length(default$filters, 0L)
 
   level6 <- h5_data_filter(export_h5("level6", h5_compression_level = 6))
   expect_true("deflate" %in% level6$filters)
   expect_lt(level6$stored, default$stored / 2)
 
   skip_if(
-    is.na(default$level),
+    is.na(level6$level),
     "needs h5dump to read the deflate level"
   )
-  expect_identical(default$level, 0L)
   expect_identical(level6$level, 6L)
 })
 

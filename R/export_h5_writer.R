@@ -4,9 +4,10 @@
 ## values grows (about 15 MB/s at 10^9 values). An in-memory dgCMatrix already
 ## holds the three TENx arrays, so they can go to the file in a few large
 ## slabs. The file is the one writeTENxMatrix() makes: the same datasets,
-## types, chunk shapes, filters and extendible maximum sizes. The Viewer reads
-## single genes by hyperslab from /expression/{indptr,indices,data}, and those
-## reads depend on exactly that layout.
+## types, chunk shapes and extendible maximum sizes, but data and indices have
+## no filters at level 0 (see .tenxFilter()); rhdf5 and HDF5Array read them the
+## same. The Viewer reads single genes by hyperslab from
+## /expression/{indptr,indices,data}, and those reads depend on that layout.
 
 .TENX_DATA_CHUNK <- 16384L
 .TENX_INDPTR_CHUNK <- 4096L
@@ -141,6 +142,10 @@
   max(1L, as.integer(getOption("CerebroNexus.threads", 4L))[[1L]])
 }
 
+## rhdf5 adds the shuffle and deflate filters even at level 0, where they
+## store the values as they are and only cost time on every write and read.
+.tenxFilter <- function(level) if (level > 0) "gzip" else "NONE"
+
 .tenxMaxStringSize <- function(x) max(1L, nchar(x, type = "bytes"))
 
 .writeTENxStrings <- function(file, name, values, chunk) {
@@ -271,7 +276,9 @@
     maxdims = max_nnz,
     storage.mode = "double",
     chunk = min(.TENX_DATA_CHUNK, max_nnz),
-    level = level
+    level = level,
+    filter = .tenxFilter(level),
+    shuffle = level > 0
   )
   rhdf5::h5createDataset(
     file,
@@ -281,7 +288,9 @@
     storage.mode = "integer",
     H5type = "H5T_STD_U32LE",
     chunk = min(.TENX_DATA_CHUNK, max_nnz),
-    level = level
+    level = level,
+    filter = .tenxFilter(level),
+    shuffle = level > 0
   )
   rhdf5::h5createDataset(
     file,
