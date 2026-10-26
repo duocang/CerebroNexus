@@ -1,0 +1,98 @@
+{
+  "attributes": {
+    "ome": {
+      "omero": {
+        "channels": [
+          {
+            "label": "r"
+          },
+          {
+            "label": "g"
+          },
+          {
+            "label": "b"
+          }
+        ]
+      },
+      "version": "0.5-dev-spatialdata",
+      "multiscales": [
+        {
+          "datasets": [
+            {
+              "path": "0",
+              "coordinateTransformations": [
+                {
+                  "type": "scale",
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "/images/sec2_hires_image",
+          "axes": [
+            {
+              "name": "c",
+              "type": "channel"
+            },
+            {
+              "name": "y",
+              "type": "space"
+            },
+            {
+              "name": "x",
+              "type": "space"
+            }
+          ],
+          "coordinateTransformations": [
+            {
+              "type": "identity",
+              "input": {
+                "name": "cyx",
+                "axes": [
+                  {
+                    "name": "c",
+                    "type": "channel"
+                  },
+                  {
+                    "name": "y",
+                    "type": "space"
+                  },
+                  {
+                    "name": "x",
+                    "type": "space"
+                  }
+                ]
+              },
+              "output": {
+                "name": "sec2",
+                "axes": [
+                  {
+                    "name": "c",
+                    "type": "channel"
+                  },
+                  {
+                    "name": "y",
+                    "type": "space"
+                  },
+                  {
+                    "name": "x",
+                    "type": "space"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "spatialdata_attrs": {
+      "version": "0.3"
+    }
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}
