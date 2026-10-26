@@ -1,0 +1,4 @@
+## HDF5 comes from Rhdf5lib, linked statically as rhdf5 and HDF5Array link it.
+RHDF5_LIBS = $(shell "$(R_HOME)/bin$(R_ARCH_BIN)/Rscript" -e 'Rhdf5lib::pkgconfig("PKG_C_LIBS")')
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+PKG_LIBS = $(RHDF5_LIBS) $(SHLIB_OPENMP_CXXFLAGS)

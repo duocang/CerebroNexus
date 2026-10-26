@@ -1,3 +1,7 @@
+#' @useDynLib CerebroNexus, .registration = TRUE
+#' @importFrom Rcpp sourceCpp
+NULL
+
 .onLoad <- function(libname, pkgname) {
   namespace <- asNamespace(pkgname)
   marker <- ".cerebro_bundle_privacy_contract_version"

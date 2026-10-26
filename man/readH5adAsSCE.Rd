@@ -14,7 +14,9 @@ readH5adAsSCE(
   spatial_images = "auto",
   extra_modalities = NULL,
   verbose = FALSE,
-  .root = NULL
+  .root = NULL,
+  .cells_by_genes = NULL,
+  .sidecar_dir = NULL
 )
 }
 \arguments{
@@ -63,6 +65,14 @@ vector of image labels (\code{"hires"}, \code{"lowres"},
 
 \item{.root}{Internal: HDF5 group that holds the data set (used for the
 modalities inside a MuData file). Leave \code{NULL}.}
+
+\item{.cells_by_genes}{Internal: name of the one assay to read (\code{"X"}
+or a layer), kept cells x genes as the H5 backend stores it and seen
+genes x cells through a lazy transpose. Leave \code{NULL}.}
+
+\item{.sidecar_dir}{Internal: with \code{.cells_by_genes}, a directory in
+which a CSR assay is written straight to an H5 sidecar file, read back
+lazily. Leave \code{NULL}.}
 }
 \value{
 A \code{SingleCellExperiment} with genes in rows and cells in

@@ -337,7 +337,11 @@
 
 #' @keywords internal
 #' @noRd
-.convertAddProvidedMostExpressed <- function(misc, most_expressed_genes, verbose) {
+.convertAddProvidedMostExpressed <- function(
+  misc,
+  most_expressed_genes,
+  verbose
+) {
   provided <- FALSE
   if (!is.null(most_expressed_genes)) {
     # User provided most_expressed_genes
@@ -421,41 +425,131 @@
   list(misc = misc, provided = provided)
 }
 
+#' Per gene and group value: cells, sum of values and cells with a value
+#' above zero, for a sparse genes x cells matrix (or the lazy transpose of a
+#' cells x genes one). `codes` gives each cell's value index or NA, in matrix
+#' order. Both are one sparse product with a cells x groups indicator, which
+#' adds each gene's cells in matrix order as Matrix::rowSums() does, instead
+#' of a subset per group value. A matrix read from an H5 sidecar is summed
+#' from the file in the same order. NULL for other matrix classes.
 #' @keywords internal
 #' @noRd
-.convertComputeGroupSummaries <- function(misc, meta, expr_matrix, groups, verbose) {
-    # Initialize list structures
-    if (
-      is.null(misc$most_expressed_genes) ||
-        !is.list(misc$most_expressed_genes)
-    ) {
-      misc$most_expressed_genes <- list()
+.groupGeneStats <- function(expr_matrix, codes, n_groups) {
+  keep <- which(!is.na(codes))
+  sidecar <- .tenxSidecarOf(expr_matrix)
+  if (!is.null(sidecar)) {
+    ## an H5 sidecar: read gene by gene by compiled code
+    stats <- sidecarGroupStatsCpp(
+      sidecar$file,
+      sidecar$group,
+      ifelse(is.na(codes), -1L, as.integer(codes) - 1L),
+      as.integer(n_groups),
+      .sidecarThreads()
+    )
+    names <- list(rownames(expr_matrix), NULL)
+    dimnames(stats$total) <- names
+    dimnames(stats$positive) <- names
+    return(list(
+      n = tabulate(codes[keep], n_groups),
+      total = stats$total,
+      positive = stats$positive
+    ))
+  }
+  cells_by_genes <- .cellsByGenesSeed(expr_matrix)
+  if (is.null(cells_by_genes) && !inherits(expr_matrix, "dgCMatrix")) {
+    return(NULL)
+  }
+  membership <- Matrix::sparseMatrix(
+    i = keep,
+    j = codes[keep],
+    x = 1,
+    dims = c(length(codes), n_groups)
+  )
+  genes <- rownames(expr_matrix)
+  m <- if (is.null(cells_by_genes)) expr_matrix else cells_by_genes
+  per_group <- function(values) {
+    out <- if (is.null(cells_by_genes)) {
+      as.matrix(values %*% membership)
+    } else {
+      t(as.matrix(Matrix::t(membership) %*% values))
     }
-    if (
-      is.null(misc$mean_expression) ||
-        !is.list(misc$mean_expression)
-    ) {
-      misc$mean_expression <- list()
+    dimnames(out) <- list(genes, NULL)
+    out
+  }
+  total <- per_group(m)
+  ## the same pattern with 1 for every value above zero
+  m@x <- if (isTRUE(length(m@x) == 0L || min(m@x) > 0)) {
+    rep(1, length(m@x))
+  } else {
+    as.numeric(m@x > 0)
+  }
+  positive <- per_group(m)
+  list(n = tabulate(codes[keep], n_groups), total = total, positive = positive)
+}
+
+#' @keywords internal
+#' @noRd
+.convertComputeGroupSummaries <- function(
+  misc,
+  meta,
+  expr_matrix,
+  groups,
+  verbose
+) {
+  # Initialize list structures
+  if (
+    is.null(misc$most_expressed_genes) ||
+      !is.list(misc$most_expressed_genes)
+  ) {
+    misc$most_expressed_genes <- list()
+  }
+  if (
+    is.null(misc$mean_expression) ||
+      !is.list(misc$mean_expression)
+  ) {
+    misc$mean_expression <- list()
+  }
+
+  # Calculate for each group
+  for (group_name in groups) {
+    if (verbose) {
+      message(paste0(
+        "[",
+        format(Sys.time(), "%H:%M:%S"),
+        "] Processing group: ",
+        group_name
+      ))
     }
 
-    # Calculate for each group
-    for (group_name in groups) {
-      if (verbose) {
-        message(paste0(
-          "[",
-          format(Sys.time(), "%H:%M:%S"),
-          "] Processing group: ",
-          group_name
-        ))
-      }
+    group_values <- unique(meta[[group_name]])
+    group_values <- group_values[!is.na(group_values)]
 
-      group_values <- unique(meta[[group_name]])
-      group_values <- group_values[!is.na(group_values)]
+    pct_results <- list()
+    expr_results <- list()
 
-      pct_results <- list()
-      expr_results <- list()
+    ## all values of the group in one pass over the matrix, when it is sparse
+    group_stats <- .groupGeneStats(
+      expr_matrix,
+      match(
+        as.character(meta[[group_name]])[match(
+          colnames(expr_matrix),
+          rownames(meta)
+        )],
+        as.character(group_values)
+      ),
+      length(group_values)
+    )
 
-      for (group_value in group_values) {
+    for (value_index in seq_along(group_values)) {
+      group_value <- group_values[[value_index]]
+      if (!is.null(group_stats)) {
+        n_cells <- group_stats$n[[value_index]]
+        if (n_cells == 0) {
+          next
+        }
+        gene_pct <- group_stats$positive[, value_index] / n_cells * 100
+        gene_mean <- group_stats$total[, value_index] / n_cells
+      } else {
         # Get cells belonging to this group value using cell names (more robust)
         cells_in_group <- rownames(meta)[
           meta[[group_name]] == group_value
@@ -479,64 +573,65 @@
 
         # Calculate mean expression per gene
         gene_mean <- Matrix::rowMeans(expr_subset)
-
-        # Create data frame for percentage and sort
-        gene_pct_df <- data.frame(
-          gene = names(gene_pct),
-          pct = as.numeric(gene_pct),
-          stringsAsFactors = FALSE
-        )
-        gene_pct_df[["cluster"]] <- as.character(group_value)
-        gene_pct_df <- gene_pct_df[order(-gene_pct_df$pct), ]
-        rownames(gene_pct_df) <- NULL
-
-        # Create data frame for mean expression and sort
-        gene_expr_df <- data.frame(
-          gene = names(gene_mean),
-          mean_expr = as.numeric(gene_mean),
-          stringsAsFactors = FALSE
-        )
-        gene_expr_df[["cluster"]] <- as.character(group_value)
-        gene_expr_df <- gene_expr_df[order(-gene_expr_df$mean_expr), ]
-        rownames(gene_expr_df) <- NULL
-
-        pct_results[[as.character(group_value)]] <- gene_pct_df
-        expr_results[[as.character(group_value)]] <- gene_expr_df
       }
 
-      # Merge all data frames into one and reorder columns with cluster first
-      if (length(pct_results) > 0) {
-        pct_results_df <- do.call(rbind, pct_results)
-        rownames(pct_results_df) <- NULL
-        pct_results_df <- pct_results_df[, c(
-          "cluster",
-          setdiff(names(pct_results_df), "cluster")
-        )]
-        misc$most_expressed_genes[[group_name]] <- pct_results_df
-      } else {
-        misc$most_expressed_genes[[group_name]] <- data.frame()
-      }
+      # Create data frame for percentage and sort
+      gene_pct_df <- data.frame(
+        gene = names(gene_pct),
+        pct = as.numeric(gene_pct),
+        stringsAsFactors = FALSE
+      )
+      gene_pct_df[["cluster"]] <- as.character(group_value)
+      gene_pct_df <- gene_pct_df[order(-gene_pct_df$pct), ]
+      rownames(gene_pct_df) <- NULL
 
-      if (length(expr_results) > 0) {
-        expr_results_df <- do.call(rbind, expr_results)
-        rownames(expr_results_df) <- NULL
-        expr_results_df <- expr_results_df[, c(
-          "cluster",
-          setdiff(names(expr_results_df), "cluster")
-        )]
-        misc$mean_expression[[group_name]] <- expr_results_df
-      } else {
-        misc$mean_expression[[group_name]] <- data.frame()
-      }
+      # Create data frame for mean expression and sort
+      gene_expr_df <- data.frame(
+        gene = names(gene_mean),
+        mean_expr = as.numeric(gene_mean),
+        stringsAsFactors = FALSE
+      )
+      gene_expr_df[["cluster"]] <- as.character(group_value)
+      gene_expr_df <- gene_expr_df[order(-gene_expr_df$mean_expr), ]
+      rownames(gene_expr_df) <- NULL
+
+      pct_results[[as.character(group_value)]] <- gene_pct_df
+      expr_results[[as.character(group_value)]] <- gene_expr_df
     }
 
-    if (verbose) {
-      message(paste0(
-        "[",
-        format(Sys.time(), "%H:%M:%S"),
-        "] Most expressed genes and mean expression calculation completed."
-      ))
+    # Merge all data frames into one and reorder columns with cluster first
+    if (length(pct_results) > 0) {
+      pct_results_df <- do.call(rbind, pct_results)
+      rownames(pct_results_df) <- NULL
+      pct_results_df <- pct_results_df[, c(
+        "cluster",
+        setdiff(names(pct_results_df), "cluster")
+      )]
+      misc$most_expressed_genes[[group_name]] <- pct_results_df
+    } else {
+      misc$most_expressed_genes[[group_name]] <- data.frame()
     }
+
+    if (length(expr_results) > 0) {
+      expr_results_df <- do.call(rbind, expr_results)
+      rownames(expr_results_df) <- NULL
+      expr_results_df <- expr_results_df[, c(
+        "cluster",
+        setdiff(names(expr_results_df), "cluster")
+      )]
+      misc$mean_expression[[group_name]] <- expr_results_df
+    } else {
+      misc$mean_expression[[group_name]] <- data.frame()
+    }
+  }
+
+  if (verbose) {
+    message(paste0(
+      "[",
+      format(Sys.time(), "%H:%M:%S"),
+      "] Most expressed genes and mean expression calculation completed."
+    ))
+  }
 
   misc
 }

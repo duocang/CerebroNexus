@@ -141,7 +141,9 @@ convertH5adToCerebro <- function(
   }
   if (.zarrIsStore(h5ad_file) && length(.sdTables(h5ad_file))) {
     stop(
-      "`", h5ad_file, "` is a SpatialData store; use convertSpatialDataToCerebro().",
+      "`",
+      h5ad_file,
+      "` is a SpatialData store; use convertSpatialDataToCerebro().",
       call. = FALSE
     )
   }
@@ -156,17 +158,48 @@ convertH5adToCerebro <- function(
     )
   }
 
-  sce <- readH5adAsSCE(
-    h5ad_file,
-    use_raw = use_raw,
-    modality = modality,
-    gene_names = gene_names,
-    airr = airr,
-    airr_sample = airr_sample,
-    spatial_images = spatial_images,
-    extra_modalities = extra_modalities,
-    verbose = verbose
-  )
+  read_sce <- function(cells_by_genes = NULL) {
+    readH5adAsSCE(
+      h5ad_file,
+      use_raw = use_raw,
+      modality = modality,
+      gene_names = gene_names,
+      airr = airr,
+      airr_sample = airr_sample,
+      spatial_images = spatial_images,
+      extra_modalities = extra_modalities,
+      verbose = verbose,
+      .cells_by_genes = cells_by_genes,
+      .sidecar_dir = if (!is.null(cells_by_genes)) result_dir
+    )
+  }
+  ## The H5 backend stores cells x genes. Reading only the exported assay in
+  ## that orientation skips the genes x cells dgCMatrix, the other layers and
+  ## the transpose back before writing; a CSR assay goes straight to the
+  ## sidecar file, which the export then moves next to the .crb.
+  cells_by_genes <- identical(expression_matrix_mode, "h5") &&
+    is.null(extra_modalities) &&
+    is.character(assay) &&
+    length(assay) == 1L
+  if (cells_by_genes) {
+    dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  drop_sidecar <- function(sce) {
+    if (!cells_by_genes || !assay %in% SummarizedExperiment::assayNames(sce)) {
+      return(invisible())
+    }
+    sidecar <- .tempSidecarOf(SummarizedExperiment::assay(
+      sce,
+      assay,
+      withDimnames = FALSE
+    ))
+    if (!is.null(sidecar)) {
+      .releaseTempSidecar(sidecar, delete = TRUE)
+    }
+  }
+  sce <- read_sce(if (cells_by_genes) assay)
+  ## a sidecar the export did not take (an error) is not left behind
+  on.exit(drop_sidecar(sce), add = TRUE)
 
   obs_columns <- names(SummarizedExperiment::colData(sce))
   if (is.null(nUMI)) {
@@ -182,6 +215,12 @@ convertH5adToCerebro <- function(
       c("n_genes_by_counts", "n_genes", "nFeature_RNA", "nGene"),
       "nGene"
     )
+  }
+  if (cells_by_genes && !all(c(nUMI, nGene) %in% obs_columns)) {
+    ## missing QC columns are computed from the counts layer when there is
+    ## one, which this read skipped
+    drop_sidecar(sce)
+    sce <- read_sce()
   }
 
   convertSCEToCerebro(

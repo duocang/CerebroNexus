@@ -60,6 +60,7 @@ Imports:
   qs2,
   qvalue (>= 2.14.0),
   R6 (>= 2.4.0),
+  Rcpp,
   readxl,
   rlang (>= 1.0.0),
   scales (>= 1.1.0),
@@ -77,6 +78,10 @@ Imports:
   tidyselect(>= 1.1.0),
   utils,
   visNetwork
+LinkingTo:
+  Rcpp,
+  Rhdf5lib
+SystemRequirements: GNU make
 Suggests:
   arrow,
   BPCells,

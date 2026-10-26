@@ -47,3 +47,8 @@ tests/testthat/_artifacts/
 data-raw/builder_fixtures/
 viewer-auth.env
 **/private-data/auth/
+
+# compiled code
+src/*.o
+src/*.so
+src/*.dll

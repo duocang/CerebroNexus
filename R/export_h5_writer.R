@@ -26,6 +26,101 @@
     ))
 }
 
+## The cells x genes dgCMatrix behind a genes x cells matrix that is only its
+## lazy transpose (what readH5adAsSCE(.cells_by_genes =) returns), else NULL.
+## That is the sidecar's layout already, so it is written without a transpose.
+.cellsByGenesSeed <- function(x) {
+  if (
+    !inherits(x, "DelayedMatrix") ||
+      !requireNamespace("DelayedArray", quietly = TRUE)
+  ) {
+    return(NULL)
+  }
+  flipped <- DelayedArray::t(x)
+  if (!DelayedArray::isPristine(flipped)) {
+    return(NULL)
+  }
+  seed <- DelayedArray::seed(flipped)
+  if (
+    inherits(seed, "dgCMatrix") && identical(dimnames(seed), dimnames(flipped))
+  ) {
+    seed
+  } else {
+    NULL
+  }
+}
+
+## The TENx file and group behind a genes x cells matrix that is only the lazy
+## transpose of an HDF5Array::TENxMatrix (how a sidecar is read back), else
+## NULL.
+.tenxSidecarOf <- function(x) {
+  if (
+    !inherits(x, "DelayedMatrix") ||
+      !requireNamespace("HDF5Array", quietly = TRUE)
+  ) {
+    return(NULL)
+  }
+  ## a seed whose file has gone (moved by the export) is no longer valid
+  flipped <- tryCatch(DelayedArray::t(x), error = function(e) NULL)
+  if (is.null(flipped) || !DelayedArray::isPristine(flipped)) {
+    return(NULL)
+  }
+  seed <- DelayedArray::seed(flipped)
+  if (!methods::is(seed, "TENxMatrixSeed")) {
+    return(NULL)
+  }
+  list(file = HDF5Array::path(seed), group = sub("^/", "", seed@group))
+}
+
+## Sidecars that readH5adAsSCE(.sidecar_dir =) wrote straight from an h5ad.
+## They are temporary until the export moves one next to its .crb; only these
+## are ever moved, never a file the caller brought.
+.tempSidecars <- new.env(parent = emptyenv())
+
+.tempSidecarKey <- function(file) {
+  normalizePath(file, winslash = "/", mustWork = FALSE)
+}
+
+.registerTempSidecar <- function(file) {
+  assign(.tempSidecarKey(file), TRUE, envir = .tempSidecars)
+  invisible(file)
+}
+
+.releaseTempSidecar <- function(file, delete = FALSE) {
+  key <- .tempSidecarKey(file)
+  if (exists(key, envir = .tempSidecars, inherits = FALSE)) {
+    rm(list = key, envir = .tempSidecars)
+  }
+  if (delete) {
+    unlink(file)
+  }
+  invisible(file)
+}
+
+## The temporary sidecar behind a matrix, already in the sidecar layout, else
+## NULL.
+.tempSidecarOf <- function(x) {
+  sidecar <- .tenxSidecarOf(x)
+  if (
+    is.null(sidecar) ||
+      !identical(sidecar$group, "expression") ||
+      !exists(
+        .tempSidecarKey(sidecar$file),
+        envir = .tempSidecars,
+        inherits = FALSE
+      )
+  ) {
+    return(NULL)
+  }
+  sidecar$file
+}
+
+## Threads for the compiled sidecar code; more than four rarely help, as the
+## transpose is bound by memory bandwidth.
+.sidecarThreads <- function() {
+  max(1L, as.integer(getOption("CerebroNexus.threads", 4L))[[1L]])
+}
+
 .tenxMaxStringSize <- function(x) max(1L, nchar(x, type = "bytes"))
 
 .writeTENxStrings <- function(file, name, values, chunk) {
@@ -39,6 +134,25 @@
     level = 0L
   )
   rhdf5::h5write(values, file, name)
+}
+
+## The shape and the two name datasets of a TENx group. writeTENxMatrix()
+## names the axes the 10x way round: "genes" holds the row names and
+## "barcodes" the column names, whatever they are.
+.writeTENxNames <- function(file, group, dims, row_names, col_names) {
+  path <- function(name) paste0(group, "/", name)
+  rhdf5::h5createDataset(
+    file,
+    path("shape"),
+    dims = 2L,
+    storage.mode = "integer",
+    H5type = "H5T_STD_U32LE",
+    chunk = 2L,
+    level = 0L
+  )
+  rhdf5::h5write(as.integer(dims), file, path("shape"))
+  .writeTENxStrings(file, path("genes"), row_names, 2048L)
+  .writeTENxStrings(file, path("barcodes"), col_names, 4096L)
 }
 
 .writeTENxSlabs <- function(file, name, values) {
@@ -83,19 +197,7 @@
 
   rhdf5::h5createFile(file)
   rhdf5::h5createGroup(file, group)
-
-  rhdf5::h5createDataset(
-    file,
-    path("shape"),
-    dims = 2L,
-    storage.mode = "integer",
-    H5type = "H5T_STD_U32LE",
-    chunk = 2L,
-    level = 0L
-  )
-  rhdf5::h5write(dims, file, path("shape"))
-  .writeTENxStrings(file, path("genes"), rownames(x), 2048L)
-  .writeTENxStrings(file, path("barcodes"), colnames(x), 4096L)
+  .writeTENxNames(file, group, dims, rownames(x), colnames(x))
 
   rhdf5::h5createDataset(
     file,

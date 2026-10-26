@@ -112,10 +112,197 @@ test_that("unsorted CSR indices are repaired, not rejected", {
   data[first] <- rev(data[first])
   rhdf5::h5write(as.integer(indices), copy, "X/indices")
   rhdf5::h5write(as.numeric(data), copy, "X/data")
+  repaired <- assay_x(read_h5ad(copy))
+  expect_true(methods::validObject(repaired))
   expect_equal(
-    as.matrix(assay_x(read_h5ad(copy))),
+    as.matrix(repaired),
     as.matrix(assay_x(read_fixture("small_csr.h5ad")))
   )
+  ## also when read cells x genes
+  skip_if_not_installed("DelayedArray")
+  expect_equal(
+    as.matrix(assay_x(read_h5ad(copy, .cells_by_genes = "X"))),
+    as.matrix(repaired)
+  )
+})
+
+test_that("one assay is read cells x genes and seen through a lazy transpose", {
+  skip_if_not_installed("DelayedArray")
+  for (name in c("small_csr.h5ad", "small_csc.h5ad", "small_dense.h5ad")) {
+    plain <- read_fixture(name)
+    lazy <- read_fixture(name, .cells_by_genes = "X")
+    expect_identical(SummarizedExperiment::assayNames(lazy), "X")
+    seed <- .cellsByGenesSeed(assay_x(lazy))
+    expect_s4_class(seed, "dgCMatrix")
+    expect_true(methods::validObject(seed))
+    expect_identical(dimnames(seed), rev(dimnames(plain)))
+    expect_equal(as.matrix(Matrix::t(seed)), as.matrix(assay_x(plain)))
+  }
+  ## a layer instead of X
+  lazy <- read_fixture("small_csr.h5ad", .cells_by_genes = "counts")
+  expect_identical(SummarizedExperiment::assayNames(lazy), "counts")
+  expect_equal(
+    as.matrix(assay_x(lazy, "counts")),
+    as.matrix(assay_x(read_fixture("small_csr.h5ad"), "counts"))
+  )
+  ## an assay the file does not have: everything is read as usual
+  expect_identical(
+    SummarizedExperiment::assayNames(read_fixture(
+      "small_csr.h5ad",
+      .cells_by_genes = "nope"
+    )),
+    c("X", "counts")
+  )
+})
+
+test_that("a CSR assay goes straight to a sidecar laid out as the writer lays it out", {
+  skip_if_not_installed("HDF5Array")
+  dir <- withr::local_tempdir()
+  plain <- read_fixture("small_csr.h5ad")
+  lazy <- read_fixture(
+    "small_csr.h5ad",
+    .cells_by_genes = "X",
+    .sidecar_dir = dir
+  )
+  x <- assay_x(lazy)
+  sidecar <- .tempSidecarOf(x)
+  expect_true(file.exists(sidecar))
+  expect_identical(
+    dirname(normalizePath(sidecar, winslash = "/")),
+    normalizePath(dir, winslash = "/")
+  )
+  expect_equal(as.matrix(x), as.matrix(assay_x(plain)))
+  expect_identical(dimnames(x), dimnames(plain))
+
+  ## every dataset as .writeTENxH5() writes the same matrix
+  reference <- file.path(dir, "reference.h5")
+  .writeTENxH5(
+    methods::as(Matrix::t(assay_x(plain)), "CsparseMatrix"),
+    reference
+  )
+  layout <- function(file, name) {
+    fid <- rhdf5::H5Fopen(file)
+    on.exit(rhdf5::H5Fclose(fid))
+    d <- rhdf5::H5Dopen(fid, paste0("expression/", name))
+    on.exit(rhdf5::H5Dclose(d), add = TRUE, after = FALSE)
+    plist <- rhdf5::H5Dget_create_plist(d)
+    type <- rhdf5::H5Dget_type(d)
+    n_filters <- rhdf5::H5Pget_nfilters(plist)
+    list(
+      rhdf5::H5Sget_simple_extent_dims(rhdf5::H5Dget_space(d)),
+      rhdf5::H5Pget_chunk(plist),
+      vapply(
+        seq_len(n_filters),
+        function(i) rhdf5::H5Pget_filter(plist, i)[[2]],
+        ""
+      ),
+      rhdf5::H5Tget_class(type),
+      rhdf5::H5Tget_size(type)
+    )
+  }
+  for (name in c("shape", "genes", "barcodes", "data", "indices", "indptr")) {
+    expect_identical(
+      layout(sidecar, name),
+      layout(reference, name),
+      info = name
+    )
+    expect_identical(
+      rhdf5::h5read(sidecar, paste0("expression/", name)),
+      rhdf5::h5read(reference, paste0("expression/", name)),
+      info = name
+    )
+  }
+
+  ## group summaries are read from the file
+  meta <- as.data.frame(SummarizedExperiment::colData(plain))
+  values <- unique(meta$cell_type)
+  codes <- match(meta$cell_type, values)
+  codes[c(2, 9)] <- NA
+  expect_equal(
+    .groupGeneStats(x, codes, length(values)),
+    .groupGeneStats(assay_x(plain), codes, length(values))
+  )
+  .releaseTempSidecar(sidecar, delete = TRUE)
+  expect_false(file.exists(sidecar))
+})
+
+test_that("unsorted indices go to the sidecar sorted; duplicated ones fall back to R", {
+  skip_if_not_installed("HDF5Array")
+  dir <- withr::local_tempdir()
+  copy <- file.path(withr::local_tempdir(), "edited.h5ad")
+  file.copy(fixture("small_csr.h5ad"), copy)
+  indptr <- as.vector(rhdf5::h5read(copy, "X/indptr"))
+  indices <- as.vector(rhdf5::h5read(copy, "X/indices"))
+  data <- as.vector(rhdf5::h5read(copy, "X/data"))
+  first <- seq(indptr[[1]] + 1L, indptr[[2]])
+  skip_if(length(first) < 2L, "first cell has fewer than two non-zeros")
+  reversed <- indices
+  reversed[first] <- rev(indices[first])
+  values <- data
+  values[first] <- rev(data[first])
+  rhdf5::h5write(as.integer(reversed), copy, "X/indices")
+  rhdf5::h5write(as.numeric(values), copy, "X/data")
+  x <- assay_x(read_h5ad(copy, .cells_by_genes = "X", .sidecar_dir = dir))
+  sidecar <- .tempSidecarOf(x)
+  expect_false(is.null(sidecar))
+  expect_equal(as.matrix(x), as.matrix(assay_x(read_fixture("small_csr.h5ad"))))
+  .releaseTempSidecar(sidecar, delete = TRUE)
+
+  ## the same gene twice in a cell: the R reader sums them, no file is left
+  twice <- indices
+  twice[first[[2]]] <- twice[first[[1]]]
+  rhdf5::h5write(as.integer(twice), copy, "X/indices")
+  x <- assay_x(read_h5ad(copy, .cells_by_genes = "X", .sidecar_dir = dir))
+  expect_null(.tempSidecarOf(x))
+  expect_identical(list.files(dir), character(0))
+})
+
+test_that("group summaries agree for sparse, lazily transposed and dense input", {
+  skip_if_not_installed("DelayedArray")
+  sce <- read_fixture("small_csr.h5ad")
+  meta <- as.data.frame(SummarizedExperiment::colData(sce))
+  meta$cell_type[c(3, 7)] <- NA
+  sparse <- assay_x(sce)
+  lazy <- assay_x(read_fixture("small_csr.h5ad", .cells_by_genes = "X"))
+  groups <- c("cell_type", "donor")
+  ## a dense matrix takes the per-group subsets
+  reference <- .convertComputeGroupSummaries(
+    list(),
+    meta,
+    as.matrix(sparse),
+    groups,
+    FALSE
+  )
+  expect_equal(
+    .convertComputeGroupSummaries(list(), meta, sparse, groups, FALSE),
+    reference
+  )
+  expect_equal(
+    .convertComputeGroupSummaries(list(), meta, lazy, groups, FALSE),
+    reference
+  )
+  ## stored zeros and negative values do not count as expressing
+  shifted <- sparse
+  hit <- seq(1L, length(shifted@x), by = 7L)
+  shifted@x[hit] <- rep_len(c(0, -1), length(hit))
+  expect_equal(
+    .convertComputeGroupSummaries(list(), meta, shifted, groups, FALSE),
+    .convertComputeGroupSummaries(
+      list(),
+      meta,
+      as.matrix(shifted),
+      groups,
+      FALSE
+    )
+  )
+
+  ## either orientation gives the same numbers
+  values <- unique(meta$cell_type[!is.na(meta$cell_type)])
+  codes <- match(meta$cell_type, values)
+  stats <- .groupGeneStats(sparse, codes, length(values))
+  expect_identical(stats$n, tabulate(codes, length(values)))
+  expect_equal(.groupGeneStats(lazy, codes, length(values)), stats)
+  expect_null(.groupGeneStats(as.matrix(sparse), codes, length(values)))
 })
 
 test_that("readH5adAsSCE reports bad input clearly", {
@@ -178,12 +365,63 @@ test_that("convertH5adToCerebro picks layers and backends, rejects wrong calls",
     verbose = FALSE
   )))
   expect_true(file.exists(file.path(out, "cerebro_small_csr.h5")))
+  ## the sidecar written from the h5ad was moved, not left behind
+  expect_false(any(grepl("^expression-", list.files(out))))
   obj <- readCerebro(path)
   counts <- as.matrix(assay_x(read_fixture("small_csr.h5ad"), "counts"))
   expect_equal(
     unname(as.matrix(obj$getExpressionBlock(c("CD3D", "LYZ")))),
     unname(counts[c("CD3D", "LYZ"), ])
   )
+  ## the sidecar is the cells x genes CSC of the assay, sorted
+  sidecar <- file.path(out, "cerebro_small_csr.h5")
+  expected <- methods::as(
+    Matrix::t(methods::as(counts, "CsparseMatrix")),
+    "CsparseMatrix"
+  )
+  expect_identical(
+    as.integer(rhdf5::h5read(sidecar, "expression/indptr")),
+    expected@p
+  )
+  expect_identical(
+    as.integer(rhdf5::h5read(sidecar, "expression/indices")),
+    expected@i
+  )
+  expect_equal(
+    as.numeric(rhdf5::h5read(sidecar, "expression/data")),
+    expected@x
+  )
+  expect_equal(
+    obj$getMostExpressedGenes("cell_type"),
+    readCerebro(suppressMessages(suppressWarnings(convertH5adToCerebro(
+      fixture("small_csr.h5ad"),
+      withr::local_tempdir(),
+      assay = "counts",
+      groups = "cell_type",
+      viewer_binary = "never",
+      verbose = FALSE
+    ))))$getMostExpressedGenes("cell_type")
+  )
+
+  ## a QC column the file lacks is computed from the counts layer, which
+  ## needs the full read
+  messages <- character()
+  withCallingHandlers(
+    suppressWarnings(convertH5adToCerebro(
+      fixture("small_csr.h5ad"),
+      withr::local_tempdir(),
+      groups = "cell_type",
+      nUMI = "umi_missing",
+      expression_matrix_mode = "h5",
+      viewer_binary = "never",
+      verbose = FALSE
+    )),
+    message = function(m) {
+      messages <<- c(messages, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  expect_true(any(grepl("from assay `counts`", messages)))
 
   expect_error(
     convertH5adToCerebro(fixture("small_csr.h5ad"), out),

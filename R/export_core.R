@@ -203,7 +203,12 @@
   # Preserve optional overview prose exactly when supplied, never manufacture it.
   for (field in c("description", "source", "sample_column")) {
     value <- misc$experiment[[field]]
-    if (is.character(value) && length(value) == 1L && !is.na(value) && nzchar(trimws(value))) {
+    if (
+      is.character(value) &&
+        length(value) == 1L &&
+        !is.na(value) &&
+        nzchar(trimws(value))
+    ) {
       export$addExperiment(field, value)
     }
   }
@@ -379,17 +384,56 @@
     h5_filename <- .exportSidecarName(final_file, expression_matrix_mode)
     h5_abs <- file.path(crb_dir, h5_filename)
 
+    if (file.exists(h5_abs)) {
+      file.remove(h5_abs)
+    }
+
+    ## a sidecar written straight from an h5ad only moves here
+    temp_sidecar <- .tempSidecarOf(expression_data)
+    if (!is.null(temp_sidecar)) {
+      if (verbose) {
+        message(sprintf(
+          "[%s] Moving expression matrix written from the h5ad to: %s",
+          format(Sys.time(), "%H:%M:%S"),
+          h5_abs
+        ))
+      }
+      if (!file.rename(temp_sidecar, h5_abs)) {
+        if (!file.copy(temp_sidecar, h5_abs)) {
+          stop(
+            "Could not move the expression sidecar to: ",
+            h5_abs,
+            call. = FALSE
+          )
+        }
+        unlink(temp_sidecar)
+      }
+      .releaseTempSidecar(temp_sidecar)
+      expression_data <- DelayedArray::t(HDF5Array::TENxMatrix(
+        h5_abs,
+        group = "expression"
+      ))
+      export$setExpressionBackend(type = "h5", location = h5_filename)
+      return(expression_data)
+    }
+
     if (!inherits(expression_data, "dgCMatrix")) {
       if (inherits(expression_data, "matrix")) {
         expression_data <- methods::as(expression_data, "CsparseMatrix")
       }
     }
 
-    ## transpose genes x cells -> cells x genes for storage
-    m_disk <- if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
-      DelayedArray::t(expression_data)
-    } else {
-      methods::as(Matrix::t(expression_data), "CsparseMatrix")
+    ## transpose genes x cells -> cells x genes for storage, unless the
+    ## matrix is held cells x genes already
+    m_disk <- .cellsByGenesSeed(expression_data)
+    if (is.null(m_disk)) {
+      m_disk <- if (
+        inherits(expression_data, c("RleMatrix", "DelayedMatrix"))
+      ) {
+        DelayedArray::t(expression_data)
+      } else {
+        methods::as(Matrix::t(expression_data), "CsparseMatrix")
+      }
     }
 
     if (verbose) {
@@ -400,9 +444,6 @@
       ))
     }
 
-    if (file.exists(h5_abs)) {
-      file.remove(h5_abs)
-    }
     .writeTENxH5(m_disk, h5_abs, group = "expression")
 
     ## self$expression stays NULL — saveRDS therefore does not embed the
@@ -1295,7 +1336,16 @@
   images = NULL,
   verbose = FALSE
 ) {
-  add_entry <- function(entry_name, source_name, embedding, entry_images = NULL) {
+  ## a matrix held cells x genes is cut there and handed on as a dgCMatrix
+  cells_by_genes <- .cellsByGenesSeed(expression_data)
+  ## a sidecar file moves with the .crb, so its cells are read now
+  from_sidecar <- !is.null(.tenxSidecarOf(expression_data))
+  add_entry <- function(
+    entry_name,
+    source_name,
+    embedding,
+    entry_images = NULL
+  ) {
     spatial_data <- tryCatch(
       {
         cells <- intersect(rownames(embedding), colnames(expression_data))
@@ -1319,7 +1369,13 @@
         projection <- .spx_export_projection_coordinates(coordinates)
         list(
           coordinates = if (is.null(projection)) coordinates else projection,
-          expression = expression_data[, cells, drop = FALSE],
+          expression = if (from_sidecar) {
+            methods::as(expression_data[, cells, drop = FALSE], "dgCMatrix")
+          } else if (is.null(cells_by_genes)) {
+            expression_data[, cells, drop = FALSE]
+          } else {
+            Matrix::t(cells_by_genes[cells, , drop = FALSE])
+          },
           assay = assay,
           requested_layer = layer,
           layer = layer,
