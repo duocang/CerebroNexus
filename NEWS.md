@@ -79,6 +79,36 @@
   returns them as barcodes. Reading the Ren repertoire takes 3.8 s instead of
   5.0 s. CRBs written before read as before; an earlier release refuses a
   version 4 CRB with an error naming the schema version.
+- The H5 configuration is built much faster and in less memory. In
+  `convertH5adToCerebro(expression_matrix_mode = "h5")` an AnnData CSR matrix
+  goes from the `.h5ad` file to the H5 file by compiled code, which also sums
+  the most expressed genes and mean expression of the requested groups on the
+  way; the matrix is never held in R. A Seurat or SingleCellExperiment
+  `dgCMatrix` is transposed and written by the same code
+  (`exportFromSeurat()`, `exportFromSCE()`), and group summaries of a
+  `dgCMatrix` are summed by compiled code instead of one subset per group.
+  The 500,000-cell E18 mouse brain h5ad builds in about 45 s instead of
+  270-280 s, at a peak of 17 GB instead of 52 GB; its Seurat export takes
+  52-65 s instead of 89-99 s. The H5 file and the `.crb` hold the same values
+  as before.
+- `options(CerebroNexus.threads =)` sets the threads of this compiled code
+  and of qs2 (default 4; more rarely help, as the transpose is bound by
+  memory bandwidth). Without OpenMP (e.g. Apple's clang) it runs on one thread.
+- H5 files: at the default `h5_compression_level` 0, `expression/data` and
+  `expression/indices` are written without the shuffle and deflate filters,
+  which stored the values as they were and only cost time; a float32 h5ad
+  matrix stays float32, which loses nothing (the 500,000-cell file: 8.2 GB
+  instead of 12.2 GB). rhdf5 and HDF5Array read both the same, and files
+  written before read as before.
+- `readH5adAsSCE()` sorts unsorted indices within a cell by transposes instead
+  of a rebuild from triplets, and no longer copies the arrays it reads.
+
+## Dependencies
+
+- The package now contains compiled code (`src/`): it links to Rcpp and to the
+  HDF5 library of Rhdf5lib (`LinkingTo`), and needs GNU make to build from
+  source. The nix shell (`default.nix`) adds curl and openssl, which that HDF5
+  library links to.
 
 # CerebroNexus 5.4.0
 

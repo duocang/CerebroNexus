@@ -114,9 +114,13 @@ crb$getExpressionBackend()
 #> [1] "pbmc.h5"
 ```
 
-`HDF5Array::writeTENxMatrix()` stores the on-disk matrix as cells by genes in
-the `/expression` group. CerebroNexus reconnects it lazily and exposes the
-usual genes-by-cells matrix to the application.
+The on-disk matrix is stored as cells by genes in the `/expression` group, in
+the layout `HDF5Array::writeTENxMatrix()` writes. A `dgCMatrix` (and an
+AnnData CSR matrix in `convertH5adToCerebro()`) is transposed and written by
+compiled code on `getOption("CerebroNexus.threads", 4)` threads; at the default
+compression level 0 the values and indices are stored without filters, and
+float32 AnnData values stay float32. CerebroNexus reconnects the file lazily
+and exposes the usual genes-by-cells matrix to the application.
 
 ## A thin `.crb`
 
