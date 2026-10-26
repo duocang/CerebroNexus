@@ -16,10 +16,15 @@ exportFromSCE(
   nGene = "nGene",
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
+  expression_matrix_mode = c("embedded", "bpcells", "h5"),
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
-  verbose = FALSE
+  verbose = FALSE,
+  main_group = NULL,
+  projections = NULL,
+  spatial_reductions = NULL,
+  spatial_split_by = NULL
 )
 }
 \arguments{
@@ -60,7 +65,14 @@ and instead values will be read from the disk directly, at the cost of
 performance. Note that it is necessary to install the \code{DelayedArray}
 package. If set to \code{FALSE} (default), the expression matrix will be
 copied from the input object as is. It is recommended to use a sparse format,
-such as \code{dgCMatrix} from the \code{Matrix} package.}
+such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
+\code{expression_matrix_mode} is set to an external backend.}
+
+\item{expression_matrix_mode}{How to persist the expression matrix. One of
+\code{"embedded"} (default), \code{"bpcells"} or \code{"h5"}; identical to
+\code{\link{exportFromSeurat}}. External backends write a sibling
+\code{<stem>.bpcells/} directory or \code{<stem>.h5} file next to the
+\code{.crb}, and \code{file} must then end in \code{.crb}.}
 
 \item{codec}{Serialization codec for the CRB payload. Defaults to
 \code{"qs2"}; use \code{"rds"} when direct compatibility with
@@ -74,6 +86,22 @@ for large datasets, \code{"always"}, or \code{"never"}.}
 
 \item{verbose}{Set this to \code{TRUE} if you want additional log messages;
 defaults to \code{FALSE}.}
+
+\item{main_group}{Optional entry of \code{groups} to use as the main group.}
+
+\item{projections}{Optional character vector naming the
+\code{reducedDims(object)} to export. By default every non-PCA reduction is
+exported (PCA only when it is the sole reduction).}
+
+\item{spatial_reductions}{Optional character vector naming the
+\code{reducedDims(object)} that hold spatial point coordinates (cells x >= 2).
+By default a reduction named \code{spatial} (any case) is used, which is how
+AnnData \code{obsm["spatial"]} arrives; they fill the Spatial tab.}
+
+\item{spatial_split_by}{Optional \code{colData} column. When given, the
+spatial coordinates are divided by its values into one section per level
+(e.g. the tissue sections of a MERFISH or multi-slice Visium data set that
+share one coordinate frame), selectable in the Spatial tab.}
 }
 \value{
 No data returned.
@@ -81,6 +109,23 @@ No data returned.
 \description{
 This function allows to export a \code{SingleCellExperiment} (\code{SCE})
 object to visualize in Cerebro.
+}
+\details{
+The export is written by the same format-independent core as
+\code{\link{exportFromSeurat}}: the CRB and any sidecar are built in a
+private stage and published together, and \code{object@metadata} entries
+(trees, markers, pathways, immune repertoire, HLA typing, extra material, ...)
+are read with the same keys as \code{object@misc} on the Seurat side.
+Two entries are specific to this route. \code{metadata(object)$group_colors}, a
+list named by grouping variable of named colour vectors (level to
+\code{"#RRGGBB"}), becomes the groups' default colours in the Viewer.
+\code{metadata(object)$spatial_images}, a list named by library of images
+(each \code{list(histology_image = <base64 data URI>,
+histology_image_bounds = c(xmin, xmax, ymin, ymax))}), is drawn behind the
+spatial coordinates: the single library's images go to the single spatial
+entry, and with \code{spatial_split_by} each section takes the images of the
+library named like its level. Both are filled in by
+\code{\link{readH5adAsSCE}} from scanpy's \code{uns}.
 }
 \examples{
 pbmc <- readRDS(system.file("extdata/examples/pbmc_SCE.rds",

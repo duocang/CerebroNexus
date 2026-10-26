@@ -566,7 +566,7 @@ test_that("stage cleanup completes before the lock is released", {
   crb <- lock_test_crb(root)
   result <- file.path(root, "app")
   build_ops <- .bundleBuildOps()
-  build_ops$write_lines <- function(text, connection) {
+  build_ops$copy <- function(...) {
     stop("injected stage failure")
   }
   release_lock <- .releaseBundleLock
@@ -594,7 +594,7 @@ test_that("stage cleanup errors cannot strand the build lock", {
   crb <- lock_test_crb(root)
   result <- file.path(root, "app")
   build_ops <- .bundleBuildOps()
-  build_ops$write_lines <- function(text, connection) {
+  build_ops$copy <- function(...) {
     stop("injected build failure")
   }
   testthat::local_mocked_bindings(

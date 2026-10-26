@@ -32,7 +32,13 @@
 #' performance. Note that it is necessary to install the \code{DelayedArray}
 #' package. If set to \code{FALSE} (default), the expression matrix will be
 #' copied from the input object as is. It is recommended to use a sparse format,
-#' such as \code{dgCMatrix} from the \code{Matrix} package.
+#' such as \code{dgCMatrix} from the \code{Matrix} package. Ignored when
+#' \code{expression_matrix_mode} is set to an external backend.
+#' @param expression_matrix_mode How to persist the expression matrix. One of
+#' \code{"embedded"} (default) or \code{"h5"}; identical to
+#' \code{\link{exportFromSeurat}}. The \code{"h5"} backend writes a sibling
+#' \code{<stem>.h5} file next to the \code{.crb}, and \code{file} must then
+#' end in \code{.crb}.
 #' @param codec Serialization codec for the CRB payload. Defaults to
 #' \code{"qs2"}; use \code{"rds"} when direct compatibility with
 #' \code{readRDS()} is required.
@@ -42,6 +48,35 @@
 #' \code{viewer_binary = "auto"}.
 #' @param verbose Set this to \code{TRUE} if you want additional log messages;
 #' defaults to \code{FALSE}.
+#' @param main_group Optional entry of \code{groups} to use as the main group.
+#' @param spatial_reductions Optional character vector naming the
+#' \code{reducedDims(object)} that hold spatial point coordinates (cells x >= 2).
+#' By default a reduction named \code{spatial} (any case) is used, which is how
+#' AnnData \code{obsm["spatial"]} arrives; they fill the Spatial tab.
+#' @param spatial_split_by Optional \code{colData} column. When given, the
+#' spatial coordinates are divided by its values into one section per level
+#' (e.g. the tissue sections of a MERFISH or multi-slice Visium data set that
+#' share one coordinate frame), selectable in the Spatial tab.
+#' @param projections Optional character vector naming the
+#' \code{reducedDims(object)} to export. By default every non-PCA reduction is
+#' exported (PCA only when it is the sole reduction).
+#'
+#' @details
+#' The export is written by the same format-independent core as
+#' \code{\link{exportFromSeurat}}: the CRB and any sidecar are built in a
+#' private stage and published together, and \code{object@metadata} entries
+#' (trees, markers, pathways, immune repertoire, HLA typing, extra material, ...)
+#' are read with the same keys as \code{object@misc} on the Seurat side.
+#' Two entries are specific to this route. \code{metadata(object)$group_colors}, a
+#' list named by grouping variable of named colour vectors (level to
+#' \code{"#RRGGBB"}), becomes the groups' default colours in the Viewer.
+#' \code{metadata(object)$spatial_images}, a list named by library of images
+#' (each \code{list(histology_image = <base64 data URI>,
+#' histology_image_bounds = c(xmin, xmax, ymin, ymax))}), is drawn behind the
+#' spatial coordinates: the single library's images go to the single spatial
+#' entry, and with \code{spatial_split_by} each section takes the images of the
+#' library named like its level. Both are filled in by
+#' \code{\link{readH5adAsSCE}} from scanpy's \code{uns}.
 #'
 #' @return
 #' No data returned.
@@ -79,28 +114,24 @@ exportFromSCE <- function(
   nGene = 'nGene',
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
+  expression_matrix_mode = c("embedded", "h5"),
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 500000L,
-  verbose = FALSE
+  verbose = FALSE,
+  main_group = NULL,
+  projections = NULL,
+  spatial_reductions = NULL,
+  spatial_split_by = NULL
 ) {
   ##--------------------------------------------------------------------------##
   ## safety checks before starting to do anything
   ##--------------------------------------------------------------------------##
 
+  expression_matrix_mode <- match.arg(expression_matrix_mode)
   codec <- match.arg(codec)
-
-  ## check if provided object is of class "SingleCellExperiment"
-  if (!inherits(object, "SingleCellExperiment")) {
-    stop(
-      paste0(
-        "Provided object is of class `",
-        class(object),
-        "` but must be of class 'SingleCellExperiment'."
-      ),
-      call. = FALSE
-    )
-  }
+  viewer_options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
+  .exportCheckOutputArgs(file, expression_matrix_mode, use_delayed_array, verbose)
 
   ## check if SingleCellExperiment is installed
   if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) {
@@ -110,8 +141,38 @@ exportFromSCE <- function(
     )
   }
 
+  ## check if provided object is of class "SingleCellExperiment"
+  if (!inherits(object, "SingleCellExperiment")) {
+    stop(
+      paste0(
+        "Provided object is of class `",
+        paste(class(object), collapse = ", "),
+        "` but must be of class 'SingleCellExperiment'."
+      ),
+      call. = FALSE
+    )
+  }
+
   meta <- SingleCellExperiment::colData(object)
-  .validateExportColumns(names(meta), groups, nUMI, nGene, cell_cycle)
+  .exportCheckGroups(names(meta), groups, main_group)
+
+  available_reductions <- names(SingleCellExperiment::reducedDims(object))
+  if (
+    !is.null(projections) &&
+      (!is.character(projections) ||
+        !length(projections) ||
+        anyNA(projections) ||
+        any(!nzchar(projections)) ||
+        anyDuplicated(projections) ||
+        any(!projections %in% available_reductions))
+  ) {
+    stop(
+      "`projections` must name unique dimensional reductions in the object.",
+      call. = FALSE
+    )
+  }
+
+  .exportCheckMetaColumns(names(meta), nUMI, nGene, cell_cycle)
 
   ## check if provided assay exists
   if ((assay %in% names(SummarizedExperiment::assays(object)) == FALSE)) {
@@ -123,79 +184,145 @@ exportFromSCE <- function(
     )
   }
 
-  export <- .newCerebroExport(experiment_name, organism, verbose)
+  ## Stage every output artefact beside the final destination; nothing is
+  ## published until the whole object has been built (see exportFromSeurat()).
+  final_file <- file
+  export_stage_dir <- .exportPrepareOutput(final_file)
+  on.exit(
+    unlink(export_stage_dir, recursive = TRUE, force = TRUE),
+    add = TRUE
+  )
 
-  ## the assay was checked above
-  export$setExpression(.delayedExportExpression(
-    SummarizedExperiment::assay(object, assay),
-    use_delayed_array,
-    verbose
-  ))
+  ##--------------------------------------------------------------------------##
+  ## initialize Cerebro object
+  ##--------------------------------------------------------------------------##
+  export <- .exportInit(experiment_name, organism, object@metadata, verbose)
 
-  extras <- object@metadata
-  .addExportExperiment(export, extras)
-  .addExportMetaData(
-    export,
-    meta,
-    colnames(object),
-    groups,
-    nUMI,
-    nGene,
-    cell_cycle,
-    add_all_meta_data,
-    verbose
+  ##--------------------------------------------------------------------------##
+  ## add transcript counts
+  ##--------------------------------------------------------------------------##
+  expression_data <- tryCatch(
+    SummarizedExperiment::assay(object, i = assay),
+    error = function(e) {
+      stop("Assay `", assay, "` could not be read: ", conditionMessage(e), call. = FALSE)
+    }
   )
-  .addExportProjections(
-    export,
-    names(SingleCellExperiment::reducedDims(object)),
-    function(name) SingleCellExperiment::reducedDims(object)[[name]],
-    verbose
-  )
-  .addExportGroupTables(
-    extras$trees,
-    'object@metadata$trees',
-    'Extracting trees...',
-    export$addTree,
-    verbose
-  )
-  .addExportGroupTables(
-    extras$most_expressed_genes,
-    'object@metadata$most_expressed_genes',
-    'Extracting tables of most expressed genes...',
-    export$addMostExpressedGenes,
-    verbose
-  )
-  .addExportMethodTables(
-    extras$marker_genes,
-    'object@metadata$marker_genes',
-    'Extracting tables of marker genes...',
-    export$addMarkerGenes,
-    verbose
-  )
-  .addExportMethodTables(
-    extras$enriched_pathways,
-    'object@metadata$enriched_pathways',
-    'Extracting pathway enrichment results...',
-    export$addEnrichedPathways,
-    verbose
-  )
-  .addExportTrajectories(export, extras$trajectories, verbose)
-  .addExportExtraMaterial(export, extras$extra_material, verbose)
-  .printExportOverview(export)
 
-  ## check if output directory exists and create it if not
-  if (!file.exists(dirname(file))) {
-    .logStep('Creating output directory...')
-    dir.create(dirname(file), showWarnings = FALSE)
+  ## Same guard as the Seurat path: the matrix must carry exactly the cells the
+  ## meta data describes, in that order.
+  cells <- colnames(object)
+  expression_data <- .validate_expression_cells(
+    expression_data = expression_data,
+    object_cells = cells,
+    assay = assay,
+    requested_layer = assay,
+    resolved_layer = assay
+  )
+  ## The external backends expect a dgCMatrix, a dense matrix or a delayed
+  ## matrix; other Matrix classes (e.g. triplet or row-compressed) are converted.
+  if (
+    inherits(expression_data, "Matrix") &&
+      !inherits(expression_data, "dgCMatrix")
+  ) {
+    expression_data <- methods::as(expression_data, "CsparseMatrix")
   }
-  .logStep('Saving Cerebro object to: ', file)
-  saveCerebro(
-    export,
-    file,
-    codec = codec,
-    viewer_binary = viewer_binary,
-    viewer_binary_threshold = viewer_binary_threshold
+
+  expression_data <- .exportWriteExpression(
+    export = export,
+    expression_data = expression_data,
+    expression_matrix_mode = expression_matrix_mode,
+    use_delayed_array = use_delayed_array,
+    export_stage_dir = export_stage_dir,
+    final_file = final_file,
+    verbose = verbose
   )
-  ## saveCerebro() stops when the file is not written
-  .logStep('Done!')
+
+  .exportAddExperimentMisc(export, object@metadata)
+
+  .exportAddMetaData(
+    export = export,
+    meta = meta,
+    cells = cells,
+    groups = groups,
+    nUMI = nUMI,
+    nGene = nGene,
+    cell_cycle = cell_cycle,
+    add_all_meta_data = add_all_meta_data,
+    main_group = main_group,
+    verbose = verbose
+  )
+
+  explicit_projections <- !is.null(projections)
+  .exportAddProjections(
+    export = export,
+    projection_names = if (explicit_projections) {
+      projections
+    } else {
+      available_reductions
+    },
+    get_embedding = function(name) {
+      as.data.frame(SingleCellExperiment::reducedDims(object)[[name]])
+    },
+    explicit_projections = explicit_projections,
+    verbose = verbose
+  )
+
+  .exportAddMiscResults(
+    export = export,
+    misc = object@metadata,
+    groups = groups,
+    cells = cells,
+    verbose = verbose
+  )
+
+  ## Point coordinates (MERFISH, Slide-seq, AnnData obsm["spatial"]) held as a
+  ## reduction named "spatial" also feed the Spatial tab.
+  if (!is.null(spatial_split_by) && !spatial_split_by %in% names(meta)) {
+    stop(
+      "`spatial_split_by` must be a column of colData: ",
+      spatial_split_by,
+      call. = FALSE
+    )
+  }
+  if (is.null(spatial_reductions)) {
+    spatial_reductions <- available_reductions[
+      tolower(available_reductions) == "spatial"
+    ]
+  } else if (!all(spatial_reductions %in% available_reductions)) {
+    stop(
+      "`spatial_reductions` must name reducedDims of the object.",
+      call. = FALSE
+    )
+  }
+  if (length(spatial_reductions)) {
+    .exportAddSpatialFromEmbeddings(
+      export = export,
+      embeddings = stats::setNames(
+        lapply(spatial_reductions, function(name) {
+          SingleCellExperiment::reducedDim(object, name)
+        }),
+        spatial_reductions
+      ),
+      expression_data = expression_data,
+      assay = assay,
+      layer = assay,
+      images = object@metadata$spatial_images,
+      split = if (!is.null(spatial_split_by)) {
+        stats::setNames(
+          as.character(meta[[spatial_split_by]]),
+          cells
+        )
+      },
+      verbose = verbose
+    )
+  }
+
+  .exportFinalize(
+    export = export,
+    final_file = final_file,
+    export_stage_dir = export_stage_dir,
+    expression_matrix_mode = expression_matrix_mode,
+    codec = codec,
+    viewer_options = viewer_options
+  )
 }

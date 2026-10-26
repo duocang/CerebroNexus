@@ -1,6 +1,6 @@
 Package: CerebroNexus
 Title: Interactive visualization of single cell transcriptomics
-Version: 5.5.0
+Version: 6.0.0
 Authors@R: c(
   person("Michael", "Heming", email = "mihem@mailbox.org", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-9568-2790")),
   person("Roman", "Hillje", email = "roman.hillje@googlemail.com", role = c("aut")),
@@ -27,17 +27,21 @@ biocViews:
   Transcriptomics,
   Visualization
 Imports:
-  htmltools,
   base64enc,
   biomaRt (>= 2.38.0),
+  callr,
   colourpicker (>= 1.0),
+  data.table,
+  digest,
   dplyr (>= 1.0.0),
   DT (>= 0.14.0),
   fs,
   future.apply (>= 1.1.0),
+  ggdendro,
   ggplot2 (>= 3.4.0),
   glue (>= 1.4.0),
   GSVA (>= 2.0.0),
+  htmltools,
   htmlwidgets,
   httr (>= 1.4.0),
   igraph,
@@ -47,12 +51,16 @@ Imports:
   methods,
   mirai,
   msigdbr (>= 24.1.0),
+  patchwork,
   pbapply (>= 1.4),
   plotly (>= 4.9.0),
+  processx,
   promises,
-  qvalue (>= 2.14.0),
+  ps,
   qs2,
+  qvalue (>= 2.14.0),
   R6 (>= 2.4.0),
+  readxl,
   rlang (>= 1.0.0),
   scales (>= 1.1.0),
   scRepertoire (>= 2.0.0),
@@ -70,32 +78,38 @@ Imports:
   utils,
   visNetwork
 Suggests:
+  arrow,
+  BPCells,
   cachem,
-  callr,
   chromote,
+  codetools,
   DelayedArray,
-  ggdendro,
   HDF5Array (>= 1.18.1),
   httpuv,
   httr,
+  jpeg,
   knitr,
   monocle,
-  patchwork,
   png,
-  readxl,
   rhdf5,
   rmarkdown,
   S4Vectors,
   Seurat (>= 3.0.0),
   SeuratObject,
   shinymanager (>= 1.1.0),
+  shinytest2 (>= 0.2.0),
   SingleCellExperiment,
   SummarizedExperiment,
   testthat (>= 3.0.0),
-  shinytest2 (>= 0.2.0),
   withr,
-  xml2
+  writexl,
+  xml2,
+  zip
 VignetteBuilder: knitr
+Enhances:
+  qs
+Remotes:
+  bnprks/BPCells/r
 Config/testthat/edition: 3
 Config/testthat/parallel: true
 Config/testthat/start-first: app-immune_repertoire, app-inst,

@@ -1,2 +1,5 @@
 # The Linux deployment entry point must remain runnable after a Windows checkout.
 inst/viewer/start-linux.sh text eol=lf
+
+# Zarr fixtures are directories of binary chunks and JSON; never rewrite their line endings.
+tests/testthat/fixtures/anndata/*.zarr/** -text

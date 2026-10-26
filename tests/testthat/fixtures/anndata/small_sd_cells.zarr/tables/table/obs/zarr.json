@@ -1,0 +1,16 @@
+{
+  "attributes": {
+    "column-order": [
+      "cell_type",
+      "region",
+      "spot_id",
+      "n_genes_by_counts",
+      "total_counts"
+    ],
+    "_index": "_index",
+    "encoding-type": "dataframe",
+    "encoding-version": "0.2.0"
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}

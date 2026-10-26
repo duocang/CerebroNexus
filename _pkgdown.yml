@@ -25,6 +25,12 @@ reference:
   - title: "Export data"
     contents:
       - starts_with("exportFrom")
+      - exportToH5ad
+  - title: "Convert data"
+    contents:
+      - starts_with("convert")
+      - readH5adAsSCE
+      - readSpatialDataAsSCE
   - title: "Pre-processing"
     contents:
       - addPercentMtRibo
@@ -43,8 +49,10 @@ articles:
   - title: "Workflows"
     navbar: Workflows
     contents:
+      - build_a_data_set_by_pointing
       - cerebronexus_workflow_seurat
       - export_a_data_set_in_SCE_format
+      - use_sce_and_anndata_data
   - title: "Data model"
     navbar: Interface
     contents:

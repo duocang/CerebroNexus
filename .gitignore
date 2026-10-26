@@ -38,3 +38,12 @@ inst/private-data/linked-view-shares.sqlite
 node_modules/
 /tests/testthat/_problems/
 /tests/testthat/testthat-problems.rds
+# Historical one-off Viewer investigations are archived outside the checkout.
+/tests/bench/viewer-followup/
+/tests/bench/viewer-final-protocol/
+
+# Builder work products and generated authentication material.
+tests/testthat/_artifacts/
+data-raw/builder_fixtures/
+viewer-auth.env
+**/private-data/auth/
