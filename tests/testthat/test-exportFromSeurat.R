@@ -31,6 +31,7 @@ valid_args <- list(
   codec = "rds"
 )
 
+
 ## ---------------------------------------------------------------------------
 ## Input validation
 ## ---------------------------------------------------------------------------
@@ -145,6 +146,32 @@ test_that("exportFromSeurat: produces a valid .crb file from pbmc_seurat.rds", {
   expect_false(is.null(expr))
   expect_equal(ncol(expr), ncol(obj_raw))
   expect_equal(nrow(expr), nrow(obj_raw))
+})
+
+test_that("exportFromSeurat coalesces missing and existing N/A group levels", {
+  object <- obj_raw
+  values <- rep(c("A", "N/A", NA_character_), length.out = ncol(object))
+  object$character_with_na <- values
+  object$factor_with_na <- factor(values, levels = c("A", "N/A"))
+  outf <- tempfile(fileext = ".crb")
+  args <- valid_args
+  args$object <- object
+  args$file <- outf
+  args$groups <- c("character_with_na", "factor_with_na")
+
+  expect_no_error(do.call(exportFromSeurat, args))
+
+  cerebro <- readRDS(outf)
+  expect_identical(
+    cerebro$getGroupLevels("character_with_na"),
+    c("A", "N/A")
+  )
+  expect_identical(
+    cerebro$getGroupLevels("factor_with_na"),
+    c("A", "N/A")
+  )
+  expect_false(anyNA(cerebro$getMetaData()$character_with_na))
+  expect_false(anyNA(cerebro$getMetaData()$factor_with_na))
 })
 
 ## ---------------------------------------------------------------------------

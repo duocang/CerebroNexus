@@ -116,18 +116,18 @@
     levels <- sort(unique(values), na.last = NA)
     if (anyNA(values)) {
       values[is.na(values)] <- 'N/A'
-      levels <- c(levels, 'N/A')
+      levels <- unique(c(levels, 'N/A'))
     }
     return(factor(values, levels = levels))
   }
-  if (is.factor(values) && anyNA(values) && !'NA' %in% levels(values)) {
+  if (is.factor(values) && anyNA(values)) {
     if (verbose) {
       .logStep('Adding `NA` to factor levels of group `', group, '`...')
     }
     levels <- levels(values)
     values <- as.character(values)
     values[is.na(values)] <- 'N/A'
-    return(factor(values, levels = c(levels, 'N/A')))
+    return(factor(values, levels = unique(c(levels, 'N/A'))))
   }
   values
 }

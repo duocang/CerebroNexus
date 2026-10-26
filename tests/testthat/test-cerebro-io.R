@@ -187,6 +187,8 @@ test_that("thin v3 CRBs keep the cell names once, in the H5 file", {
     readBin(qs, "raw", n = 4L),
     as.raw(c(0x0b, 0x0e, 0x0a, 0xc1))
   )
+  expect_identical(.cerebroPayloadCodec(rds), "rds")
+  expect_identical(.cerebroPayloadCodec(qs), "qs2")
   expect_false(identical(
     readBin(rds, "raw", n = 4L),
     as.raw(c(0x0b, 0x0e, 0x0a, 0xc1))
@@ -1457,6 +1459,11 @@ test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
   expect_true(dir.exists(file.path(root, "spatial.spatial")))
 
   restored <- readCerebro(path)
+  expect_true("root" %in% names(restored$spatial_molecule_backend))
+  expect_false(
+    "root" %in%
+      names(.thinCerebroPayload(restored, path)$spatial_molecule_backend)
+  )
   expect_s3_class(
     restored$spatial$fov1$molecules,
     "CerebroSpatialMoleculeRef"

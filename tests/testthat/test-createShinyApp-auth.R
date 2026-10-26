@@ -389,6 +389,11 @@ test_that("createShinyApp bundles only encrypted authentication configuration", 
     )
   )
   expect_true(file.exists(file.path(app, "viewer", "www", "auth.css")))
+  launcher <- file.path(app, "viewer", "start-linux.sh")
+  expect_true(file.exists(launcher))
+  expect_false(any(
+    readBin(launcher, "raw", n = file.size(launcher)) == as.raw(13)
+  ))
   expect_true(file.exists(file.path(
     app,
     "viewer",
