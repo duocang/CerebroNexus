@@ -18,7 +18,8 @@ publication_build_ops <- function(...) {
   overrides <- list(...)
   defaults <- list(
     copy = function(from, to, ...) file.copy(from, to, ...),
-    save_rds = function(object, file) saveRDS(object, file)
+    save_rds = function(object, file) saveRDS(object, file),
+    write_lines = function(text, connection) writeLines(text, connection)
   )
   utils::modifyList(defaults, overrides)
 }

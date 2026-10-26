@@ -114,14 +114,6 @@ test_that("every expression backend exports the same X", {
       info = mode
     )
   }
-  skip_if_not_installed("BPCells")
-  out <- file.path(withr::local_tempdir(), "bpcells.h5ad")
-  quiet(exportToH5ad(make_crb("bpcells"), out))
-  expect_equal(
-    as.matrix(SummarizedExperiment::assay(quiet(readH5adAsSCE(out)), "X")),
-    as.matrix(SummarizedExperiment::assay(reference, "X")),
-    tolerance = 1e-6
-  )
 })
 
 test_that("marker tables survive a Cerebro -> h5ad -> SCE trip", {

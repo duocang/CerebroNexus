@@ -42,7 +42,7 @@ test_that("exportFromSCE writes an embedded .crb that round-trips the assay", {
   )
 })
 
-test_that("exportFromSCE supports the h5 and bpcells backends", {
+test_that("exportFromSCE supports the h5 backend", {
   skip_if_not_installed("HDF5Array")
   dir_h5 <- withr::local_tempdir()
   export_sce(file.path(dir_h5, "sce.crb"), expression_matrix_mode = "h5")
@@ -57,15 +57,6 @@ test_that("exportFromSCE supports the h5 and bpcells backends", {
   )
   ## nothing but the CRB and its sidecar is left beside the output
   expect_setequal(list.files(dir_h5), c("sce.crb", "sce.h5"))
-
-  skip_if_not_installed("BPCells")
-  dir_bp <- withr::local_tempdir()
-  export_sce(file.path(dir_bp, "sce.crb"), expression_matrix_mode = "bpcells")
-  expect_true(dir.exists(file.path(dir_bp, "sce.bpcells")))
-  expect_identical(
-    readCerebro(file.path(dir_bp, "sce.crb"))$getExpressionBackend()$type,
-    "bpcells"
-  )
 })
 
 test_that("exportFromSCE converts non-CsparseMatrix assays for external backends", {

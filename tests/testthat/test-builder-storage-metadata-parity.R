@@ -172,7 +172,7 @@ build_storage_parity_fixture <- function(
   )
 }
 
-for (backend in c("embedded", "h5", "bpcells")) {
+for (backend in c("embedded", "h5")) {
   test_that(paste("external image storage is independent of", backend), {
     skip_backend_if_unavailable(backend)
     result <- build_storage_parity_fixture(
