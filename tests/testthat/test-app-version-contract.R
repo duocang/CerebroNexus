@@ -20,7 +20,7 @@ test_that("About renders configured versions and an explicit missing-version fal
 test_that("CerebroNexus releases use major.minor.patch versions", {
   description_path <- system.file("DESCRIPTION", package = "CerebroNexus")
   if (!nzchar(description_path)) {
-    description_path <- testthat::test_path("..", "..", "DESCRIPTION")
+    description_path <- builder_test_description_path()
   }
   news_path <- system.file("NEWS.md", package = "CerebroNexus")
   if (!nzchar(news_path)) {

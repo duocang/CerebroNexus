@@ -2179,6 +2179,21 @@ test_that("per-image settings also apply to embedded backgrounds", {
       geometryBaked = TRUE
     )
   )
+  js <- paste(
+    readLines(file.path(dirname(bundle_file), "..", "www", "cell_views.js")),
+    collapse = "\n"
+  )
+  expect_match(js, "xRange: sample.x_range || null", fixed = TRUE)
+  expect_match(
+    js,
+    "(!pointSizeEdited || !singleActive) && sp && sp.builder_point_size",
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "(!pointOpacityEdited || !singleActive) && sp && sp.builder_point_opacity",
+    fixed = TRUE
+  )
 })
 
 test_that("embedded spatial images share identity and point appearance", {

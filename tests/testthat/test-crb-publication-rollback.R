@@ -78,7 +78,7 @@ test_that("every failed publication stage restores the spatial and immune sideca
     expect_identical(readBin(file, "raw", 100), as.raw(1:10))
     expect_identical(readBin(immune, "raw", 100), as.raw(21:30))
     expect_identical(readLines(file.path(spatial, "content")), "old")
-    expect_length(list.files(root, all.files = TRUE, pattern = "-backup-"), 0L)
+    expect_length(list.files(root, all.files = TRUE, pattern = "-b-|-backup-"), 0L)
     unlink(root, recursive = TRUE)
   }
 })
@@ -104,10 +104,10 @@ test_that("an immune-only install replaces the sidecar and leaves no backup", {
   expect_identical(readBin(file, "raw", 100), as.raw(11:20))
   expect_identical(readBin(immune, "raw", 100), as.raw(31:40))
   expect_false(file.exists(immune_stage))
-  expect_length(list.files(root, all.files = TRUE, pattern = "-backup-"), 0L)
+  expect_length(list.files(root, all.files = TRUE, pattern = "-b-|-backup-"), 0L)
 })
 
-test_that("public save preserves an existing CRB when its backup name is too long", {
+test_that("public save can replace a long CRB name using a bounded backup name", {
   skip_on_os("windows")
   root <- tempfile("crb-long-name-")
   dir.create(root)
@@ -116,9 +116,10 @@ test_that("public save preserves an existing CRB when its backup name is too lon
   object <- Cerebro$new()
   saveCerebro(object, file, codec = "rds")
   original <- readBin(file, "raw", file.info(file)$size)
-  expect_error(
-    suppressWarnings(saveCerebro(object, file, codec = "rds")),
-    "Could not preserve the existing CRB"
-  )
+  expect_silent(saveCerebro(object, file, codec = "rds"))
   expect_identical(readBin(file, "raw", length(original)), original)
+  expect_identical(
+    list.files(root, all.files = TRUE, no.. = TRUE),
+    basename(file)
+  )
 })

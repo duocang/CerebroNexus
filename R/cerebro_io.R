@@ -349,6 +349,13 @@
       "chains"
     )]
   }
+  spatial_backend <- .spatialMoleculeBackend(object, file)
+  if (!is.null(spatial_backend)) {
+    payload$spatial_molecule_backend <- spatial_backend[c(
+      "type",
+      "location"
+    )]
+  }
   if (identical(backend$type, "embedded")) {
     return(payload)
   }
@@ -510,15 +517,21 @@
   }
 }
 
-.readCerebroPayload <- function(file) {
+.cerebroPayloadCodec <- function(file) {
   connection <- file(file, open = "rb")
   on.exit(close(connection), add = TRUE)
   magic <- readBin(connection, "raw", n = 4L)
   if (identical(magic, as.raw(c(0x0b, 0x0e, 0x0a, 0xc1)))) {
-    qs2::qs_read(file)
-  } else {
-    readRDS(file)
+    return("qs2")
   }
+  "rds"
+}
+
+.readCerebroPayload <- function(file) {
+  if (identical(.cerebroPayloadCodec(file), "qs2")) {
+    return(qs2::qs_read(file))
+  }
+  readRDS(file)
 }
 
 .spatialMoleculeSidecarName <- function(file) {
@@ -574,7 +587,7 @@
 
   source_backend <- .spatialMoleculeBackend(payload, file)
   location <- .spatialMoleculeSidecarName(file)
-  stage <- tempfile(paste0(".", location, "-"), dirname(file))
+  stage <- tempfile(".spatial-s-", dirname(file))
   if (!dir.create(stage, recursive = FALSE, showWarnings = FALSE)) {
     stop(
       "Could not create the spatial molecule staging directory.",
@@ -715,7 +728,7 @@
   )
 
   if (file.exists(file)) {
-    backup <- tempfile(paste0(".", basename(file), "-backup-"), dirname(file))
+    backup <- tempfile(".crb-b-", dirname(file))
     if (!file.rename(file, backup)) {
       stop("Could not preserve the existing CRB.", call. = FALSE)
     }
@@ -724,7 +737,7 @@
   if (!is.null(spatial_stage)) {
     if (dir.exists(spatial)) {
       spatial_backup <- tempfile(
-        paste0(".", basename(spatial), "-backup-"),
+        ".spatial-b-",
         dirname(spatial)
       )
       if (!file.rename(spatial, spatial_backup)) {
@@ -740,7 +753,7 @@
   if (!is.null(immune_stage)) {
     if (file.exists(immune)) {
       immune_backup <- tempfile(
-        paste0(".", basename(immune), "-backup-"),
+        ".immune-b-",
         dirname(immune)
       )
       if (!file.rename(immune, immune_backup)) {
@@ -999,6 +1012,17 @@ saveCerebro <- function(
   invisible(file)
 }
 
+.hydrateCerebroPayload <- function(serialized, file) {
+  file <- normalizePath(file, mustWork = TRUE)
+  backend <- .cerebroBackend(serialized)
+  schema <- .crbContract()$.readRuntimeCrbSchema(serialized, file)
+  object <- .currentCerebroCopy(serialized)
+  object <- .attachCerebroExpression(object, file, backend)
+  object <- .hydrateThinCerebro(object, file, backend, schema)
+  object <- .attachCerebroSpatialMolecules(object, file)
+  .attachCerebroImmuneRepertoire(object, file)
+}
+
 #' Read a Cerebro data file
 #'
 #' Reads a CRB written by \code{saveCerebro()} or the export functions, as RDS or
@@ -1019,13 +1043,7 @@ readCerebro <- function(file) {
     stop("`object` must be a serialized Cerebro object.", call. = FALSE)
   }
   .crbContract()$.assertCurrentRuntimeCrb(serialized, file)
-  backend <- .cerebroBackend(serialized)
-  schema <- .crbContract()$.readRuntimeCrbSchema(serialized, file)
-  object <- .currentCerebroCopy(serialized)
-  object <- .attachCerebroExpression(object, file, backend)
-  object <- .hydrateThinCerebro(object, file, backend, schema)
-  object <- .attachCerebroSpatialMolecules(object, file)
-  .attachCerebroImmuneRepertoire(object, file)
+  .hydrateCerebroPayload(serialized, file)
 }
 
 ## The one place that still knows the singular spatial image form: one
@@ -1157,14 +1175,14 @@ readCerebro <- function(file) {
 #' @export
 convertCerebro <- function(input, output = input, codec = c("qs2", "rds")) {
   codec <- match.arg(codec)
-  input <- normalizePath(input, mustWork = TRUE)
+  input <- normalizePath(input, winslash = "/", mustWork = TRUE)
   valid_output <-
     .isString(output)
   if (
     valid_output &&
       !identical(
-        normalizePath(dirname(input), mustWork = FALSE),
-        normalizePath(dirname(output), mustWork = FALSE)
+        normalizePath(dirname(input), winslash = "/", mustWork = FALSE),
+        normalizePath(dirname(output), winslash = "/", mustWork = FALSE)
       )
   ) {
     stop(

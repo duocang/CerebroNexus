@@ -96,17 +96,17 @@ addPercentMtRibo <- function(
   for (kind in c('mitochondrial', 'ribosomal')) {
     short <- if (kind == 'mitochondrial') 'mt' else 'ribo'
     genes <- utils::read.delim(
-      system.file(
+      .cerebroPackageResource(
+        'extdata',
         paste0(
-          'extdata/genes_',
+          'genes_',
           short,
           '_',
           organism,
           '_',
           gene_nomenclature,
           '.tsv.gz'
-        ),
-        package = 'CerebroNexus'
+        )
       ),
       sep = "\t",
       header = FALSE,

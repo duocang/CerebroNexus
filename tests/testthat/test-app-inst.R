@@ -146,6 +146,47 @@ test_that("Projection switches categorical spatial datasets coherently", {
   )))
 })
 
+test_that("Spatial canvas is replaced after switching datasets from Data info", {
+  app <- viewer_new_session(switching_app())
+
+  select_dataset(app, "Mouse ileum (MERFISH)")
+  app$wait_for_idle(timeout = 30000)
+  activate_tab(app, "spatial", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_point_color')?.value ",
+      "=== 'cell_type' && ",
+      "document.getElementById('spatial_projection_cell_view_host')?.",
+      "textContent.includes('Enterocyte (Bottom Villus)')"
+    ),
+    timeout = 30000
+  )
+
+  ## Reproduce the user path: leave Spatial, switch the object on Data info,
+  ## then return. The control UI and Canvas must belong to the same dataset.
+  activate_tab(app, "loadData", timeout = 30000)
+  select_dataset(app, "Mouse brain (Xenium)")
+  app$wait_for_idle(timeout = 30000)
+  activate_tab(app, "spatial", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.getElementById('spatial_projection_point_color')?.value ",
+      "=== 'cluster' && ",
+      "document.getElementById('spatial_projection_cell_view_host')?.",
+      "textContent.includes('C14') && ",
+      "!document.getElementById('spatial_projection_cell_view_host').",
+      "textContent.includes('Enterocyte (Bottom Villus)')"
+    ),
+    timeout = 30000
+  )
+
+  expect_false(any(grepl(
+    "color_assignments are required for categorical cell views",
+    app$get_logs()$message,
+    fixed = TRUE
+  )))
+})
+
 test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app <- viewer_new_session(switching_app())
 
