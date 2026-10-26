@@ -17,6 +17,7 @@
 #include <omp.h>
 #endif
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,31 @@ namespace {
 const hsize_t DATA_CHUNK = 16384;
 const hsize_t INDPTR_CHUNK = 4096;
 const size_t GROUP_STATS_BLOCK = (size_t)1 << 26;
+
+// An array whose values are left as they are on allocation: unlike
+// std::vector, gigabytes are not zero-filled on one thread before every value
+// is written anyway (read from the file, or scattered by the transpose).
+template <class T>
+class Buffer {
+ public:
+  void resize(size_t n) {
+    values_.reset(new T[n]);
+    size_ = n;
+  }
+  T *data() { return values_.get(); }
+  const T *data() const { return values_.get(); }
+  size_t size() const { return size_; }
+  T &operator[](size_t k) { return values_[k]; }
+  const T &operator[](size_t k) const { return values_[k]; }
+  void clear() {
+    values_.reset();
+    size_ = 0;
+  }
+
+ private:
+  std::unique_ptr<T[]> values_;
+  size_t size_ = 0;
+};
 
 struct Handle {
   hid_t id;
@@ -66,8 +92,8 @@ void read_range(hid_t file, const std::string &name, hid_t memtype, hsize_t star
   if (H5Dread(d.id, memtype, ms.id, fs.id, H5P_DEFAULT, out) < 0) stop("Cannot read dataset `" + name + "`.");
 }
 
-template <class T>
-void read_all(hid_t file, const std::string &name, hid_t memtype, std::vector<T> &out) {
+template <class Container>
+void read_all(hid_t file, const std::string &name, hid_t memtype, Container &out) {
   out.resize(dataset_length(file, name));
   read_range(file, name, memtype, 0, out.size(), out.data());
 }
@@ -185,8 +211,10 @@ List transpose_to_sidecar(const int64_t *ptr, size_t n_ptr, const int32_t *ind, 
     }
   }
   gene_ptr[n_genes] = total;
-  std::vector<uint32_t> cell(nnz);
-  std::vector<O> value(nnz);
+  Buffer<uint32_t> cell;
+  Buffer<O> value;
+  cell.resize(nnz);
+  value.resize(nnz);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(T)
 #endif
@@ -244,8 +272,8 @@ template <class V>
 List h5ad_to_sidecar(hid_t in, const std::string &matrix, const std::string &out, int n_cells, int n_genes,
                      int threads, int level, hid_t value_memtype, List groupings, IntegerVector group_sizes) {
   std::vector<int64_t> ptr;
-  std::vector<int32_t> ind;
-  std::vector<V> x;
+  Buffer<int32_t> ind;
+  Buffer<V> x;
   read_all(in, matrix + "/indptr", H5T_NATIVE_INT64, ptr);
   read_all(in, matrix + "/indices", H5T_NATIVE_INT32, ind);
   read_all(in, matrix + "/data", value_memtype, x);
@@ -321,5 +349,57 @@ List sidecarGroupStatsCpp(std::string file, std::string group, IntegerVector cod
     }
     g0 = g1;
   }
+  return List::create(_["total"] = total, _["positive"] = positive);
+}
+
+// Per gene and group of a genes x cells dgCMatrix, given by its slots: the
+// sum of the values and the number of values above zero, each gene's cells
+// added in order as Matrix::rowSums() and the sparse product with a group
+// indicator add them. Threads take whole groups, so no two add to one sum.
+// `codes` gives every cell's group from 0, or a negative number for none.
+// [[Rcpp::export]]
+List dgcGroupStatsCpp(IntegerVector i, IntegerVector p, NumericVector x, int n_genes, IntegerVector codes,
+                      int n_groups, int threads) {
+  const int n_cells = p.size() - 1;
+  if (n_cells < 0 || codes.size() != n_cells || i.size() != x.size()) {
+    stop("Group codes must give one code per cell.");
+  }
+  // the cells of every group, in order
+  std::vector<int64_t> start((size_t)n_groups + 1, 0);
+  const int *code = codes.begin();
+  for (int c = 0; c < n_cells; c++) {
+    if (code[c] >= 0 && code[c] < n_groups) start[code[c] + 1]++;
+  }
+  for (int k = 0; k < n_groups; k++) start[k + 1] += start[k];
+  std::vector<int> member(start[n_groups]);
+  std::vector<int64_t> next(start.begin(), start.end() - 1);
+  for (int c = 0; c < n_cells; c++) {
+    if (code[c] >= 0 && code[c] < n_groups) member[next[code[c]]++] = c;
+  }
+  NumericMatrix total(n_genes, n_groups), positive(n_genes, n_groups);
+  double *tot = total.begin(), *pos = positive.begin();
+  const int *gene = i.begin(), *ptr = p.begin();
+  const double *value = x.begin();
+  const int T = thread_count(threads);
+  bool bad = false;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(T) schedule(dynamic, 1) reduction(|| : bad)
+#endif
+  for (int k = 0; k < n_groups; k++) {
+    double *group_total = tot + (size_t)k * n_genes, *group_positive = pos + (size_t)k * n_genes;
+    for (int64_t m = start[k]; m < start[k + 1]; m++) {
+      const int c = member[m];
+      for (int64_t j = ptr[c]; j < ptr[c + 1]; j++) {
+        const int g = gene[j];
+        if (g < 0 || g >= n_genes) {
+          bad = true;
+          continue;
+        }
+        group_total[g] += value[j];
+        if (value[j] > 0) group_positive[g] += 1;
+      }
+    }
+  }
+  if (bad) stop("The expression matrix lists a gene outside the matrix.");
   return List::create(_["total"] = total, _["positive"] = positive);
 }

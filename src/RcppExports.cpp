@@ -62,11 +62,29 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// dgcGroupStatsCpp
+List dgcGroupStatsCpp(IntegerVector i, IntegerVector p, NumericVector x, int n_genes, IntegerVector codes, int n_groups, int threads);
+RcppExport SEXP _CerebroNexus_dgcGroupStatsCpp(SEXP iSEXP, SEXP pSEXP, SEXP xSEXP, SEXP n_genesSEXP, SEXP codesSEXP, SEXP n_groupsSEXP, SEXP threadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type i(iSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type p(pSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< int >::type n_genes(n_genesSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type codes(codesSEXP);
+    Rcpp::traits::input_parameter< int >::type n_groups(n_groupsSEXP);
+    Rcpp::traits::input_parameter< int >::type threads(threadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(dgcGroupStatsCpp(i, p, x, n_genes, codes, n_groups, threads));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_CerebroNexus_h5adCsrToSidecarCpp", (DL_FUNC) &_CerebroNexus_h5adCsrToSidecarCpp, 9},
     {"_CerebroNexus_dgcToSidecarCpp", (DL_FUNC) &_CerebroNexus_dgcToSidecarCpp, 8},
     {"_CerebroNexus_sidecarGroupStatsCpp", (DL_FUNC) &_CerebroNexus_sidecarGroupStatsCpp, 5},
+    {"_CerebroNexus_dgcGroupStatsCpp", (DL_FUNC) &_CerebroNexus_dgcGroupStatsCpp, 7},
     {NULL, NULL, 0}
 };
 

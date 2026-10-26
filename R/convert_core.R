@@ -428,10 +428,11 @@
 #' Per gene and group value: cells, sum of values and cells with a value
 #' above zero, for a sparse genes x cells matrix (or the lazy transpose of a
 #' cells x genes one). `codes` gives each cell's value index or NA, in matrix
-#' order. Both are one sparse product with a cells x groups indicator, which
-#' adds each gene's cells in matrix order as Matrix::rowSums() does, instead
-#' of a subset per group value. A matrix read from an H5 sidecar is summed
-#' from the file in the same order. NULL for other matrix classes.
+#' order. Each gene's cells are added in matrix order, as Matrix::rowSums()
+#' adds them, instead of a subset per group value: by compiled code for a
+#' genes x cells dgCMatrix and an H5 sidecar (read from the file), by sparse
+#' products with a cells x groups indicator for a cells x genes one. NULL for
+#' other matrix classes.
 #' @keywords internal
 #' @noRd
 .groupGeneStats <- function(expr_matrix, codes, n_groups) {
@@ -463,20 +464,36 @@
   if (is.null(cells_by_genes) && !inherits(expr_matrix, "dgCMatrix")) {
     return(NULL)
   }
+  genes <- rownames(expr_matrix)
+  if (is.null(cells_by_genes)) {
+    ## genes x cells (Seurat, SCE): summed group by group by compiled code
+    stats <- dgcGroupStatsCpp(
+      expr_matrix@i,
+      expr_matrix@p,
+      expr_matrix@x,
+      nrow(expr_matrix),
+      ifelse(is.na(codes), -1L, as.integer(codes) - 1L),
+      as.integer(n_groups),
+      .sidecarThreads()
+    )
+    dimnames(stats$total) <- list(genes, NULL)
+    dimnames(stats$positive) <- list(genes, NULL)
+    return(list(
+      n = tabulate(codes[keep], n_groups),
+      total = stats$total,
+      positive = stats$positive
+    ))
+  }
+  ## cells x genes: sparse products with a cells x groups indicator
   membership <- Matrix::sparseMatrix(
     i = keep,
     j = codes[keep],
     x = 1,
     dims = c(length(codes), n_groups)
   )
-  genes <- rownames(expr_matrix)
-  m <- if (is.null(cells_by_genes)) expr_matrix else cells_by_genes
+  m <- cells_by_genes
   per_group <- function(values) {
-    out <- if (is.null(cells_by_genes)) {
-      as.matrix(values %*% membership)
-    } else {
-      t(as.matrix(Matrix::t(membership) %*% values))
-    }
+    out <- t(as.matrix(Matrix::t(membership) %*% values))
     dimnames(out) <- list(genes, NULL)
     out
   }

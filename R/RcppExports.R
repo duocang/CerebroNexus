@@ -13,3 +13,7 @@ sidecarGroupStatsCpp <- function(file, group, codes, n_groups, threads) {
     .Call(`_CerebroNexus_sidecarGroupStatsCpp`, file, group, codes, n_groups, threads)
 }
 
+dgcGroupStatsCpp <- function(i, p, x, n_genes, codes, n_groups, threads) {
+    .Call(`_CerebroNexus_dgcGroupStatsCpp`, i, p, x, n_genes, codes, n_groups, threads)
+}
+
