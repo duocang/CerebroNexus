@@ -605,7 +605,7 @@
 
     # Merge all data frames into one and reorder columns with cluster first
     if (length(pct_results) > 0) {
-      pct_results_df <- do.call(rbind, pct_results)
+      pct_results_df <- as.data.frame(data.table::rbindlist(pct_results))
       rownames(pct_results_df) <- NULL
       pct_results_df <- pct_results_df[, c(
         "cluster",
@@ -617,7 +617,7 @@
     }
 
     if (length(expr_results) > 0) {
-      expr_results_df <- do.call(rbind, expr_results)
+      expr_results_df <- as.data.frame(data.table::rbindlist(expr_results))
       rownames(expr_results_df) <- NULL
       expr_results_df <- expr_results_df[, c(
         "cluster",

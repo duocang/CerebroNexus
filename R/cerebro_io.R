@@ -513,7 +513,7 @@
 
 .writeCerebroPayload <- function(object, file, codec) {
   if (identical(codec, "qs2")) {
-    qs2::qs_save(object, file)
+    qs2::qs_save(object, file, nthreads = .sidecarThreads())
   } else {
     saveRDS(object, file)
   }
@@ -531,7 +531,7 @@
 
 .readCerebroPayload <- function(file) {
   if (identical(.cerebroPayloadCodec(file), "qs2")) {
-    return(qs2::qs_read(file))
+    return(qs2::qs_read(file, nthreads = .sidecarThreads()))
   }
   readRDS(file)
 }

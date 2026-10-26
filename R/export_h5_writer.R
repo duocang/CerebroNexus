@@ -136,8 +136,8 @@
   sidecar$file
 }
 
-## Threads for the compiled sidecar code; more than four rarely help, as the
-## transpose is bound by memory bandwidth.
+## Threads for the compiled sidecar code and for qs2; more than four rarely
+## help the sidecar, whose transpose is bound by memory bandwidth.
 .sidecarThreads <- function() {
   max(1L, as.integer(getOption("CerebroNexus.threads", 4L))[[1L]])
 }

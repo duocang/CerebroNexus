@@ -107,7 +107,7 @@
       writeBin(as.numeric(value), target, size = 4L, endian = "little")
     }
   } else {
-    qs2::qs_save(value, target)
+    qs2::qs_save(value, target, nthreads = .sidecarThreads())
   }
   data.frame(
     path = path,
