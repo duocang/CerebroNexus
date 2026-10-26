@@ -170,7 +170,8 @@ convertH5adToCerebro <- function(
       extra_modalities = extra_modalities,
       verbose = verbose,
       .cells_by_genes = cells_by_genes,
-      .sidecar_dir = if (!is.null(cells_by_genes)) result_dir
+      .sidecar_dir = if (!is.null(cells_by_genes)) result_dir,
+      .sidecar_groups = groups
     )
   }
   ## The H5 backend stores cells x genes. Reading only the exported assay in

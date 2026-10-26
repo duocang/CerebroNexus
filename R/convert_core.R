@@ -438,14 +438,18 @@
   keep <- which(!is.na(codes))
   sidecar <- .tenxSidecarOf(expr_matrix)
   if (!is.null(sidecar)) {
-    ## an H5 sidecar: read gene by gene by compiled code
-    stats <- sidecarGroupStatsCpp(
-      sidecar$file,
-      sidecar$group,
-      ifelse(is.na(codes), -1L, as.integer(codes) - 1L),
-      as.integer(n_groups),
-      .sidecarThreads()
-    )
+    ## an H5 sidecar: summed while it was written from the h5ad, or read gene
+    ## by gene by compiled code
+    stats <- .tempSidecarGroupStats(sidecar$file, codes, n_groups)
+    if (is.null(stats)) {
+      stats <- sidecarGroupStatsCpp(
+        sidecar$file,
+        sidecar$group,
+        ifelse(is.na(codes), -1L, as.integer(codes) - 1L),
+        as.integer(n_groups),
+        .sidecarThreads()
+      )
+    }
     names <- list(rownames(expr_matrix), NULL)
     dimnames(stats$total) <- names
     dimnames(stats$positive) <- names

@@ -226,6 +226,48 @@ test_that("a CSR assay goes straight to a sidecar laid out as the writer lays it
   expect_false(file.exists(sidecar))
 })
 
+test_that("group summaries made while the sidecar is written are used for the same codes only", {
+  skip_if_not_installed("HDF5Array")
+  dir <- withr::local_tempdir()
+  plain <- read_fixture("small_csr.h5ad")
+  x <- assay_x(read_fixture(
+    "small_csr.h5ad",
+    .cells_by_genes = "X",
+    .sidecar_dir = dir,
+    .sidecar_groups = c("cell_type", "donor", "not_a_column")
+  ))
+  sidecar <- .tempSidecarOf(x)
+  withr::defer(.releaseTempSidecar(sidecar, delete = TRUE))
+  meta <- as.data.frame(SummarizedExperiment::colData(plain))
+  codes_of <- function(values) {
+    values <- as.character(values)
+    match(values, unique(values[!is.na(values)]))
+  }
+  for (group in c("cell_type", "donor")) {
+    codes <- codes_of(meta[[group]])
+    n <- max(codes, na.rm = TRUE)
+    expect_false(is.null(.tempSidecarGroupStats(sidecar, codes, n)))
+    ## the kept summaries, not a read of the file
+    local({
+      testthat::local_mocked_bindings(
+        sidecarGroupStatsCpp = function(...) stop("the file was read")
+      )
+      expect_equal(
+        .groupGeneStats(x, codes, n),
+        .groupGeneStats(assay_x(plain), codes, n)
+      )
+    })
+  }
+  ## other codes read the file
+  codes <- codes_of(meta$cell_type)
+  codes[[1]] <- NA
+  expect_null(.tempSidecarGroupStats(sidecar, codes, max(codes, na.rm = TRUE)))
+  expect_equal(
+    .groupGeneStats(x, codes, max(codes, na.rm = TRUE)),
+    .groupGeneStats(assay_x(plain), codes, max(codes, na.rm = TRUE))
+  )
+})
+
 test_that("unsorted indices go to the sidecar sorted; duplicated ones fall back to R", {
   skip_if_not_installed("HDF5Array")
   dir <- withr::local_tempdir()

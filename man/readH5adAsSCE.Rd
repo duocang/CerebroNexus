@@ -16,7 +16,8 @@ readH5adAsSCE(
   verbose = FALSE,
   .root = NULL,
   .cells_by_genes = NULL,
-  .sidecar_dir = NULL
+  .sidecar_dir = NULL,
+  .sidecar_groups = NULL
 )
 }
 \arguments{
@@ -73,6 +74,9 @@ genes x cells through a lazy transpose. Leave \code{NULL}.}
 \item{.sidecar_dir}{Internal: with \code{.cells_by_genes}, a directory in
 which a CSR assay is written straight to an H5 sidecar file, read back
 lazily. Leave \code{NULL}.}
+
+\item{.sidecar_groups}{Internal: obs columns whose group summaries are
+computed while the sidecar is written. Leave \code{NULL}.}
 }
 \value{
 A \code{SingleCellExperiment} with genes in rows and cells in

@@ -74,16 +74,36 @@
 
 ## Sidecars that readH5adAsSCE(.sidecar_dir =) wrote straight from an h5ad.
 ## They are temporary until the export moves one next to its .crb; only these
-## are ever moved, never a file the caller brought.
+## are ever moved, never a file the caller brought. Each keeps the group
+## summaries computed while it was written, as list(codes, n_groups, total,
+## positive) per grouping.
 .tempSidecars <- new.env(parent = emptyenv())
 
 .tempSidecarKey <- function(file) {
   normalizePath(file, winslash = "/", mustWork = FALSE)
 }
 
-.registerTempSidecar <- function(file) {
-  assign(.tempSidecarKey(file), TRUE, envir = .tempSidecars)
+.registerTempSidecar <- function(file, group_stats = list()) {
+  assign(.tempSidecarKey(file), group_stats, envir = .tempSidecars)
   invisible(file)
+}
+
+## The group summaries kept with a temporary sidecar for exactly these codes
+## (one per cell, from 1, NA for none), else NULL.
+.tempSidecarGroupStats <- function(file, codes, n_groups) {
+  key <- .tempSidecarKey(file)
+  if (!exists(key, envir = .tempSidecars, inherits = FALSE)) {
+    return(NULL)
+  }
+  for (stats in get(key, envir = .tempSidecars, inherits = FALSE)) {
+    if (
+      identical(stats$n_groups, as.integer(n_groups)) &&
+        identical(stats$codes, as.integer(codes))
+    ) {
+      return(stats)
+    }
+  }
+  NULL
 }
 
 .releaseTempSidecar <- function(file, delete = FALSE) {

@@ -259,14 +259,24 @@
 }
 
 #' Write the CSR matrix at `path` straight to the H5 sidecar layout in
-#' `file`, by compiled code: the matrix never enters R. TRUE when written;
-#' FALSE (and no file) for anything the R reader handles instead: other
-#' encodings, zarr stores, an empty matrix or a gene listed twice for a cell.
+#' `file`, by compiled code: the matrix never enters R. `groupings` lists
+#' group codes, as .h5adGroupCodes() makes them, to summarise on the way.
+#' Returns their summaries (list(codes, n_groups, total, positive) each) when
+#' written; NULL (and no file) for anything the R reader handles instead:
+#' other encodings, zarr stores, an empty matrix or a gene listed twice for a
+#' cell.
 #' @keywords internal
 #' @noRd
-.h5adCsrToSidecar <- function(ctx, path, cells, genes, file) {
+.h5adCsrToSidecar <- function(
+  ctx,
+  path,
+  cells,
+  genes,
+  file,
+  groupings = list()
+) {
   if (identical(ctx$kind, "zarr")) {
-    return(FALSE)
+    return(NULL)
   }
   attrs <- .h5adAttrs(ctx, path)
   type <- .h5adEncoding(ctx, path)
@@ -277,7 +287,7 @@
     attrs[["shape"]] <- attrs[["h5sparse_shape"]]
   }
   if (!identical(type, "csr_matrix")) {
-    return(FALSE)
+    return(NULL)
   }
   shape <- as.integer(attrs[["shape"]])
   if (!identical(shape, c(length(cells), length(genes)))) {
@@ -304,8 +314,10 @@
       length(genes),
       .sidecarThreads(),
       level,
-      list(),
-      integer()
+      lapply(groupings, function(grouping) {
+        ifelse(is.na(grouping$codes), -1L, grouping$codes - 1L)
+      }),
+      vapply(groupings, function(grouping) grouping$n_groups, integer(1))
     ),
     error = function(e) {
       unlink(file)
@@ -314,7 +326,7 @@
   )
   if (!isTRUE(written$written)) {
     unlink(file)
-    return(FALSE)
+    return(NULL)
   }
   .writeTENxNames(
     file,
@@ -323,7 +335,29 @@
     cells,
     genes
   )
-  TRUE
+  ## the sidecar's columns are the genes
+  Map(
+    function(grouping, stats) {
+      dimnames(stats$total) <- list(genes, NULL)
+      dimnames(stats$positive) <- list(genes, NULL)
+      c(grouping, stats)
+    },
+    unname(groupings),
+    written$group_stats
+  )
+}
+
+#' Group codes of obs columns as .convertComputeGroupSummaries() derives them
+#' from the meta data: per cell, the index of its value among the column's
+#' values in order of appearance, NA for none.
+#' @keywords internal
+#' @noRd
+.h5adGroupCodes <- function(columns, groups) {
+  lapply(intersect(groups, names(columns)), function(group) {
+    values <- as.character(columns[[group]])
+    levels <- unique(values[!is.na(values)])
+    list(codes = match(values, levels), n_groups = length(levels))
+  })
 }
 
 #' Read a cells x genes AnnData matrix as genes x cells, or as cells x genes
@@ -833,6 +867,8 @@
 #' @param .sidecar_dir Internal: with \code{.cells_by_genes}, a directory in
 #'   which a CSR assay is written straight to an H5 sidecar file, read back
 #'   lazily. Leave \code{NULL}.
+#' @param .sidecar_groups Internal: obs columns whose group summaries are
+#'   computed while the sidecar is written. Leave \code{NULL}.
 #'
 #' @return A \code{SingleCellExperiment} with genes in rows and cells in
 #'   columns. Duplicate gene names are made unique with a message; duplicate
@@ -859,7 +895,8 @@ readH5adAsSCE <- function(
   verbose = FALSE,
   .root = NULL,
   .cells_by_genes = NULL,
-  .sidecar_dir = NULL
+  .sidecar_dir = NULL,
+  .sidecar_groups = NULL
 ) {
   .h5adRequire()
   if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) {
@@ -1012,8 +1049,16 @@ readH5adAsSCE <- function(
     ) {
       ## straight to a sidecar file, read back lazily as the Viewer reads it
       file <- tempfile("expression-", tmpdir = .sidecar_dir, fileext = ".h5")
-      if (.h5adCsrToSidecar(ctx, path, cells, genes, file)) {
-        .registerTempSidecar(file)
+      group_stats <- .h5adCsrToSidecar(
+        ctx,
+        path,
+        cells,
+        genes,
+        file,
+        .h5adGroupCodes(obs$columns, .sidecar_groups)
+      )
+      if (!is.null(group_stats)) {
+        .registerTempSidecar(file, group_stats)
         return(DelayedArray::t(HDF5Array::TENxMatrix(
           file,
           group = "expression"
