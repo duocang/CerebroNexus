@@ -403,7 +403,7 @@
     if (file.exists(h5_abs)) {
       file.remove(h5_abs)
     }
-    HDF5Array::writeTENxMatrix(m_disk, h5_abs, group = "expression")
+    .writeTENxH5(m_disk, h5_abs, group = "expression")
 
     ## self$expression stays NULL — saveRDS therefore does not embed the
     ## matrix inside the .crb. The runtime attach reads the sibling back

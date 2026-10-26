@@ -1101,7 +1101,7 @@ exportFromSeurat <- function(
     ## shuffle and deflate filters are still applied). On 1.3-1.5M-cell
     ## sources it reads single genes ~30% faster than HDF5Array's default
     ## level 6, at roughly 7x the file size.
-    HDF5Array::writeTENxMatrix(
+    .writeTENxH5(
       m_disk,
       h5_abs,
       group = "expression",
