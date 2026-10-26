@@ -1099,6 +1099,15 @@ builder_kill_native_picker <- function(picker) {
   if (!identical(expected, .builder_io_source_path)) "" else root
 })
 
+## The readers below are package functions; a Builder worker loads the
+## package runtime only on request, so request it before calling them.
+.builder_io_require_package <- function() {
+  if (exists("builder_worker_require_capability", mode = "function")) {
+    builder_worker_require_capability("package")
+  }
+  invisible(TRUE)
+}
+
 ## One row per format: the extensions it claims, the package it needs, and how
 ## to read with it. Adding a format means adding a row.
 ##
@@ -1150,7 +1159,10 @@ builder_formats <- list(
     label = "h5ad",
     extensions = "h5ad",
     package = "rhdf5",
-    read = function(path) readH5adAsSCE(path)
+    read = function(path) {
+      .builder_io_require_package()
+      readH5adAsSCE(path)
+    }
   ),
   list(
     id = "h5mu",
@@ -1158,7 +1170,10 @@ builder_formats <- list(
     extensions = "h5mu",
     package = "rhdf5",
     ## protein (CITE-seq) and other modalities come along as extra features
-    read = function(path) readH5adAsSCE(path, extra_modalities = "all")
+    read = function(path) {
+      .builder_io_require_package()
+      readH5adAsSCE(path, extra_modalities = "all")
+    }
   ),
   ## A SpatialData store is a folder, so it arrives as a .zip of it (how the
   ## SpatialData sample data sets are distributed).
@@ -1167,7 +1182,10 @@ builder_formats <- list(
     label = "SpatialData (zip)",
     extensions = "zip",
     package = "arrow",
-    read = function(path) readSpatialDataAsSCE(path)
+    read = function(path) {
+      .builder_io_require_package()
+      readSpatialDataAsSCE(path)
+    }
   )
 )
 
@@ -1434,6 +1452,7 @@ builder_read_object <- function(path) {
   if (methods::is(obj, "SingleCellExperiment")) {
     ## Everything downstream is Seurat-shaped; a SingleCellExperiment enters
     ## through this one conversion and keeps its results in @misc.
+    .builder_io_require_package()
     obj <- try(
       convertSCEToSeurat(obj, extra_features = builder_extra_feature_names(obj)),
       silent = TRUE

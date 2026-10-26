@@ -1477,7 +1477,8 @@
     copy = .bundleCopyPath,
     mode = function(path) as.integer(file.info(path)$mode),
     save_rds = function(object, file) saveRDS(object, file),
-    save_extra_rds = function(object, file) .saveExtraTableRDS(object, file)
+    save_extra_rds = function(object, file) .saveExtraTableRDS(object, file),
+    write_lines = function(text, connection) writeLines(text, connection)
   )
 }
 

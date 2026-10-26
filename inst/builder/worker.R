@@ -1335,33 +1335,16 @@ builder_worker_start <- function(
         ))
       },
       immune = function() {
-        source_files(c(
-          file.path(
-            dir,
-            "..",
-            "viewer",
-            "hla_tcr_motifs",
-            "core",
-            "hla_typing.R"
-          ),
-          file.path(
-            dir,
-            "..",
-            "viewer",
-            "hla_tcr_motifs",
-            "core",
-            "hla_motif_core.R"
-          ),
-          file.path(
-            dir,
-            "..",
-            "viewer",
-            "hla_tcr_motifs",
-            "core",
-            "hla_association_core.R"
-          ),
-          file.path(dir, "content_immune.R")
-        ))
+        ## The HLA core is part of the package runtime; an installed
+        ## package keeps it internal, so bind it into the worker too.
+        builder_worker_ensure_capability(capabilities, "package")
+        if (is.null(package_source)) {
+          list2env(
+            utils::getFromNamespace(".viewerHLACore", "CerebroNexus")(),
+            envir = globalenv()
+          )
+        }
+        source_files(file.path(dir, "content_immune.R"))
       },
       analysis = function() {
         source_files(c(

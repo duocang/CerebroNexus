@@ -906,7 +906,12 @@
 ## carry (PAGA, velocity, diffusion pseudotime).
 .builder_trajectory_methods <- c("monocle2", "paga", "scvelo", "pseudotime")
 
-.builder_table_monocle2 <- function(payload, expected_cells) {
+## A plain `pseudotime` trajectory has no graph, so its `edges` may be empty.
+.builder_table_monocle2 <- function(
+  payload,
+  expected_cells,
+  allow_empty_edges = FALSE
+) {
   diagnostics <- character()
   if (!.builder_table_plain_list(payload)) {
     return(list(
@@ -956,7 +961,7 @@
   if (!meta$valid || meta$rows == 0L) {
     diagnostics <- c(diagnostics, "invalid_trajectory_meta")
   }
-  if (!edges$valid || edges$rows == 0L) {
+  if (!edges$valid || (edges$rows == 0L && !isTRUE(allow_empty_edges))) {
     diagnostics <- c(diagnostics, "invalid_trajectory_edges")
   }
   meta_required <- c("DR_1", "DR_2", "pseudotime", "state")
@@ -1106,7 +1111,11 @@
     for (entry_index in seq_along(entries)) {
       name <- entry_names[[entry_index]]
       summary <- if (method %in% .builder_trajectory_methods) {
-        .builder_table_monocle2(entries[[entry_index]], expected_cells)
+        .builder_table_monocle2(
+          entries[[entry_index]],
+          expected_cells,
+          allow_empty_edges = identical(method, "pseudotime")
+        )
       } else {
         list(
           supported = FALSE,

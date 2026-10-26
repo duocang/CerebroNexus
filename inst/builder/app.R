@@ -288,36 +288,24 @@ source(
   local = TRUE
 )
 source("spatial.R", local = TRUE)
-source(
-  file.path(
-    "..",
-    "viewer",
-    "hla_tcr_motifs",
-    "core",
-    "hla_typing.R"
-  ),
-  local = TRUE
+## The HLA core lives in the package R/ directory: source it from a
+## checkout, or take it from the installed namespace.
+.builder_hla_core_files <- file.path(
+  "..",
+  "..",
+  "R",
+  c("hla_typing.R", "hla_motif_core.R", "hla_association_core.R")
 )
-source(
-  file.path(
-    "..",
-    "viewer",
-    "hla_tcr_motifs",
-    "core",
-    "hla_motif_core.R"
-  ),
-  local = TRUE
-)
-source(
-  file.path(
-    "..",
-    "viewer",
-    "hla_tcr_motifs",
-    "core",
-    "hla_association_core.R"
-  ),
-  local = TRUE
-)
+if (all(file.exists(.builder_hla_core_files))) {
+  for (.builder_hla_core_file in .builder_hla_core_files) {
+    source(.builder_hla_core_file, local = TRUE)
+  }
+} else {
+  list2env(
+    utils::getFromNamespace(".viewerHLACore", "CerebroNexus")(),
+    envir = environment()
+  )
+}
 source("manifest.R", local = TRUE)
 source("content_tables.R", local = TRUE)
 source("content_immune.R", local = TRUE)

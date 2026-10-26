@@ -1204,7 +1204,7 @@ builder_project_source_storage_name <- function(filename, fallback = "rds") {
   filename <- as.character(filename %||% "")
   filename <- if (length(filename)) filename[[1L]] else ""
   extension <- tolower(tools::file_ext(filename))
-  if (!extension %in% c("rds", "qs", "qs2")) {
+  if (!extension %in% c("rds", "qs", "qs2", "h5ad", "h5mu", "zip")) {
     extension <- fallback
   }
   paste0("source.", extension)

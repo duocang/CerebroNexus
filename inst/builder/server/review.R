@@ -1127,8 +1127,7 @@ render_configure_workbench <- function() {
       backend = settings$expression_backend %||% "embedded",
       backend_choices = c(
         "Embedded" = "embedded",
-        "HDF5" = "h5",
-        "BPCells" = "bpcells"
+        "HDF5" = "h5"
       ),
       metadata_attention = if (length(attention)) {
         if ("metadata_policy" %in% attention) {

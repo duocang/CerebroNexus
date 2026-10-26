@@ -406,7 +406,8 @@ builder_backend_capabilities <- function(
   cached <- .builder_backend_capability_cache$value
   if (is.null(cached)) {
     cached <- list(
-      bpcells = isTRUE(.installed("BPCells")),
+      ## exportFromSeurat() no longer writes BPCells matrices.
+      bpcells = FALSE,
       h5 = isTRUE(.installed("HDF5Array"))
     )
     .builder_backend_capability_cache$value <- cached
