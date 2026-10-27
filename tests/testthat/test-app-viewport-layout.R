@@ -298,7 +298,13 @@ test_that("shared selection actions and layouts survive navigation and resize", 
   expect_null(cleared_linked$selection$geometry)
   expect_identical(cleared_linked$dataset, selected_linked$dataset)
   ## Touch users cannot reveal a hover-only toolbar. Coarse-pointer media must
-  ## keep the controls visible and provide practical tap targets.
+  ## keep the controls visible and provide practical tap targets. A short canvas
+  ## must still contain the 44px buttons.
+  app$get_chromote_session()$set_viewport_size(width = 1200, height = 500)
+  app$wait_for_js(
+    "window.innerWidth === 1200 && window.innerHeight === 500",
+    timeout = 10000
+  )
   app$get_chromote_session()$Emulation$setTouchEmulationEnabled(
     enabled = TRUE,
     maxTouchPoints = 1
@@ -310,17 +316,43 @@ test_that("shared selection actions and layouts survive navigation and resize", 
   touch_toolbar <- app$get_js(paste0(
     "(() => {",
     "const bar=document.querySelector('.cv-pane:not(.cv-hidden) .cv-panebar');",
+    "const wrap=bar.parentElement;",
     "const button=bar.querySelector('.cv-tbtn');",
     "const bs=getComputedStyle(bar), ts=getComputedStyle(button);",
+    "const br=bar.getBoundingClientRect(), wr=wrap.getBoundingClientRect();",
+    "const buttons=Array.from(bar.querySelectorAll('.cv-tbtn'))",
+    ".filter(b=>b.getClientRects().length);",
+    "const bottoms=buttons.map(b=>b.getBoundingClientRect().bottom);",
+    "const lefts=buttons.map(b=>b.getBoundingClientRect().left);",
+    "const reset=bar.querySelector('.cv-tbtn[data-act=\"reset\"]');",
     "return {opacity:bs.opacity,pointerEvents:bs.pointerEvents,",
+    "buttonPointerEvents:ts.pointerEvents,bottom:br.bottom,wrapBottom:wr.bottom,",
+    "wrapLeft:wr.left,resetDisabled:reset.disabled,",
+    "resetPointerEvents:getComputedStyle(reset).pointerEvents,",
+    "buttonsBottom:Math.max(...bottoms),buttonsLeft:Math.min(...lefts),",
     "width:parseFloat(ts.width),height:parseFloat(ts.height)};",
     "})()"
   ))
   expect_identical(touch_toolbar$opacity, "1")
-  expect_identical(touch_toolbar$pointerEvents, "auto")
+  ## The bar is click-through; only its buttons take pointer events, so a short
+  ## canvas can wrap the column without an invisible block over the plot.
+  expect_identical(touch_toolbar$pointerEvents, "none")
+  expect_identical(touch_toolbar$buttonPointerEvents, "auto")
+  expect_lte(touch_toolbar$bottom, touch_toolbar$wrapBottom + 1)
+  ## The bar stops above the 84px minimap corner (bottom: 100px).
+  expect_lte(touch_toolbar$buttonsBottom, touch_toolbar$wrapBottom - 90)
+  expect_gte(touch_toolbar$buttonsLeft, touch_toolbar$wrapLeft - 1)
+  ## A disabled button stays click-through whatever the hover or touch rules say.
+  expect_true(touch_toolbar$resetDisabled)
+  expect_identical(touch_toolbar$resetPointerEvents, "none")
   expect_gte(touch_toolbar$width, 36)
   expect_gte(touch_toolbar$height, 36)
   app$get_chromote_session()$Emulation$setTouchEmulationEnabled(enabled = FALSE)
+  app$get_chromote_session()$set_viewport_size(width = 1619, height = 950)
+  app$wait_for_js(
+    "window.innerWidth === 1619 && window.innerHeight === 950",
+    timeout = 10000
+  )
 
   ## Legend counts are data, not disabled decoration, so they use the readable
   ## secondary text colour instead of the low-contrast tertiary token.

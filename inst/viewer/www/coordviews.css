@@ -404,21 +404,27 @@
 }
 /* Per-panel hover toolbar (plotly's modebar): a vertical stack down the
    canvas's top-right corner, the same on every page and panel size. It stops
-   above the minimap's corner; a canvas too short for it gets a second column
-   to the left. */
+   above the minimap's corner and wraps into extra columns to the left when the
+   canvas is too short for one column. */
 .coordviews-page .cv-panebar {
-  position: absolute; top: 6px; right: 6px; z-index: 4;
-  max-height: calc(100% - 112px);
-  display: flex; flex-flow: column wrap-reverse; gap: 4px;
+  position: absolute; top: 6px; bottom: 100px; right: 6px; z-index: 4;
+  display: flex; flex-flow: column wrap-reverse; align-content: flex-start; gap: 4px;
   /* Hidden until the pointer is over the panel — but with pointer-events off
      while invisible, so a click that lands where an invisible button sits does
      not fire it. :focus-within keeps it reachable by keyboard, which a
-     hover-only reveal would otherwise lock out. */
+     hover-only reveal would otherwise lock out. A definite height (top and
+     bottom) is what lets the column wrap on a short canvas; the container
+     itself stays click-through so its empty area never covers the plot. */
   opacity: 0; pointer-events: none; transition: opacity .15s ease;
 }
+.coordviews-page .cv-panebar .cv-tbtn { pointer-events: none; }
 .coordviews-page .cv-pane:hover .cv-panebar,
 .coordviews-page .cv-panebar:focus-within {
-  opacity: 1; pointer-events: auto;
+  opacity: 1;
+}
+.coordviews-page .cv-pane:hover .cv-panebar .cv-tbtn:not(:disabled),
+.coordviews-page .cv-panebar:focus-within .cv-tbtn:not(:disabled) {
+  pointer-events: auto;
 }
 .coordviews-page .cv-tbtn {
   position: relative;
@@ -495,6 +501,8 @@
 @media (hover: none), (pointer: coarse) {
   .coordviews-page .cv-panebar {
     opacity: 1;
+  }
+  .coordviews-page .cv-panebar .cv-tbtn:not(:disabled) {
     pointer-events: auto;
   }
   .coordviews-page .cv-tbtn {

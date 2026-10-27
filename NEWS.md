@@ -24,6 +24,8 @@
   scroll, so a later render cannot undo what was done meanwhile.
 - Gene expression summaries keep updating however tall they are, and when the
   gate changes size in place.
+- The plot toolbar of a short plot wraps into a second column and keeps clear
+  of the minimap.
 
 # CerebroNexus 5.3.1
 
