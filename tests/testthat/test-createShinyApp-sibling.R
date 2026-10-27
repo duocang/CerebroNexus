@@ -2683,6 +2683,20 @@ test_that("external spatial images render from disk without an HTTP mapping", {
   )
   expect_identical(registered$data$mime, "image/png")
   expect_gt(registered$data$bytes, 0)
+
+  ## The same configured, allowlisted path draws nothing when no descriptor
+  ## was resolved for the current dataset / spatial / image selection.
+  session <- fake_private_session()
+  unresolved <- render_bundle_spatial_background(
+    app,
+    config,
+    stored,
+    stored,
+    session = session,
+    background_descriptor = NULL
+  )
+  expect_null(unresolved$background_image)
+  expect_null(attr(session, "registered")$name)
 })
 
 test_that("spatial backgrounds need a resolved descriptor, not a path", {
