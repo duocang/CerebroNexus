@@ -86,6 +86,7 @@ test_that("background project writes preserve revision conflicts and retry", {
 })
 
 test_that("WSL picker paths preserve spaces and reject failed translation", {
+  builder_repo_source("core/bundle_path_contract.R", local = environment())
   builder_repo_source("io.R", local = environment())
   selected <- c("C:\\Data space\\sample.rds", "D:\\研究\\builder-project.json")
   calls <- 0L

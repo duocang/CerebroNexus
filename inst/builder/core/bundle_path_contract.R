@@ -252,34 +252,30 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
   style
 }
 
+## Windows device, extended-length and malformed paths fail closed.
+.rejectWindowsNamespacePath <- function(style) {
+  if (style %in% c("windows-device", "windows-malformed")) {
+    stop(
+      "Windows ",
+      if (identical(style, "windows-device")) {
+        "device or extended-length"
+      } else {
+        "malformed Windows"
+      },
+      " path namespaces are not supported.",
+      call. = FALSE
+    )
+  }
+}
+
 .lexicalAbsolutePath <- function(
   path,
   style = .absolutePathStyle(path),
   os_type = .Platform$OS.type
 ) {
-  slash_path <- if (
-    identical(style, "posix") &&
-      !identical(os_type, "windows")
-  ) {
-    path
-  } else {
-    gsub("\\", "/", path, fixed = TRUE)
-  }
-  if (identical(style, "drive")) {
-    prefix <- paste0(substr(slash_path, 1L, 2L), "/")
-    remainder <- sub("^[A-Za-z]:/+", "", slash_path)
-  } else if (identical(style, "unc")) {
-    unc_parts <- strsplit(sub("^/+", "", slash_path), "/", fixed = TRUE)[[1L]]
-    prefix <- paste0("//", unc_parts[[1L]], "/", unc_parts[[2L]])
-    remainder <- paste(unc_parts[-seq_len(2L)], collapse = "/")
-  } else {
-    prefix <- "/"
-    remainder <- sub("^/+", "", slash_path)
-  }
-
-  parts <- strsplit(remainder, "/", fixed = TRUE)[[1L]]
+  parsed <- .absolutePathComponents(path, style, os_type = os_type)
   normalized <- character()
-  for (part in parts) {
+  for (part in parsed$parts) {
     if (!nzchar(part) || identical(part, ".")) {
       next
     }
@@ -291,17 +287,7 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
     }
     normalized <- c(normalized, part)
   }
-  if (length(normalized) == 0L) {
-    return(prefix)
-  }
-  paste0(
-    prefix,
-    if (endsWith(prefix, "/")) "" else "/",
-    paste(
-      normalized,
-      collapse = "/"
-    )
-  )
+  .composeAbsolutePath(parsed$root, normalized)
 }
 
 .absolutePathComponents <- function(
@@ -472,19 +458,7 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
     .pathDirectoryEntryExists(candidate, os_type = os_type)
   }
 ) {
-  if (style %in% c("windows-device", "windows-malformed")) {
-    detail <- if (identical(style, "windows-device")) {
-      "device or extended-length"
-    } else {
-      "malformed Windows"
-    }
-    stop(
-      "Windows ",
-      detail,
-      " path namespaces are not supported.",
-      call. = FALSE
-    )
-  }
+  .rejectWindowsNamespacePath(style)
   parsed <- .absolutePathComponents(path, style, os_type = os_type)
   if (identical(os_type, "windows") && identical(style, "unc")) {
     unc_root_parts <- strsplit(
@@ -619,19 +593,7 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
 
 .canonicalTargetPath <- function(path, os_type = .Platform$OS.type) {
   style <- .absolutePathStyle(path, os_type = os_type)
-  if (style %in% c("windows-device", "windows-malformed")) {
-    detail <- if (identical(style, "windows-device")) {
-      "device or extended-length"
-    } else {
-      "malformed Windows"
-    }
-    stop(
-      "Windows ",
-      detail,
-      " path namespaces are not supported.",
-      call. = FALSE
-    )
-  }
+  .rejectWindowsNamespacePath(style)
   style <- .nativeFilesystemStyle(path, style, os_type = os_type)
   if (is.na(style)) {
     path <- file.path(getwd(), path)

@@ -88,9 +88,11 @@ test_that("application and worker load content contracts before profiles", {
     warn = FALSE
   )
 
-  app_hla <- grep("hla_typing[.]R", app)[1L]
-  app_hla_motif <- grep("hla_motif_core[.]R", app)[1L]
-  app_hla_association <- grep("hla_association_core[.]R", app)[1L]
+  app_hla <- grep(
+    "hla_typing[.]R.*hla_motif_core[.]R.*hla_association_core[.]R",
+    app
+  )[1L]
+  app_hla_namespace <- grep(".viewerHLACore", app, fixed = TRUE)[1L]
   app_spatial_contract <- grep(
     "spatial_coordinate_contract[.]R",
     app
@@ -106,20 +108,32 @@ test_that("application and worker load content contracts before profiles", {
   app_content <- grep('source("content.R"', app, fixed = TRUE)[1L]
   app_profile <- grep('source("profile.R"', app, fixed = TRUE)[1L]
   expect_true(
-    app_hla < app_hla_motif &&
-      app_hla_motif < app_hla_association &&
+    app_hla < app_hla_namespace &&
       app_spatial_contract < app_builder_spatial &&
       app_builder_spatial < app_spatial &&
-      app_hla_association < app_tables &&
+      app_hla_namespace < app_tables &&
       app_tables < app_immune &&
       app_immune < app_spatial &&
       app_spatial < app_content &&
       app_content < app_profile
   )
 
-  worker_hla <- grep("hla_typing[.]R", session)[1L]
-  worker_hla_motif <- grep("hla_motif_core[.]R", session)[1L]
-  worker_hla_association <- grep("hla_association_core[.]R", session)[1L]
+  ## The HLA core comes with the package runtime, which the immune
+  ## capability loads before the immune content contract.
+  worker_immune_capability <- grep(
+    "immune = function()",
+    session,
+    fixed = TRUE
+  )[1L]
+  worker_package <- grep(
+    'builder_worker_ensure_capability(capabilities, "package")',
+    session,
+    fixed = TRUE
+  )
+  worker_package <- worker_package[worker_package > worker_immune_capability][
+    1L
+  ]
+  worker_hla_namespace <- grep(".viewerHLACore", session, fixed = TRUE)[1L]
   worker_spatial_contract <- grep(
     "spatial_coordinate_contract[.]R",
     session
@@ -155,13 +169,13 @@ test_that("application and worker load content contracts before profiles", {
     fixed = TRUE
   )[1L]
   expect_true(
-    worker_hla < worker_hla_motif &&
-      worker_hla_motif < worker_hla_association &&
+    worker_immune_capability < worker_package &&
+      worker_package < worker_hla_namespace &&
       worker_builder_spatial < worker_spatial_contract &&
       worker_spatial_contract < worker_spatial &&
       worker_tables < worker_content &&
       worker_content < worker_profile &&
-      worker_hla_association < worker_immune &&
+      worker_hla_namespace < worker_immune &&
       worker_profile < worker_immune &&
       worker_profile < worker_spatial
   )

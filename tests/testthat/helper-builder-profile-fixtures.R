@@ -10,25 +10,13 @@ builder_profile_source_runtime <- function(local = parent.frame()) {
       "core",
       "spatial_coordinate_contract.R"
     ),
-    builder_profile_inst_path("builder", "spatial.R"),
-    builder_profile_inst_path(
-      "viewer",
-      "hla_tcr_motifs",
-      "core",
-      "hla_typing.R"
-    ),
-    builder_profile_inst_path(
-      "viewer",
-      "hla_tcr_motifs",
-      "core",
-      "hla_motif_core.R"
-    ),
-    builder_profile_inst_path(
-      "viewer",
-      "hla_tcr_motifs",
-      "core",
-      "hla_association_core.R"
-    ),
+    builder_profile_inst_path("builder", "spatial.R")
+  )
+  for (file in files[nzchar(files) & file.exists(files)]) {
+    sys.source(file, envir = local)
+  }
+  hla_core <- builder_test_source_hla_core(local)
+  content <- c(
     builder_profile_inst_path("builder", "manifest.R"),
     builder_profile_inst_path("builder", "content_tables.R"),
     builder_profile_inst_path("builder", "content_immune.R"),
@@ -36,10 +24,10 @@ builder_profile_source_runtime <- function(local = parent.frame()) {
     builder_profile_inst_path("builder", "content.R"),
     builder_profile_inst_path("builder", "profile.R")
   )
-  for (file in files[nzchar(files) & file.exists(files)]) {
+  for (file in content[nzchar(content) & file.exists(content)]) {
     sys.source(file, envir = local)
   }
-  invisible(files)
+  invisible(c(files, hla_core, content))
 }
 
 builder_profile_source_fixture <- function() {

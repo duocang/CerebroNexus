@@ -224,7 +224,7 @@ test_that("on-disk backend flags are probed once without loading packages", {
   second <- runtime$builder_backend_capabilities(.installed = installed)
   expect_identical(first, list(bpcells = FALSE, h5 = TRUE))
   expect_identical(second, first)
-  expect_identical(probed, c("BPCells", "HDF5Array"))
+  expect_identical(probed, "HDF5Array")
 
   session <- paste(
     readLines(builder_profile_inst_path("builder", "session.R"), warn = FALSE),

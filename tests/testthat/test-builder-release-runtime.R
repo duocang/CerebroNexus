@@ -76,13 +76,8 @@ test_that("installed worker can rewrite extras through private payload helpers",
         sys.source(file.path(root, file), runtime)
       }
       path <- tempfile(fileext = ".crb")
-      crb <- new.env(parent = emptyenv())
-      crb$trekker <- NULL
-      crb$addTrekker <- function(value) {
-        crb$trekker <- value
-      }
-      class(crb) <- c("Cerebro_v1.3", "R6")
-      lockEnvironment(crb, bindings = FALSE)
+      crb <- Cerebro$new()
+      crb$expression_backend <- list(type = "embedded", location = NULL)
       saveRDS(crb, path)
       result <- runtime$builder_attach_crb_extras(
         path,

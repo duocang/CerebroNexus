@@ -223,8 +223,8 @@ test_that("repertoire profiling follows upstream row filtering semantics", {
   expect_identical(candidate$normalized$dataset_overlap_count, 1L)
   expect_identical(candidate$normalized$outside_barcode_count, 1L)
 
-  normalized <- expect_warning(
-    CerebroNexus::addImmuneRepertoire(object, verbose = FALSE),
+  expect_warning(
+    normalized <- CerebroNexus::addImmuneRepertoire(object, verbose = FALSE),
     "removed 1 repertoire row"
   )
   expect_identical(names(normalized@misc$immune_repertoire), "sample_a")

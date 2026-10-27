@@ -1,23 +1,31 @@
-builder_content_immune_source_runtime <- function(local = parent.frame()) {
-  hla_core <- vapply(
-    c("hla_typing.R", "hla_motif_core.R", "hla_association_core.R"),
-    function(file) {
-      builder_content_immune_inst_path(
-        "viewer",
-        "hla_tcr_motifs",
-        "core",
-        file
-      )
-    },
-    character(1)
+## The HLA core lives in the package R/ directory: source it from a checkout,
+## or take it from the installed namespace. Returns the sourced files.
+builder_test_source_hla_core <- function(local = parent.frame()) {
+  files <- testthat::test_path(
+    "..",
+    "..",
+    "R",
+    c("hla_typing.R", "hla_motif_core.R", "hla_association_core.R")
   )
+  if (all(file.exists(files))) {
+    for (file in files) {
+      sys.source(file, envir = local)
+    }
+    return(invisible(files))
+  }
+  list2env(
+    utils::getFromNamespace(".viewerHLACore", "CerebroNexus")(),
+    envir = local
+  )
+  invisible(character())
+}
+
+builder_content_immune_source_runtime <- function(local = parent.frame()) {
+  hla_core <- builder_test_source_hla_core(local)
   content <- builder_content_immune_inst_path(
     "builder",
     "content_immune.R"
   )
-  for (file in hla_core[file.exists(hla_core)]) {
-    sys.source(file, envir = local)
-  }
   if (file.exists(content)) {
     sys.source(content, envir = local)
   }

@@ -53,12 +53,68 @@ test_that("Builder path safety functions match the generated-App contract", {
   runtime <- builder_path_contract_definitions(paths$runtime)
   expect_gt(length(runtime), 0L)
   builder_only <- c(
+    ".windowsPathSegmentInvalid",
     ".nativeFileConditionFields",
     ".nativeFileOperationAttempt",
-    ".nativeFileOperationMessage"
+    ".nativeFileOperationMessage",
+    ".normalizeOverridePath",
+    ".pathWithin"
   )
-  shared <- setdiff(names(runtime), builder_only)
+  ## The package reaches the CRB contract through .crbContract(); the
+  ## standalone Builder runtime carries its own copies of those helpers.
+  standalone <- ".portableBundlePath"
+  source <- lapply(source, function(definition) {
+    gsub(
+      ".crbContract()$.runtimeWindowsPathSegmentInvalid",
+      ".windowsPathSegmentInvalid",
+      definition,
+      fixed = TRUE
+    )
+  })
+  shared <- setdiff(names(runtime), c(builder_only, standalone))
   expect_setequal(setdiff(names(runtime), names(source)), builder_only)
   expect_true(all(shared %in% names(source)))
   expect_identical(source[shared], runtime[shared])
+
+  crb_path <- builder_test_inst_path("viewer", "core", "crb_contract.R")
+  crb <- builder_path_contract_definitions(crb_path)
+  expect_identical(
+    runtime[[".windowsPathSegmentInvalid"]],
+    crb[[".runtimeWindowsPathSegmentInvalid"]]
+  )
+  crb_env <- new.env(parent = baseenv())
+  sys.source(crb_path, crb_env)
+  runtime_env <- new.env(parent = baseenv())
+  sys.source(paths$runtime, runtime_env)
+  outcome <- function(expression) {
+    tryCatch(expression, error = conditionMessage)
+  }
+  requirement <- paste0(
+    "must be one portable relative path using forward slashes, without ",
+    "empty, '.', '..', or Windows-incompatible segments."
+  )
+  candidates <- c(
+    "a/b.h5",
+    "a//b",
+    "../a",
+    "a/./b",
+    "/a",
+    "C:/a",
+    "a\\b",
+    "a/",
+    "CON/b",
+    "a/b.",
+    "",
+    NA_character_
+  )
+  for (path in candidates) {
+    expect_identical(
+      outcome(runtime_env$.portableBundlePath(path, "Backend path")),
+      outcome(crb_env$.runtimePortableBackendPath(
+        path,
+        "Backend path",
+        requirement
+      ))
+    )
+  }
 })
