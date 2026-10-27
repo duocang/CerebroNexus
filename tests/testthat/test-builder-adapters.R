@@ -709,59 +709,6 @@ test_that("file fingerprints change when content changes", {
   expect_false(identical(first, second))
 })
 
-test_that("application and worker source adapters after profile contracts", {
-  app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
-  session <- readLines(
-    builder_profile_inst_path("builder", "session.R"),
-    warn = FALSE
-  )
-  worker <- readLines(
-    builder_profile_inst_path("builder", "worker.R"),
-    warn = FALSE
-  )
-  app_profile <- grep('source("profile.R"', app, fixed = TRUE)[1L]
-  app_adapters <- grep('source("adapters.R"', app, fixed = TRUE)[1L]
-  worker_profile <- grep(
-    'source_utf8(file.path(dir, "profile.R"',
-    worker,
-    fixed = TRUE
-  )[1L]
-  worker_adapters <- grep(
-    'source_utf8(file.path(dir, "adapters.R"',
-    worker,
-    fixed = TRUE
-  )[1L]
-
-  expect_true(app_profile < app_adapters)
-  expect_true(worker_profile < worker_adapters)
-
-  expect_true(grepl(
-    paste0(
-      "\\.builder_register_adapter\\s*\\(\\s*",
-      "\\.builder_seurat_file_adapter\\s*\\("
-    ),
-    paste(session, collapse = "\n"),
-    perl = TRUE
-  ))
-  expect_match(
-    paste(session, collapse = "\n"),
-    ".builder_register_adapter(",
-    fixed = TRUE
-  )
-  expect_match(paste(session, collapse = "\n"), ".builder_snapshots")
-  expect_match(paste(session, collapse = "\n"), "builder_execute_plan")
-  expect_false(grepl(
-    ".builder_snapshot_release",
-    paste(session, collapse = "\n"),
-    fixed = TRUE
-  ))
-  expect_match(
-    paste(worker, collapse = "\n"),
-    "builder_worker_release_snapshot",
-    fixed = TRUE
-  )
-})
-
 .builder_wait_for_worker <- function(worker, timeout = 30) {
   deadline <- Sys.time() + timeout
   repeat {

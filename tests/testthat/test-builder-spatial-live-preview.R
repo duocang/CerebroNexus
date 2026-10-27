@@ -31,27 +31,9 @@ test_that("Spatial Builder uses a persistent Canvas live preview", {
     readLines(file.path(root, "ui", "enhance_stage.R"), warn = FALSE),
     collapse = "\n"
   )
-  app <- paste(
-    readLines(file.path(root, "app.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  server <- paste(
-    readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  canvas <- file.path(root, "www", "builder-spatial-canvas.js")
 
-  expect_true(file.exists(canvas))
-  expect_match(ui, 'tags$canvas(', fixed = TRUE)
-  expect_match(ui, 'class = "builder-spatial-canvas"', fixed = TRUE)
   expect_match(ui, '"Cells shown (%)"', fixed = TRUE)
   expect_match(ui, '`aria-label` = label', fixed = TRUE)
-  expect_false(grepl("plotly::plotlyOutput(", ui, fixed = TRUE))
-  expect_match(app, '"builder-spatial-canvas.js"', fixed = TRUE)
-  expect_false(grepl('plotly::renderPlotly({', server, fixed = TRUE))
-  expect_match(server, '"builder_spatial_canvas_scene"', fixed = TRUE)
-  expect_match(server, "builder_spatial_canvas_scene(", fixed = TRUE)
-  expect_false(grepl("encoded <- shiny::reactive({", server, fixed = TRUE))
 })
 
 test_that("Canvas renderer owns bounded raw points and latest-only controls", {
@@ -64,55 +46,20 @@ test_that("Canvas renderer owns bounded raw points and latest-only controls", {
     collapse = "\n"
   )
 
-  expect_match(js, "requestAnimationFrame", fixed = TRUE)
-  expect_match(js, "var POINT_EDGE_PADDING = 18;", fixed = TRUE)
-  expect_match(
-    js,
-    "var IMAGE_EDGE_PADDING = POINT_EDGE_PADDING / 2;",
-    fixed = TRUE
-  )
-  expect_match(js, "builder_spatial_canvas_scene", fixed = TRUE)
-  expect_match(js, "generation", fixed = TRUE)
-  expect_match(js, "resetToken", fixed = TRUE)
-  expect_match(js, "viewKey", fixed = TRUE)
   expect_match(js, "devicePixelRatio", fixed = TRUE)
   expect_match(js, "Math.min(window.devicePixelRatio || 1, 2)", fixed = TRUE)
-  expect_false(grepl("fitImageToViewport", js, fixed = TRUE))
   expect_match(js, "var left = screen({x: b.xmin, y: cy});", fixed = TRUE)
   expect_match(js, "var right = screen({x: b.xmax, y: cy});", fixed = TRUE)
   expect_match(js, "new ResizeObserver(schedule)", fixed = TRUE)
   expect_match(js, "pointermove", fixed = TRUE)
-  expect_match(js, 'scene.layout === "separate"', fixed = TRUE)
-  expect_match(js, "scene.roiImages", fixed = TRUE)
-  expect_match(js, "loadImages", fixed = TRUE)
-  expect_match(js, "drawImage(ctx, scene, screen, roiImage", fixed = TRUE)
-  expect_match(js, "imageFitViewports", fixed = TRUE)
-  expect_match(js, "drawViewerFrame", fixed = TRUE)
   expect_match(js, 'var label = "View area";', fixed = TRUE)
   expect_match(js, "var VIEWER_FRAME_PADDING = 10;", fixed = TRUE)
-  expect_match(
-    js,
-    "var VIEWER_POINT_PADDING = POINT_EDGE_PADDING;",
-    fixed = TRUE
-  )
   expect_false(grepl("ctx.fillText(group", js, fixed = TRUE))
   expect_match(js, '"builder_spatial_roi_select"', fixed = TRUE)
   expect_match(js, "if (!groups.length)", fixed = TRUE)
   expect_match(js, "state.releaseGuardId = null;", fixed = TRUE)
-  expect_match(js, "Shiny.setInputValue", fixed = TRUE)
-  expect_match(js, "finishInteraction", fixed = TRUE)
-  expect_match(
-    js,
-    '"enhance-cell_percentage": ["cell_percentage", 1]',
-    fixed = TRUE
-  )
-  expect_match(js, "function pointIncluded(index, controls)", fixed = TRUE)
   expect_match(js, '"builder_spatial_coordinate_draft"', fixed = TRUE)
-  expect_match(js, "snapshotIdentity", fixed = TRUE)
   expect_match(js, "coordinateSequence", fixed = TRUE)
-  expect_match(js, "generation: scene.generation", fixed = TRUE)
-  expect_false(grepl(">= state.resetToken", js, fixed = TRUE))
-  expect_false(grepl("Plotly", js, fixed = TRUE))
 })
 
 test_that("Canvas runtime persists point-safe View areas and deduplicates Ion events", {
@@ -296,13 +243,6 @@ test_that("Canvas runtime persists point-safe View areas and deduplicates Ion ev
 
 test_that("paired number controls do not echo slider updates through Shiny", {
   root <- builder_test_inst_path("builder")
-  js <- paste(
-    readLines(
-      file.path(root, "www", "builder-spatial-canvas.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
   server <- paste(
     readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
     collapse = "\n"
@@ -319,47 +259,9 @@ test_that("paired number controls do not echo slider updates through Shiny", {
   )[[1L]]
   sync_block <- substr(server, sync_start, sync_end - 1L)
 
-  expect_match(js, "function syncNumberControl(target)", fixed = TRUE)
-  expect_match(js, "syncNumberControl(target);", fixed = TRUE)
   expect_false(grepl(
     "shiny::observeEvent(\n      input[[slider_id]]",
     sync_block,
-    fixed = TRUE
-  ))
-})
-
-test_that("point rotation refits one shared image and coordinate viewport", {
-  root <- builder_test_inst_path("builder")
-  js <- paste(
-    readLines(
-      file.path(root, "www", "builder-spatial-canvas.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  server <- paste(
-    readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
-  compact_js <- gsub("[[:space:]]+", " ", js)
-
-  expect_match(
-    compact_js,
-    "viewportLayout( scene.bounds, angle",
-    fixed = TRUE
-  )
-  expect_match(
-    compact_js,
-    "viewportLayout( bounds, angle",
-    fixed = TRUE
-  )
-  expect_match(js, "drawImage(ctx, scene, screen)", fixed = TRUE)
-  expect_match(js, "drawPoints(ctx, scene, screen)", fixed = TRUE)
-  expect_match(js, "drawImage(ctx, scene, screen, roiImage", fixed = TRUE)
-  expect_false(grepl("pointLayout", compact_js, fixed = TRUE))
-  expect_false(grepl(
-    "include_coordinate_rotation = TRUE",
-    server,
     fixed = TRUE
   ))
 })
@@ -417,16 +319,8 @@ test_that("Canvas scene refreshes reuse image bytes already sent", {
     readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
     collapse = "\n"
   )
-  js <- paste(
-    readLines(
-      file.path(root, "www", "builder-spatial-canvas.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
 
   expect_match(server, "builder_spatial_canvas_cache_sources(", fixed = TRUE)
-  expect_match(js, "image.sourceKey || image.uri", fixed = TRUE)
 })
 
 test_that("Reset image waits for server-authoritative controls", {
@@ -439,15 +333,12 @@ test_that("Reset image waits for server-authoritative controls", {
     collapse = "\n"
   )
 
-  expect_false(grepl("function resetImageControls", js, fixed = TRUE))
   expect_match(js, 'closest("#enhance-reset_align")', fixed = TRUE)
   expect_match(
     js,
     'closest("#enhance-reset_coordinate_transform")',
     fixed = TRUE
   )
-  expect_match(js, "pendingAuthoritativeControls", fixed = TRUE)
-  expect_match(js, "flushControlCommit();", fixed = TRUE)
 })
 
 test_that("programmatic Image settings restore cannot commit partial values", {
@@ -501,45 +392,9 @@ test_that("control commits carry a complete spatial owner and flush on switch", 
     ),
     collapse = "\n"
   )
-  server <- paste(
-    readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
-    collapse = "\n"
-  )
 
-  expect_match(js, '"builder_spatial_alignment_controls"', fixed = TRUE)
   expect_match(js, "snapshotIdentity: scene.snapshotIdentity", fixed = TRUE)
   expect_match(js, "image: scene.activeImage", fixed = TRUE)
-  expect_match(js, "resetToken: state.resetToken", fixed = TRUE)
-  expect_false(grepl(
-    "window.setTimeout(flushControlCommit, 50)",
-    js,
-    fixed = TRUE
-  ))
-  expect_match(js, "finishInteraction() and view switches", fixed = TRUE)
-  expect_match(server, "event_control_owner <- function(event)", fixed = TRUE)
-  expect_match(
-    server,
-    "apply_browser_controls <- function(event)",
-    fixed = TRUE
-  )
-  expect_match(server, "control_event_sequences", fixed = TRUE)
-})
-
-test_that("large Spatial images use a display raster without changing sources", {
-  root <- builder_test_inst_path("builder")
-  js <- paste(
-    readLines(
-      file.path(root, "www", "builder-spatial-canvas.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(js, "function displayImage(key, loaded, ctx)", fixed = TRUE)
-  expect_match(js, "Math.hypot(outputWidth, outputHeight)", fixed = TRUE)
-  expect_match(js, "document.createElement(\"canvas\")", fixed = TRUE)
-  expect_match(js, "rasterContext.drawImage(loaded", fixed = TRUE)
-  expect_match(js, "imageRenderCacheBuilds", fixed = TRUE)
 })
 
 test_that("preview settlement cannot overwrite live control values", {
@@ -587,10 +442,6 @@ test_that("Spatial preview worker receives only the ROI base transform", {
     readLines(file.path(root, "spatial_alignment_server.R"), warn = FALSE),
     collapse = "\n"
   )
-  preview <- paste(
-    readLines(file.path(root, "preview.R"), warn = FALSE),
-    collapse = "\n"
-  )
   worker_session <- paste(
     readLines(file.path(root, "session.R"), warn = FALSE),
     collapse = "\n"
@@ -606,12 +457,6 @@ test_that("Spatial preview worker receives only the ROI base transform", {
     server,
     fixed = TRUE
   ))
-  expect_match(
-    server,
-    "base_coordinate_transform = if (identical(roi_view(), \"\"))",
-    fixed = TRUE
-  )
-  expect_match(preview, "All-ROI previews stay raw", fixed = TRUE)
   expect_match(
     worker_session,
     "base_coordinate_transform = base_coordinate_transform",

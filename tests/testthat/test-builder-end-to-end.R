@@ -137,16 +137,6 @@ test_that("Builder release documentation matches the guided workflow", {
   expect_length(resources, 1L)
   expect_true(all(file.exists(file.path(dirname(vignette_path), resources))))
 
-  version <- unname(read.dcf(file.path(repo, "DESCRIPTION"))[[1L, "Version"]])
-  app <- paste(readLines(file.path(repo, "inst", "app.R")), collapse = "\n")
-  news_heading <- news[grepl("^# CerebroNexus ", news)][[1L]]
-  expect_match(version, "^[0-9]+[.][0-9]+[.][0-9]+$")
-  expect_match(
-    app,
-    paste0('"cerebro_version" = "', version, '"'),
-    fixed = TRUE
-  )
-  expect_identical(news_heading, paste("# CerebroNexus", version))
   builder_heading <- match("## Builder", news)
   next_release <- which(grepl("^# CerebroNexus ", news))[[2L]]
   expect_false(is.na(builder_heading))

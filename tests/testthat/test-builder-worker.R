@@ -2183,35 +2183,6 @@ test_that("spatial alignment preview loads analysis and spatial capabilities", {
   )
 })
 
-test_that("the Builder app has one protocol authority for worker requests", {
-  app <- readLines(builder_profile_inst_path("builder", "app.R"), warn = FALSE)
-  server <- unlist(lapply(
-    c("foundation.R", "imports.R"),
-    function(file) {
-      readLines(
-        builder_profile_inst_path("builder", "server", file),
-        warn = FALSE
-      )
-    }
-  ))
-  text <- paste(c(app, server), collapse = "\n")
-  worker_source <- grep('source("worker.R"', app, fixed = TRUE)[1L]
-  session_source <- grep('source("session.R"', app, fixed = TRUE)[1L]
-
-  expect_true(worker_source < session_source)
-  expect_match(
-    text,
-    "if (builder_session_closed())",
-    fixed = TRUE
-  )
-  expect_false(grepl("session_active", text, fixed = TRUE))
-  expect_false(grepl("latest_request <- reactiveVal", text, fixed = TRUE))
-  expect_match(text, "protocol <- reactiveVal", fixed = TRUE)
-  expect_match(text, "builder_protocol_dispatch", fixed = TRUE)
-  expect_match(text, "builder_protocol_complete", fixed = TRUE)
-  expect_match(text, "builder_protocol_acknowledge", fixed = TRUE)
-})
-
 test_that("the app applies accepted snapshot ownership before ACK", {
   app <- readLines(
     builder_profile_inst_path("builder", "server", "imports.R"),

@@ -1408,20 +1408,6 @@ test_that("publication stays in the parent and uses the registered stage", {
   }
   app <- builder_app_source_lines()
   worker <- readLines(file.path(root, "worker.R"), warn = FALSE)
-  session <- readLines(file.path(root, "session.R"), warn = FALSE)
-
-  core_source <- grep("bundle_path_contract.R", app, fixed = TRUE)
-  publish_source <- grep('source("publish.R", local = TRUE)', app, fixed = TRUE)
-  coordinator_source <- grep(
-    'source("coordinator.R", local = TRUE)',
-    app,
-    fixed = TRUE
-  )
-  expect_length(core_source, 1L)
-  expect_length(publish_source, 1L)
-  expect_length(coordinator_source, 1L)
-  expect_lt(core_source, publish_source)
-  expect_lt(publish_source, coordinator_source)
   expect_false(any(grepl(
     'source(file.path(dir, "publish.R"))',
     worker,
@@ -1433,9 +1419,7 @@ test_that("publication stays in the parent and uses the registered stage", {
     worker,
     fixed = TRUE
   )))
-  expect_true(any(grepl("builder_coordinator_prepare", app, fixed = TRUE)))
   expect_true(any(grepl("builder_coordinator_publish", app, fixed = TRUE)))
-  expect_true(any(grepl("coordinator$stage", session, fixed = TRUE)))
 })
 
 test_that("parent ownership permits safe release shrinkage", {

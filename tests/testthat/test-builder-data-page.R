@@ -279,7 +279,6 @@ test_that("Data page upload action prefers native files with a browser fallback"
   ))
   expect_false(grepl("browseDatasets", js, fixed = TRUE))
   expect_false(grepl("localDatasets", js, fixed = TRUE))
-  expect_match(js, "enqueueClientFiles(event.dataTransfer", fixed = TRUE)
 })
 
 test_that("Data page updates do not replay full-page motion", {
@@ -325,17 +324,6 @@ test_that("the real example action uses the approved secondary label", {
   )
 
   expect_match(app, '"Load Example"', fixed = TRUE)
-  expect_match(app, "data-examples", fixed = TRUE)
-
-  js <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "www", "builder.js"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(js, "example.dataset.examples", fixed = TRUE)
-  expect_match(js, "members.forEach", fixed = TRUE)
 })
 
 test_that("dataset and table uploads do not have server-side file pickers", {

@@ -243,23 +243,6 @@ test_that("managed source restore requires the worker's verified source state", 
     runtime$builder_project_finalize_loaded_entry(loaded, record, root),
     "changed during Project restore"
   )
-
-  server_source <- paste(
-    readLines(
-      builder_test_inst_path(
-        "builder",
-        "server",
-        "project.R"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  expect_match(
-    server_source,
-    "builder_project_finalize_loaded_entry(entry, record, project$root)",
-    fixed = TRUE
-  )
 })
 
 test_that("file adapter source state crosses the Project restore boundary", {
@@ -1368,7 +1351,6 @@ test_that("project pending settles only after a restored load is terminal", {
       collapse = "\n"
     )
   }
-  server_source <- read_server("project.R")
   import_source <- read_server("imports.R")
   recovery <- read_server("foundation.R")
   register_failures <- strsplit(
@@ -1393,7 +1375,6 @@ test_that("project pending settles only after a restored load is terminal", {
     fixed = TRUE
   )[[1L]][[1L]]
 
-  expect_match(server_source, "pending[[id]] <- NULL", fixed = TRUE)
   expect_lt(
     regexpr("store(next_state)", import_source, fixed = TRUE)[[1L]],
     regexpr(

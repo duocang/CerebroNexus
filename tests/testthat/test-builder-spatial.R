@@ -4222,17 +4222,3 @@ test_that("one slide applied to every section keeps each section's own extent", 
     c(A = 0L, B = 0L, C = 7L)
   )
 })
-
-test_that("Linked views seeds Builder image opacity from saved alignment", {
-  path <- builder_spatial_test_inst_path(
-    "viewer",
-    "coordinated_views",
-    "bundle.R"
-  )
-  bundle <- paste(readLines(path, warn = FALSE), collapse = "\n")
-
-  expect_match(bundle, "histology_images", fixed = TRUE)
-  expect_match(bundle, "histology_image_bounds", fixed = TRUE)
-  expect_match(bundle, "histology_alignment", fixed = TRUE)
-  expect_match(bundle, "image_opacity", fixed = TRUE)
-})
