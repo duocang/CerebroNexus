@@ -1193,8 +1193,15 @@ builder_formats <- list(
 #' are added to a SingleCellExperiment's own when it goes into the Builder.
 #' Spike-ins and repeat elements are not.
 builder_extra_feature_names <- function(object) {
-  names <- tryCatch(SingleCellExperiment::altExpNames(object), error = function(e) character())
-  names[grepl("^(adt|prot|protein|antibody|antibodies)$", names, ignore.case = TRUE)]
+  names <- tryCatch(
+    SingleCellExperiment::altExpNames(object),
+    error = function(e) character()
+  )
+  names[grepl(
+    "^(adt|prot|protein|antibody|antibodies)$",
+    names,
+    ignore.case = TRUE
+  )]
 }
 
 builder_format_capability <- function(
@@ -1454,7 +1461,10 @@ builder_read_object <- function(path) {
     ## through this one conversion and keeps its results in @misc.
     .builder_io_require_package()
     obj <- try(
-      convertSCEToSeurat(obj, extra_features = builder_extra_feature_names(obj)),
+      convertSCEToSeurat(
+        obj,
+        extra_features = builder_extra_feature_names(obj)
+      ),
       silent = TRUE
     )
     if (inherits(obj, "try-error")) {
@@ -1957,8 +1967,11 @@ builder_example_configure_entry <- function(entry, record, object) {
     )
     parameters <- utils::modifyList(
       builder_alignment_defaults(),
+      ## The cell coordinates are the background's pixel positions
+      ## (x = column, y = row) and image rows point down, so flipping y
+      ## registers the picture exactly; no rotation, offset or scale.
       list(
-        rotation = 28,
+        flip_y = TRUE,
         image_opacity = 0.65,
         point_opacity = 0.6,
         point_size = 7
@@ -1978,7 +1991,7 @@ builder_example_configure_entry <- function(entry, record, object) {
       section = list(id = "arrow_fov", kind = "spatial"),
       source_path = image$source_path
     )
-    alignment$viewport_bounds <- builder_alignment_rotated_bounds(bounds, 28)
+    alignment$viewport_bounds <- bounds
     alignment$image_label <- "Arrow background"
     facts <- intersect(
       names(image),
@@ -1998,13 +2011,6 @@ builder_example_configure_entry <- function(entry, record, object) {
     alignment[facts] <- image[facts]
     entry$settings$images <- list(
       arrow_fov = list(`Arrow background` = alignment)
-    )
-    entry$settings$spatial_coordinate_transforms <- list(
-      arrow_fov = list(
-        schema_version = 1L,
-        rotation_degrees = 28,
-        scale = 1
-      )
     )
     entry$settings$spatial_point_appearance <- list(
       arrow_fov = list(point_opacity = 0.6, point_size = 7)

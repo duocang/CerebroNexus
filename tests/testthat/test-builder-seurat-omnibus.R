@@ -73,18 +73,47 @@ test_that("Spatial alignment demo restores the arrow image and transform", {
     loaded$object
   )
   image <- configured$settings$images$arrow_fov[["Arrow background"]]
-  expect_identical(image$rotation, 28)
+  ## The example opens registered: cells are the background's pixel
+  ## positions, so the preset is flip y only.
+  expect_identical(image$rotation, 0)
+  expect_identical(image$flip_y, TRUE)
+  expect_identical(image$flip_x, FALSE)
+  expect_identical(c(image$dx, image$dy, image$scale), c(0, 0, 1))
+  expect_identical(
+    image$base_bounds,
+    list(xmin = 0, xmax = 800, ymin = 0, ymax = 500)
+  )
   expect_identical(image$image_opacity, 0.65)
   expect_identical(image$point_opacity, 0.6)
   expect_identical(image$point_size, 7)
-  expect_identical(
-    configured$settings$spatial_coordinate_transforms$arrow_fov,
-    list(schema_version = 1L, rotation_degrees = 28, scale = 1)
-  )
+  expect_null(configured$settings$spatial_coordinate_transforms)
   expect_identical(
     configured$settings$spatial_point_appearance$arrow_fov,
     list(point_opacity = 0.6, point_size = 7)
   )
+
+  ## In the generated Viewer every cell's pixel lands on the cell: the
+  ## settings it receives, drawn as cell_views.js drawImage() does (bounds
+  ## rotated about the origin, flips and scale after the rotation).
+  setting <- builder_omnibus_env$builder_alignment_viewer_setting(image)
+  b <- image$base_bounds
+  a <- setting$rotation * pi / 180
+  rot <- function(x, y) cbind(cos(a) * x - sin(a) * y, sin(a) * x + cos(a) * y)
+  cells <- SeuratObject::GetTissueCoordinates(loaded$object[["arrow_fov"]])
+  p <- rot(
+    b$xmin + cells$x / 800 * (b$xmax - b$xmin),
+    b$ymax - cells$y / 500 * (b$ymax - b$ymin)
+  )
+  cr <- rot((b$xmin + b$xmax) / 2, (b$ymin + b$ymax) / 2)
+  d <- c(
+    setting$scale_x * if (isTRUE(setting$flip_x)) -1 else 1,
+    setting$scale_y * if (isTRUE(setting$flip_y)) -1 else 1
+  )
+  drawn <- cbind(
+    setting$offset_x + cr[1] + d[1] * (p[, 1] - cr[1]),
+    setting$offset_y + cr[2] + d[2] * (p[, 2] - cr[2])
+  )
+  expect_equal(unname(drawn), unname(cbind(cells$x, cells$y)), tolerance = 1e-9)
 })
 
 test_that("Trekker fixture carries one SlideSeq section and four H&E images", {
