@@ -2582,8 +2582,7 @@
   function setSelection(s, source) {
     // A selection made while a restored view waits for its render wins over
     // the restored one.
-    var waiting = singleActive && singleView(singleActive);
-    if (waiting) waiting.pendingSavedState = null;
+    dropPendingSingleState(singleActive);
     sel = (s && s.size) ? s : null;
     if (!sel) {
       selectionSource = null;
@@ -2928,8 +2927,8 @@
     panels.forEach(function (p) {
       if (p.spaceId !== spaceId) return;
       clearPanelView(p);
-    syncFocusButtons();
     });
+    syncFocusButtons();
   }
 
   // Zoom about a screen point, keeping whatever is under it fixed — the gesture
@@ -6338,11 +6337,11 @@
       var btn = $('cv-tk-info-' + p.key.toLowerCase());
       if (btn) btn.style.display = (showTk && panelIsTrekker(p)) ? '' : 'none';
     });
+    updateFocusButtons();
     // layoutPanels() is also reached when a projection, spatial section or
     // clone layout replaces the view under the panels; that clears focusFrom,
     // so the Focus toggle must follow in the same pass.
     syncFocusButtons();
-    updateFocusButtons();
     syncOrbitButtons();
     // A panel may now point at a different section while its box dimensions are
     // unchanged. Force the next resize pass to project the new coordinates.
@@ -8888,6 +8887,14 @@
     return { selectedCells: target.selection.length };
   }
 
+  // A restored view waits for the render its controls trigger. Any trusted
+  // user interaction supersedes that wait, so a later, unrelated render cannot
+  // reapply the saved view over what the user is looking at now.
+  function dropPendingSingleState(id) {
+    var view = id && singleView(id);
+    if (view) view.pendingSavedState = null;
+  }
+
   function updateSingleBackground(message) {
     if (!message || !message.id || !datasetMessageFresh(message)) return false;
     var id = message.id;
@@ -10363,6 +10370,18 @@
     if (booted) return true;
     if (typeof Shiny === 'undefined' || !Shiny.addCustomMessageHandler) return false;
     booted = true;
+    // Restored controls programmatically fire input/change; those events are
+    // not trusted, so they must not cancel the one render they are waiting for.
+    // A dialog opened from elsewhere (the share dialog) is not inside the page
+    // and must not cancel it either.
+    ['pointerdown', 'click', 'wheel', 'keydown', 'input', 'change'].forEach(function (type) {
+      document.addEventListener(type, function (event) {
+        if (!event.isTrusted || !singleActive) return;
+        var host = singleHost(singleActive);
+        var pane = host && host.closest && host.closest('.tab-pane');
+        if (pane && pane.contains(event.target)) dropPendingSingleState(singleActive);
+      }, true);
+    });
     var tooltipControl = $('hover_info_in_projections_checkbox');
     if (tooltipControl) cellTooltipsOn = tooltipControl.checked;
     Shiny.addCustomMessageHandler('cerebro_cell_tooltips', function (message) {

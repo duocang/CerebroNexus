@@ -198,3 +198,17 @@ for (const via of ['direct', 'groups', 'loadData']) {
   assert.strictEqual(c.workspacePointOverrides(saved).size, true);
   assert.strictEqual(c.workspacePointOverrides(saved).opacity, false);
 }
+
+// A restored view waits for the render its controls trigger. The first trusted
+// user interaction drops that wait, so a later, unrelated render cannot restore
+// the old view over what the user is looking at.
+{
+  const c = {pendingSavedState: {selection: {cells: ['c1']}}};
+  c.singleView = () => c;
+  vm.createContext(c);
+  vm.runInContext(fn('dropPendingSingleState'), c);
+  c.dropPendingSingleState(null);
+  assert.strictEqual(c.pendingSavedState !== null, true);
+  c.dropPendingSingleState('overview_projection');
+  assert.strictEqual(c.pendingSavedState, null);
+}

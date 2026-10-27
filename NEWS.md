@@ -20,6 +20,8 @@
   flash the default palette first.
 - The Focus button turns off when a data set, projection or clone layout
   replaces the view under it, and follows a restored view.
+- A restored view stops waiting for its render at the first click, key press or
+  scroll, so a later render cannot undo what was done meanwhile.
 
 # CerebroNexus 5.3.1
 
