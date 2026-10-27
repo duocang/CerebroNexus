@@ -256,3 +256,110 @@ if which == "visium":
     v.write_h5ad(here / "small_visium.h5ad", compression="gzip")
 
 for f in sorted(here.glob("*.h5*")): print(f.name, f.stat().st_size, "bytes")
+
+if which == "airr":
+    # scirpy-style immune receptor data: obsm["airr"] is an awkward array, one
+    # (possibly empty) list of AIRR chains per cell. Needs `pip install awkward`.
+    import awkward as ak
+    from awkward.contents import (NumpyArray, ListArray, ListOffsetArray, RecordArray,
+                                  IndexedArray, ByteMaskedArray, RegularArray)
+    from awkward.index import Index64, Index8
+
+    AA = "ACDEFGHIKLMNPQRSTVWY"
+
+    def chain(locus, v, d, j, c, aa, count, productive=True, junction_aa="auto"):
+        ja = f"C{aa}F" if junction_aa == "auto" else junction_aa
+        return dict(locus=locus, v_call=v, d_call=d, j_call=j, c_call=c, junction_aa=ja,
+                    junction=None if ja is None else "TGT" + "GCC" * len(aa) + "TTT",
+                    consensus_count=count * 100, duplicate_count=count, productive=productive,
+                    sequence_id=None)
+
+    def tcr(clone, extra_alpha=False):
+        a = AA[clone % 20] * 3
+        out = [chain("TRA", f"TRAV{clone % 4 + 1}", None, f"TRAJ{clone % 3 + 1}", "TRAC", "AV" + a, 5),
+               chain("TRB", f"TRBV{clone % 5 + 1}", f"TRBD{clone % 2 + 1}", f"TRBJ{clone % 3 + 1}", "TRBC1", "SS" + a, 8)]
+        if extra_alpha:
+            out.insert(1, chain("TRA", "TRAV9", None, "TRAJ9", "TRAC", "AV" + AA[(clone + 7) % 20] * 3, 2))
+        return out
+
+    def bcr(clone):
+        a = AA[clone % 20] * 4
+        light = ("IGK", "IGKV1", "IGKJ1", "IGKC") if clone % 2 == 0 else ("IGL", "IGLV2", "IGLJ2", "IGLC1")
+        return [chain("IGH", f"IGHV{clone % 3 + 1}", "IGHD3", "IGHJ4", "IGHM", "AR" + a, 9),
+                chain(light[0], light[1], None, light[2], light[3], "QQ" + a, 4)]
+
+    chains = {}
+    for i, name in enumerate(cells):
+        if i % 6 == 5:
+            chains[name] = []                                  # no receptor found
+        elif i < 40:                                           # T cells
+            chains[name] = tcr(i % 8, extra_alpha=(i % 10 == 1))
+            if i == 3: chains[name] = [chain("TRB", "TRBV1", None, "TRBJ1", "TRBC1", "SSXX", 3, productive=False)]
+            if i == 7: chains[name][0]["junction_aa"] = chains[name][0]["junction"] = None
+            if i == 9: chains[name] = chains[name][1:] + [chain("Multi", None, None, None, None, "ZZ", 1)]
+        elif i < 80:                                           # B cells
+            chains[name] = bcr(i % 5)
+            if i == 44: chains[name] = tcr(2) + bcr(2)[:1]     # 2 TCR chains beat 1 BCR chain
+            if i == 46:                                        # tie in chains, BCR has more UMIs
+                chains[name] = [chain("IGH", "IGHV1", None, "IGHJ1", "IGHM", "ARTT", 10),
+                                chain("TRB", "TRBV1", None, "TRBJ1", "TRBC1", "SSTT", 2)]
+        else:                                                  # monocytes: no receptors
+            chains[name] = []
+            if i == 82: chains[name] = [chain("TRB", "TRBV1", None, "TRBJ1", "TRBC1", "SSYY", 1, productive=False)]
+    for ghost in ("ghost0", "ghost1"):
+        chains[ghost] = tcr(1)
+
+    def airr_array(order):
+        return ak.Array([chains[c] for c in order])
+
+    def build_airr():
+        a = build()
+        a.obs["sample"] = pd.Categorical(["S1" if i % 2 == 0 else "S2" for i in range(a.n_obs)])
+        return a
+
+    # MuData as scirpy writes it: gex + airr modalities. The airr modality lists
+    # its cells in another order, lacks the last two gex cells, and has two cells
+    # (ghost*) that are not in the expression data.
+    import h5py
+    from anndata.io import write_elem
+    airr_cells = list(reversed(cells[:-2])) + ["ghost0", "ghost1"]
+    airr_mod = ad.AnnData(X=np.zeros((len(airr_cells), 0)),
+                          obs=pd.DataFrame({"is_cell": True}, index=airr_cells),
+                          var=pd.DataFrame(index=[]))
+    airr_mod.obsm["airr"] = airr_array(airr_cells)
+    with h5py.File(here / "small_airr.h5mu", "w") as f:
+        mod = f.create_group("mod")
+        write_elem(mod, "gex", build_airr())
+        write_elem(mod, "airr", airr_mod)
+
+    # plain h5ad with obsm["airr"] (no sample column)
+    plain = build()
+    plain.obsm["airr"] = airr_array(cells)
+    plain.write_h5ad(here / "small_airr.h5ad")
+
+    # every awkward layout the reader supports, as a list of records per row
+    record = RecordArray(
+        [ak.to_layout(["TRA", "TRB", "TRA", "TRB", "IGH", "IGK", "TRA", "TRB"]),
+         ak.to_layout(["V1", "V2", None, "V4µ", "V5", "V6", "V7", "V8"]),
+         ak.to_layout([5, None, 3, 4, 9, 8, 7, 6]),
+         ByteMaskedArray(Index8(np.array([1, 0, 1, 1, 1, 1, 0, 1], dtype="int8")),
+                         NumpyArray(np.arange(8) * 10), valid_when=True),
+         NumpyArray(np.array([True, False, True, True, False, True, False, True]))],
+        ["locus", "v_call", "count", "masked", "flag"])
+    layouts = {
+        "listarray": ListArray(Index64(np.array([4, 0, 6, 2, 7, 2])), Index64(np.array([6, 2, 6, 4, 8, 2])), record),
+        "indexed": ListOffsetArray(Index64(np.array([0, 2, 3, 3, 6, 8, 8])),
+                                   IndexedArray(Index64(np.arange(7, -1, -1)), record)),
+        "regular": RegularArray(IndexedArray(Index64(np.array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3])), record), 2),
+    }
+    layouts["offsets"] = ListOffsetArray(Index64(np.array([0, 2, 2, 5, 5, 8, 8])), record)
+    tiny = ad.AnnData(X=np.zeros((6, 2), dtype="float32"),
+                      obs=pd.DataFrame(index=[f"c{i}" for i in range(6)]), var=pd.DataFrame(index=["g1", "g2"]))
+    for name, layout in layouts.items():
+        tiny.obsm[name] = ak.Array(layout)
+    tiny.write_h5ad(here / "small_awkward.h5ad")
+    for name in layouts:
+        print(name, ak.to_list(tiny.obsm[name]))
+    n_chain = sum(len(v) for v in chains.values()); print("chains", n_chain)
+
+for f in sorted(here.glob("*.h5*")): print(f.name, f.stat().st_size, "bytes")
