@@ -1810,18 +1810,8 @@ builder_verify_crb <- function(
       scope <- intersect(c("roi_field", "roi_value"), names(record))
       descriptor[scope] <- record[scope]
       images[[item$id]][[section_id]][[label]] <- descriptor
-      settings[[item$id]][[section_id]][[label]] <- list(
-        flip_x = record$flip_x,
-        flip_y = record$flip_y,
-        scale_x = record$scale,
-        scale_y = record$scale,
-        offset_x = record$dx,
-        offset_y = record$dy,
-        rotation = record$rotation,
-        image_opacity = record$image_opacity,
-        point_opacity = record$point_opacity,
-        point_size = record$point_size
-      )
+      settings[[item$id]][[section_id]][[label]] <-
+        builder_alignment_viewer_setting(record)
     }
   }
   list(images = images, settings = settings)
