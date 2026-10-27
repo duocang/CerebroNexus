@@ -18,6 +18,8 @@
   mirai or qs2 installed there, they used to stop silently.
 - Linked views paints its first frame in the configured colours; it used to
   flash the default palette first.
+- The Focus button turns off when a data set, projection or clone layout
+  replaces the view under it, and follows a restored view.
 
 # CerebroNexus 5.3.1
 

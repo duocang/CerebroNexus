@@ -2928,6 +2928,7 @@
     panels.forEach(function (p) {
       if (p.spaceId !== spaceId) return;
       clearPanelView(p);
+    syncFocusButtons();
     });
   }
 
@@ -6337,6 +6338,10 @@
       var btn = $('cv-tk-info-' + p.key.toLowerCase());
       if (btn) btn.style.display = (showTk && panelIsTrekker(p)) ? '' : 'none';
     });
+    // layoutPanels() is also reached when a projection, spatial section or
+    // clone layout replaces the view under the panels; that clears focusFrom,
+    // so the Focus toggle must follow in the same pass.
+    syncFocusButtons();
     updateFocusButtons();
     syncOrbitButtons();
     // A panel may now point at a different section while its box dimensions are
@@ -8503,7 +8508,10 @@
       });
       sel = restored.size ? restored : null;
     }
+    // A reused surface keeps its panels, but the restored lenses may carry a
+    // Focus state of their own: the toggle follows it either way.
     if (!reuseSurface) (sel ? syncFocusButtons : leaveFocus)();
+    else syncFocusButtons();
     var drawStarted = performance.now();
     timing.preDrawMs = drawStarted - activationStarted;
     renderLegend();

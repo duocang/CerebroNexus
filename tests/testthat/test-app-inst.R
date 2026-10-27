@@ -7,7 +7,7 @@ inst_dir <- viewer_app_test_path()
 ## they share one driver. Tests that switch data sets, assert a pristine startup
 ## or build their own bundle boot their own app.
 shared_app <- viewer_shared_app("app_inst", inst_dir)
-## The three dataset-switching tests below each need a new session that starts
+## The dataset-switching tests below each need a new session that starts
 ## on the default data set. They share one app process; each after the first
 ## starts a new Shiny session in it rather than booting another app.
 switching_app <- viewer_shared_app("dataset_switching", inst_dir)
@@ -404,6 +404,83 @@ test_that("Linked views resets the active background to its preset", {
   expect_identical(state$offsetY, "0")
   expect_false(state$flipX)
   expect_true(state$flipY)
+})
+
+test_that("Linked views Focus turns off when its view is replaced", {
+  app <- viewer_new_session(switching_app())
+  activate_tab(app, "coordinated_views", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
+      "?.getBoundingClientRect().width > 100 && ",
+      "Number(document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)').dataset.pointCount) > 0"
+    ),
+    timeout = 30000
+  )
+  ## The first frame can arrive before the supplement adds the other lenses.
+  ## Brush only once the final three-pane layout has a normal pane width.
+  app$wait_for_js(
+    paste0(
+      "document.querySelectorAll('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden)').length >= 3 && ",
+      "document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
+      ".getBoundingClientRect().width < 600"
+    ),
+    timeout = 30000
+  )
+  ## Box mode builds a polygon from one dispatchMouseEvent move; the default
+  ## lasso needs two moves before mouseup treats it as a brush.
+  app$run_js(paste0(
+    "document.querySelector('#shiny-tab-coordinated_views ",
+    ".cv-pane:not(.cv-hidden) .cv-tbtn[data-act=\"box\"]').click()"
+  ))
+  canvas <- app$get_js(paste0(
+    "(() => {const r=document.querySelector('#shiny-tab-coordinated_views ",
+    ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)').getBoundingClientRect();",
+    "return {x1:r.left+r.width*.08,y1:r.top+r.height*.08,",
+    "x2:r.right-r.width*.08,y2:r.bottom-r.height*.08};})()"
+  ))
+  viewer_drag_mouse(app, canvas$x1, canvas$y1, canvas$x2, canvas$y2)
+  app$wait_for_js(
+    "document.getElementById('cv-zsel')?.getClientRects().length > 0",
+    timeout = 20000
+  )
+  app$run_js("document.getElementById('cv-zsel').click()")
+  app$wait_for_js(
+    "document.getElementById('cv-zsel').getAttribute('aria-pressed') === 'true'",
+    timeout = 10000
+  )
+  expect_identical(
+    app$get_js(
+      "document.getElementById('cv-zsel').getAttribute('aria-pressed')"
+    ),
+    "true"
+  )
+  ## Replacing the data set clears every panel's saved pre-focus view. The
+  ## toggle must not stay on after that reset.
+  select_dataset(app, "Mouse brain (Xenium)")
+  app$wait_for_idle(timeout = 30000)
+  app$wait_for_js(
+    "document.getElementById('cv-zsel').getAttribute('aria-pressed') === 'false'",
+    timeout = 30000
+  )
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-mini.is-on').length === 0",
+    timeout = 10000
+  )
+  expect_identical(
+    app$get_js(
+      "document.getElementById('cv-zsel').getAttribute('aria-pressed')"
+    ),
+    "false"
+  )
+  expect_identical(
+    app$get_js("document.querySelectorAll('.cv-mini.is-on').length"),
+    0L
+  )
 })
 
 
