@@ -346,6 +346,10 @@
   transition: opacity .2s ease, border-color .2s ease, box-shadow .2s ease;
 }
 .coordviews-page .cv-panes:not(.cv-has-focus) { align-items: stretch; }
+/* Full rows already fill the width, so only a last row with fewer panes shows
+   the difference: it starts at the left edge like the rows above it instead of
+   floating in the middle with an empty margin on both sides. */
+.coordviews-page .cv-panes:not(.cv-has-focus) { justify-content: flex-start; }
 .coordviews-page .cv-panes:not(.cv-has-focus) > .cv-pane { align-self: stretch; }
 .coordviews-page .cv-panes.cv-focus-transitioning .cv-pane {
   will-change: transform, opacity;

@@ -26,6 +26,13 @@
   gate changes size in place.
 - The plot toolbar of a short plot wraps into a second column and keeps clear
   of the minimap.
+- Linked views, Spatial and the other plot pages follow the window while it is
+  resized: the last plot no longer drops to a second row (a classic scrollbar,
+  a fractional width or a drag inside a step did that), the height follows the
+  window instead of moving in 24px steps, a plot is resized once per frame,
+  and a page whose controls render late (Spatial) is refitted. A resize at the
+  bottom of a scrolled page no longer grows the plots, and a last, shorter row
+  of plots starts at the left edge.
 
 # CerebroNexus 5.3.1
 

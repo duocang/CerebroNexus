@@ -484,6 +484,46 @@ test_that("Linked views Focus turns off when its view is replaced", {
 })
 
 
+test_that("Spatial panels refit when the page above them grows", {
+  app <- viewer_new_session(switching_app())
+  app$get_chromote_session()$set_viewport_size(width = 1143, height = 727)
+  app$wait_for_js("window.innerHeight === 727", timeout = 10000)
+  select_dataset(app, "Mouse ileum (MERFISH)")
+  app$wait_for_idle(timeout = 30000)
+  activate_tab(app, "spatial", timeout = 30000)
+  pane <- paste0(
+    "document.querySelector('#shiny-tab-spatial ",
+    ".cv-pane:not(.cv-hidden)')"
+  )
+  app$wait_for_js(
+    paste0(
+      "(",
+      pane,
+      "?.querySelector('canvas:not(.cv-mini)')?.getBoundingClientRect().width > 100)"
+    ),
+    timeout = 30000
+  )
+  app$wait_for_js(
+    paste0(pane, ".getBoundingClientRect().bottom <= window.innerHeight"),
+    timeout = 15000
+  )
+  before <- app$get_js(paste0(pane, ".getBoundingClientRect().height"))
+  ## Controls above the plot can render after its first layout (the selector
+  ## row does, on a first visit). They push the plot down without resizing any
+  ## element the grid watched, which left it sized for a taller window and
+  ## ending below the bottom edge. Grow the page above it the same way.
+  app$run_js(paste0(
+    "(() => {const spacer=document.createElement('div');",
+    "spacer.id='test-late-controls';spacer.style.height='24px';",
+    "document.querySelector('#shiny-tab-spatial').prepend(spacer);})()"
+  ))
+  app$wait_for_js(
+    paste0(pane, ".getBoundingClientRect().height < ", before - 5),
+    timeout = 10000
+  )
+  expect_lt(app$get_js(paste0(pane, ".getBoundingClientRect().height")), before)
+})
+
 test_that("{shinytest2} recording: main", {
   app <- shared_app()
 

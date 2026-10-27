@@ -211,7 +211,7 @@
   var groupFilter = {};         // groupName -> Set(allowed level idx); absent = all
   var spaceById = {};
   var resizeObserver = null;    // fires when the tab becomes visible / resizes
-  var resizeTimer = null;
+  var resizeObserverFrame = 0;
   var focusResizeTimer = null;
   var focusAnimating = false;
   // Each spatial instance owns `_imgEl`, `_imgReady`, `_imgState` and its image
@@ -4822,13 +4822,17 @@
     // Re-project + redraw whenever the panes gain/lose size — critically, when
     // the tab flips from display:none to visible (0 -> real width).
     if (!resizeObserver) {
+      // Next frame, not after a 30ms debounce: the observer fires before paint,
+      // so a container that changed size (a collapsing sidebar) waits one frame
+      // for its panes instead of three. Bursts still coalesce into one pass.
       resizeObserver = new ResizeObserver(function () {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(function () {
+        if (resizeObserverFrame) return;
+        resizeObserverFrame = requestAnimationFrame(function () {
+          resizeObserverFrame = 0;
           if (!D || focusAnimating) return;
           resizeAll();
           reportWorkspaceReady();
-        }, 30);
+        });
       });
       panels.forEach(function (p) {
         if (p.pane) resizeObserver.observe(p.pane);
@@ -6350,7 +6354,39 @@
   // Size visible panels from the available width. Each canvas remains at least
   // 300px wide when possible and extra spaces flow onto later rows.
   var MIN_SIDE = 300;
+  var MIN_SIDE_HARD = 240;
+  // Width a classic scrollbar will take from `host` once it shows. Overlay
+  // scrollbars (and one already showing, which clientWidth excludes) reserve 0.
+  // The probe forces a layout, and the width only changes with the zoom level
+  // (devicePixelRatio), so measure it once per zoom instead of once per pass.
+  var _scrollbarProbe = { ratio: 0, width: 0 };
+  function scrollbarReserve(host) {
+    if (!host || !document.body) return 0;
+    var ratio = window.devicePixelRatio || 1;
+    if (_scrollbarProbe.ratio !== ratio) {
+      var probe = document.createElement('div');
+      probe.style.cssText = 'position:absolute;visibility:hidden;width:100px;' +
+        'height:100px;overflow:scroll;';
+      document.body.appendChild(probe);
+      _scrollbarProbe = { ratio: ratio, width: probe.offsetWidth - probe.clientWidth };
+      document.body.removeChild(probe);
+    }
+    return Math.max(0, _scrollbarProbe.width - (host.offsetWidth - host.clientWidth));
+  }
   var VIEWPORT_GUTTER = 7;
+  // Where the panes start inside the scrolling page, not on screen. The screen
+  // position moves with the scroll, and sizing from it made every resize of a
+  // scrolled page grow the panes by the scroll offset (13px per resize at the
+  // bottom of a page that overflows by 13px), which let the page scroll further.
+  function contentTop(panes, scrollHost) {
+    var top = panes.getBoundingClientRect().top;
+    return scrollHost
+      ? top - scrollHost.getBoundingClientRect().top + scrollHost.scrollTop
+      : top;
+  }
+  function visibleHeight(scrollHost) {
+    return scrollHost ? scrollHost.getBoundingClientRect().height : window.innerHeight;
+  }
   // Prefer a balanced packing whenever it keeps at least this much of the
   // largest available panel size. This prevents sparse final rows without
   // forcing plots into a materially smaller layout.
@@ -6371,7 +6407,13 @@
   // So: one corrective pass per genuine change of those inputs, and no more.
   // The first pass sizes from the header as it was; the second takes account of
   // a wrap that pass caused; anything after that is the loop feeding itself.
-  var _layoutKey = null, _layoutPass = 0;
+  var _layoutKey = null, _layoutPass = 0, _layoutHeader = -1;
+  // Height of everything in the first pane that is not its canvas.
+  function gridOverhead(vis) {
+    var pane = vis[0] && vis[0].pane, canvas = vis[0] && vis[0].canvas;
+    return pane && canvas
+      ? Math.max(0, pane.offsetHeight - canvas.clientHeight) : 58;
+  }
   //
   // The width and height are QUANTISED to 24px. A classic (space-taking)
   // scrollbar is the other way this feeds back on itself: sizing the grid to
@@ -6382,15 +6424,25 @@
   // be reproduced in a headless browser, whose scrollbars are overlays and take
   // no width at all. Ignoring sub-24px changes costs nothing on a grid of
   // hundreds of pixels and leaves no way for that cycle to continue.
+  //
+  // The width is the exception: the grid reserves the scrollbar's width up
+  // front (scrollbarReserve), so a scrollbar appearing no longer changes the
+  // width it is fitted to and cannot restart the cycle. Quantising the width
+  // anyway left the panes at their old pixel size while the container shrank
+  // by up to 24px, so the last pane wrapped onto a second row for part of every
+  // drag. Fit it to the pixel instead.
+  //
+  // The same goes for the heights. Quantised to 24px they made a vertical drag
+  // move in steps (the panes lagged the window by up to 24px, then jumped), and
+  // the one-corrective-pass rule below already stops the header-wrap cycle.
   function layoutInputs(host) {
-    var q = function (v) { return Math.round(v / 24); };
     return [
-      q(host ? host.clientWidth : 0),
-      q(host ? host.getBoundingClientRect().top : 0),
+      Math.round(host ? host.getBoundingClientRect().width : 0),
+      Math.round(host ? contentTop(host, host.closest('.content-wrapper')) : 0),
       ($('cv-legend') || {}).offsetHeight || 0,
       ($('cv-cbar') && $('cv-cbar').style.display !== 'none')
         ? $('cv-cbar').offsetHeight : 0,
-      q(window.innerHeight),
+      Math.round(window.innerHeight),
       panels.filter(function (p) { return p.spaceId; }).length,
       focusPanel || '',
       keepPlotsSquare ? 'square' : 'fluid'
@@ -6453,14 +6505,29 @@
     if (!k) return false;
     var availW = panes.clientWidth;
     if (availW < 20) return false;           // tab still hidden; observer re-runs
+    // Controls above the panes can render after the first pass (a selector row,
+    // a wrapped legend) and push the panes down without resizing any element
+    // the observer watches, which left them sized for a window taller than the
+    // one they sit in. The page itself grows then, so watch it as well; the
+    // layout key makes a pass that finds nothing new cost almost nothing.
+    var page = panes.closest('.tab-pane');
+    if (resizeObserver && page && !page._cvResizeObserved) {
+      page._cvResizeObserved = true;
+      resizeObserver.observe(page);
+    }
     var key = layoutInputs(panes);
+    var headerChrome = gridOverhead(vis);
     if (key === _layoutKey) {
-      if (_layoutPass >= 2) return false;
+      // The corrective pass exists for a pane header that wrapped because the
+      // last pass narrowed the plot. With the header unchanged there is
+      // nothing to correct, and repeating the pass only redraws every canvas.
+      if (_layoutPass >= 2 || headerChrome === _layoutHeader) return false;
       _layoutPass++;
     } else {
       _layoutKey = key;
       _layoutPass = 1;
     }
+    _layoutHeader = headerChrome;
     // CSS owns the flex layout. Read its actual gap so the width calculation
     // cannot drift from the browser and push the last pane onto a new row.
     var gap = parseFloat(getComputedStyle(panes).columnGap) || 0;
@@ -6468,20 +6535,20 @@
     // 18px narrower than its column track. The canvas takes that full width;
     // height is still fitted to the viewport by the existing overview logic.
     var chromeX = 18;
-    var firstCanvas = vis[0] && vis[0].canvas;
     var firstPane = vis[0] && vis[0].pane;
-    var overhead = firstPane && firstCanvas
-      ? Math.max(0, firstPane.offsetHeight - firstCanvas.clientHeight) : 58;
+    var overhead = headerChrome;
     var scrollHost = panes.closest('.content-wrapper');
-    var visibleBottom = scrollHost
-      ? scrollHost.getBoundingClientRect().bottom : window.innerHeight;
     var bottomPad = scrollHost
       ? (parseFloat(getComputedStyle(scrollHost).paddingBottom) || 0) : 0;
     var availH = Math.floor(
-      visibleBottom - panes.getBoundingClientRect().top - bottomPad -
+      visibleHeight(scrollHost) - contentTop(panes, scrollHost) - bottomPad -
       2 * VIEWPORT_GUTTER
     );
-    var usableW = availW;
+    // Panes are sized to fill the row exactly, so a classic scrollbar that
+    // appears after this pass (the grid itself makes the page taller) would
+    // push the last pane onto a new row. Keep its width free up front.
+    var usableW = (panes.getBoundingClientRect().width || availW) -
+      scrollbarReserve(scrollHost);
 
     // Overview is a genuine two-dimensional fit: try every possible column
     // count and choose the one that maximises a balanced cell. If there are so
@@ -6490,14 +6557,25 @@
     var overview = !focusPanel
       ? bestOverviewGrid(k, usableW, Math.max(1, availH), chromeX, overhead, gap)
       : null;
-    var columnFloor = focusPanel ? FOCUS_CONTEXT_SIDE : MIN_SIDE;
+    // When even the best grid is below the usual floor, take its columns down
+    // to a hard floor instead of splitting the panels over rows the page has
+    // no height for: a third plot below the fold is worse than a narrow one.
+    var columnFloor = focusPanel ? FOCUS_CONTEXT_SIDE
+      : (overview && overview.side < MIN_SIDE
+        ? Math.max(MIN_SIDE_HARD, overview.side) : MIN_SIDE);
     var availableCols = Math.max(1,
       Math.floor((usableW + gap) / (columnFloor + chromeX + gap)));
     var cols = focusPanel
       ? Math.max(1, Math.min(k + 1, availableCols))
       : Math.max(1, Math.min(overview ? overview.cols : 1, availableCols));
     var single = cols === 1;
-    var colW = (usableW - (cols - 1) * gap) / cols;
+    // Whole pixels that never add up to more than the container: a row filled
+    // to the last fraction of a pixel wraps its final pane when the container
+    // is a fraction narrower. The pixels left over go one each to the first
+    // panes of a row, so the row still ends at the container's edge.
+    var rowW = Math.floor(usableW - (cols - 1) * gap);
+    var colW = Math.floor(rowW / cols);
+    var colExtra = rowW - colW * cols;
     var side = focusPanel
       ? Math.max(FOCUS_CONTEXT_SIDE, Math.floor(colW - chromeX))
       : Math.max(MIN_SIDE, overview ? overview.side : 0);
@@ -6521,12 +6599,10 @@
       overhead = firstPane && canvas
         ? Math.max(0, firstPane.offsetHeight - canvas.clientHeight) : 58;
       scrollHost = panes.closest('.content-wrapper');
-      visibleBottom = scrollHost
-        ? scrollHost.getBoundingClientRect().bottom : window.innerHeight;
       bottomPad = scrollHost
         ? (parseFloat(getComputedStyle(scrollHost).paddingBottom) || 0) : 0;
       availH = Math.floor(
-        visibleBottom - panes.getBoundingClientRect().top - bottomPad - 8
+        visibleHeight(scrollHost) - contentTop(panes, scrollHost) - bottomPad - 8
       );
       if (availH > 0) {
         if (focusPanel) {
@@ -6556,11 +6632,12 @@
     var primaryWidth = cols > 1
       ? Math.max(panelWidth, Math.floor(colW * 2 + gap - chromeX))
       : panelWidth;
-    vis.forEach(function (p) {
+    vis.forEach(function (p, index) {
       var primary = !!focusPanel && p.key === focusPanel;
-      var width = primary ? primaryWidth : panelWidth;
+      var extra = !focusPanel && cols > 1 && index % cols < colExtra ? 1 : 0;
+      var width = primary ? primaryWidth : panelWidth + extra;
       var height = primary ? focusSide : (focusPanel ? side : panelHeight);
-      var paneWidth = primary ? primaryWidth + chromeX : colW;
+      var paneWidth = primary ? primaryWidth + chromeX : colW + extra;
       if (keepPlotsSquare) {
         var squareSide = Math.min(width, height);
         width = squareSide;
@@ -11108,10 +11185,17 @@
       if (cardOpen()) closeCard();
       else if (pinnedTip.panel) unpinTip();
     });
+    // One layout per frame, however many resize events a drag delivers. The
+    // rAF callback still runs before that frame is painted.
+    var resizeFrame = 0;
     window.addEventListener('resize', function () {
-      if (D) resizeAll();
-      // the grid just changed shape; an open card has to be re-centred on it
-      if (cardOpen()) centreCard();
+      if (resizeFrame) return;
+      resizeFrame = requestAnimationFrame(function () {
+        resizeFrame = 0;
+        if (D) resizeAll();
+        // the grid just changed shape; an open card has to be re-centred on it
+        if (cardOpen()) centreCard();
+      });
     });
     return true;
   }

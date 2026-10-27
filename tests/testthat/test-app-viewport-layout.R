@@ -354,6 +354,133 @@ test_that("shared selection actions and layouts survive navigation and resize", 
     timeout = 10000
   )
 
+  ## A classic scrollbar (Windows, 100-175% zoom) takes width after the panes
+  ## are sized. Panes filled to the last pixel then wrap the final one onto a
+  ## second row, centred under the first. Headless Chrome has overlay
+  ## scrollbars, so force a classic one at a width where three panes just fit.
+  app$run_js(paste0(
+    "(() => {const s=document.createElement('style');s.id='test-classic-scrollbar';",
+    "s.textContent='.content-wrapper::-webkit-scrollbar{width:17px}';",
+    "document.head.appendChild(s);})()"
+  ))
+  app$get_chromote_session()$set_viewport_size(width = 1143, height = 733)
+  app$wait_for_js(
+    "window.innerWidth === 1143 && window.innerHeight === 733",
+    timeout = 10000
+  )
+  linked_rows <- paste0(
+    "(() => {const panes=Array.from(document.querySelectorAll(",
+    "'#shiny-tab-coordinated_views .cv-panes > .cv-pane:not(.cv-hidden)'));",
+    "const box=document.querySelector('#shiny-tab-coordinated_views .cv-panes')",
+    ".getBoundingClientRect();",
+    "const rects=panes.map(p=>p.getBoundingClientRect());",
+    "return {count:rects.length,",
+    "rows:new Set(rects.map(r=>Math.round(r.top))).size,",
+    "left:Math.min(...rects.map(r=>r.left))-box.left,",
+    "right:box.right-Math.max(...rects.map(r=>r.right))};})()"
+  )
+  app$wait_for_js(
+    paste0("(", linked_rows, ").rows === 1"),
+    timeout = 15000
+  )
+  one_row <- app$get_js(linked_rows)
+  expect_gte(one_row$count, 3L)
+  expect_identical(one_row$rows, 1L)
+  expect_lt(one_row$left, 2)
+  expect_lt(one_row$right, 2)
+  ## Dragging the window edge must not wrap the last pane: the grid used to
+  ## keep its old pixel size until the width crossed a 24px step, so for part
+  ## of every drag the panes no longer fitted and the third dropped a row.
+  for (width in c(1290, 1263, 1241, 1218, 1197, 1175, 1156)) {
+    app$get_chromote_session()$set_viewport_size(width = width, height = 733)
+    app$wait_for_js(
+      sprintf("window.innerWidth === %d", width),
+      timeout = 10000
+    )
+    app$wait_for_js(
+      paste0("(", linked_rows, ").rows === 1"),
+      timeout = 10000
+    )
+  }
+  ## Dragging the window's bottom edge must resize the panes continuously. The
+  ## grid used to quantise the height to 24px, so the panes lagged the window
+  ## and then jumped a whole step.
+  pane_height <- function() {
+    app$get_js(paste0(
+      "Math.round(document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-panes > .cv-pane:not(.cv-hidden)').getBoundingClientRect().height)"
+    ))
+  }
+  settled_pane_height <- function() {
+    previous <- -1
+    for (attempt in 1:30) {
+      current <- pane_height()
+      if (current == previous) {
+        return(current)
+      }
+      previous <- current
+      Sys.sleep(0.1)
+    }
+    current
+  }
+  app$get_chromote_session()$set_viewport_size(width = 1290, height = 800)
+  app$wait_for_js("window.innerHeight === 800", timeout = 10000)
+  pane_heights <- vapply(
+    seq(800, 704, by = -12),
+    function(height) {
+      app$get_chromote_session()$set_viewport_size(
+        width = 1290,
+        height = height
+      )
+      app$wait_for_js(
+        sprintf("window.innerHeight === %d", height),
+        timeout = 10000
+      )
+      settled_pane_height()
+    },
+    numeric(1)
+  )
+  expect_lt(pane_heights[length(pane_heights)], pane_heights[1])
+  expect_true(all(diff(pane_heights) <= 0))
+  expect_lte(max(abs(diff(pane_heights))), 14)
+  ## The panes are sized from where they sit in the page, not on screen: a
+  ## resize at the bottom of a scrolled page used to grow them by the scroll
+  ## offset each time, which let the page scroll further.
+  app$get_chromote_session()$set_viewport_size(width = 1290, height = 700)
+  app$wait_for_js("window.innerHeight === 700", timeout = 10000)
+  unscrolled_height <- settled_pane_height()
+  for (width in c(1285, 1280, 1275)) {
+    app$run_js(paste0(
+      "(() => {const page=document.querySelector('.content-wrapper');",
+      "page.scrollTop=page.scrollHeight;})()"
+    ))
+    app$get_chromote_session()$set_viewport_size(width = width, height = 700)
+    app$wait_for_js(sprintf("window.innerWidth === %d", width), timeout = 10000)
+    expect_equal(settled_pane_height(), unscrolled_height, tolerance = 0.01)
+  }
+  ## Where the panes need a second row, the last one starts at the left edge
+  ## like the row above it instead of floating in the middle.
+  app$get_chromote_session()$set_viewport_size(width = 1024, height = 733)
+  app$wait_for_js("window.innerWidth === 1024", timeout = 10000)
+  app$wait_for_js(
+    paste0("(", linked_rows, ").rows === 2"),
+    timeout = 10000
+  )
+  last_pane_left <- app$get_js(paste0(
+    "(() => {const box=document.querySelector(",
+    "'#shiny-tab-coordinated_views .cv-panes').getBoundingClientRect();",
+    "const panes=Array.from(document.querySelectorAll(",
+    "'#shiny-tab-coordinated_views .cv-panes > .cv-pane:not(.cv-hidden)'));",
+    "return panes[panes.length-1].getBoundingClientRect().left-box.left;})()"
+  ))
+  expect_lt(last_pane_left, 2)
+  app$run_js("document.getElementById('test-classic-scrollbar').remove()")
+  app$get_chromote_session()$set_viewport_size(width = 1619, height = 950)
+  app$wait_for_js(
+    "window.innerWidth === 1619 && window.innerHeight === 950",
+    timeout = 10000
+  )
+
   ## Legend counts are data, not disabled decoration, so they use the readable
   ## secondary text colour instead of the low-contrast tertiary token.
   app$wait_for_js(

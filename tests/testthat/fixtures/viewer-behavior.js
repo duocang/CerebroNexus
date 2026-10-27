@@ -347,7 +347,7 @@ window.viewerScenarios = {
       projections:{},spaces:[{id:'clone',label:'Clonal'}],
       clone:{id:Array.from({length:n},(_,i)=>i%2),size:[n/2,n/2],n_clones:2,n_receptor:n,label:['one','two']}});
     await t.settle();t.resetPaint();
-    window.dispatchEvent(new Event('resize'));await t.settle();
+    const same=cerebroLinkedViewsState.capture();cerebroLinkedViewsState.apply(same);await t.settle();
     const copied=()=>t.paints.some(p=>p.method==='drawImage'&&p.canvas.id==='cv-cv-a'&&p.args[0] instanceof HTMLCanvasElement);
     t.check(copied(),'Unchanged clonal chart copies its cached bitmap');
     for(const act of ['zin','zin','reset']) {

@@ -3138,3 +3138,8 @@ body .shiny-bound-output.cerebro-output-waiting {
   .dataset-stat { padding: 16px; }
   .dataset-bar-row { gap: 8px; grid-template-columns: minmax(70px, 1fr) minmax(40px, 1fr) 92px; }
 }
+
+/* Set by viewer-shell.js while the window is being resized. */
+.cerebro-resizing .content-wrapper {
+  overflow-x: hidden;
+}
