@@ -22,6 +22,8 @@
   replaces the view under it, and follows a restored view.
 - A restored view stops waiting for its render at the first click, key press or
   scroll, so a later render cannot undo what was done meanwhile.
+- Gene expression summaries keep updating however tall they are, and when the
+  gate changes size in place.
 
 # CerebroNexus 5.3.1
 

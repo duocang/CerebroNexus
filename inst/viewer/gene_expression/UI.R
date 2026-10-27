@@ -135,28 +135,48 @@ tab_gene_expression <- tabItem(
       var target = document.getElementById('expression_summary_gate');
       if (!target || target.dataset.observed) return;
       target.dataset.observed = 'true';
-      // The observer reports the initial state before Shiny has connected;
-      // keep the latest state and publish it once the input API exists.
-      var visible = null;
+      // Visible when a quarter of the gate or a quarter of the viewport is in
+      // view, whichever is smaller. Read the geometry instead of a fixed ratio
+      // threshold: a gate taller than four viewports can never show a quarter
+      // of itself, and a threshold below 1 / gate-height would be unreachable.
+      var visible = null, published = null;
+      function viewportHeight() {
+        return window.innerHeight || document.documentElement.clientHeight || 0;
+      }
+      function visibleNow() {
+        var rect = target.getBoundingClientRect();
+        var viewport = viewportHeight();
+        if (!viewport || rect.height <= 0) return false;
+        var intersection = Math.max(0,
+          Math.min(rect.bottom, viewport) - Math.max(rect.top, 0));
+        return intersection >= 0.25 * Math.min(rect.height, viewport);
+      }
       function publish() {
-        if (visible === null || !window.Shiny ||
-            typeof Shiny.setInputValue !== 'function') return;
+        visible = visibleNow();
+        // The first callback runs before Shiny has connected; keep the state
+        // and publish it once the input API exists.
+        if (!window.Shiny || typeof Shiny.setInputValue !== 'function') return;
+        if (published === visible) return;
+        published = visible;
         Shiny.setInputValue('expression_summary_viewport_request', visible);
       }
-      // A quarter of the gate, or a quarter of the viewport for a gate taller
-      // than four viewports, which can never show a quarter of itself.
-      // The low thresholds make the observer report such tall gates.
-      var observer = new IntersectionObserver(function (entries) {
-        visible = entries.some(function (entry) {
-          var viewport = entry.rootBounds ? entry.rootBounds.height :
-            window.innerHeight;
-          return entry.isIntersecting && (entry.intersectionRatio >= 0.25 ||
-            entry.intersectionRect.height >= 0.25 * viewport);
-        });
-        publish();
-      }, {threshold: [0, 0.01, 0.025, 0.05, 0.1, 0.25]});
-      observer.observe(target);
-      if (window.jQuery) window.jQuery(document).on('shiny:connected', publish);
+      function schedule() {
+        if (schedule.pending) return;
+        schedule.pending = true;
+        var run = function () { schedule.pending = false; publish(); };
+        if (window.requestAnimationFrame) requestAnimationFrame(run);
+        else window.setTimeout(run, 50);
+      }
+      new IntersectionObserver(schedule, {threshold: 0}).observe(target);
+      // A gate that grows or shrinks in place changes how much of it counts.
+      if (window.ResizeObserver) new ResizeObserver(schedule).observe(target);
+      window.addEventListener('scroll', schedule, true);
+      window.addEventListener('resize', schedule, true);
+      // A reconnect starts a new session with no inputs: publish again.
+      if (window.jQuery) window.jQuery(document).on('shiny:connected', function () {
+        published = null; publish();
+      });
+      publish();
     })();
     "
   ))

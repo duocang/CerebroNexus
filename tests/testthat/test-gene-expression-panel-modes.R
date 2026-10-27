@@ -436,11 +436,13 @@ test_that("gene expression panels follow gene, selection, and display mode", {
 
   ## A gate taller than four viewports still counts as visible. Many groups or
   ## genes make the summaries this tall; filled with the gate, the viewport
-  ## shows a fifth of it, below the 0.25 ratio a short gate needs. The spacer
-  ## keeps the gate out of view at the top.
+  ## shows a fifth of it, below the 0.25 ratio a short gate needs. At 120
+  ## viewports no fixed ratio threshold above 0 can ever be reached, so the
+  ## visibility check must read the geometry. The spacer keeps the gate out of
+  ## view at the top.
   app$run_js(paste0(
     "(() => {const gate=document.getElementById('expression_summary_gate');",
-    "gate.style.minHeight=(5*window.innerHeight)+'px';",
+    "gate.style.minHeight=(120*window.innerHeight)+'px';",
     "const spacer=document.createElement('div');",
     "spacer.style.height=(2*window.innerHeight)+'px';",
     "gate.before(spacer);",
@@ -455,7 +457,18 @@ test_that("gene expression panels follow gene, selection, and display mode", {
     ),
     0.25
   )
-  viewer_show_expression_summary(app, timeout = 15000)
+  ## A jump with scrollIntoView() reports the full viewport in one step and
+  ## would also pass a fixed threshold; scroll in small steps, as a wheel
+  ## does, so only a geometry check sees the gate become visible.
+  app$wait_for_js(
+    paste0(
+      "(() => {document.querySelector('.content-wrapper').scrollBy(0, 100);",
+      "window.scrollBy(0, 100);",
+      "return Shiny.shinyapp.$inputValues",
+      ".expression_summary_viewport_request === true;})()"
+    ),
+    timeout = 30000
+  )
   app$run_js(
     "window.scrollTo(0,0);document.querySelector('.content-wrapper').scrollTop=0"
   )
