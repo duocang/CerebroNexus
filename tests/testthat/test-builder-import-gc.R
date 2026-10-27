@@ -60,15 +60,17 @@ test_that("session import collects only after failure", {
     list(message = "cancelled", call = NULL),
     class = c("interrupt", "condition")
   )
-  expect_condition(
+  ## Caught right here: an interrupt that reaches testthat stops the run.
+  caught <- tryCatch(
     builder_session_load(
       process,
       "cancelled",
       "unused.rds",
       .importer = function(...) stop(cancelled)
     ),
-    class = "interrupt"
+    interrupt = identity
   )
+  expect_s3_class(caught, "interrupt")
   expect_identical(calls, 1L)
 })
 

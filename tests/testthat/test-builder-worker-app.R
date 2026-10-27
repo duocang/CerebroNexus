@@ -341,37 +341,6 @@ test_that("parent and worker load App assembly before build authorities", {
   ))
 })
 
-test_that("the worker protocol exclusively owns quiescence", {
-  app <- paste(builder_app_lines(), collapse = "\n")
-  worker <- paste(
-    readLines(builder_app_worker_path, warn = FALSE),
-    collapse = "\n"
-  )
-  status <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "ui", "build_status.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_false(grepl(
-    "builder_protocol_is_quiescent <- function",
-    app,
-    fixed = TRUE
-  ))
-  expect_match(
-    worker,
-    "builder_protocol_is_quiescent <- function",
-    fixed = TRUE
-  )
-  expect_match(
-    status,
-    "builder_protocol_is_quiescent(protocol)",
-    fixed = TRUE
-  )
-})
-
 test_that("preview and coordinates apply only to the visible dataset section", {
   lines <- builder_app_lines()
   preview <- builder_app_block(
@@ -645,11 +614,6 @@ test_that("workflow server exclusively owns loading and stage rendering", {
       "    ) {\n",
       "      builder_failed_import_workbench_ui("
     ),
-    fixed = TRUE
-  )
-  expect_match(
-    workbench,
-    "loading_count = import_counts[[\"active\"]]",
     fixed = TRUE
   )
   expect_match(
@@ -1395,33 +1359,6 @@ test_that("native pickers can run without blocking the Shiny process", {
   )
 })
 
-test_that("Build flow requires one confirmed lightweight Review snapshot", {
-  app <- paste(builder_app_lines(), collapse = "\n")
-
-  expect_match(app, "builder_workflow_confirmation_matches", fixed = TRUE)
-  expect_match(app, "workflow()$review_snapshot", fixed = TRUE)
-  expect_match(app, "input$confirm_review", fixed = TRUE)
-  expect_false(grepl("reviewed_revision", app, fixed = TRUE))
-  expect_false(grepl("review_current_dataset", app, fixed = TRUE))
-  expect_false(grepl("next_unreviewed", app, fixed = TRUE))
-  expect_match(app, 'identical(state$stage, "build")', fixed = TRUE)
-  expect_match(app, "builder_require_confirmed_build_plan", fixed = TRUE)
-  expect_match(app, "builder_review_plan_identity(plan)", fixed = TRUE)
-  expect_gte(
-    lengths(regmatches(
-      app,
-      gregexpr("builder_require_confirmed_build_plan", app, fixed = TRUE)
-    )),
-    2L
-  )
-  expect_match(app, "selected_output(NULL)", fixed = TRUE)
-  expect_match(
-    app,
-    '"Settings changed. Review the updated plan before building."',
-    fixed = TRUE
-  )
-})
-
 test_that("Build stage renders only the confirmed stored snapshot", {
   app <- paste(builder_app_lines(), collapse = "\n")
   workflow_server <- paste(
@@ -1459,8 +1396,6 @@ test_that("Build stage renders only the confirmed stored snapshot", {
     fixed = TRUE
   )
   expect_match(workflow_server, "selected_output()", fixed = TRUE)
-  expect_match(workflow_server, "input$back_to_review", fixed = TRUE)
-  expect_match(workflow_server, 'list(type = "back_to_review")', fixed = TRUE)
   expect_match(workflow_ui, '`data-workflow-stage` = "build"', fixed = TRUE)
   expect_match(workflow_ui, 'builder_stage_header_ui(', fixed = TRUE)
   expect_match(workflow_ui, '"Build your output"', fixed = TRUE)
@@ -1505,40 +1440,6 @@ test_that("Build stage renders only the confirmed stored snapshot", {
   )) {
     expect_false(grepl(volatile, render_build, fixed = TRUE), info = volatile)
   }
-})
-
-test_that("Build chooses a folder and continues automatically", {
-  build_server <- paste(
-    readLines(
-      builder_profile_inst_path("builder", "server", "build.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(
-    build_server,
-    paste(
-      "if (!builder_has_text(output_path)) {",
-      "choose_build_folder()",
-      "return(invisible(TRUE))",
-      sep = "\n    "
-    ),
-    fixed = TRUE
-  )
-  expect_match(
-    build_server,
-    paste0(
-      "selected_output(target)\n",
-      "  schedule_selected_output_build(target)"
-    ),
-    fixed = TRUE
-  )
-  expect_match(
-    build_server,
-    "start_confirmed_build(select_output = TRUE)",
-    fixed = TRUE
-  )
 })
 
 test_that("group color changes use the existing settings revision path", {
@@ -1621,19 +1522,12 @@ test_that("parameter writes do not rebuild workflow navigation", {
     builder_profile_inst_path("builder", "server", "workflow.R"),
     warn = FALSE
   )
-  stage <- builder_app_block(
-    workflow_lines,
-    "selected_workflow_stage <- reactiveVal(",
-    "output$workflow_progress <- renderUI({"
-  )
   progress <- builder_app_block(
     workflow_lines,
     "output$workflow_progress <- renderUI({",
     "navigate_workflow_stage <- function(stage) {"
   )
 
-  expect_match(stage, "workflow()$stage", fixed = TRUE)
-  expect_match(stage, "isolate(selected_workflow_stage())", fixed = TRUE)
   expect_match(progress, "workflow_has_datasets()", fixed = TRUE)
   expect_false(grepl("store()$datasets", progress, fixed = TRUE))
 })

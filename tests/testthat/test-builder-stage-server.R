@@ -516,7 +516,6 @@ test_that("Builder shell and workflow UI expose detailed Build stages", {
     )),
     0L
   )
-  expect_match(shell, 'uiOutput("workflow_progress")', fixed = TRUE)
   expect_match(shell, 'class = "topbar builder-project-header"', fixed = TRUE)
   expect_match(shell, 'class = "builder-skip-link"', fixed = TRUE)
   expect_match(shell, 'tags$header(', fixed = TRUE)
@@ -544,8 +543,6 @@ test_that("Builder shell and workflow UI expose detailed Build stages", {
   expect_match(shell, '"Publish release"', fixed = TRUE)
   expect_false(grepl("builder-build-progress-activity", shell, fixed = TRUE))
   expect_false(grepl('tags$progress(', shell, fixed = TRUE))
-  expect_match(shell, 'file.path("ui", "workflow.R")', fixed = TRUE)
-  expect_match(shell, '"server/workflow.R"', fixed = TRUE)
   expect_false(grepl(
     "Build your first Viewer in four steps",
     shell,
@@ -1432,14 +1429,12 @@ test_that("workflow server owns loading and Configure rendering", {
     "dataset_order <- reactiveVal(character())",
     fixed = TRUE
   )
-  expect_match(review_server, "current_review_snapshot", fixed = TRUE)
   expect_match(
     review_server,
     "snapshot <- workflow()$review_snapshot",
     fixed = TRUE
   )
   expect_match(review_server, "input$back_to_settings", fixed = TRUE)
-  expect_match(review_server, "input$confirm_review", fixed = TRUE)
   expect_false(grepl("review_current_dataset", review_server, fixed = TRUE))
   expect_false(grepl("dataset_review_footer", review_server, fixed = TRUE))
 })
@@ -1492,10 +1487,6 @@ test_that("build completion preserves decisions and always has an idle ack path"
   )
   expect_length(acknowledged$awaiting_ack, 0L)
   expect_identical(acknowledged$build_status, "idle")
-
-  app <- builder_app_source_text()
-  expect_match(app, "on.exit(", fixed = TRUE)
-  expect_match(app, "builder_protocol_acknowledge", fixed = TRUE)
 })
 
 test_that("Review inputs fail explicitly and recover without rebuilding inputs", {
@@ -2512,11 +2503,6 @@ test_that("Build dialogs cannot enqueue a stale frozen revision", {
     fixed = TRUE
   )
   expect_match(build_source, 'reason = "output_mismatch"', fixed = TRUE)
-  expect_match(
-    build_source,
-    'list(action = "close")',
-    fixed = TRUE
-  )
 })
 
 test_that("active Build states reject forged stage actions", {

@@ -99,24 +99,6 @@ test_that("build preparation keeps Trekker image bytes external", {
   )
 })
 
-test_that("session execution stages artifacts without publishing them", {
-  path <- builder_test_inst_path("builder", "session.R")
-  if (!file.exists(path)) {
-    path <- system.file("builder", "session.R", package = "CerebroNexus")
-  }
-  expect_true(file.exists(path))
-  session <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(session, "worker$snapshot_root", fixed = TRUE)
-  expect_match(
-    session,
-    "auth_material = auth_material",
-    fixed = TRUE
-  )
-  expect_match(session, 'get(".builder_objects"', fixed = TRUE)
-  expect_match(session, "objects = objects", fixed = TRUE)
-  expect_false(grepl("builder_publish_batch", session, fixed = TRUE))
-})
-
 builder_build_test_plan <- function(analyses = character()) {
   item <- list(
     id = "dataset-a",

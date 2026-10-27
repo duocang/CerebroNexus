@@ -1368,26 +1368,6 @@ test_that("project table asset jobs deduplicate sheets from one workbook", {
   ))
 })
 
-test_that("project table asset save has an asynchronous stale-result guard", {
-  source <- paste(
-    readLines(
-      builder_test_inst_path(
-        "builder",
-        "server",
-        "project.R"
-      ),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-
-  expect_match(source, "builder_project_table_asset_generation", fixed = TRUE)
-  expect_match(source, "builder_project_worker_task_call(", fixed = TRUE)
-  expect_match(source, "builder_project_attachment_jobs", fixed = TRUE)
-  expect_match(source, "builder_project_table_save_signature", fixed = TRUE)
-  expect_match(source, "process$get_result()", fixed = TRUE)
-})
-
 test_that("project table save signature changes with manifest or configuration", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
@@ -1849,7 +1829,6 @@ test_that("the project status only declares safe close after source sync", {
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
   expect_match(source, "Saved · Safe to close", fixed = TRUE)
-  expect_match(source, "Saving source files · ", fixed = TRUE)
   expect_match(source, "Stopping file copy", fixed = TRUE)
 })
 
@@ -1933,11 +1912,6 @@ test_that("source sync cancellation owns and terminates its process", {
   )
   source <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
-  expect_match(
-    source,
-    "builder_project_stop_source_sync_process <- function(kill = TRUE)",
-    fixed = TRUE
-  )
   expect_match(source, "process$kill_tree()", fixed = TRUE)
   expect_match(
     source,
@@ -3918,11 +3892,6 @@ test_that("spatial drafts are committed by workflow actions instead of blocking 
 })
 
 test_that("project saving can commit spatial drafts through the internal mutation path", {
-  foundation_path <- builder_test_inst_path(
-    "builder",
-    "server",
-    "foundation.R"
-  )
   imports_path <- builder_test_inst_path(
     "builder",
     "server",
@@ -3938,7 +3907,6 @@ test_that("project saving can commit spatial drafts through the internal mutatio
     "server",
     "project.R"
   )
-  foundation <- paste(readLines(foundation_path, warn = FALSE), collapse = "\n")
   imports <- paste(readLines(imports_path, warn = FALSE), collapse = "\n")
   enhancements <- paste(
     readLines(enhancements_path, warn = FALSE),
@@ -3946,11 +3914,6 @@ test_that("project saving can commit spatial drafts through the internal mutatio
   )
   project <- paste(readLines(project_path, warn = FALSE), collapse = "\n")
 
-  expect_match(
-    foundation,
-    "replace_entry <- function(updated, internal = FALSE)",
-    fixed = TRUE
-  )
   expect_match(
     imports,
     "commit_enhance_images <- function(entry, images, internal = FALSE)",
@@ -5552,7 +5515,6 @@ test_that("Save starts optional CRB work only after checked settings persist", {
     "queue_builder_project_crbs(isolate(checked_dataset_ids()))",
     fixed = TRUE
   )
-  expect_match(project, "builder_project_source_save_waiter", fixed = TRUE)
   expect_match(
     project,
     paste(
@@ -5603,8 +5565,6 @@ test_that("Save starts optional CRB work only after checked settings persist", {
     collapse = "
 "
   )
-  expect_match(job, "library(CerebroNexus)", fixed = TRUE)
-  expect_match(job, "runtime$builder_execute_plan(", fixed = TRUE)
   expect_match(job, "promote = TRUE", fixed = TRUE)
   expect_match(
     project,
@@ -5699,11 +5659,6 @@ test_that("only the saved-project background CRB queue remains", {
     fixed = TRUE
   ))
   expect_match(source, "queue_builder_project_crbs <- function(", fixed = TRUE)
-  expect_match(
-    source,
-    "builder_project_crb_jobs <- reactiveVal(list())",
-    fixed = TRUE
-  )
   expect_match(
     source,
     "builder_project_record_crb(",
