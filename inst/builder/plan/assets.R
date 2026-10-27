@@ -344,9 +344,12 @@
   }
   nUMI <- settings$nUMI %||% entry$profile$nUMI
   nGene <- settings$nGene %||% entry$profile$nGene
+  ## "nUMI" and "nGene" are the CRB's own QC columns, filled from the chosen
+  ## nUMI/nGene source columns; source columns of those names are not
+  ## exported (.addExportMetaData()).
   additional_metadata <- setdiff(
     source_metadata,
-    c("cell_barcode", included_groups, cell_cycle, nUMI, nGene)
+    c("cell_barcode", "nUMI", "nGene", included_groups, cell_cycle, nUMI, nGene)
   )
   generated_metadata <- if ("percent_mt_ribo" %in% analyses) {
     c("percent_mt", "percent_ribo")
