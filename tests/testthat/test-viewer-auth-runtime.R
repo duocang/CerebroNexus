@@ -662,3 +662,73 @@ test_that("Viewer grants are written only into the application page", {
   )
   expect_identical(runtime$.viewer_auth_query_token(""), "")
 })
+
+test_that("failed sign-ins lock the account and the client with backoff", {
+  runtime <- viewer_auth_runtime_environment()
+  now <- 0
+  limiter <- runtime$.viewer_auth_limiter(clock = function() now)
+  calls <- 0L
+  checker <- function(user, password) {
+    calls <<- calls + 1L
+    list(result = identical(password, "right"), user_info = list(user = user))
+  }
+  check <- runtime$.viewer_auth_limited_checker(checker, limiter, "10.0.0.1")
+  for (i in 1:4) {
+    expect_false(check("alice", "wrong")$result)
+  }
+  expect_false(check("alice", "wrong")$result)
+  ## Fifth failure: 30 s wait; the right password is refused without a check.
+  before <- calls
+  expect_false(check("alice", "right")$result)
+  expect_identical(calls, before)
+  ## The same client is refused for another account as well.
+  expect_false(check("bob", "right")$result)
+  expect_identical(calls, before)
+  now <- 31
+  expect_false(check("alice", "wrong")$result)
+  ## Sixth failure: 60 s.
+  now <- 31 + 59
+  expect_false(check("alice", "right")$result)
+  now <- 31 + 61
+  expect_true(check("alice", "right")$result)
+  ## A success clears both keys.
+  expect_true(check("bob", "right")$result)
+  ## Attempts during a wait are refused without counting; each failure after
+  ## a wait doubles it, up to 15 minutes.
+  for (i in 1:12) {
+    check("carol", "wrong")
+    now <- now + 900
+  }
+  check("carol", "wrong")
+  now <- now + 899
+  expect_false(check("carol", "right")$result)
+  now <- now + 1
+  expect_true(check("carol", "right")$result)
+})
+
+test_that("the sign-in limiter is applied to the provider's checker", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  auth_state <- shiny::reactiveValues(user = NULL)
+  captured <- NULL
+  testthat::local_mocked_bindings(
+    secure_app = function(ui, ...) ui,
+    secure_server = function(check_credentials, ...) {
+      captured <<- check_credentials
+      auth_state
+    },
+    .package = "shinymanager"
+  )
+  fixture <- viewer_auth_runtime_app(NULL, auth_state)
+  app <- fixture$runtime$viewer_auth_apply(
+    shiny::fluidPage("viewer"),
+    function(input, output, session) NULL,
+    viewer_auth_runtime_config(),
+    fixture$root
+  )
+  shiny::testServer(app$server, {
+    for (i in 1:5) {
+      expect_false(captured("alice", "wrong-password")$result)
+    }
+    expect_false(captured("alice", "alice-login-password")$result)
+  })
+})
