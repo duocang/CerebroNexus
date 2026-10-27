@@ -1,0 +1,31 @@
+[00:54:52] mouse_brain_e18 / 10000 cells / embedded: reading
+[00:55:01] read done: 27998 x 10000, nnz 2.034e+07
+[00:55:03] exporting embedded
+[00:55:03] Start collecting data...
+[00:55:03] Adding expression data (embedded)...
+[00:55:03] Overview of Cerebro object:
+
+class: Cerebro
+exporter package version: 5.0.0
+experiment name: mouse_brain_e18_10000
+organism: mm10
+date of analysis: 
+date of export: 2026-10-15
+number of cells: 10,000
+number of genes: 27,998
+grouping variables (2): sample, cluster
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: 
+marker genes:
+enriched pathways:
+trajectories:
+extra material:
+Immune repertoire:
+HLA typing: none
+Spatial data:
+
+[00:55:03] Saving Cerebro object to: /home/wang/.cache/cerebronexus-benchmark/scratch/cerebro-bench.NLsggX/export/mouse_brain_e18_10000_embedded_r2/bench.crb
+[00:55:04] Done!
+[00:55:04] OK embedded: total 32.9 MB in 0.6s (peak R heap 1416 MB)

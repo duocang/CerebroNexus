@@ -1,0 +1,3 @@
+Warning: Converting to a dense matrix may use excessive memory
+This message is displayed once every 8 hours.
+[02:58:52] prepared human_pfc_hbcc / 10000 cells query plan in 8.4s

@@ -1,0 +1,3 @@
+Warning: Converting to a dense matrix may use excessive memory
+This message is displayed once every 8 hours.
+[00:43:04] prepared mouse_brain_e18 / 100000 cells query plan in 15.5s

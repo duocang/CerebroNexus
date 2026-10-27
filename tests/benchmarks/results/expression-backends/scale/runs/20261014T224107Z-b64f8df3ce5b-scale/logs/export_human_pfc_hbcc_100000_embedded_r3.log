@@ -1,0 +1,31 @@
+[12:25:45] human_pfc_hbcc / 100000 cells / embedded: reading
+[12:26:46] read done: 34176 x 100000, nnz 3.966e+08
+[12:27:05] exporting embedded
+[12:27:05] Start collecting data...
+[12:27:07] Adding expression data (embedded)...
+[12:27:07] Overview of Cerebro object:
+
+class: Cerebro
+exporter package version: 5.0.0
+experiment name: human_pfc_hbcc_100000
+organism: hg38
+date of analysis: 
+date of export: 2026-10-15
+number of cells: 100,000
+number of genes: 34,176
+grouping variables (2): sample, cluster
+cell cycle variables (0): 
+projections (1): umap
+trees (0): 
+most expressed genes: 
+marker genes:
+enriched pathways:
+trajectories:
+extra material:
+Immune repertoire:
+HLA typing: none
+Spatial data:
+
+[12:27:07] Saving Cerebro object to: /home/wang/.cache/cerebronexus-benchmark/scratch/cerebro-bench.NLsggX/export/human_pfc_hbcc_100000_embedded_r3/bench.crb
+[12:27:14] Done!
+[12:27:15] OK embedded: total 643.2 MB in 9.5s (peak R heap 20492 MB)

@@ -1,0 +1,4 @@
+[21:48:19] probing mouse_brain_e18
+[21:48:20]   1,306,127 cells x 27,998 genes, nnz 2.6248e+09 (2010/cell), full dgCMatrix 29.3 GB -- EXCEEDS the 32-bit index limit
+[21:48:20] probing human_pfc_hbcc
+[21:48:21]   1,486,324 cells x 34,176 genes, nnz 6.1117e+09 (4112/cell), full dgCMatrix 68.3 GB -- EXCEEDS the 32-bit index limit
