@@ -11,6 +11,14 @@ viewer_auth_runtime_environment <- function() {
   runtime
 }
 
+## The grant the provider's application page would carry for this session
+## (test sessions are opened without a URL token).
+viewer_auth_runtime_grant <- function(app, session) {
+  key <- app$grants$issue("")
+  do.call(session$setInputs, setNames(list(key), ".cerebro_auth_grant"))
+  invisible(key)
+}
+
 viewer_auth_runtime_config <- function() {
   list(
     credentials_path = "private-data/auth/credentials.sqlite",
@@ -372,6 +380,7 @@ test_that("Viewer starts after server-authoritative authentication", {
 
   expect_identical(attr(app$ui, "viewer_auth_secured"), TRUE)
   shiny::testServer(app$server, {
+    viewer_auth_runtime_grant(app, session)
     session$flushReact()
     expect_true(is.function(captured_checker))
     expect_true(captured_checker("alice", "alice-login-password")$result)
@@ -445,6 +454,7 @@ test_that("Viewer keeps account management outside the runtime", {
   expect_null(token_store$get_sql_config_db())
 
   shiny::testServer(app$server, {
+    viewer_auth_runtime_grant(app, session)
     expect_true(is.function(captured_checker))
     expect_true(captured_checker("alice", "alice-login-password")$result)
     expect_true(captured_checker("bob", "bob-login-password")$result)
@@ -491,6 +501,7 @@ test_that("Viewer session closes when the authenticated user changes", {
   )
 
   shiny::testServer(app$server, {
+    viewer_auth_runtime_grant(app, session)
     session$setInputs(shinymanager_where = "application")
     auth_state$user <- "alice"
     session$flushReact()
@@ -539,6 +550,7 @@ test_that("Viewer session closes when authentication times out", {
   )
 
   shiny::testServer(app$server, {
+    viewer_auth_runtime_grant(app, session)
     session$setInputs(shinymanager_where = "application")
     auth_state$user <- "alice"
     session$flushReact()
@@ -548,4 +560,105 @@ test_that("Viewer session closes when authentication times out", {
     session$flushReact()
     expect_true(session$isClosed())
   })
+})
+
+viewer_auth_runtime_app <- function(
+  viewer_server,
+  auth_state,
+  users = "alice"
+) {
+  runtime <- viewer_auth_runtime_environment()
+  root <- withr::local_tempdir(.local_envir = parent.frame())
+  database <- file.path(root, "private-data", "auth", "credentials.sqlite")
+  dir.create(dirname(database), recursive = TRUE)
+  viewer_auth_runtime_brand_assets(root)
+  passphrase <- "runtime test passphrase"
+  shinymanager::create_db(
+    credentials_data = data.frame(
+      user = users,
+      password = paste0(users, "-login-password"),
+      stringsAsFactors = FALSE
+    ),
+    sqlite_path = database,
+    passphrase = passphrase
+  )
+  withr::local_envvar(
+    CEREBRO_AUTH_TEST_KEY = passphrase,
+    .local_envir = parent.frame()
+  )
+  list(runtime = runtime, root = root)
+}
+
+test_that("Viewer does not start for a session without the page's grant", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  auth_state <- shiny::reactiveValues(user = NULL)
+  testthat::local_mocked_bindings(
+    secure_app = function(ui, ...) ui,
+    secure_server = function(...) auth_state,
+    .package = "shinymanager"
+  )
+  fixture <- viewer_auth_runtime_app(NULL, auth_state)
+  starts <- 0L
+  app <- fixture$runtime$viewer_auth_apply(
+    shiny::fluidPage("viewer"),
+    function(input, output, session) starts <<- starts + 1L,
+    viewer_auth_runtime_config(),
+    fixture$root
+  )
+  ## A replayed token: the provider names the user, but the session holds
+  ## no grant, a made-up one, or one issued for another token.
+  shiny::testServer(app$server, {
+    auth_state$user <- "alice"
+    session$flushReact()
+    expect_identical(starts, 0L)
+    do.call(
+      session$setInputs,
+      setNames(list(strrep("a", 64)), ".cerebro_auth_grant")
+    )
+    session$flushReact()
+    expect_identical(starts, 0L)
+  })
+  shiny::testServer(app$server, {
+    key <- app$grants$issue("token-of-another-session")
+    do.call(session$setInputs, setNames(list(key), ".cerebro_auth_grant"))
+    auth_state$user <- "alice"
+    session$flushReact()
+    expect_identical(starts, 0L)
+  })
+  ## A grant is redeemed once.
+  key <- app$grants$issue("")
+  shiny::testServer(app$server, {
+    do.call(session$setInputs, setNames(list(key), ".cerebro_auth_grant"))
+    auth_state$user <- "alice"
+    session$flushReact()
+    expect_identical(starts, 1L)
+  })
+  shiny::testServer(app$server, {
+    do.call(session$setInputs, setNames(list(key), ".cerebro_auth_grant"))
+    auth_state$user <- "alice"
+    session$flushReact()
+    expect_identical(starts, 1L)
+  })
+})
+
+test_that("Viewer grants are written only into the application page", {
+  skip_if_not_installed("shinymanager", minimum_version = "1.1.0")
+  runtime <- viewer_auth_runtime_environment()
+  grants <- runtime$.viewer_auth_grants()
+  key <- grants$issue("t1")
+  expect_match(key, "^[0-9a-f]{64}$")
+  expect_false(grants$redeem(key, "t2"))
+  expect_false(grants$redeem(key, "t1"))
+  key <- grants$issue("t1")
+  expect_true(grants$redeem(key, "t1"))
+  now <- 1000
+  timed <- runtime$.viewer_auth_grants(clock = function() now)
+  key <- timed$issue("t1")
+  now <- now + runtime$.viewer_auth_grant_seconds + 1
+  expect_false(timed$redeem(key, "t1"))
+  expect_identical(
+    runtime$.viewer_auth_query_token("?token=%22abc%22&language=%22en%22"),
+    "abc"
+  )
+  expect_identical(runtime$.viewer_auth_query_token(""), "")
 })

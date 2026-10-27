@@ -211,6 +211,65 @@
   shiny::tagList(query$allTags()$children)
 }
 
+## After sign-in the provider puts its login token in the page URL, and its
+## server accepts that token from any session that presents it. The Viewer
+## therefore starts only in the session that also returns the one-time grant
+## written into the one page the provider rendered for the token's first use.
+.viewer_auth_grant_seconds <- 120
+
+.viewer_auth_query_token <- function(query) {
+  token <- shiny::parseQueryString(query %||% "")$token
+  if (!is.character(token) || length(token) != 1L || is.na(token)) {
+    return("")
+  }
+  gsub("\"", "", token, fixed = TRUE)
+}
+
+.viewer_auth_grants <- function(clock = function() as.numeric(Sys.time())) {
+  state <- new.env(parent = emptyenv())
+  list(
+    issue = function(token) {
+      for (old in ls(state)) {
+        if (get(old, envir = state)$expires < clock()) {
+          rm(list = old, envir = state)
+        }
+      }
+      key <- paste(as.character(openssl::rand_bytes(32L)), collapse = "")
+      assign(
+        key,
+        list(token = token, expires = clock() + .viewer_auth_grant_seconds),
+        envir = state
+      )
+      key
+    },
+    redeem = function(key, token) {
+      if (
+        !is.character(key) ||
+          length(key) != 1L ||
+          is.na(key) ||
+          !grepl("^[0-9a-f]{64}$", key) ||
+          !exists(key, envir = state, inherits = FALSE)
+      ) {
+        return(FALSE)
+      }
+      grant <- get(key, envir = state)
+      rm(list = key, envir = state)
+      grant$expires >= clock() && identical(grant$token, token)
+    }
+  )
+}
+
+.viewer_auth_grant_tag <- function(key) {
+  shiny::tags$script(shiny::HTML(paste0(
+    "(function(){var k='",
+    key,
+    "';function send(){",
+    "Shiny.setInputValue('.cerebro_auth_grant',k,{priority:'event'});}",
+    "if(window.Shiny&&Shiny.shinyapp&&Shiny.shinyapp.isConnected()){send();}",
+    "else{$(document).one('shiny:connected',send);}})();"
+  )))
+}
+
 viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
   if (is.null(config)) {
     return(list(ui = ui, server = server))
@@ -293,12 +352,29 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
     )
   )
 
+  grants <- .viewer_auth_grants()
+
   secured_server <- function(input, output, session) {
+    ## The token this session was opened with, read before the provider
+    ## clears it from the address bar.
+    session_token <- .viewer_auth_query_token(
+      shiny::isolate(session$clientData$url_search)
+    )
     auth <- shinymanager::secure_server(
       check_credentials = checker,
       timeout = config$timeout_minutes,
       keep_token = FALSE,
       session = session
+    )
+    granted <- shiny::reactiveVal(FALSE)
+    shiny::observeEvent(
+      input$.cerebro_auth_grant,
+      {
+        if (!granted()) {
+          granted(grants$redeem(input$.cerebro_auth_grant, session_token))
+        }
+      },
+      once = TRUE
     )
     started <- shiny::reactiveVal(FALSE)
     revoked <- shiny::reactiveVal(FALSE)
@@ -325,7 +401,7 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
         length(user) == 1L &&
         !is.na(user) &&
         nzchar(user)
-      if (authorized && !started()) {
+      if (authorized && granted() && !started()) {
         started(TRUE)
         subject(user)
         last_activity(now_ms())
@@ -378,12 +454,25 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
     tags_top = brand$top,
     tags_bottom = brand$bottom
   )
+  ## The provider renders the application only for a token's first use; that
+  ## page alone carries the grant.
+  grant_ui <- function(request, rendered) {
+    token <- .viewer_auth_query_token(request$QUERY_STRING)
+    query <- htmltools::tagQuery(shiny::tags$div(rendered))
+    if (!nzchar(token) || length(query$find("#auth-auth-mod")$selectedTags())) {
+      return(rendered)
+    }
+    shiny::tagList(rendered, .viewer_auth_grant_tag(grants$issue(token)))
+  }
   list(
     ui = if (is.function(secured_ui)) {
-      function(request) .viewer_auth_present(secured_ui(request))
+      function(request) {
+        .viewer_auth_present(grant_ui(request, secured_ui(request)))
+      }
     } else {
       secured_ui
     },
-    server = compiler::cmpfun(secured_server)
+    server = compiler::cmpfun(secured_server),
+    grants = grants
   )
 }
