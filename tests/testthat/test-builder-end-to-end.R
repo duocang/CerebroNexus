@@ -989,3 +989,62 @@ test_that("the 10 valid external-image artifact combinations build and relocate"
     expect_false(any(browser_checked))
   }
 })
+
+test_that("default settings build a source with its own nUMI and nGene columns", {
+  ## pbmc_SCE.rds keeps nUMI/nGene in colData; its Seurat conversion adds
+  ## nCount_RNA/nFeature_RNA, which the defaults choose. The CRB's nUMI/nGene
+  ## must hold the chosen columns, and the plan must expect exactly the
+  ## exported metadata.
+  root <- withr::local_tempdir()
+  path <- builder_test_inst_path("extdata", "examples", "pbmc_SCE.rds")
+  inspected <- builder_adapter_inspect(builder_seurat_file_adapter(path))
+  object <- inspected$object
+  expect_true(all(
+    c("nUMI", "nGene", "nCount_RNA", "nFeature_RNA") %in%
+      colnames(object@meta.data)
+  ))
+  ## As the import handler (server/imports.R) sets a new dataset up.
+  settings <- builder_default_settings(
+    inspected$legacy_profile,
+    "PBMC SCE",
+    dataset_profile = inspected$profile
+  )
+  metadata <- builder_recommend_metadata(inspected$profile)
+  settings$recommendations <- list(metadata = metadata)
+  settings$metadata_policy <- metadata
+  settings$expression_backend <- "embedded"
+  expect_identical(
+    c(settings$nUMI, settings$nGene),
+    c("nCount_RNA", "nFeature_RNA")
+  )
+  snapshot <- builder_snapshot_seurat(
+    object,
+    file.path(root, "snapshot"),
+    available_bytes = 2^40
+  )
+  entry <- list(
+    id = "pbmc_sce",
+    source_id = "pbmc_sce",
+    output_id = "pbmc_sce",
+    path = path,
+    filename = basename(path),
+    source_origin = "upload",
+    format = inspected$format,
+    profile = inspected$legacy_profile,
+    dataset_profile = inspected$profile,
+    snapshot = snapshot,
+    revision = 1L,
+    levels = inspected$levels %||% list(),
+    settings = settings
+  )
+  plan <- builder_freeze_plan(list(entry), file.path(root, "release"))
+  expect_null(plan$error)
+  stage <- file.path(root, "stage")
+  dir.create(stage)
+  result <- builder_execute_plan(plan, stage, list(pbmc_sce = snapshot))
+  expect_identical(result$state, "success", info = result$error %||% "")
+  meta <- qs2::qs_read(result$built[[1L]])$getMetaData()
+  expect_false(any(c("nUMI.1", "nGene.1") %in% colnames(meta)))
+  expect_equal(meta$nUMI, object@meta.data[meta$cell_barcode, "nCount_RNA"])
+  expect_equal(meta$nGene, object@meta.data[meta$cell_barcode, "nFeature_RNA"])
+})
