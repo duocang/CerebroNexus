@@ -211,6 +211,97 @@
   shiny::tagList(query$allTags()$children)
 }
 
+## Failed sign-ins, counted per account and per client address. From the
+## fifth consecutive failure of a key, that key waits 30 s, doubling with each
+## further failure up to 15 min; while it waits the password is not checked.
+## A success clears the account and the client.
+.viewer_auth_limit_free <- 4L
+.viewer_auth_limit_base_seconds <- 30
+.viewer_auth_limit_max_seconds <- 900
+
+.viewer_auth_limiter <- function(clock = function() as.numeric(Sys.time())) {
+  state <- new.env(parent = emptyenv())
+  entry <- function(key) {
+    value <- get0(key, envir = state, inherits = FALSE)
+    if (
+      is.null(value) || clock() - value$last > .viewer_auth_limit_max_seconds
+    ) {
+      list(failures = 0L, until = -Inf, last = -Inf)
+    } else {
+      value
+    }
+  }
+  list(
+    waiting = function(keys) {
+      any(vapply(keys, function(key) clock() < entry(key)$until, logical(1)))
+    },
+    failure = function(keys) {
+      for (key in keys) {
+        value <- entry(key)
+        value$failures <- value$failures + 1L
+        value$last <- clock()
+        excess <- value$failures - .viewer_auth_limit_free
+        if (excess > 0L) {
+          value$until <- clock() +
+            min(
+              .viewer_auth_limit_max_seconds,
+              .viewer_auth_limit_base_seconds * 2^(excess - 1L)
+            )
+        }
+        assign(key, value, envir = state)
+      }
+      invisible(NULL)
+    },
+    success = function(keys) {
+      present <- keys[vapply(
+        keys,
+        exists,
+        logical(1),
+        envir = state,
+        inherits = FALSE
+      )]
+      if (length(present)) {
+        rm(list = present, envir = state)
+      }
+      invisible(NULL)
+    }
+  )
+}
+
+.viewer_auth_limited_checker <- function(checker, limiter, client) {
+  function(user, password) {
+    account <- tolower(trimws(paste(as.character(user), collapse = "")))
+    keys <- c(paste0("account:", account), paste0("client:", client))
+    if (limiter$waiting(keys)) {
+      return(list(
+        result = FALSE,
+        expired = FALSE,
+        authorized = FALSE,
+        user_info = NULL
+      ))
+    }
+    result <- checker(user, password)
+    if (isTRUE(result$result)) {
+      limiter$success(keys)
+    } else {
+      limiter$failure(keys)
+    }
+    result
+  }
+}
+
+.viewer_auth_client <- function(session) {
+  address <- tryCatch(
+    suppressWarnings(as.character(session$request$REMOTE_ADDR)),
+    error = function(condition) character()
+  )
+  if (length(address) == 1L && !is.na(address) && nzchar(address)) {
+    address
+  } else {
+    "unknown"
+  }
+}
+
 ## After sign-in the provider puts its login token in the page URL, and its
 ## server accepts that token from any session that presents it. The Viewer
 ## therefore starts only in the session that also returns the one-time grant
@@ -352,6 +443,7 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
     )
   )
 
+  limiter <- .viewer_auth_limiter()
   grants <- .viewer_auth_grants()
 
   secured_server <- function(input, output, session) {
@@ -361,7 +453,11 @@ viewer_auth_apply <- function(ui, server, config, cerebro_root = ".") {
       shiny::isolate(session$clientData$url_search)
     )
     auth <- shinymanager::secure_server(
-      check_credentials = checker,
+      check_credentials = .viewer_auth_limited_checker(
+        checker,
+        limiter,
+        .viewer_auth_client(session)
+      ),
       timeout = config$timeout_minutes,
       keep_token = FALSE,
       session = session
