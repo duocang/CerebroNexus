@@ -33,6 +33,7 @@
   and a page whose controls render late (Spatial) is refitted. A resize at the
   bottom of a scrolled page no longer grows the plots, and a last, shorter row
   of plots starts at the left edge.
+- The Data info bars take the colour of their category, as on the other pages.
 
 # CerebroNexus 5.3.1
 

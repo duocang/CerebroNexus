@@ -183,3 +183,44 @@ test_that("category bars escape labels and format counts", {
   expect_match(html, "<small>38.3%</small>", fixed = TRUE)
   expect_false(grepl("dataset-note", html, fixed = TRUE))
 })
+
+test_that("category bars take the colour of their category", {
+  summary <- list(
+    counts = c(T = 3, B = 2, NK = 1),
+    total = 6,
+    missing = 0
+  )
+  html <- as.character(overview_helpers$viewerOverviewBars(
+    summary,
+    colors = c(B = "#2f6fd6", T = "#ef553b")
+  ))
+  expect_match(html, 'style="width:50%;background:#ef553b"', fixed = TRUE)
+  expect_match(html, 'style="width:33.33333%;background:#2f6fd6"', fixed = TRUE)
+  ## A category without a colour keeps the stylesheet's accent.
+  expect_match(html, 'style="width:16.66667%"', fixed = TRUE)
+  ## No colours at all renders exactly as before.
+  plain <- as.character(overview_helpers$viewerOverviewBars(summary))
+  expect_false(grepl("background", plain, fixed = TRUE))
+})
+
+test_that("a colour that is not plain colour syntax never reaches the page", {
+  summary <- list(counts = c(T = 1, B = 1), total = 2, missing = 0)
+  html <- as.character(overview_helpers$viewerOverviewBars(
+    summary,
+    colors = c(T = 'red;"><script>x</script>', B = "rgb(10, 20, 30)")
+  ))
+  expect_false(grepl("<script>", html, fixed = TRUE))
+  expect_false(grepl("red", html, fixed = TRUE))
+  expect_match(html, "background:rgb(10, 20, 30)", fixed = TRUE)
+})
+
+test_that("both composition panels leave room for coloured bars", {
+  result <- overview_helpers$viewerDatasetOverview(overview_fixture())
+  html <- as.character(overview_helpers$viewerOverviewUI(list(
+    label = "dataset",
+    cells = 4,
+    overview = result
+  )))
+  expect_match(html, 'id="load_data_sample_plot"', fixed = TRUE)
+  expect_match(html, 'id="load_data_annotation_plot"', fixed = TRUE)
+})

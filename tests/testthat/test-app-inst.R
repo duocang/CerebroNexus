@@ -524,6 +524,25 @@ test_that("Spatial panels refit when the page above them grows", {
   expect_lt(app$get_js(paste0(pane, ".getBoundingClientRect().height")), before)
 })
 
+test_that("Data info bars carry the colour of their category", {
+  app <- shared_app()
+  wait_for_input(app, "load_data_annotation", timeout = 30000)
+  ## The bars start in the accent colour and take their category colours once
+  ## the data set is loaded, the same ones the other pages draw.
+  bar_colours <- paste0(
+    "Array.from(document.querySelectorAll(",
+    "'#load_data_annotation_plot .dataset-bar-track > span'))",
+    ".map(el => el.style.background)"
+  )
+  app$wait_for_js(
+    paste0("new Set(", bar_colours, ").size > 1"),
+    timeout = 30000
+  )
+  colours <- app$get_js(bar_colours)
+  expect_gt(length(unique(unlist(colours))), 1L)
+  expect_false(any(grepl("239, 148, 78", unlist(colours), fixed = TRUE)))
+})
+
 test_that("{shinytest2} recording: main", {
   app <- shared_app()
 
