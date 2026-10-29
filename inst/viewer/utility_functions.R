@@ -1219,6 +1219,33 @@ viewerH5ExpressionRows <- function(data_set, cells, genes) {
   if (is.null(cells)) values else lapply(values, `[`, as.integer(cells))
 }
 
+## Per-cell mean of several genes from the H5 rows, one gene at a time, so a
+## large gene set never holds every row and the TENxMatrix (HDF5Array plus
+## every cell name: seconds on a million cells) stays unattached. NULL when
+## that does not apply or the file lacks a gene.
+viewerH5ExpressionMean <- function(data_set, cells, genes) {
+  rows <- attr(data_set, "cerebro_h5_rows", exact = TRUE)
+  if (
+    !is.list(rows) ||
+      !(is.null(cells) || is.numeric(cells)) ||
+      !length(genes)
+  ) {
+    return(NULL)
+  }
+  total <- NULL
+  for (gene in genes) {
+    value <- rows$row(gene)
+    if (is.null(value)) {
+      return(NULL)
+    }
+    if (!is.null(cells)) {
+      value <- value[as.integer(cells)]
+    }
+    total <- if (is.null(total)) value else total + value
+  }
+  total / length(genes)
+}
+
 viewerExpressionRow <- function(data_set, cells, gene) {
   direct <- viewerH5ExpressionRows(data_set, cells, gene)
   if (!is.null(direct) && length(direct)) {

@@ -9955,7 +9955,10 @@
         data.color.length !== D.n) return false;
     // Writing values by position equals the Map-based alignment of the render
     // only when every key is unique; the index is cached from that render.
-    if (!pendingIds && singleIndex().size !== D.n) return false;
+    // Every canonical cell in order (rows 'all') is unique by construction:
+    // building the barcode Map of a million cells only to count it costs more
+    // than the recolour itself.
+    if (!pendingIds && D.rows !== 'all' && singleIndex().size !== D.n) return false;
     var fieldName = 'single:' + id + ':0', mode;
     if (rgb) {
       // Flat single-view cells and coordinates were built in selection_key
