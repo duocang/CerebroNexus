@@ -15,6 +15,7 @@ test_that("selected table does not require lazy appearance controls", {
     .package = "DT"
   )
   scope$input <- list()
+  scope$viewerClientSelection <- function(...) FALSE
   scope$trajectory_selection_ok <- function() TRUE
   scope$trajectory_projection_selected_cells <- function() {
     stop("selection reached")

@@ -182,3 +182,37 @@ test_that("trajectory projection fits the viewport with selectors in the top bar
     ").click()"
   ))
 })
+
+test_that("opening the Trajectory settings sends no new frame", {
+  app <- shared_app()
+  app$run_js(paste0(
+    "window.trajectoryTokens=[];",
+    "window.addEventListener('cerebro:cell-view-ready',function(e){",
+    "var d=e.detail||{};if(d.id==='trajectory_projection'&&d.painted)",
+    "trajectoryTokens.push(Number(d.renderToken));});"
+  ))
+  app$click(selector = 'a[href="#shiny-tab-trajectory"]')
+  app$wait_for_js(
+    paste0(
+      "(function(){var c=document.querySelector(",
+      "'#trajectory_projection_cell_view_host .cv-canvas-wrap > canvas:not(.cv-mini)');",
+      "return !!c && Number(c.dataset.pointCount) > 0;})()"
+    ),
+    timeout = 60000
+  )
+  app$wait_for_idle(duration = 1500, timeout = 60000)
+  drawn <- max(unlist(app$get_js("window.trajectoryTokens")), 0)
+  app$click(
+    selector = '[data-cerebro-drawer-target="trajectory_projection_more"]'
+  )
+  ## The drawer's group filters bind with every level: no filter.
+  app$wait_for_js(
+    "document.querySelector('#trajectory_projection_group_filters_UI .cv-filt') !== null",
+    timeout = 30000
+  )
+  app$wait_for_idle(duration = 1500, timeout = 60000)
+  expect_lte(max(c(unlist(app$get_js("window.trajectoryTokens")), 0)), drawn)
+  app$click(
+    selector = '[data-cerebro-drawer-target="trajectory_projection_more"]'
+  )
+})

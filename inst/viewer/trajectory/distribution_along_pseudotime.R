@@ -77,7 +77,7 @@ output[["trajectory_distribution_along_pseudotime_UI"]] <- renderUI({
             getVariableToCompareChoices()
           )
         ),
-        plotly::plotlyOutput("trajectory_distribution_along_pseudotime_plot")
+        cerebroChartOutput("trajectory_distribution_along_pseudotime_plot")
       )
     )
   )
@@ -89,18 +89,33 @@ output[["trajectory_distribution_along_pseudotime_UI"]] <- renderUI({
 
 output[[
   "trajectory_distribution_along_pseudotime_plot"
-]] <- plotly::renderPlotly({
+]] <- renderCerebroChart({
   ## don't do anything before these inputs are selected
   req(
     input[["trajectory_selected_method"]],
     input[["trajectory_selected_name"]],
     input[["trajectory_distribution_along_pseudotime_select_variable"]],
-    input[["trajectory_distribution_along_pseudotime_opacity"]],
     !is.null(input[[
       "trajectory_distribution_along_pseudotime_show_trend_line"
     ]]),
-    input[["trajectory_distribution_along_pseudotime_trend_line_bandwidth"]],
-    input[["trajectory_distribution_along_pseudotime_trend_line_width"]]
+    input[["trajectory_distribution_along_pseudotime_trend_line_bandwidth"]]
+  )
+  ## Density opacity, trend width and point size/opacity are applied in the
+  ## browser as they change (`restyle`, www/cerebro-charts.js); a rebuild picks
+  ## up their values.
+  look <- isolate(list(
+    opacity = input[["trajectory_distribution_along_pseudotime_opacity"]],
+    trend_width = input[[
+      "trajectory_distribution_along_pseudotime_trend_line_width"
+    ]],
+    point_size = input[["trajectory_point_size"]],
+    point_opacity = input[["trajectory_point_opacity"]]
+  ))
+  restyle <- list(
+    trajectory_distribution_along_pseudotime_opacity = "fill_opacity",
+    trajectory_distribution_along_pseudotime_trend_line_width = "trend_width",
+    trajectory_point_size = "size",
+    trajectory_point_opacity = "opacity"
   )
 
   withProgress(message = "Generating distribution plot...", value = 0, {
@@ -119,16 +134,6 @@ output[[
     )
 
     ## ... cells are colored by a categorical variable; the Y axis will show the
-    ## Pick scatter trace type once up-front; replaces the former
-    ## plotly::toWebGL() post-processing at the bottom of the render block and
-    ## applies to both the categorical density-curve branch (lines + fill) and
-    ## the numeric-variable scatter/trend-line branch below.
-    scatter_type <- if (isTRUE(preferences$use_webgl)) {
-      "scattergl"
-    } else {
-      "scatter"
-    }
-
     ##     density of the group along pseudotime
     if (
       is.factor(cells_df[[color_variable]]) ||
@@ -144,177 +149,60 @@ output[[
         group_levels <- unique(cells_df[[color_variable]])
       }
 
-      ## create empty plot
-      plot <- plotly::plot_ly()
-
       incProgress(0.4, detail = "Calculating densities...")
 
-      ## add trace to plot for every group level
+      ## one density over pseudotime for every group level with 2+ cells
+      series <- list()
       for (i in seq_along(group_levels)) {
-        ## get name of current group level
-        current_group <- group_levels[i]
-
-        ## filter cells for those that are in current group
-        temp_data <- cells_df[
-          which(cells_df[[color_variable]] == current_group),
+        pseudotime <- cells_df[["pseudotime"]][
+          which(cells_df[[color_variable]] == group_levels[i])
         ]
-
-        ## only proceed if at least 2 cells are in this subgroup
-        if (nrow(temp_data) > 1) {
-          ## calculate density over pseudotime
-          temp_density <- stats::density(
-            temp_data[["pseudotime"]],
-            kernel = "gaussian"
+        if (length(pseudotime) > 1) {
+          density <- stats::density(pseudotime, kernel = "gaussian")
+          series[[length(series) + 1L]] <- list(
+            name = group_levels[i],
+            color = colors_for_groups[[i]],
+            x = density$x,
+            y = density$y
           )
-
-          ## add alpha value to hex colors
-          temp_color <- grDevices::col2rgb(colors_for_groups[i])
-          temp_color <- grDevices::rgb(
-            red = temp_color[1],
-            green = temp_color[2],
-            blue = temp_color[3],
-            alpha = input[[
-              "trajectory_distribution_along_pseudotime_opacity"
-            ]] /
-              1 *
-              255,
-            maxColorValue = 255
-          )
-
-          ## add trace to plot
-          plot <- plot %>%
-            plotly::add_trace(
-              x = temp_density$x,
-              y = temp_density$y,
-              name = current_group,
-              type = scatter_type,
-              mode = 'lines',
-              fill = 'tozeroy',
-              fillcolor = temp_color,
-              line = list(
-                width = 0.5,
-                color = colors_for_groups[i]
-              ),
-              hoverinfo = 'text',
-              text = paste0(
-                "<b>State ",
-                current_group,
-                "</b><br>",
-                "<b>Pseudotime</b>: ",
-                formatC(
-                  temp_density$x,
-                  format = "f",
-                  big.mark = ",",
-                  digits = 2
-                ),
-                "<br>",
-                "<b>Density</b>: ",
-                formatC(
-                  temp_density$y,
-                  format = "f",
-                  big.mark = ",",
-                  digits = 2
-                ),
-                "<br>"
-              )
-            )
         }
       }
 
-      ## add layout to plot
-      plot <- plot %>%
-        plotly::layout(
-          xaxis = cerebro_plotly_axis(
-            title = "Pseudotime",
-            range = range(cells_df[["pseudotime"]])
-          ),
-          yaxis = cerebro_plotly_axis(title = "Density"),
-          hovermode = "compare",
-          hoverlabel = cerebro_plotly_hoverlabel(),
-          plot_bgcolor = cerebro_plotly_theme()$transparent,
-          paper_bgcolor = cerebro_plotly_theme()$transparent
-        )
+      chart <- cerebroLineChartData(
+        series,
+        x_title = "Pseudotime",
+        y_title = "Density",
+        x_range = range(cells_df[["pseudotime"]]),
+        fill_opacity = look$opacity %||% 0.5,
+        legend_title = color_variable
+      )
 
       ## ... cells should be colored by a numeric variable; instead of showing the
       ##     density by pseudotime, the numeric variable will be shown directly on
       ##     the Y axis
     } else {
-      ## get colors for states
-      colors_for_groups <- assignColorsToGroups(
-        trajectory_data[["meta"]],
-        "state"
-      )
-
       incProgress(0.4, detail = "Preparing scatter plot...")
 
-      ## prepare hover info
-      hover_info <- paste0(
-        "<b>Cell</b>: ",
-        cells_df[["cell_barcode"]],
-        if ("nUMI" %in% colnames(cells_df)) {
-          paste0("<br><b>Transcripts</b>: ", cells_df[["nUMI"]])
-        } else {
-          ""
-        },
-        if ("nGene" %in% colnames(cells_df)) {
-          paste0("<br><b>Expressed genes</b>: ", cells_df[["nGene"]])
-        } else {
-          ""
-        }
-      )
+      ## Per-cell names only for small trajectories: the points themselves
+      ## travel as binary columns, the names would not.
+      hover <- list()
+      if ("cell_barcode" %in% colnames(cells_df) && nrow(cells_df) <= 50000L) {
+        hover[["Cell"]] <- as.character(cells_df[["cell_barcode"]])
+      }
+      if ("nUMI" %in% colnames(cells_df)) {
+        hover[["Transcripts"]] <- cells_df[["nUMI"]]
+      }
+      if ("nGene" %in% colnames(cells_df)) {
+        hover[["Expressed genes"]] <- cells_df[["nGene"]]
+      }
 
-      ## add expression levels to hover info
-      hover_info <- paste0(
-        hover_info,
-        "<br>",
-        "<b>Pseudotime</b>: ",
-        formatC(
-          cells_df[["pseudotime"]],
-          format = "f",
-          big.mark = ",",
-          digits = 2
-        ),
-        "<br>",
-        "<b>State</b>: ",
-        cells_df[["state"]],
-        "<br>"
-      )
-
-      ## prepare plot
-      plot <- plotly::plot_ly() %>%
-        plotly::add_trace(
-          data = cells_df,
-          x = ~pseudotime,
-          y = ~ cells_df[[color_variable]],
-          type = scatter_type,
-          mode = "markers",
-          color = ~state,
-          colors = colors_for_groups,
-          marker = list(
-            opacity = input[["trajectory_point_opacity"]],
-            line = list(
-              color = cerebro_plotly_theme()$axis,
-              width = 1
-            ),
-            size = input[["trajectory_point_size"]]
-          ),
-          hoverinfo = "text",
-          text = ~hover_info
-        ) %>%
-        plotly::layout(
-          xaxis = cerebro_plotly_axis(title = "Pseudotime"),
-          yaxis = cerebro_plotly_axis(title = color_variable),
-          hoverlabel = cerebro_plotly_hoverlabel(),
-          plot_bgcolor = cerebro_plotly_theme()$transparent,
-          paper_bgcolor = cerebro_plotly_theme()$transparent
-        )
-
-      ## add trend line if activated
+      ## smoothened trend line, evaluated on a grid along pseudotime
+      trend <- NULL
       if (
-        input[["trajectory_distribution_along_pseudotime_show_trend_line"]] ==
-          TRUE
+        isTRUE(input[[
+          "trajectory_distribution_along_pseudotime_show_trend_line"
+        ]])
       ) {
-        ## calculate smoothened trend line
         trend_line <- stats::ksmooth(
           cells_df[["pseudotime"]],
           cells_df[[color_variable]],
@@ -322,37 +210,32 @@ output[[
           input[[
             "trajectory_distribution_along_pseudotime_trend_line_bandwidth"
           ]],
-          x.points = cells_df[["pseudotime"]]
+          n.points = 512L
         )
-
-        ## add trend line to plot
-        plot <- plotly::add_trace(
-          plot,
+        trend <- list(
           x = trend_line$x,
           y = trend_line$y,
-          type = scatter_type,
-          mode = "lines",
-          line = list(
-            dash = "solid",
-            width = input[[
-              "trajectory_distribution_along_pseudotime_trend_line_width"
-            ]],
-            color = cerebro_plotly_theme()$accent
-          ),
-          name = "Trend line",
-          hoverinfo = "text",
-          text = ~ glue::glue(
-            "<b>Trend line</b>
-          <b>Pseudotime:</b> {formatC(trend_line$x, format = 'f', big.mark = ',', digits = 3)}
-          <b>{color_variable}:</b> {formatC(trend_line$y, format = 'f', big.mark = ',', digits = 3)}"
-          ),
-          showlegend = FALSE
+          color = cerebro_plotly_theme()$accent,
+          width = look$trend_width
         )
       }
-    }
 
-    ## scatter_type already respects preferences$use_webgl, no post-processing
-    cerebro_plotly_toolbar(plot)
+      chart <- cerebroScatterData(
+        x = cells_df[["pseudotime"]],
+        y = cells_df[[color_variable]],
+        groups = cells_df[["state"]],
+        colors = assignColorsToGroups(trajectory_data[["meta"]], "state"),
+        x_title = "Pseudotime",
+        y_title = color_variable,
+        group_title = "State",
+        size = look$point_size,
+        opacity = look$point_opacity,
+        hover = hover,
+        trend = trend
+      )
+    }
+    chart$restyle <- restyle
+    chart
   })
 })
 

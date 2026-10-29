@@ -1,5 +1,4 @@
 test_that("pseudotime controls consume author defaults and hiding the trend still renders", {
-  skip_if_not_installed("plotly")
   sys.source(
     viewer_test_path("core", "viewer_content_contract.R"),
     environment()
@@ -10,6 +9,7 @@ test_that("pseudotime controls consume author defaults and hiding the trend stil
     trajectory_trend_line_width = 5
   ))
   server <- function(input, output, session) {
+    sys.source(viewer_test_path("plotting_functions.R"), environment())
     current_page_display_defaults <- function(page) {
       viewerPageDisplayDefaults(
         list(viewer_content = list(ds = list(display = defaults))),
@@ -94,28 +94,16 @@ test_that("pseudotime controls consume author defaults and hiding the trend stil
       trajectory_point_opacity = .8,
       trajectory_point_size = 2
     )
-    plot <- jsonlite::fromJSON(
-      output$trajectory_distribution_along_pseudotime_plot,
-      simplifyVector = FALSE
-    )$x
-    expect_true(length(plot$data) > 0)
-    expect_false(any(vapply(
-      plot$data,
-      function(trace) identical(trace$name, "Trend line"),
-      logical(1)
-    )))
+    plot <- output$trajectory_distribution_along_pseudotime_plot
+    expect_identical(plot$type, "scatter")
+    expect_identical(plot$n, 6L)
+    expect_identical(plot$size, 2)
+    expect_null(plot$trend)
     session$setInputs(
       trajectory_distribution_along_pseudotime_show_trend_line = TRUE
     )
-    plot <- jsonlite::fromJSON(
-      output$trajectory_distribution_along_pseudotime_plot,
-      simplifyVector = FALSE
-    )$x
-    trend <- Filter(
-      function(trace) identical(trace$name, "Trend line"),
-      plot$data
-    )
-    expect_length(trend, 1)
-    expect_equal(trend[[1]]$line$width, 5)
+    plot <- output$trajectory_distribution_along_pseudotime_plot
+    expect_equal(plot$trend$width, 5)
+    expect_identical(plot$trend$color, "#cc6600")
   })
 })

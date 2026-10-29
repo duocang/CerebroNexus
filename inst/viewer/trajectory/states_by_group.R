@@ -69,7 +69,7 @@ output[["trajectory_states_by_group_UI"]] <- renderUI({
 
 output[["states_by_group_table_UI"]] <- renderUI({
   tagList(
-    plotly::plotlyOutput("states_by_group_plot"),
+    cerebroChartOutput("states_by_group_plot"),
     {
       if (
         !is.null(input[["states_by_group_show_table"]]) &&
@@ -85,7 +85,7 @@ output[["states_by_group_table_UI"]] <- renderUI({
 ## Plot.
 ##----------------------------------------------------------------------------##
 
-output[["states_by_group_plot"]] <- plotly::renderPlotly({
+output[["states_by_group_plot"]] <- renderCerebroChart({
   ## wait for this input
   req(
     trajectory_selection_ok(),
@@ -113,12 +113,12 @@ output[["states_by_group_plot"]] <- plotly::renderPlotly({
     colors_for_groups <- assignColorsToGroups(composition_df, grouping_variable)
 
     ## generate plot
-    plotlyBarChart(
-      table = composition_df,
-      first_grouping_variable = "state",
-      second_grouping_variable = grouping_variable,
-      colors = colors_for_groups,
-      percent = input[["states_by_group_show_as_percent"]]
+    cerebroBarChartData(
+      composition_df,
+      "state",
+      grouping_variable,
+      colors_for_groups,
+      input[["states_by_group_show_as_percent"]]
     )
 
     ## ... Sankey plot
@@ -132,18 +132,13 @@ output[["states_by_group_plot"]] <- plotly::renderPlotly({
         percent = FALSE
       )
 
-    ## get color code for all group levels (from both groups)
-    colors_for_groups <- c(
+    ## generate plot, coloured by the levels of both groups
+    cerebroSankeyData(
+      composition_df,
+      "state",
+      grouping_variable,
       assignColorsToGroups(composition_df, "state"),
       assignColorsToGroups(composition_df, grouping_variable)
-    )
-
-    ## generate plot
-    plotlySankeyPlot(
-      table = composition_df,
-      first_grouping_variable = "state",
-      second_grouping_variable = grouping_variable,
-      colors_for_groups = colors_for_groups
     )
   }
 })
