@@ -1,4 +1,4 @@
-# CerebroNexus (development version)
+# CerebroNexus 5.5.0
 
 ## New
 
@@ -27,6 +27,45 @@
 - The trajectory page accepts a trajectory with the method name
   `published_pseudotime` (shown as "Published pseudotime"), for a pseudotime
   that comes with a data set rather than from a method run in CerebroNexus.
+
+## Changes
+
+- `readCerebro()` opens an H5-backed data file without loading HDF5Array: the
+  cell names are read from the H5 file with rhdf5, and the expression matrix is
+  attached when `$expression` is first used. Reading the 1.3 and 1.5 million
+  cell demo data sets takes about 1 s instead of 3-5 s.
+- An H5-backed CRB stores repertoire barcodes that are cells of the data set
+  as cell indices (in the CRB or its `.immune` sidecar; thin-CRB schema
+  version 4, written only when there are such barcodes). `getImmuneRepertoire()`
+  returns them as barcodes. Reading the Ren repertoire takes 3.8 s instead of
+  5.0 s. CRBs written before read as before; an earlier release refuses a
+  version 4 CRB with an error naming the schema version.
+- The Viewer Pack stores the immune repertoire as integer columns
+  (`immune/encoded.qs2`, `immune_encoding` in the manifest) and the HLA motif
+  segments without scRepertoire's clone strings. Rebuild the Viewer Pack of a
+  data set built before: the Immune repertoire page asks for it. Data sets
+  without a Pack encode their repertoire in memory on first use.
+
+## Viewer
+
+- Point size, opacity, labels, borders, square layout, "% of cells", the
+  pseudotime chart sliders and the HLA node size apply in the browser as the
+  control moves, also while R is busy.
+- Pages open faster: the page's own resources are sent first, the data set is
+  prepared while Data info is shown, and Viewer Pack files are hashed once per
+  file version.
+- Spatial applies group filters in the browser and draws a new sample's
+  section without waiting for its controls; "Split by" works again.
+- Immune repertoire draws every tab from the encoded repertoire. Diversity is
+  computed in the app (equal to scRepertoire for the same seed) and follows
+  "Order groups"; it leaves out empty group combinations and samples without
+  cells on the chosen chain, where scRepertoire returned zeros or an error.
+  SizeDist uses the empirical clone-size profile for every data set. Paired
+  Scatter follows the point size and opacity controls (default opacity 0.8).
+- "Expression in selected cells" leaves out cells hidden by a group filter.
+- Region outlines stay on when a filter or ROI rebuilds the Spatial frame.
+- An error figure in Immune repertoire is no longer shared with other
+  sessions.
 
 # CerebroNexus 5.4.0
 

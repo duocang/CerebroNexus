@@ -86,7 +86,9 @@
 .viewerTcellReadPseudotime <- function(path) {
   table <- as.data.frame(data.table::fread(path))
   names(table)[1L] <- "mini_cluster"
-  if (!all(c("mini_cluster", "meta.cluster", "dpt_pseudotime") %in% names(table))) {
+  if (
+    !all(c("mini_cluster", "meta.cluster", "dpt_pseudotime") %in% names(table))
+  ) {
     stop("The CD8 Tex pseudotime table has unexpected columns.", call. = FALSE)
   }
   table
@@ -95,7 +97,9 @@
 .viewerTcellReadClinical <- function(path) {
   table <- as.data.frame(data.table::fread(path))
   required <- c("Patient ID", "CancerType", "Age", "Gender", "Clinical Stage")
-  if (!all(required %in% names(table)) || anyDuplicated(table[["Patient ID"]])) {
+  if (
+    !all(required %in% names(table)) || anyDuplicated(table[["Patient ID"]])
+  ) {
     stop("The T-cell clinical table has unexpected columns.", call. = FALSE)
   }
   data.frame(
@@ -149,7 +153,9 @@
       " unique cells of ",
       expected_patients,
       " patients",
-      if (length(missing)) paste0(" (missing: ", paste(missing, collapse = ", "), ")"),
+      if (length(missing)) {
+        paste0(" (missing: ", paste(missing, collapse = ", "), ")")
+      },
       ".",
       call. = FALSE
     )
@@ -226,7 +232,11 @@
     rownames(norm)
   }
   if (anyNA(cells) || anyDuplicated(cells) || is.null(genes) || anyNA(genes)) {
-    stop(basename(path), " needs unique cell names and gene names.", call. = FALSE)
+    stop(
+      basename(path),
+      " needs unique cell names and gene names.",
+      call. = FALSE
+    )
   }
   ## Several identifiers can share a symbol: keep the one detected in most cells.
   detected <- tabulate(norm@i + 1L, nbins = nrow(norm))
@@ -297,7 +307,10 @@
   usable <- is.finite(dispersion) & mean > 0.0125 & mean < 6
   score <- rep(-Inf, length(mean))
   if (sum(usable) > bins) {
-    breaks <- unique(stats::quantile(mean[usable], seq(0, 1, length.out = bins + 1L)))
+    breaks <- unique(stats::quantile(
+      mean[usable],
+      seq(0, 1, length.out = bins + 1L)
+    ))
     bin <- cut(mean, breaks = breaks, include.lowest = TRUE)
     for (level in levels(bin)) {
       member <- usable & !is.na(bin) & bin == level
@@ -308,7 +321,10 @@
       }
     }
   }
-  rownames(expression)[order(score, decreasing = TRUE)[seq_len(min(n, sum(is.finite(score))))]]
+  rownames(expression)[order(score, decreasing = TRUE)[seq_len(min(
+    n,
+    sum(is.finite(score))
+  ))]]
 }
 
 ## The data sets differ in technology and normalisation, so the genes are chosen
@@ -324,11 +340,18 @@
   batches <- split(seq_len(ncol(expression)), as.character(batch))
   batches <- batches[lengths(batches) >= min_cells]
   if (!length(batches)) {
-    stop("No data set has enough cells to choose variable genes.", call. = FALSE)
+    stop(
+      "No data set has enough cells to choose variable genes.",
+      call. = FALSE
+    )
   }
   score <- stats::setNames(numeric(nrow(expression)), rownames(expression))
   for (index in batches) {
-    picked <- .viewerTcellVariableGenesOne(expression[, index, drop = FALSE], n, bins)
+    picked <- .viewerTcellVariableGenesOne(
+      expression[, index, drop = FALSE],
+      n,
+      bins
+    )
     score[picked] <- score[picked] + rev(seq_along(picked))
   }
   names(sort(score, decreasing = TRUE))[seq_len(min(n, sum(score > 0)))]
@@ -440,7 +463,12 @@
   )
   missing <- setdiff(required, names(tcr))
   if (length(missing)) {
-    stop("The T-cell TCR table lacks: ", paste(missing, collapse = ", "), ".", call. = FALSE)
+    stop(
+      "The T-cell TCR table lacks: ",
+      paste(missing, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
   }
   pick <- function(first, second) {
     first <- as.character(first)
@@ -578,7 +606,10 @@
   message("Reading the atlas cell table...")
   .viewerTcellExtract(
     paths$metainfo,
-    unlist(.viewerTcellMembers[c("meta", "pseudotime", "clinical")], use.names = FALSE),
+    unlist(
+      .viewerTcellMembers[c("meta", "pseudotime", "clinical")],
+      use.names = FALSE
+    ),
     file.path(work, "meta")
   )
   .viewerTcellExtract(
@@ -597,7 +628,9 @@
   metadata <- .viewerTcellReadCells(meta, clinical)
   cells <- rownames(metadata)
 
-  message("Unpacking the per-data-set expression objects (one pass over 14 GB)...")
+  message(
+    "Unpacking the per-data-set expression objects (one pass over 14 GB)..."
+  )
   .viewerTcellExtract(
     paths$expression,
     c(
@@ -614,11 +647,21 @@
     full.names = TRUE
   ))
   if (length(files) != 70L) {
-    stop("Expected 70 per-data-set expression files, found ", length(files), ".", call. = FALSE)
+    stop(
+      "Expected 70 per-data-set expression files, found ",
+      length(files),
+      ".",
+      call. = FALSE
+    )
   }
   datasets <- vector("list", length(files))
   for (index in seq_along(files)) {
-    message(sprintf("Reading expression %d of %d: %s", index, length(files), basename(files[[index]])))
+    message(sprintf(
+      "Reading expression %d of %d: %s",
+      index,
+      length(files),
+      basename(files[[index]])
+    ))
     datasets[[index]] <- .viewerTcellReadDataset(files[[index]])
     unlink(files[[index]])
   }
@@ -699,8 +742,16 @@
     md5 = unname(tools::md5sum(paths$immune)),
     samples = names(repertoire),
     chains = c("TRA", "TRB")[c(
-      any(grepl("TRA", unlist(lapply(repertoire, `[[`, "CTgene")), fixed = TRUE)),
-      any(grepl("TRB", unlist(lapply(repertoire, `[[`, "CTgene")), fixed = TRUE))
+      any(grepl(
+        "TRA",
+        unlist(lapply(repertoire, `[[`, "CTgene")),
+        fixed = TRUE
+      )),
+      any(grepl(
+        "TRB",
+        unlist(lapply(repertoire, `[[`, "CTgene")),
+        fixed = TRUE
+      ))
     )]
   )
   object$addExtraTable(
