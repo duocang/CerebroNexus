@@ -31,28 +31,10 @@ spatial_projection_scene <- reactive({
   metadata_cols <- colour_groups$choices
 
   spatial_names <- availableSpatial()
-  spatial_records <- stats::setNames(
-    lapply(spatial_names, function(name) {
-      tryCatch(getSpatialData(name), error = function(error) list())
-    }),
-    spatial_names
-  )
-  metadata <- getMetaData()
-  sample_facets <- lapply(spatial_records, function(record) {
-    spatial_metadata_facet(
-      metadata,
-      rownames(record[["coordinates"]]) %||% character(),
-      spatial_sample_fields
-    )
-  })
-  sample_values <- unique(unlist(
-    lapply(sample_facets, `[[`, "values"),
-    use.names = FALSE
-  ))
-  sample_fields <- unique(unlist(
-    lapply(sample_facets, `[[`, "field"),
-    use.names = FALSE
-  ))
+  metadata <- viewerProjectionFirstFrameMetadata()
+  section_samples <- spatial_section_samples()
+  sample_values <- unique(unlist(section_samples$values, use.names = FALSE))
+  sample_fields <- section_samples$fields
   metadata_cols <- setdiff(
     metadata_cols,
     unique(c(sample_fields, spatial_sample_fields))
@@ -69,8 +51,8 @@ spatial_projection_scene <- reactive({
   }
   if (nzchar(selected_sample)) {
     spatial_names <- spatial_names[vapply(
-      sample_facets[spatial_names],
-      function(facet) selected_sample %in% facet$values,
+      section_samples$values[spatial_names],
+      function(values) selected_sample %in% values,
       logical(1)
     )]
   }
@@ -83,7 +65,10 @@ spatial_projection_scene <- reactive({
   if (is.null(current_spatial) || !(current_spatial %in% spatial_names)) {
     current_spatial <- spatial_names[[1L]]
   }
-  current_sd <- spatial_records[[current_spatial]]
+  current_sd <- tryCatch(
+    getSpatialData(current_spatial),
+    error = function(error) list()
+  )
   spatial_choices <- stats::setNames(spatial_names, spatial_names)
   current_cells <- rownames(current_sd[["coordinates"]]) %||% character()
   if (nzchar(selected_sample)) {
@@ -179,8 +164,9 @@ output[["spatial_projection_scene_UI"]] <- renderUI({
 ## surrounding controls keep their state.
 observe({
   req(identical(input[["sidebar"]], "spatial"))
-  ## Nothing to update until the main controls have mounted the selector.
-  req(!is.null(input[["spatial_projection_split_by"]]))
+  ## Nothing to update until the main controls have mounted the selector; a
+  ## choice in it must not run this and reset it to the scene's old value.
+  req(!is.null(isolate(input[["spatial_projection_split_by"]])))
   scene <- spatial_projection_scene()
   updateSelectizeInput(
     session,
@@ -309,7 +295,7 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
   selected_sample <- input[["spatial_projection_sample"]] %||% ""
   if (nzchar(selected_sample)) {
     current_sample <- spatial_metadata_facet(
-      getMetaData(),
+      viewerProjectionFirstFrameMetadata(),
       current_cells,
       spatial_sample_fields
     )
@@ -319,7 +305,7 @@ output[["spatial_projection_background_selector_UI"]] <- renderUI({
     ]
   }
   roi_values <- spatial_metadata_facet(
-    getMetaData(),
+    viewerProjectionFirstFrameMetadata(),
     current_cells,
     spatial_roi_fields
   )$values

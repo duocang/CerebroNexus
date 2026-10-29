@@ -50,44 +50,16 @@ spatial_projection_controls <- reactiveVal(NULL)
 ## multi-select), so presence in `input` separates "not yet bound" from "none".
 spatial_input_bound <- function(id) id %in% isolate(names(input))
 
-## The sample and FOV the main controls select by default (see
-## UI_projection_main_parameters.R): the first sample when there are several,
-## and the first section showing it.
-spatial_projection_scene_memo <- viewerMemoOne()
-spatial_projection_scene_defaults <- function() {
-  spatial_projection_scene_memo(list(data_set()), function() {
-    spatial_names <- availableSpatial()
-    metadata <- getMetaData()
-    facets <- lapply(spatial_names, function(name) {
-      record <- tryCatch(getSpatialData(name), error = function(error) list())
-      spatial_metadata_facet(
-        metadata,
-        rownames(record[["coordinates"]]) %||% character(),
-        spatial_sample_fields
-      )$values
-    })
-    samples <- unique(unlist(facets, use.names = FALSE))
-    sample <- if (length(samples) > 1L) samples[[1L]] else ""
-    shown <- if (length(samples)) {
-      spatial_names[vapply(
-        facets,
-        function(values) samples[[1L]] %in% values,
-        logical(1)
-      )]
-    } else {
-      spatial_names
-    }
-    list(
-      sample = sample,
-      projection = if (length(shown)) shown[[1L]] else spatial_names[1L]
-    )
-  })
-}
-
+## Until the Sample control has bound, the sample it will select: the first
+## when there are several (it is shown only then).
 spatial_projection_selected_sample <- function() {
   value <- input[["spatial_projection_sample"]]
   if (is.null(value) && !spatial_input_bound("spatial_projection_sample")) {
-    return(spatial_projection_scene_defaults()$sample)
+    samples <- unique(unlist(
+      spatial_section_samples()$values,
+      use.names = FALSE
+    ))
+    return(if (length(samples) > 1L) samples[[1L]] else "")
   }
   value %||% ""
 }
@@ -99,9 +71,14 @@ observe(
     req(length(spatial_names) > 0L)
 
     defaults <- current_spatial_scatter_defaults()
+    ## A new sample shows its own sections: take the one its FOV control will
+    ## select instead of waiting for that control to come back.
+    shown <- spatial_sample_sections(
+      spatial_projection_selected_sample()
+    )$sections
     projection <- input[["spatial_projection_to_display"]]
-    if (is.null(projection) || !(projection %in% spatial_names)) {
-      projection <- spatial_projection_scene_defaults()$projection
+    if (is.null(projection) || !(projection %in% shown)) {
+      projection <- shown[1L]
     }
     if (is.null(projection) || !(projection %in% spatial_names)) {
       projection <- spatial_names[[1L]]
@@ -142,6 +119,9 @@ observe(
       projection = as.character(projection[[1L]]),
       plot_type = as.character(plot_type[[1L]]),
       color_variable = as.character(color_variable[[1L]]),
+      split_by = as.character(
+        input[["spatial_projection_split_by"]] %||% "__none__"
+      ),
       ## Gene selectors bind as "" when empty; treat not-yet-bound the same.
       feature_to_display = input[["spatial_projection_feature_to_display"]] %||%
         "",
@@ -299,6 +279,13 @@ spatial_projection_parameters_plot_current <- reactive({
       color_variable,
       color_variable %in% colnames(viewerProjectionFirstFrameMetadata())
     )
+    ## "__none__" (or a column this data set lacks) is no split.
+    if (
+      length(controls$split_by) == 1L &&
+        controls$split_by %in% colnames(viewerProjectionFirstFrameMetadata())
+    ) {
+      split_by <- controls$split_by
+    }
   } else if (plot_type == "ImageFeaturePlot") {
     feature_to_display <- controls$feature_to_display
     ## Right after a dataset switch the picker can still hold the previous
@@ -337,7 +324,7 @@ spatial_projection_parameters_plot_current <- reactive({
       spatial_cells <- rownames(spatial_data$coordinates) %||% character()
       if (nzchar(selected_sample)) {
         sample_facet <- spatial_metadata_facet(
-          getMetaData(),
+          viewerProjectionFirstFrameMetadata(),
           spatial_cells,
           spatial_sample_fields
         )
@@ -347,7 +334,7 @@ spatial_projection_parameters_plot_current <- reactive({
         ]
       }
       spatial_metadata_facet(
-        getMetaData(),
+        viewerProjectionFirstFrameMetadata(),
         spatial_cells,
         spatial_roi_fields
       )
@@ -540,7 +527,7 @@ spatial_projection_parameters_plot_current <- reactive({
     draw_border = isolate(spatial_projection_appearance$draw_border),
     group_labels = isolate(spatial_projection_appearance$group_labels),
     keep_square = isolate(spatial_projection_appearance$keep_square),
-    show_region_outlines = spatial_projection_region_outlines(),
+    show_region_outlines = isolate(spatial_projection_region_outlines()),
     x_range = NULL,
     y_range = NULL,
     background_image = background_image,

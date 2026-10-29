@@ -18,9 +18,14 @@ test_that("Spatial styling and colour edits do not resample observations", {
     getMetaData <- function() metadata
     viewerProjectionFirstFrameMetadata <- function() metadata
     getGroups <- function() character()
+    viewerProjectionGroupFilters <- function(...) list()
     spatial_projection_selected_sample <- function() {
       input$spatial_projection_sample %||% ""
     }
+    sys.source(
+      viewer_test_path("spatial", "func_spatial_helpers.R"),
+      environment()
+    )
     sys.source(
       viewer_test_path("spatial", "obj_projection_cells_to_show.R"),
       environment()

@@ -1008,6 +1008,13 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
     getSpatialData <- function(name) atlas[[name]]
     getMetaData <- function() data.frame(group = c("a", "b"))
     viewerProjectionFirstFrameMetadata <- getMetaData
+    viewerSpatialCoordinates <- function(name) atlas[[name]]$coordinates
+    viewerPackCurrent <- function() NULL
+    viewerPackSpatialIndex <- function(...) NULL
+    sys.source(
+      viewer_test_path("spatial", "func_spatial_helpers.R"),
+      envir = environment()
+    )
     getGroups <- function() "group"
     serverSideGeneSelector <- function(...) invisible(NULL)
     Cerebro.options <- list(
@@ -1347,6 +1354,59 @@ test_that("spatial hierarchy resolves sample and ROI values by barcode", {
   expect_identical(roi$values, c("R3", "R1"))
 })
 
+test_that("spatial metadata rows follow the metadata they were matched in", {
+  metadata <- data.frame(cell_barcode = c("c1", "c2", "c3"))
+  expect_identical(spatial_metadata_rows(metadata, c("c3", "c1")), c(3L, 1L))
+  ## An equal copy of the cells is answered from the kept rows.
+  expect_identical(spatial_metadata_rows(metadata, c("c3", "c1")), c(3L, 1L))
+  expect_identical(spatial_metadata_rows(metadata, c("c2", "c4")), c(2L, NA))
+  reordered <- data.frame(cell_barcode = c("c3", "c2", "c1"))
+  expect_identical(spatial_metadata_rows(reordered, c("c3", "c1")), c(1L, 3L))
+})
+
+test_that("first-frame metadata finds section cells without the cell names", {
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("spatial", "func_spatial_helpers.R"), scope)
+  coordinates <- list(
+    A = data.frame(x = 1:2, y = 1:2, row.names = c("a1", "a2")),
+    B = data.frame(x = 1:2, y = 1:2, row.names = c("b1", "b2"))
+  )
+  hydrated <- 0L
+  scope$availableSpatial <- function() names(coordinates)
+  scope$viewerSpatialCoordinates <- function(name) coordinates[[name]]
+  scope$viewerPackCurrent <- function() list(cell_count = 4L)
+  scope$viewerPackSpatialIndex <- function(pack, name) {
+    list(A = c(3L, 1L), B = c(2L, 4L))[[name]]
+  }
+  scope$getMetaData <- function() {
+    hydrated <<- hydrated + 1L
+    data.frame(cell_barcode = c("a2", "b1", "a1", "b2"))
+  }
+  first_frame <- data.frame(sample = c("S1", "S1", "S2", "S2"))
+
+  sample <- scope$spatial_metadata_facet(first_frame, c("a1", "a2"), "sample")
+  expect_identical(sample$by_cell, c(a1 = "S2", a2 = "S1"))
+  ## part of a section
+  expect_identical(scope$spatial_metadata_rows(first_frame, "b2"), 4L)
+  expect_identical(
+    scope$spatial_metadata_rows(first_frame, character()),
+    integer()
+  )
+  expect_identical(hydrated, 0L)
+  ## cells of several sections are matched against the metadata names
+  expect_identical(
+    scope$spatial_metadata_rows(first_frame, c("a1", "b1")),
+    c(3L, 2L)
+  )
+  expect_identical(hydrated, 1L)
+  ## and kept: asking again matches nothing
+  expect_identical(
+    scope$spatial_metadata_rows(first_frame, c("a1", "b1")),
+    c(3L, 2L)
+  )
+  expect_identical(hydrated, 1L)
+})
+
 test_that("ROI rotation pivots use the selected sample and ROI field", {
   metadata <- data.frame(
     cell_barcode = c("a1", "a2", "b1", "b2"),
@@ -1417,6 +1477,7 @@ test_that("spatial sampling is scoped to the selected FOV, sample, and ROI", {
     viewerPackCurrent <- function() NULL
     viewerPackSpatialIndex <- function(...) NULL
     viewerProjectionFirstFrameMetadata <- function() metadata
+    viewerProjectionGroupFilters <- function(...) list()
     spatial_projection_selected_sample <- function() {
       input$spatial_projection_sample %||% ""
     }
@@ -1429,6 +1490,10 @@ test_that("spatial sampling is scoped to the selected FOV, sample, and ROI", {
       sample = input$spatial_projection_sample,
       roi = input$spatial_projection_roi
     ))
+    sys.source(
+      viewer_test_path("spatial", "func_spatial_helpers.R"),
+      envir = environment()
+    )
     sys.source(cells_file, envir = environment())
   }
 

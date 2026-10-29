@@ -1,3 +1,35 @@
+## Region outlines of a frame, in the form the browser draws: one polygon per
+## coloured group present in the frame.
+spatial_projection_output_hulls <- function(
+  hulls,
+  color_assignments,
+  unsupported,
+  show
+) {
+  if (isTRUE(unsupported) || !isTRUE(show) || !length(hulls)) {
+    return(list())
+  }
+  present <- intersect(names(hulls), names(color_assignments))
+  list(
+    x = unname(lapply(hulls[present], `[[`, "x")),
+    y = unname(lapply(hulls[present], `[[`, "y")),
+    color = unname(as.list(color_assignments[present]))
+  )
+}
+spatial_projection_drawn_hulls <- list()
+
+## Contiguous 0-based rows as list(kind = "range", start, length), else NULL.
+spatial_row_range <- function(rows) {
+  if (
+    !is.numeric(rows) ||
+      length(rows) < 2L ||
+      any(diff(as.integer(rows)) != 1L)
+  ) {
+    return(NULL)
+  }
+  list(kind = "range", start = as.integer(rows[[1L]]), length = length(rows))
+}
+
 ##----------------------------------------------------------------------------##
 ## Function that updates projections.
 ##----------------------------------------------------------------------------##
@@ -105,14 +137,26 @@ spatial_projection_update_plot <- function(input) {
   } else {
     seq_len(nrow(metadata))
   }
+  aux_cells <- if (resource_first) {
+    input[["cell_indices"]]
+  } else if ("cell_index" %in% colnames(metadata)) {
+    metadata[["cell_index"]]
+  } else {
+    seq_len(nrow(metadata))
+  }
+  ## The auxiliary data depend only on these. A colour change keeps them, so
+  ## the browser need not download the cells' rows and hover data again. The
+  ## key goes out with the auxiliary data, so it is their hash, not two more
+  ## arrays of every cell.
+  aux_key <- function(selection_rows) {
+    rlang::hash(list(
+      cells = aux_cells,
+      selection_rows = selection_rows,
+      hover = isTRUE(plot_parameters[["hover_info"]])
+    ))
+  }
   build_deferred_aux <- function(selection_rows) {
-    cell_index <- if (resource_first) {
-      input[["cell_indices"]]
-    } else if ("cell_index" %in% colnames(metadata)) {
-      metadata[["cell_index"]]
-    } else {
-      seq_len(nrow(metadata))
-    }
+    cell_index <- aux_cells
     hover <- isTRUE(plot_parameters[["hover_info"]])
     first_frame <- viewerProjectionFirstFrameMetadata()
     columns <- viewerProjectionMetadataColumns(
@@ -126,11 +170,25 @@ spatial_projection_update_plot <- function(input) {
       cell_index,
       columns
     )
-    cell_barcodes <- viewerPackCellBarcodes(viewerPackCurrent(), cell_index)
-    if (is.null(cell_barcodes)) {
-      cell_barcodes <- getMetaData()[["cell_barcode"]][cell_index]
+    ## The browser takes the names from the cell-name resource when there is
+    ## one, so only the canonical rows of the points are sent.
+    names_resource <- if (
+      exists("viewerCellNamesResource", mode = "function")
+    ) {
+      viewerCellNamesResource()
     }
-    cerebroCellViewDeferredAux(
+    if (
+      !is.list(names_resource) ||
+        !length(cell_index) ||
+        max(cell_index) > names_resource$cells
+    ) {
+      names_resource <- NULL
+    }
+    cell_barcodes <- if (is.null(names_resource)) {
+      viewerPackCellBarcodes(viewerPackCurrent(), cell_index) %||%
+        getMetaData()[["cell_barcode"]][cell_index]
+    }
+    aux <- cerebroCellViewDeferredAux(
       selection_rows = selection_rows,
       cell_barcodes = cell_barcodes,
       hover_columns = if (hover) {
@@ -138,8 +196,14 @@ spatial_projection_update_plot <- function(input) {
       } else {
         list()
       },
-      hover = hover
+      hover = hover,
+      names_resource = names_resource,
+      cell_rows = cell_index
     )
+    ## A section's rows are usually contiguous: send their range.
+    aux$selection_index <- spatial_row_range(aux$selection_index) %||%
+      aux$selection_index
+    aux
   }
 
   ## The selected descriptor was resolved server-side from the exact current
@@ -267,7 +331,8 @@ spatial_projection_update_plot <- function(input) {
         build_deferred_aux(output_data[["selection_key"]])
       },
       dataset_context = input[["dataset_context"]],
-      feedback = input[["feedback"]]
+      feedback = input[["feedback"]],
+      aux_key = aux_key(output_data[["selection_key"]])
     )
     return(invisible(NULL))
   }
@@ -447,19 +512,25 @@ spatial_projection_update_plot <- function(input) {
     }
   }
 
-  output_hulls <- list()
+  output_hulls <- spatial_projection_output_hulls(
+    input[["group_hulls"]],
+    color_assignments,
+    is.numeric(color_input) || n_dimensions != 2,
+    plot_parameters[["show_region_outlines"]]
+  )
+  spatial_projection_drawn_hulls <<- output_hulls
+  aux_rows <- if (resource_first) {
+    seq_len(input[["cell_count"]])
+  } else {
+    payload[["data"]][["selection_key"]]
+  }
+  ## Points in cell order: the frame names its canonical rows (a range).
   if (
-    !is.numeric(color_input) &&
-      n_dimensions == 2 &&
-      isTRUE(plot_parameters[["show_region_outlines"]])
+    is.null(payload$data$panels) &&
+      is.numeric(aux_rows) &&
+      identical(as.integer(aux_rows), seq_along(aux_rows))
   ) {
-    hulls <- input[["group_hulls"]]
-    present <- intersect(names(hulls), names(color_assignments))
-    output_hulls <- list(
-      x = unname(lapply(hulls[present], `[[`, "x")),
-      y = unname(lapply(hulls[present], `[[`, "y")),
-      color = unname(as.list(color_assignments[present]))
-    )
+    payload$data$selection_rows <- spatial_row_range(aux_cells - 1L)
   }
   cerebroCellViewRender(
     "spatial_projection",
@@ -468,15 +539,10 @@ spatial_projection_update_plot <- function(input) {
     payload[["hover"]],
     extra = list(group_hulls = output_hulls),
     deferred_aux = function() {
-      build_deferred_aux(
-        if (resource_first) {
-          seq_len(input[["cell_count"]])
-        } else {
-          payload[["data"]][["selection_key"]]
-        }
-      )
+      build_deferred_aux(aux_rows)
     },
     dataset_context = input[["dataset_context"]],
-    feedback = input[["feedback"]]
+    feedback = input[["feedback"]],
+    aux_key = aux_key(aux_rows)
   )
 }

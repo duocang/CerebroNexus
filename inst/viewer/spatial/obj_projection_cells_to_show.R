@@ -20,51 +20,37 @@ spatial_projection_cell_index <- reactive({
   req(spatial_name %in% availableSpatial())
   coordinates <- viewerSpatialCoordinates(spatial_name)
   req(coordinates)
-  spatial_cells <- rownames(coordinates)
+  spatial_section_rows(spatial_name, coordinates)
+})
+
+## The group filters that leave cells out, and, with a Viewer Pack, the same
+## filters for the browser to apply to the drawn section (NULL: R filters).
+spatial_projection_group_filters <- reactive({
+  viewerProjectionGroupFilters(
+    "spatial_projection",
+    viewerProjectionFirstFrameMetadata()
+  )
+})
+spatial_projection_client_filters <- reactive({
   pack <- viewerPackCurrent()
-  pack_cell_count <- suppressWarnings(as.integer(pack$cell_count))
-  valid_pack_count <- length(pack_cell_count) == 1L &&
-    !is.na(pack_cell_count)
-  index <- viewerPackSpatialIndex(pack, spatial_name)
-  valid_index <- length(index) == nrow(coordinates) &&
-    !anyNA(index) &&
-    isTRUE(all(index >= 1L))
-  if (!isTRUE(valid_index)) {
-    index <- NULL
+  if (
+    !is.list(pack) ||
+      !isTRUE(pack$canonical_order) ||
+      isTRUE(input[["spatial_projection_client_filters_failed"]])
+  ) {
+    return(NULL)
   }
-  pack_order_matches <-
-    is.null(index) &&
-    !is.null(pack) &&
-    is.list(pack) &&
-    valid_pack_count &&
-    length(spatial_cells) == pack_cell_count &&
-    identical(
-      viewerPackCellOrderFingerprint(spatial_cells),
-      as.character(pack$manifest$cell_order_fingerprint)
-    )
-  if (isTRUE(pack_order_matches)) {
-    index <- seq_len(pack_cell_count)
-  }
-  if (is.null(index)) {
-    index <- match(spatial_cells, getMetaData()[["cell_barcode"]])
-  }
-  if (length(index) != nrow(coordinates) || anyNA(index)) {
-    stop("Spatial cells do not match the canonical dataset order.")
-  }
-  as.integer(index)
+  viewerClientFilterDescriptors(spatial_projection_group_filters())
 })
 
 spatial_projection_cells_to_show_current <- reactive({
   controls <- spatial_projection_sampling()
   req(controls, controls$percentage_cells_to_show)
-  groups <- getGroups()
-  filters <- stats::setNames(
-    lapply(groups, function(group) {
-      input[[paste0("spatial_projection_group_filter_", group)]]
-    }),
-    groups
-  )
-  filters <- filters[!vapply(filters, is.null, logical(1))]
+  filters <- if (is.null(spatial_projection_client_filters())) {
+    spatial_projection_group_filters()
+  } else {
+    list()
+  }
   index <- spatial_projection_cell_index()
   frame_metadata <- viewerProjectionFirstFrameMetadata()
   for (scope in list(
@@ -143,4 +129,14 @@ spatial_projection_cells_to_show <- reactive({
   value <- spatial_projection_cells_state()
   req(!is.null(value))
   value
+})
+
+## The browser's filters follow the controls.
+observe({
+  req(identical(input[["sidebar"]], "spatial"))
+  viewerSendClientFilters(
+    "spatial_projection",
+    spatial_projection_client_filters(),
+    viewer_loaded_dataset_context()
+  )
 })

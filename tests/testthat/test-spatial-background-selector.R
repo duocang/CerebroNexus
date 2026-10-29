@@ -21,6 +21,7 @@ test_that("All ROIs keeps the background selector for multiple images", {
       )
     }
     getGroups <- function() character()
+    viewerProjectionFirstFrameMetadata <- getMetaData
     serverSideGeneSelector <- function(...) invisible(NULL)
     Cerebro.options <- list(
       spatial_images = list(
@@ -129,6 +130,7 @@ test_that("Separate ROIs defaults to one matching embedded image per ROI", {
       data.frame(cell_barcode = c("a", "b", "c"), roi = c("A", "B", "C"))
     }
     getGroups <- function() character()
+    viewerProjectionFirstFrameMetadata <- getMetaData
     serverSideGeneSelector <- function(...) invisible(NULL)
     viewer_current_dataset_key <- function() "atlas"
     sys.source(main_ui, envir = environment())
