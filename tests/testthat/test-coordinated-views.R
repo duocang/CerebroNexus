@@ -189,7 +189,35 @@ test_that("trajectory coordinates and graph enter Linked views", {
   expect_equal(unclass(spaces[[1]]$x), c(NA, 10, 20))
   expect_equal(unclass(spaces[[1]]$y), c(NA, 30, 40))
   expect_true(isTRUE(spaces[[1]]$trajectory))
-  expect_length(spaces[[1]]$edges, 1)
+  expect_identical(unclass(spaces[[1]]$edges), list(list(10, 30, 20, 40)))
+})
+
+test_that("trajectory rows come from the Viewer Pack index when it is valid", {
+  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
+  meta <- data.frame(DR_1 = c(10, 20), row.names = c("cell_b", "cell_c"))
+  cells <- c("cell_a", "cell_b", "cell_c")
+  crb <- structure(
+    list(),
+    cerebro_viewer_pack = list(
+      canonical_order = TRUE,
+      cell_count = 3L
+    )
+  )
+  index <- c(3L, 2L)
+  ## The index wins over the row names it was built from.
+  cv_env$viewerPackTrajectoryIndex <- function(pack, method, name) index
+  on.exit(rm("viewerPackTrajectoryIndex", envir = cv_env), add = TRUE)
+  expect_identical(
+    cv_env$cv_trajectory_rows(crb, cells, meta, "m", "t"),
+    c(NA, 2L, 1L)
+  )
+  ## A missing, short or out-of-range index falls back to the names.
+  for (index in list(NULL, 3L, c(2L, 4L))) {
+    expect_identical(
+      cv_env$cv_trajectory_rows(crb, cells, meta, "m", "t"),
+      c(NA, 1L, 2L)
+    )
+  }
 })
 
 run_config_transport_node <- function(body) {
@@ -1054,10 +1082,8 @@ test_that("rownames-only metadata supports selection", {
   )
 
   canonical <- cv_env$cv_canonical_metadata(metadata)
-  selected <- cv_env$cv_selected_metadata(metadata, c("c3", "c1"))
 
   expect_identical(canonical$cell_barcode, c("c1", "c2", "c3"))
-  expect_identical(selected$cell_barcode, c("c1", "c3"))
 })
 
 test_that("explicit cell barcodes remain authoritative", {
@@ -1683,6 +1709,85 @@ test_that("compact supplement avoids full CRB hydration", {
   expect_null(metadata_only$clone)
   expect_false("clone_expansion" %in% names(metadata_only$groups))
   expect_length(metadata_only$spaces, 0L)
+})
+
+test_that("the compact supplement places trajectory cells by the Pack index", {
+  hydrated <- 0L
+  index <- c(4L, 2L)
+  cv_env$viewerPackTrajectoryIndex <- function(pack, method, name) index
+  ## No canonical-projection frame: the coordinates are sent.
+  cv_env$viewerPackTrajectoryFrame <- function(pack, method, name) NULL
+  on.exit(
+    rm(
+      list = c("viewerPackTrajectoryIndex", "viewerPackTrajectoryFrame"),
+      envir = cv_env
+    ),
+    add = TRUE
+  )
+  crb <- list(
+    getMetaData = function() {
+      hydrated <<- hydrated + 1L
+      data.frame(cell_barcode = paste0("c", 1:4))
+    },
+    getGroups = function() "cell_type",
+    getMethodsForTrajectories = function() "monocle2",
+    getNamesOfTrajectories = function(method) "path",
+    getTrajectory = function(method, name) {
+      list(
+        meta = data.frame(
+          DR_1 = c(40, 20),
+          DR_2 = c(4, 2),
+          row.names = c("c4", "c2")
+        ),
+        edges = NULL
+      )
+    },
+    availableSpatial = function() character(),
+    getTrekker = function() NULL
+  )
+  attr(crb, "cerebro_viewer_pack") <- list(
+    canonical_order = TRUE,
+    cell_count = 4L,
+    manifest = list(n_cells = 4L, cell_order_fingerprint = "order")
+  )
+  primary <- list(
+    dataset_id = "m1.crb",
+    dataset_fingerprint = "cells",
+    canonical_order_id = "order",
+    progressive_token = 1L,
+    n = 4L,
+    groups = list(cell_type = list()),
+    cat_extra = list(),
+    fields = list(),
+    projections = list(umap = list()),
+    spaces = list(list(id = "umap"))
+  )
+  first_frame <- list(
+    meta_data = data.frame(cell_type = factor(c("B", "T", "B", "T"))),
+    projections = list(umap = data.frame(x = 1:4, y = 4:1))
+  )
+
+  supplement <- cv_env$cv_build_compact_supplement(
+    crb,
+    primary,
+    first_frame,
+    include_clone = FALSE
+  )
+  expect_length(supplement$spaces, 1L)
+  expect_identical(supplement$spaces[[1]]$id, "trajectory::monocle2::path")
+  expect_equal(unclass(supplement$spaces[[1]]$x), c(NA, 20, NA, 40))
+  expect_identical(hydrated, 0L)
+
+  ## Without a valid index the rows are matched by name.
+  index <- NULL
+  supplement <- cv_env$cv_build_compact_supplement(
+    crb,
+    primary,
+    first_frame,
+    include_clone = FALSE
+  )
+  expect_equal(unclass(supplement$spaces[[1]]$x), c(NA, 20, NA, 40))
+  expect_identical(hydrated, 1L)
 })
 
 test_that("clone core omits duplicate indices and deferred labels", {
@@ -2568,6 +2673,34 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
   expect_identical(single_space$name, "fov.2")
   expect_false(single_space$is_roi_overview)
   expect_identical(single_space$label, "fov.2 · A (spatial)")
+  # Compact scenes carry only their own points and expand to the same arrays.
+  expand <- function(scene, values) {
+    out <- rep(NA_real_, length(cells))
+    out[as.integer(scene$rows) + 1L] <- values
+    out
+  }
+  compact <- cv_env$cv_build_spatial(crb, cells, compact = TRUE)
+  expect_equal(expand(compact, compact$x), unclass(scenes[[1]]$x))
+  for (i in seq_along(scenes)) {
+    expect_null(compact$samples[[i]]$geometry_resource)
+    expect_equal(
+      expand(compact$samples[[i]], compact$samples[[i]]$x),
+      unclass(scenes[[i]]$x)
+    )
+    expect_equal(
+      expand(compact$samples[[i]], compact$samples[[i]]$y),
+      unclass(scenes[[i]]$y)
+    )
+  }
+  # A whole section without ROI or rotation takes its Pack geometry.
+  cv_env$viewerSpatialGeometryAsset <- function(name, rows, rotation) {
+    list(url = paste0(name, ".bin"), cells = length(rows))
+  }
+  whole <- cv_env$cv_spatial_one(crb, cells, "fov", TRUE, compact = TRUE)
+  rm("viewerSpatialGeometryAsset", envir = cv_env)
+  expect_identical(whole$geometry_resource$url, "fov.bin")
+  expect_length(whole$x, 0L)
+  expect_identical(unclass(whole$rows), 0:3)
   # Multiple matching images keep declaration order, independent of labels.
   cv_env$Cerebro.options$spatial_images$ds$fov.2 <- list(
     Zebra = image,

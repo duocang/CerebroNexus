@@ -300,7 +300,7 @@ cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
     NULL
   }
   projection_names <- tryCatch(
-    data_set()$availableProjections(),
+    availableProjections() %||% character(),
     error = function(error) character()
   )
   projection_resources <- Filter(
@@ -333,11 +333,6 @@ cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
   if (is.null(supplement)) {
     return(NULL)
   }
-  supplement <- cv_reference_trajectory_geometry(
-    supplement,
-    primary,
-    data_set()
-  )
   attr(supplement, "server_prepare_ms") <-
     (proc.time()[["elapsed"]] - started) * 1000
   list(primary_n = primary_n, value = supplement, clone_spec = clone_spec)
@@ -1186,14 +1181,23 @@ observeEvent(input[["coordviews_wire_fallback"]], {
 ## "Table of selected cells" (their meta data), exactly like the Projection tab.
 ## The client-side composition + top-clonotype readout is unaffected and stays.
 ##----------------------------------------------------------------------------##
-coordviews_selected_barcodes <- reactive({
+## The selection as canonical metadata rows (1-based). The panels hold the
+## cells in metadata order, so a panel index is a row: the plot and table read
+## the selected rows by position, without the million cell names.
+coordviews_selected_rows <- reactive({
   indices <- input[["coordviews_selection_indices"]]
   current <- viewer_loaded_dataset_context()
+  n <- nrow(viewerProjectionFirstFrameMetadata())
   if (
     is.list(indices) &&
       viewerDatasetContextEqual(indices$dataset_context, current)
   ) {
-    return(cv_cells_at_indices(cv_saved_view_cells(), indices$indices))
+    rows <- viewerDecodeRowBits(indices$indices_bits)
+    if (is.null(rows) && length(indices$indices)) {
+      rows <- suppressWarnings(as.integer(unlist(indices$indices))) + 1L
+    }
+    rows <- rows[!is.na(rows) & rows >= 1L & rows <= n]
+    return(if (length(rows)) rows else NULL)
   }
   selection <- input[["coordviews_selection"]]
   if (
@@ -1203,7 +1207,11 @@ coordviews_selected_barcodes <- reactive({
     return(NULL)
   }
   sel <- selection$cells
-  if (is.null(sel) || !length(sel)) NULL else as.character(sel)
+  if (is.null(sel) || !length(sel)) {
+    return(NULL)
+  }
+  rows <- which(cv_saved_view_cells() %in% as.character(sel))
+  if (length(rows)) rows else NULL
 })
 
 ## Boxes appear only while a selection exists (same gating as the Overview tab).
@@ -1217,14 +1225,21 @@ coordviews_selected_barcodes <- reactive({
 ## CSS animation rather than a transition because Shiny rebuilds these two from
 ## scratch on every selection change — a new element has nothing to transition
 ## from. Definition: www/coordviews.css, @keyframes cvRise.
-output[["coordviews_selected_cells_UI"]] <- renderUI({
+coordviews_selection_present <- viewerSelectionPresence(
+  "coordviews",
+  "coordviews_selection_indices"
+)
+
+coordviews_selected_cells_ui <- renderUI({
   ## Drop dataset/selection dependencies as soon as this page is left. The
   ## small visibility gate must still run while hidden (see outputOptions
   ## below), so a pending result cannot be invalidated and then suspended
   ## before Shiny flushes it during a dataset transition.
   req(identical(input[["sidebar"]], "coordinated_views"))
-  req(coordviews_selected_barcodes())
-  meta_cols <- colnames(getMetaData())
+  ## On whether there is a selection, not on each one: the boxes are not
+  ## rebuilt (nor the selection decoded) for every new selection.
+  req(coordviews_selection_present())
+  meta_cols <- colnames(viewerProjectionFirstFrameMetadata())
   tagList(
     fluidRow(
       class = "cv-rise",
@@ -1243,7 +1258,7 @@ output[["coordviews_selected_cells_UI"]] <- renderUI({
               "coordviews_selected_cells_plot_variable"
             ]])
           ),
-          plotly::plotlyOutput("coordviews_selected_cells_plot")
+          cerebroChartOutput("coordviews_selected_cells_plot")
         )
       )
     ),
@@ -1279,26 +1294,42 @@ output[["coordviews_selected_cells_UI"]] <- renderUI({
 
 ## Deliberately bypass the page-scoped outputOptions wrapper: only the gate
 ## above stays awake; metadata and the plot/table outputs remain demand-driven.
-shiny::outputOptions(
-  output,
-  "coordviews_selected_cells_UI",
-  suspendWhenHidden = FALSE
+## Registered at the first selection: until then it would only run (twice on
+## the first open) to stop at its gate.
+observeEvent(
+  if (isTRUE(coordviews_selection_present())) TRUE,
+  once = TRUE,
+  {
+    output[["coordviews_selected_cells_UI"]] <- coordviews_selected_cells_ui
+    shiny::outputOptions(
+      output,
+      "coordviews_selected_cells_UI",
+      suspendWhenHidden = FALSE
+    )
+  }
 )
 
 ## Plot: categorical variable -> bar of selected-cell counts per group (coloured
 ## by the SAME assignColorsToGroups() the Projection tab uses); numeric variable
 ## -> violin/box of selected vs. not-selected. Barcode-keyed, so it needs no
 ## projection coordinates.
-output[["coordviews_selected_cells_plot"]] <- plotly::renderPlotly({
-  sel <- coordviews_selected_barcodes()
-  req(sel, input[["coordviews_selected_cells_plot_variable"]])
-  cells_df <- cv_canonical_metadata(getMetaData())
+output[["coordviews_selected_cells_plot"]] <- renderCerebroChart({
+  ## The browser draws it for a selection it reported by row.
+  if (
+    viewerClientSelection("coordviews", "plot", "coordviews_selection_indices")
+  ) {
+    return(NULL)
+  }
+  rows <- coordviews_selected_rows()
+  req(rows, input[["coordviews_selected_cells_plot_variable"]])
+  cells_df <- viewerProjectionFirstFrameMetadata()
   var <- input[["coordviews_selected_cells_plot_variable"]]
   req(var %in% colnames(cells_df))
-  is_selected <- cells_df[["cell_barcode"]] %in% sel
+  is_selected <- viewerRowMask(rows, seq_len(nrow(cells_df)))
   ## categorical -> bar chart of counts within the selection
   if (is.factor(cells_df[[var]]) || is.character(cells_df[[var]])) {
-    sub <- cells_df[is_selected, , drop = FALSE]
+    ## Only the counted column: every column of a million cells is not copied.
+    sub <- cells_df[is_selected, var, drop = FALSE]
     if (nrow(sub) > 0) {
       counts <- sub %>%
         dplyr::group_by(dplyr::across(dplyr::all_of(var))) %>%
@@ -1313,80 +1344,46 @@ output[["coordviews_selected_cells_plot"]] <- plotly::renderPlotly({
       counts <- data.frame(x = lv, n = 0L)
       colnames(counts)[1] <- var
     }
-    colors_for_groups <- assignColorsToGroups(counts, var)
-    x_vals <- as.character(counts[[1]])
-    plot <- plotly::plot_ly(
-      x = x_vals,
-      y = counts[[2]],
-      type = "bar",
-      color = x_vals,
-      colors = colors_for_groups,
-      showlegend = FALSE,
-      hoverinfo = "y"
+    cerebroCountBarData(
+      counts[[1]],
+      counts[[2]],
+      assignColorsToGroups(counts, var)
     )
-    y_axis_title <- "Number of cells"
     ## numeric -> violin/box of selected vs. not selected
   } else if (is.numeric(cells_df[[var]])) {
-    grp <- factor(
-      ifelse(is_selected, "selected", "not selected"),
-      levels = c("selected", "not selected")
+    grp <- structure(
+      2L - is_selected,
+      levels = c("selected", "not selected"),
+      class = "factor"
     )
-    violin_data <- compactViolinData(
+    cerebroViolinData(
       data.frame(group = grp, value = cells_df[[var]]),
       "value",
-      "group"
+      "group",
+      cerebroSelectionColors(),
+      var,
+      "number"
     )
-    plot <- plotly::plot_ly(
-      x = violin_data[["group"]],
-      y = violin_data[["value"]],
-      type = "violin",
-      box = list(visible = FALSE),
-      meanline = list(visible = FALSE),
-      color = violin_data[["group"]],
-      colors = setNames(
-        c("#e74c3c", "#7f8c8d"),
-        c("selected", "not selected")
-      ),
-      showlegend = FALSE,
-      hoverinfo = "y",
-      marker = list(size = 5)
-    )
-    plot <- addExactViolinSummary(plot, violin_data)
-    y_axis_title <- var
   } else {
     return(NULL)
   }
-  plot %>%
-    plotly::layout(
-      title = "",
-      xaxis = list(title = "", mirror = TRUE, showline = TRUE),
-      yaxis = list(
-        title = y_axis_title,
-        tickformat = ",.0f",
-        hoverformat = ",.0f",
-        mirror = TRUE,
-        showline = TRUE
-      ),
-      hovermode = "compare"
-    ) %>%
-    cerebro_plotly_toolbar()
 })
 
 ## Table: meta data of the selected cells (same prettifyTable options as the
 ## Projection tab's table). Filtered by barcode; empty skeleton when nothing hit.
 output[["coordviews_selected_cells_table"]] <- DT::renderDataTable({
-  sel <- coordviews_selected_barcodes()
-  if (is.null(sel)) {
-    return(
-      cv_canonical_metadata(getMetaData()) %>%
-        dplyr::slice(0) %>%
-        prepareEmptyTable()
+  ## The browser lists a selection it reported by row.
+  req(
+    !viewerClientSelection(
+      "coordviews",
+      "table",
+      "coordviews_selection_indices"
     )
-  }
-  cells_df <- cv_selected_metadata(getMetaData(), sel) %>%
-    dplyr::select(cell_barcode, dplyr::everything())
-  if (nrow(cells_df) == 0) {
-    cv_canonical_metadata(getMetaData()) %>%
+  )
+  rows <- coordviews_selected_rows()
+  cells_df <- if (!is.null(rows)) viewerSelectedRowsMetadata(rows)
+  if (is.null(cells_df) || nrow(cells_df) == 0) {
+    viewerProjectionFirstFrameMetadata() %>%
       dplyr::slice(0) %>%
       prepareEmptyTable()
   } else {
@@ -1444,8 +1441,20 @@ observeEvent(input[["coordviews_selected_cells_table_info"]], {
 ## use); on change the server returns a 0-255 vector aligned to the bundle's
 ## cell order, and the client colours the points (viridis, or RGB blend).
 ##----------------------------------------------------------------------------##
+## A thin CRB's gene names, else the H5 file's cell count: neither attaches the
+## lazy HDF5Array backend (seconds) that nrow(data_set()$expression) forces.
 cv_has_expression <- function() {
-  isTRUE(tryCatch(nrow(data_set()$expression) > 0, error = function(e) FALSE))
+  isTRUE(tryCatch(
+    {
+      genes <- viewerProjectionFirstFrameCache()$gene_names
+      if (!is.null(genes)) {
+        length(genes) > 0L
+      } else {
+        viewerExpressionCellCount(data_set()) > 0L
+      }
+    },
+    error = function(e) FALSE
+  ))
 }
 
 cv_expression_cells <- function() {
@@ -1463,6 +1472,17 @@ cv_gene_values <- function(gene, cells = NULL, n = NULL) {
   }
   if (!is.null(cells)) {
     cells <- as.character(cells)
+  } else {
+    ## Every cell: one row straight from an H5 file, without attaching the
+    ## HDF5Array backend; anything else takes the matrix path below.
+    v <- tryCatch(
+      as.numeric(viewerExpressionRow(data_set(), NULL, gene)),
+      error = function(e) NULL
+    )
+    if (length(v) && (is.null(n) || length(v) == as.integer(n))) {
+      v[is.na(v)] <- 0
+      return(v)
+    }
   }
   m <- tryCatch(
     data_set()$getExpressionMatrix(cells = cells, genes = gene),

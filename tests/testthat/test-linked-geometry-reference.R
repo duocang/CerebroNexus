@@ -2,14 +2,6 @@ test_that('Linked references only validated canonical two-dimensional trajectory
   scope <- new.env(parent = globalenv())
   sys.source(viewer_test_path('coordinated_views', 'bundle.R'), scope)
   scope$viewerPackTrajectoryFrame <- function(pack, method, name) pack$frame
-  space <- list(
-    trajectory = TRUE,
-    method = 'm',
-    name = 't',
-    x = I(c(1, NA, 3)),
-    y = I(c(4, NA, 6))
-  )
-  extra <- list(spaces = list(space))
   primary <- list(
     n = 3L,
     canonical_order_id = 'order',
@@ -24,24 +16,38 @@ test_that('Linked references only validated canonical two-dimensional trajectory
       cells = 2L
     )
   )
-  object <- structure(list(), cerebro_viewer_pack = pack)
-  result <- scope$cv_reference_trajectory_geometry(
-    extra,
-    primary,
-    object
-  )$spaces[[1]]
+  trajectory <- list(
+    meta = data.frame(
+      DR_1 = c(1, NA, 3),
+      DR_2 = c(4, NA, 6),
+      row.names = c('a', 'b', 'c')
+    )
+  )
+  object <- structure(
+    list(
+      getMethodsForTrajectories = function() 'm',
+      getNamesOfTrajectories = function(method) 't',
+      getTrajectory = function(method, name) trajectory
+    ),
+    cerebro_viewer_pack = pack
+  )
+  build <- function(primary) {
+    scope$cv_build_trajectories(object, c('a', 'b', 'c'), primary = primary)[[
+      1
+    ]]
+  }
+  result <- build(primary)
   expect_null(result$x)
   expect_null(result$y)
+  expect_identical(result$geometry_ref$projection, 'umap')
   expect_equal(as.integer(result$geometry_ref$exclude), 1L)
+  ## Without a primary, on a 3D projection or another cell order the
+  ## coordinates are sent.
+  expect_equal(unclass(build(NULL)$x), c(1, NA, 3))
   primary$projections$umap$ndim <- 3L
-  expect_identical(
-    scope$cv_reference_trajectory_geometry(extra, primary, object),
-    extra
-  )
+  expect_equal(unclass(build(primary)$y), c(4, NA, 6))
   primary$projections$umap$ndim <- 2L
   primary$canonical_order_id <- 'other'
-  expect_identical(
-    scope$cv_reference_trajectory_geometry(extra, primary, object),
-    extra
-  )
+  expect_null(build(primary)$geometry_ref)
+  expect_equal(unclass(build(primary)$x), c(1, NA, 3))
 })

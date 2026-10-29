@@ -30,25 +30,30 @@ cv_cell_ids <- function(ids, context = "data set") {
   ids
 }
 
+## The last metadata checked and its canonical form. Every selection change
+## asks again for the same data set's metadata; checking its million cell IDs
+## (enc2utf8, nzchar, anyDuplicated) once is enough. identical() returns at
+## once for the same object.
+.cv_canonical_metadata_memo <- new.env(parent = emptyenv())
+
 cv_canonical_metadata <- function(metadata) {
   if (is.null(metadata) || !is.data.frame(metadata)) {
     return(NULL)
   }
+  memo <- .cv_canonical_metadata_memo
+  if (!is.null(memo$input) && identical(memo$input, metadata)) {
+    return(memo$output)
+  }
+  input <- metadata
   ids <- if ("cell_barcode" %in% colnames(metadata)) {
     metadata$cell_barcode
   } else {
     rownames(metadata)
   }
   metadata$cell_barcode <- cv_cell_ids(ids, "metadata")
+  memo$input <- input
+  memo$output <- metadata
   metadata
-}
-
-cv_selected_metadata <- function(metadata, cells) {
-  metadata <- cv_canonical_metadata(metadata)
-  if (is.null(metadata)) {
-    return(NULL)
-  }
-  metadata[metadata$cell_barcode %in% as.character(cells), , drop = FALSE]
 }
 
 cv_cells_at_indices <- function(cells, indices) {
@@ -550,7 +555,62 @@ cv_space <- function(id, label, x, y) {
 ## Trajectories are ordinary linked spaces with one extra drawing layer: their
 ## fitted graph. Cells outside a trajectory stay in the shared index with NA
 ## coordinates, so a selection still has one identity across every panel.
-cv_build_trajectories <- function(crb, cells) {
+## The trajectory row of each of `cells` (NA where the trajectory has none).
+## A Viewer Pack in canonical order stores the cell index of every trajectory
+## row; using it avoids checking and matching a million row names. `n` is the
+## number of cells, so `cells` is only evaluated without a valid index. The
+## Pack builder matches the unique row names, so the index has no duplicates.
+cv_trajectory_rows <- function(
+  crb,
+  cells,
+  meta,
+  method,
+  name,
+  n = length(cells)
+) {
+  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+  index <- if (
+    is.list(pack) &&
+      isTRUE(pack$canonical_order) &&
+      identical(as.integer(pack$cell_count), as.integer(n)) &&
+      exists("viewerPackTrajectoryIndex", mode = "function")
+  ) {
+    tryCatch(
+      viewerPackTrajectoryIndex(pack, method, name),
+      error = function(e) NULL
+    )
+  }
+  if (
+    length(index) &&
+      length(index) == nrow(meta) &&
+      !anyNA(index) &&
+      min(index) >= 1L &&
+      max(index) <= n
+  ) {
+    rows <- rep(NA_integer_, n)
+    rows[index] <- seq_along(index)
+    return(rows)
+  }
+  trajectory_cells <- rownames(meta)
+  if ("cell_barcode" %in% colnames(meta)) {
+    trajectory_cells <- as.character(meta$cell_barcode)
+  }
+  trajectory_cells <- cv_cell_ids(
+    trajectory_cells,
+    paste0("Trajectory `", name, "`")
+  )
+  match(cells, trajectory_cells)
+}
+
+## With `primary`, a trajectory drawn on a canonical projection of the Viewer
+## Pack references that geometry: only which cells have coordinates is computed.
+cv_build_trajectories <- function(
+  crb,
+  cells,
+  n = length(cells),
+  primary = NULL
+) {
+  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
   methods <- tryCatch(
     crb$getMethodsForTrajectories(),
     error = function(e) character(0)
@@ -579,33 +639,61 @@ cv_build_trajectories <- function(crb, cells) {
       ) {
         next
       }
-      trajectory_cells <- rownames(meta)
-      if ("cell_barcode" %in% colnames(meta)) {
-        trajectory_cells <- as.character(meta$cell_barcode)
-      }
-      trajectory_cells <- cv_cell_ids(
-        trajectory_cells,
-        paste0("Trajectory `", trajectory_name, "`")
+      idx <- cv_trajectory_rows(
+        crb,
+        cells,
+        meta,
+        method,
+        trajectory_name,
+        n
       )
-      idx <- match(cells, trajectory_cells)
       if (!any(!is.na(idx))) {
         next
       }
-      space <- cv_space(
-        paste("trajectory", method, trajectory_name, sep = "::"),
-        paste0(gsub("_", " ", trajectory_name, fixed = TRUE), " (trajectory)"),
-        round(as.numeric(meta$DR_1)[idx], 3),
-        round(as.numeric(meta$DR_2)[idx], 3)
+      space <- list(
+        id = paste("trajectory", method, trajectory_name, sep = "::"),
+        label = paste0(
+          gsub("_", " ", trajectory_name, fixed = TRUE),
+          " (trajectory)"
+        )
       )
+      x <- as.numeric(meta$DR_1)
+      y <- as.numeric(meta$DR_2)
+      frame <- cv_trajectory_geometry_frame(
+        pack,
+        primary,
+        method,
+        trajectory_name
+      )
+      present <- NULL
+      if (
+        !is.null(frame) &&
+          length(idx) == primary$n &&
+          identical(is.na(x), is.na(y))
+      ) {
+        present <- (is.finite(x) & is.finite(y))[idx]
+        present[is.na(present)] <- FALSE
+      }
+      if (!is.null(present) && sum(present) == frame$cells) {
+        space$geometry_ref <- list(
+          projection = frame$projection_name,
+          exclude = I(as.integer(which(!present) - 1L))
+        )
+      } else {
+        space$x <- I(round(x[idx], 3))
+        space$y <- I(round(y[idx], 3))
+      }
       space$trajectory <- TRUE
       space$method <- method
       space$name <- trajectory_name
       edges <- trajectory$edges
       if (!is.null(edges) && all(edge_cols %in% colnames(edges))) {
         edges <- edges[stats::complete.cases(edges[, edge_cols]), edge_cols]
-        space$edges <- I(lapply(seq_len(nrow(edges)), function(i) {
-          as.list(unname(as.numeric(edges[i, edge_cols])))
-        }))
+        space$edges <- I(.mapply(
+          list,
+          unname(lapply(edges, as.numeric)),
+          NULL
+        ))
       } else {
         space$edges <- I(list())
       }
@@ -857,6 +945,22 @@ cv_spatial_data <- function(crb, nm) {
   crb$getSpatialData(nm, hydrate_molecules = FALSE)
 }
 
+## Canonical rows of a section's cells: the Viewer's section rows (the Viewer
+## Pack's index) when they are at hand, else the cells matched by name.
+cv_spatial_section_rows <- function(nm, coordinates, cells) {
+  rows <- if (exists("spatial_section_rows", mode = "function")) {
+    tryCatch(
+      spatial_section_rows(nm, coordinates),
+      error = function(error) NULL
+    )
+  }
+  rows %||% match(rownames(coordinates), cells)
+}
+
+## With `compact`, the scene carries only its own points: `rows` (0-based
+## canonical rows) with x/y in their order or, for a whole unrotated section,
+## the section's Pack geometry instead of x/y. Otherwise x/y cover every cell
+## of `cells`, NA outside the scene.
 cv_spatial_one <- function(
   crb,
   cells,
@@ -864,7 +968,8 @@ cv_spatial_one <- function(
   allow_external,
   roi_value = NULL,
   metadata = NULL,
-  spatial_data = NULL
+  spatial_data = NULL,
+  compact = FALSE
 ) {
   sd <- tryCatch(
     spatial_data %||% cv_spatial_data(crb, nm),
@@ -910,7 +1015,36 @@ cv_spatial_one <- function(
     rownames(co),
     paste0("Spatial section `", nm, "`")
   )
-  sidx <- match(cells, spatial_cells)
+  rows <- NULL
+  geometry <- NULL
+  if (isTRUE(compact)) {
+    section_cells <- rownames(sd$coordinates)
+    section_rows <- cv_spatial_section_rows(nm, sd$coordinates, cells)
+    whole <- identical(spatial_cells, section_cells)
+    rows <- if (whole) {
+      section_rows
+    } else {
+      section_rows[match(spatial_cells, section_cells)]
+    }
+    present <- !is.na(rows)
+    if (!all(present)) {
+      co <- co[present, , drop = FALSE]
+      rows <- rows[present]
+      whole <- FALSE
+    }
+    if (
+      whole &&
+        !nzchar(roi_value) &&
+        exists("viewerSpatialGeometryAsset", mode = "function")
+    ) {
+      geometry <- tryCatch(
+        viewerSpatialGeometryAsset(nm, section_rows, rotation),
+        error = function(error) NULL
+      )
+    }
+  } else {
+    sidx <- match(cells, spatial_cells)
+  }
   xr <- range(co[, 1], na.rm = TRUE)
   yr <- range(co[, 2], na.rm = TRUE)
   ## Every background this section can be shown against, as objects with their
@@ -1073,8 +1207,22 @@ cv_spatial_one <- function(
     ),
     roi = if (nzchar(roi_value)) roi_value else NULL,
     is_roi_overview = !nzchar(roi_value) && length(rois) > 1L,
-    x = as.numeric(co[sidx, 1]),
-    y = as.numeric(co[sidx, 2]),
+    x = if (!isTRUE(compact)) {
+      as.numeric(co[sidx, 1])
+    } else if (is.null(geometry)) {
+      as.numeric(co[, 1])
+    } else {
+      numeric()
+    },
+    y = if (!isTRUE(compact)) {
+      as.numeric(co[sidx, 2])
+    } else if (is.null(geometry)) {
+      as.numeric(co[, 2])
+    } else {
+      numeric()
+    },
+    rows = if (isTRUE(compact)) I(as.integer(rows) - 1L),
+    geometry_resource = geometry,
     x_range = if (is.null(viewport)) {
       NULL
     } else {
@@ -1108,12 +1256,13 @@ cv_spatial_one <- function(
 ## travels in `$samples` so Linked views can switch between them client-side (the
 ## "Spatial data" picker), each donor's tissue section being its own coordinate
 ## system + image. Returns the space or NULL when there is no spatial.
-cv_build_spatial <- function(crb, cells) {
+cv_build_spatial <- function(crb, cells, metadata = NULL, compact = FALSE) {
   sp_names <- tryCatch(crb$availableSpatial(), error = function(e) NULL)
   if (!length(sp_names)) {
     return(NULL)
   }
-  metadata <- tryCatch(crb$getMetaData(), error = function(error) NULL)
+  metadata <- metadata %||%
+    tryCatch(crb$getMetaData(), error = function(error) NULL)
   built <- list()
   for (nm in sp_names) {
     sd <- tryCatch(cv_spatial_data(crb, nm), error = function(error) NULL)
@@ -1126,7 +1275,8 @@ cv_build_spatial <- function(crb, cells) {
       nm,
       TRUE,
       metadata = metadata,
-      spatial_data = sd
+      spatial_data = sd,
+      compact = compact
     )
     if (is.null(scene)) {
       next
@@ -1139,7 +1289,16 @@ cv_build_spatial <- function(crb, cells) {
     )$values
     if (length(rois) > 1L) {
       for (roi in rois) {
-        scene <- cv_spatial_one(crb, cells, nm, TRUE, roi, metadata, sd)
+        scene <- cv_spatial_one(
+          crb,
+          cells,
+          nm,
+          TRUE,
+          roi,
+          metadata,
+          sd,
+          compact = compact
+        )
         if (is.null(scene)) {
           next
         }
@@ -1159,6 +1318,8 @@ cv_build_spatial <- function(crb, cells) {
     first$x,
     first$y
   )
+  space$rows <- first$rows
+  space$geometry_resource <- first$geometry_resource
   ## Labels describe FOV/ROI scope; the persisted selection key stays stable.
   space$name <- first$name
   space$is_roi_overview <- first$is_roi_overview
@@ -1186,6 +1347,8 @@ cv_build_spatial <- function(crb, cells) {
         label = s$label %||% paste0(s$name, " (spatial)"),
         x = I(s$x),
         y = I(s$y),
+        rows = s$rows,
+        geometry_resource = s$geometry_resource,
         x_range = if (is.null(s$x_range)) NULL else I(s$x_range),
         y_range = if (is.null(s$y_range)) NULL else I(s$y_range),
         builder_point_opacity = s$builder_point_opacity,
@@ -2134,19 +2297,37 @@ cv_build_compact_supplement <- function(
     return(NULL)
   }
   projection_names <- names(first_frame$projections)
-  unsupported <- length(crb$getMethodsForTrajectories()) ||
-    length(crb$availableSpatial()) ||
-    !is.null(crb$getTrekker())
-  if (unsupported) {
+  if (!is.null(crb$getTrekker())) {
     return(NULL)
   }
   metadata <- cv_build_deferred_metadata(crb, first_frame$meta_data, primary)
+  ## Trajectory rows come from the Pack's index; the cell names are read only
+  ## for a trajectory without a valid one.
+  cells <- function() cv_canonical_metadata(crb$getMetaData())$cell_barcode
+  spaces <- cv_build_trajectories(
+    crb,
+    cells = cells(),
+    n = primary$n,
+    primary = primary
+  )
+  ## Spatial scenes take their rows from the Pack's section index too, and
+  ## sample and ROI facets from the first-frame metadata.
+  spatial <- cv_build_spatial(
+    crb,
+    cells = cells(),
+    metadata = first_frame$meta_data,
+    compact = TRUE
+  )
+  if (!is.null(spatial)) {
+    spaces[[length(spaces) + 1L]] <- spatial
+  }
   clone <- if (isTRUE(include_clone)) {
     cv_build_clone(crb, seq_len(primary$n), primary$n, sparse = TRUE)
   } else {
     NULL
   }
   if (!is.null(clone)) {
+    spaces[[length(spaces) + 1L]] <- clone$space
     metadata$groups[["clone_expansion"]] <- clone$group
   }
   cv_supplement(
@@ -2168,7 +2349,7 @@ cv_build_compact_supplement <- function(
       },
       first_frame$projections
     ),
-    spaces = if (is.null(clone)) list() else list(clone$space),
+    spaces = spaces,
     clone = clone$bundle
   )
 }
@@ -2192,8 +2373,8 @@ cv_build_progressive_supplement <- function(
     crb$availableProjections(),
     error = function(e) character()
   )
-  spaces <- cv_build_trajectories(crb, cells)
-  spatial <- cv_build_spatial(crb, cells)
+  spaces <- cv_build_trajectories(crb, cells, primary = primary)
+  spatial <- cv_build_spatial(crb, cells, metadata = md, compact = TRUE)
   if (!is.null(spatial)) {
     spaces[[length(spaces) + 1L]] <- spatial
   }
@@ -2226,53 +2407,34 @@ cv_build_progressive_supplement <- function(
   )
 }
 
-## Reference only geometry whose Viewer Pack explicitly validates the same
-## canonical projection. Trajectories with their own coordinates (a
+## The Viewer Pack frame of a trajectory drawn on a canonical two-dimensional
+## projection of `primary`, or NULL. Trajectories with their own coordinates (a
 ## `trajectory_asset` frame) or without a Viewer Pack keep their arrays.
-cv_reference_trajectory_geometry <- function(supplement, primary, crb) {
-  pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
+cv_trajectory_geometry_frame <- function(pack, primary, method, name) {
   if (
-    !is.list(pack) ||
+    is.null(primary) ||
+      !is.list(pack) ||
       !identical(
         primary$canonical_order_id,
         pack$manifest$cell_order_fingerprint
       ) ||
-      primary$n != pack$cell_count
+      !identical(as.integer(primary$n), as.integer(pack$cell_count))
   ) {
-    return(supplement)
+    return(NULL)
   }
-  supplement$spaces <- lapply(supplement$spaces, function(space) {
-    if (!isTRUE(space$trajectory)) {
-      return(space)
-    }
-    frame <- viewerPackTrajectoryFrame(pack, space$method, space$name)
-    if (
-      is.null(frame) ||
-        frame$geometry_kind != "canonical_projection" ||
-        !frame$projection_name %in% names(primary$projections) ||
-        !identical(
-          as.integer(primary$projections[[frame$projection_name]]$ndim),
-          2L
-        ) ||
-        length(space$x) != primary$n ||
-        length(space$y) != primary$n ||
-        !identical(is.na(space$x), is.na(space$y))
-    ) {
-      return(space)
-    }
-    present <- is.finite(space$x) & is.finite(space$y)
-    if (sum(present) != frame$cells) {
-      return(space)
-    }
-    space$geometry_ref <- list(
-      projection = frame$projection_name,
-      exclude = I(as.integer(which(!present) - 1L))
-    )
-    space$x <- NULL
-    space$y <- NULL
-    space
-  })
-  supplement
+  frame <- viewerPackTrajectoryFrame(pack, method, name)
+  if (
+    is.null(frame) ||
+      frame$geometry_kind != "canonical_projection" ||
+      !frame$projection_name %in% names(primary$projections) ||
+      !identical(
+        as.integer(primary$projections[[frame$projection_name]]$ndim),
+        2L
+      )
+  ) {
+    return(NULL)
+  }
+  frame
 }
 
 ## Remove heavyweight browser-only assets from a bundle while keeping the
