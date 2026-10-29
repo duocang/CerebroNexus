@@ -5142,7 +5142,8 @@ viewerSupportedTrajectoryMethods <- function(available_methods) {
         c(
           "monocle2",
           "marker_guided",
-          "illustrative"
+          "illustrative",
+          "published_pseudotime"
         )
   ]
 }

@@ -18,7 +18,8 @@
         c(
           "monocle2",
           "marker_guided",
-          "illustrative"
+          "illustrative",
+          "published_pseudotime"
         )
     ),
     spatial = available(object$availableSpatial()),
