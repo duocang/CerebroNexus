@@ -564,6 +564,12 @@
   });
 
   if (window.jQuery) {
+    // Node size: draw the slider's factor at once, without a frame from R
+    // (frames carry the base sizes and the factor as data.point_scale).
+    window.jQuery(document).on('change.hlaNodeScale', '#hla_node_scale', function () {
+      var api = window.cerebroCellViews;
+      if (api && api.scalePointSizes) api.scalePointSizes('hla_motif_network', Number(this.value));
+    });
     window.jQuery(document).on('shiny:connected', function () { tryBuild(30); });
   } else {
     document.addEventListener('shiny:connected', function () {

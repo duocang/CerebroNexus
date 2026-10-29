@@ -430,6 +430,31 @@ hla_motif_variable_aa <- function(seq, cons) {
   if (length(vp) == 0) "" else paste(ss[vp], collapse = "")
 }
 
+## The pairs of equal-length `seqs` at Hamming distance exactly 1, as an index
+## matrix (row < column) in the order which(arr.ind = TRUE) gives over a
+## distance matrix's upper triangle. Two such sequences agree everywhere but at
+## one position, so they share that position's masked key: grouping by each
+## position's key finds every pair once, in O(n * length) instead of the n^2
+## distance matrix.
+hla_hamming1_pairs <- function(seqs) {
+  n <- length(seqs)
+  len <- if (n > 1L) nchar(seqs[1L]) else 0L
+  pairs <- lapply(seq_len(len), function(pos) {
+    key <- paste0(substr(seqs, 1L, pos - 1L), substr(seqs, pos + 1L, len))
+    o <- order(key, method = "radix")
+    run <- cumsum(c(TRUE, key[o][-1L] != key[o][-n]))
+    size <- tabulate(run)
+    rest <- size[run] - (seq_len(n) - (cumsum(size) - size)[run])
+    i <- rep.int(seq_len(n), rest)
+    cbind(o[i], o[i + sequence(rest)])
+  })
+  idx <- do.call(rbind, c(list(matrix(integer(0), 0L, 2L)), pairs))
+  # Identical sequences share every key but are at distance 0.
+  idx <- idx[seqs[idx[, 1L]] != seqs[idx[, 2L]], , drop = FALSE]
+  idx <- cbind(pmin(idx[, 1L], idx[, 2L]), pmax(idx[, 1L], idx[, 2L]))
+  idx[order(idx[, 2L], idx[, 1L]), , drop = FALSE]
+}
+
 #' Cluster equal-length CDR3s within one length bin at Hamming distance 1
 #'
 #' All rows of `df` must share one CDR3 length (caller guarantees this).
@@ -444,16 +469,7 @@ hla_process_length_group <- function(df) {
 
   # Single distance measure (Hamming); edge and adjacency use the SAME
   # threshold (== 1) so component membership and drawn edges never diverge.
-  # Small bins have too little work to amortize OpenMP worker startup. Keep
-  # larger bins on stringdist's configured thread count; distances are exact
-  # in either case and no process-wide option is changed.
-  dist_mat <- stringdist::stringdistmatrix(
-    seqs,
-    seqs,
-    method = "hamming",
-    nthread = if (n <= 256L) 1L else getOption("sd_num_thread", 1L)
-  )
-  idx <- which(dist_mat == 1 & upper.tri(dist_mat), arr.ind = TRUE)
+  idx <- hla_hamming1_pairs(seqs)
   edges <- if (nrow(idx) == 0) {
     NULL
   } else {
@@ -483,21 +499,31 @@ hla_process_length_group <- function(df) {
   # larger: a hop changes one position and later hops can change it back, so
   # Hamming(u,v) <= hops(u,v). Naming it `diameter` on a network invited exactly
   # the wrong reading, so it is `max_mismatch` everywhere the user can see it.
+  # Small components have too little work to amortize OpenMP worker startup.
+  # Keep larger ones on stringdist's configured thread count; distances are
+  # exact in either case and no process-wide option is changed.
+  members <- split(seqs, factor(comps$membership, seq_len(comps$no)))
   diam <- vapply(
-    seq_len(comps$no),
-    function(k) {
-      members <- which(comps$membership == k)
-      if (length(members) < 2) {
+    members,
+    function(s) {
+      if (length(s) < 2) {
         return(0L)
       }
-      as.integer(max(dist_mat[members, members]))
+      as.integer(max(stringdist::stringdistmatrix(
+        s,
+        s,
+        method = "hamming",
+        nthread = if (length(s) <= 256L) 1L else getOption("sd_num_thread", 1L)
+      )))
     },
-    integer(1)
+    integer(1),
+    USE.NAMES = FALSE
   )
   consensus <- vapply(
-    seq_len(comps$no),
-    function(k) hla_make_consensus(seqs[which(comps$membership == k)]),
-    character(1)
+    members,
+    hla_make_consensus,
+    character(1),
+    USE.NAMES = FALSE
   )
 
   len_label <- nchar(seqs[1])
@@ -631,14 +657,26 @@ hla_group_dist <- function(t, k) {
   }
   t <- hla_tally_order(t)
   parts <- paste0(t$v, " (", t$n, ")")
-  body <- vapply(split(parts, t$g), paste, character(1), collapse = ", ")
-  gid <- as.integer(names(body))
-  n_types <- tabulate(t$g, nbins = k)[gid]
+  n_types <- tabulate(t$g, nbins = k)
+  # Most nodes hold one value: only groups with several are pasted together.
+  body <- character(k)
+  single <- n_types[t$g] == 1L
+  body[t$g[single]] <- parts[single]
+  if (!all(single)) {
+    multi <- vapply(
+      split(parts[!single], t$g[!single]),
+      paste,
+      character(1),
+      collapse = ", "
+    )
+    body[as.integer(names(multi))] <- multi
+  }
+  gid <- which(n_types > 0L)
   out[gid] <- sprintf(
     "%d type%s: %s",
-    n_types,
-    ifelse(n_types == 1L, "", "s"),
-    unname(body)
+    n_types[gid],
+    ifelse(n_types[gid] == 1L, "", "s"),
+    body[gid]
   )
   out
 }
@@ -995,11 +1033,14 @@ hla_build_motif_graph_raw <- function(
   } else {
     data.frame(from = character(0), to = character(0), stringsAsFactors = FALSE)
   }
+  # The vertex attributes are set in one call: graph_from_data_frame() sets
+  # them one column at a time, copying the attribute list for each.
   g <- igraph::graph_from_data_frame(
     edge_df,
-    vertices = vertices,
+    vertices = vertices["name"],
     directed = FALSE
   )
+  igraph::vertex_attr(g) <- as.list(vertices)
   # Denominator for a node's clone-size fraction shown in tooltips.
   g <- igraph::set_graph_attr(g, "total_cells", nrow(seg))
 

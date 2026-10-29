@@ -252,33 +252,49 @@ observeEvent(
   ignoreNULL = FALSE
 )
 
-hla_selected_cells <- reactive({
+## A column of the segments of the selected motifs (see hla_cells_for_node_keys()).
+hla_selected_column <- function(column = "barcode") {
   selected <- hla_selected_node_keys()
   if (!length(selected)) {
-    return(character(0))
+    return(if (identical(column, "barcode")) character(0))
   }
-  graph <- hla_motif_graph()
-  keys <- intersect(
-    selected,
-    hla_graph_node_keys(graph)
-  )
   hla_cells_for_node_keys(
     hla_scoped_segments(),
-    keys,
-    by_v = isTRUE(hla_param("hla_by_v", hla_by_v_default()))
+    intersect(selected, hla_graph_node_keys(hla_motif_graph())),
+    by_v = isTRUE(hla_param("hla_by_v", hla_by_v_default())),
+    column = column
   )
+}
+
+hla_selected_cells <- reactive(hla_selected_column())
+
+## The selected cells by canonical row, so their summaries read the first-frame
+## metadata: the Viewer Pack's segments carry the rows (checked against the
+## data set's cell order); older packs match the cell names once.
+hla_selected_rows <- reactive({
+  cells <- hla_selected_cells()
+  if (!length(cells)) {
+    return(cells)
+  }
+  rows <- if (isTRUE(viewerPackValidateCellOrder(viewerPackCurrent()))) {
+    hla_selected_column("cell_index")
+  }
+  if (length(rows)) {
+    return(data.frame(row = sort(as.integer(rows))))
+  }
+  viewerSelectionRowsForNames(cells) %||% cells
 })
 
 output$hla_selected_count <- renderUI({
   cerebroSelectionSummary(
-    hla_selected_cells(),
+    hla_selected_rows(),
     "HLA & TCR motif network"
   )
 })
 
 output$hla_motif_network_composition <- renderUI({
   cerebroSelectionSummary(
-    hla_selected_cells(),
+    hla_selected_rows(),
     "HLA & TCR motif network",
     composition = TRUE
   )

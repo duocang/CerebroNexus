@@ -38,6 +38,24 @@ hla_settings_requested <- reactive({
   !is.null(input[["hla_more_render_request"]])
 })
 
+## The first cohort change reads the chain's whole segment table from the
+## Viewer Pack (1-3 s on Ren). The drawer holds the cohort filters, so
+## once it opens and its own outputs have drawn, read that table while idle.
+observeEvent(hla_settings_requested(), {
+  req(hla_settings_requested())
+  pack <- viewerPackCurrent()
+  chain <- hla_active_chain()
+  req(is.list(pack))
+  viewerIdleRun(
+    stats::setNames(
+      list(function() viewerPackHlaSegments(pack, chain)),
+      paste0("hla-segments:", format(pack$cache), ":", chain)
+    ),
+    function() !session$isClosed(),
+    delay = 1.5
+  )
+})
+
 ## ---- Primary parameters ------------------------------------------------ ##
 output$hla_parameters_ui <- renderUI({
   hla_require_active_page()
@@ -97,7 +115,7 @@ output$hla_parameters_ui <- renderUI({
     selectizeInput(
       "hla_color_by",
       "Colour by",
-      choices = isolate(hla_color_by_choices()),
+      choices = hla_color_by_shown <<- isolate(hla_color_by_choices()),
       selected = isolate(hla_param("hla_color_by", "cluster")),
       options = list(render = HLA_TWO_LINE_RENDER)
     ),
@@ -177,13 +195,13 @@ output$hla_more_parameters_ui <- renderUI({
   )
 })
 
+## Both panels render on the flush that opens the page, so their inputs bind
+## in one batch instead of the primary one waiting for the toolbar to show.
 observe(
   {
-    outputOptions(
-      output,
-      "hla_more_parameters_ui",
-      suspendWhenHidden = !hla_page_active()
-    )
+    for (id in c("hla_parameters_ui", "hla_more_parameters_ui")) {
+      outputOptions(output, id, suspendWhenHidden = !hla_page_active())
+    }
   },
   priority = 100
 )
@@ -276,7 +294,9 @@ registerGroupFiltersInfo(
 ## and on the data; the picker is rendered once from isolate(hla_color_by_choices())
 ## above, then updated in place here -- the discipline the allele pickers use.
 ## Fires on scope AND dataset change; ignoreInit because the render already
-## seeded the current choices.
+## seeded the current choices, and skipped while the picker already shows them
+## (the first open of the page re-runs this once).
+hla_color_by_shown <- NULL
 observeEvent(
   {
     req(identical(input[["sidebar"]], "hla_tcr_motifs"))
@@ -284,6 +304,10 @@ observeEvent(
   },
   {
     choices <- hla_color_by_choices()
+    if (identical(choices, hla_color_by_shown)) {
+      return()
+    }
+    hla_color_by_shown <<- choices
     # Keep the current pick if the new scope still offers it, else fall back to
     # "Motif cluster" (""). Downstream tolerates a stale value, but the picker must
     # not display one it no longer lists. isolate(): reading the pick must not make
@@ -318,7 +342,8 @@ output$hla_additional_params_ui <- renderUI({
         "Always show" = "always",
         "Hide" = "never"
       ),
-      selected = hla_param("hla_legend_mode", "auto"),
+      # isolate(): the control reporting its own value must not rebuild it.
+      selected = isolate(hla_param("hla_legend_mode", "auto")),
       inline = TRUE
     ),
     tags$p(

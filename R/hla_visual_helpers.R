@@ -119,13 +119,21 @@ hla_segment_node_keys <- function(segments, by_v = FALSE) {
   }
 }
 
-hla_cells_for_node_keys <- function(segments, node_keys, by_v = FALSE) {
-  if (!is.data.frame(segments) || !"barcode" %in% colnames(segments)) {
-    return(character(0))
+## The cells of the motifs `node_keys`: their barcodes, or another column of
+## their segments (NULL when the segments do not have it).
+hla_cells_for_node_keys <- function(
+  segments,
+  node_keys,
+  by_v = FALSE,
+  column = "barcode"
+) {
+  if (!is.data.frame(segments) || !column %in% colnames(segments)) {
+    return(if (identical(column, "barcode")) character(0))
   }
   keys <- hla_segment_node_keys(segments, by_v)
-  keep <- keys %in% as.character(node_keys)
-  unique(as.character(segments$barcode[keep & !is.na(segments$barcode)]))
+  values <- segments[[column]][keys %in% as.character(node_keys)]
+  values <- unique(values[!is.na(values)])
+  if (identical(column, "barcode")) as.character(values) else values
 }
 
 hla_node_keys_for_cells <- function(segments, cells, by_v = FALSE) {

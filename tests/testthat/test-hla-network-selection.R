@@ -57,6 +57,17 @@ test_that("HLA node selection maps cleanly between motif keys and cells", {
     hla_node_keys_for_cells(segments, "cell-3", by_v = TRUE),
     "TRBV2::CASSB"
   )
+  ## Viewer Pack segments carry the cells' canonical rows.
+  expect_null(hla_cells_for_node_keys(segments, "CASSA", column = "cell_index"))
+  segments$cell_index <- c(7L, 7L, 2L)
+  expect_identical(
+    hla_cells_for_node_keys(
+      segments,
+      c("CASSA", "CASSB"),
+      column = "cell_index"
+    ),
+    c(7L, 2L)
+  )
 })
 
 test_that("Projection adapter captures shared JSON and downloads its PNG", {
