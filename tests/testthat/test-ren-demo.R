@@ -8,6 +8,12 @@ ren_demo_script <- function() {
   )
 }
 
+## The Ren script uses the shared download helpers next to it.
+ren_demo_source <- function(script, env) {
+  sys.source(file.path(dirname(script), "download_helpers.R"), envir = env)
+  sys.source(script, envir = env)
+}
+
 test_that("the Ren demo registers the full published atlas", {
   helper <- viewer_test_path("million_cell_demo.R")
   env <- new.env(parent = baseenv())
@@ -52,7 +58,7 @@ test_that("the Ren preparation preserves published counts and paired chains", {
     "benchmark tree not present (expected when checking a built package)"
   )
   env <- new.env(parent = globalenv())
-  sys.source(script, envir = env)
+  ren_demo_source(script, env)
 
   manifest <- env$.viewerRenFiles()
   expect_identical(manifest$archive$size, 14333004385)
@@ -92,7 +98,7 @@ test_that("the Ren h5ad selectors accept standard AnnData paths", {
   script <- ren_demo_script()
   skip_if_not(file.exists(script), "benchmark tree not present")
   env <- new.env(parent = globalenv())
-  sys.source(script, envir = env)
+  ren_demo_source(script, env)
 
   h5ad <- tempfile(fileext = ".h5ad")
   on.exit(unlink(h5ad), add = TRUE)
@@ -120,7 +126,7 @@ test_that("the Ren preparation keeps large categorical and repertoire data lazy"
   script <- ren_demo_script()
   skip_if_not(file.exists(script), "benchmark tree not present")
   env <- new.env(parent = globalenv())
-  sys.source(script, env)
+  ren_demo_source(script, env)
   cells <- paste0("cell-", seq_len(1462702L))
   annotations <- data.frame(
     cellName = cells,
@@ -227,7 +233,7 @@ test_that("Ren preparation preserves prior datasets on failure and upgrade", {
   script <- ren_demo_script()
   skip_if_not(file.exists(script), "benchmark tree not present")
   env <- new.env(parent = globalenv())
-  sys.source(script, envir = env)
+  ren_demo_source(script, env)
   root <- tempfile("ren-versioned-")
   dir.create(file.path(root, "ren", "cerebro"), recursive = TRUE)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -236,7 +242,7 @@ test_that("Ren preparation preserves prior datasets on failure and upgrade", {
   paths <- env$.viewerRenPaths(root)
   dir.create(dirname(paths$crb))
   writeLines("preserve incomplete current data", paths$crb)
-  env$.viewerRenRequire <- function(...) NULL
+  env$.demoRequire <- function(...) NULL
   env$.viewerRenFiles <- function() list()
   env$.viewerRenExtractH5ad <- function(...) NULL
   env$.viewerRenBuildObject <- function(paths) {
