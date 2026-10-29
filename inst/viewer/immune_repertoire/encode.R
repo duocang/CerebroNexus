@@ -1,0 +1,330 @@
+##----------------------------------------------------------------------------##
+## The immune repertoire as integer columns
+##----------------------------------------------------------------------------##
+## scRepertoire packs a cell's chains into strings (CTgene "TRAV1.TRAJ2.TRAC_
+## TRBV3.TRBJ1.TRBC1", CTaa "CAVR_CASSL", ...). Every repertoire tab used to
+## parse those strings again on each visit, after reading the whole table.
+## ir_encode_repertoire() parses them once, into one integer per receptor row
+## and question:
+##
+##   sample        the row's sample (a position in `samples`)
+##   cell          the row's canonical cell row (NA: not a cell of the data set)
+##   receptor      1 for a TCR row, 2 for a BCR row (CTstrict names the chains)
+##   clones        per clone column (CTgene, CTnt, CTaa, CTstrict), the clone of
+##                 the row for all chains ("both") and on each chain present, as
+##                 scRepertoire's .offTheChain() takes it: TRA/TRG/IGH are the
+##                 first "_" part, TRB/TRD/IGK/IGL the second
+##   blank         per clone column, the id of the empty clone "" (NA if none)
+##   other         per chain, the rows whose part at that position belongs to
+##                 another chain (scRepertoire drops them)
+##   sharing       per chain, the V;J;CDR3 clonotype of the Clone Sharing tab
+##   isotype       the constant gene of the first IGH part (IGHA/D/E/G/M), as a
+##                 position in `isotype_levels`
+##   columns       the repertoire's own categorical columns (factors)
+##   names         per clone column and chain, the clone of each id
+##   rank          per clone column and chain, each id's place in the sorted
+##                 names: Compare orders ties without reading the names
+##
+## A Viewer Pack stores this (immune/encoded.qs2, the names apart); a data set
+## without one encodes its repertoire in memory when the page first needs it.
+## Pure base R: the Pack builder sources this file too.
+
+IR_ENCODING_VERSION <- 1L
+IR_ENCODED_COLUMNS <- c("CTgene", "CTnt", "CTaa", "CTstrict")
+IR_ENCODED_CHAINS <- c("TRA", "TRB", "TRG", "TRD", "IGH", "IGK", "IGL")
+## scRepertoire's .offTheChain(): these chains are the first "_" part of a
+## clone, the others the second.
+IR_FIRST_CHAINS <- c("TRA", "TRG", "IGH")
+IR_SECOND_CHAINS <- c("TRB", "TRD", "IGK", "IGL")
+
+## Columns scRepertoire computes: not metadata, so not encoded as columns.
+IR_SCR_COLUMNS <- c(
+  "barcode",
+  IR_ENCODED_COLUMNS,
+  "clonalProportion",
+  "clonalFrequency",
+  "cloneSize",
+  "Frequency",
+  "frequency",
+  "cloneType"
+)
+
+## The distinct (a, b) pairs of two equally long vectors: `first` holds the
+## row of each pair's first occurrence, `index` each row's pair.
+ir_encode_pairs <- function(a, b) {
+  a <- match(a, unique(a))
+  b <- match(b, unique(b))
+  key <- a + (b - 1) * max(a, 0L)
+  first <- which(!duplicated(key))
+  list(first = first, index = match(key, key[first]))
+}
+
+## Integer ids of `values` in order of first appearance (NA stays NA).
+ir_encode_ids <- function(values) {
+  levels <- unique(values[!is.na(values)])
+  list(ids = match(values, levels), levels = levels)
+}
+
+## The first or the second "_" part of each value (NA when it has none).
+ir_encode_part <- function(x, first) {
+  out <- rep(NA_character_, length(x))
+  rows <- which(!is.na(x) & nzchar(x))
+  x <- x[rows]
+  if (!first) {
+    cut <- regexpr("_", x, fixed = TRUE)
+    keep <- cut > 0L
+    rows <- rows[keep]
+    x <- substr(x[keep], cut[keep] + 1L, .Machine$integer.max)
+  }
+  stop <- regexpr("_", x, fixed = TRUE) - 1L
+  stop[stop < 0L] <- .Machine$integer.max
+  out[rows] <- substr(x, 1L, stop)
+  out
+}
+
+## The V;J;CDR3 clonotype of `chain` for each (CTgene, CTaa) pair: the first
+## "_" part whose first allele names the chain, its first V and J genes and
+## the CDR3 at the same position. NA when any of them is missing.
+ir_encode_sharing_parts <- function(gene_parts, aa_parts, chain) {
+  pick <- function(parts, slot) {
+    sizes <- lengths(parts)
+    valid <- !is.na(slot) & slot <= sizes
+    out <- rep(NA_character_, length(parts))
+    offsets <- cumsum(sizes) - sizes
+    out[valid] <- unlist(parts, use.names = FALSE)[offsets[valid] + slot[valid]]
+    out[is.na(out) | out == "NA" | !nzchar(out)] <- NA_character_
+    sub(";.*$", "", out)
+  }
+  sizes <- lengths(gene_parts)
+  owners <- rep.int(seq_along(gene_parts), sizes)
+  first_allele <- sub(";.*$", "", unlist(gene_parts, use.names = FALSE))
+  hits <- which(grepl(chain, first_allele, fixed = TRUE) & first_allele != "NA")
+  hits <- hits[!duplicated(owners[hits])]
+  slot <- rep(NA_integer_, length(gene_parts))
+  slot[owners[hits]] <- hits - (cumsum(sizes) - sizes)[owners[hits]]
+  gene <- pick(gene_parts, slot)
+  cdr3 <- pick(aa_parts, slot)
+  tokens <- strsplit(gene, ".", fixed = TRUE)
+  token_owner <- rep.int(seq_along(tokens), lengths(tokens))
+  flat <- as.character(unlist(tokens, use.names = FALSE))
+  first_token <- function(prefix) {
+    hit <- which(startsWith(flat, paste0(chain, prefix)))
+    hit <- hit[!duplicated(token_owner[hit])]
+    out <- rep(NA_character_, length(tokens))
+    out[token_owner[hit]] <- flat[hit]
+    out
+  }
+  v <- first_token("V")
+  j <- first_token("J")
+  ok <- !is.na(v) & !is.na(j) & !is.na(cdr3) & nzchar(cdr3)
+  out <- rep(NA_character_, length(ok))
+  out[ok] <- paste(v[ok], j[ok], cdr3[ok], sep = ";")
+  out
+}
+
+## The isotype of each CTgene: the constant gene after the "." of the first
+## IGH part (IGHA/D/E/G/M only), else NA.
+ir_encode_isotypes <- function(genes) {
+  parts <- strsplit(genes, "_", fixed = TRUE)
+  values <- as.character(unlist(parts, use.names = FALSE))
+  owners <- rep.int(seq_along(parts), lengths(parts))
+  hits <- which(startsWith(values, "IGH"))
+  hits <- hits[!duplicated(owners[hits])]
+  igh <- rep(NA_character_, length(genes))
+  igh[owners[hits]] <- values[hits]
+  isotype <- ifelse(
+    !is.na(igh) & grepl(".", igh, fixed = TRUE),
+    sub("^.*\\.", "", igh),
+    NA_character_
+  )
+  ifelse(grepl("^IGH[ADEGM]", isotype), isotype, NA_character_)
+}
+
+## `repertoire`: the list of sample tables. `cells`: the data set's cell names
+## in canonical order (the Pack's, or the metadata's).
+ir_encode_repertoire <- function(repertoire, cells = NULL) {
+  frames <- lapply(repertoire, function(frame) {
+    if (is.data.frame(frame)) frame else data.frame()
+  })
+  samples <- names(frames) %||% as.character(seq_along(frames))
+  sizes <- vapply(frames, nrow, integer(1))
+  n <- sum(sizes)
+  column <- function(name) {
+    values <- lapply(frames, function(frame) {
+      if (name %in% names(frame)) {
+        as.character(frame[[name]])
+      } else {
+        rep(NA_character_, nrow(frame))
+      }
+    })
+    unlist(values, use.names = FALSE) %||% character()
+  }
+  barcodes <- column("barcode")
+  genes <- column("CTgene")
+  chains <- IR_ENCODED_CHAINS[vapply(
+    IR_ENCODED_CHAINS,
+    function(chain) any(grepl(chain, genes, fixed = TRUE)),
+    logical(1)
+  )]
+
+  ## Receptor of each row from CTstrict, or CTgene in a table without it.
+  reference <- unlist(
+    lapply(frames, function(frame) {
+      name <- if ("CTstrict" %in% names(frame)) "CTstrict" else "CTgene"
+      if (name %in% names(frame)) {
+        as.character(frame[[name]])
+      } else {
+        rep(NA_character_, nrow(frame))
+      }
+    }),
+    use.names = FALSE
+  ) %||%
+    character()
+  reference_ids <- ir_encode_ids(reference)
+  has <- function(chains) {
+    Reduce(
+      `|`,
+      lapply(chains, function(chain) {
+        grepl(chain, reference_ids$levels, fixed = TRUE)
+      }),
+      logical(length(reference_ids$levels))
+    )
+  }
+  receptor <- (has(c("TRA", "TRB", "TRG", "TRD")) *
+    1L +
+    has(c("IGH", "IGK", "IGL")) * 2L)[reference_ids$ids]
+  receptor[is.na(receptor)] <- 0L
+
+  gene_ids <- ir_encode_ids(genes)
+  ## Per chain, the genes whose part at the chain's position names another
+  ## chain (its first three letters; "NA" and "Non" name none).
+  other_genes <- list()
+  other <- list()
+  for (first in c(TRUE, FALSE)) {
+    check <- substr(ir_encode_part(gene_ids$levels, first), 1L, 3L)
+    check[check %in% c("NA", "Non")] <- NA
+    for (chain in intersect(
+      chains,
+      if (first) IR_FIRST_CHAINS else IR_SECOND_CHAINS
+    )) {
+      other_genes[[chain]] <- !is.na(check) &
+        !grepl(chain, check, fixed = TRUE)
+      other[[chain]] <- which(other_genes[[chain]][gene_ids$ids])
+    }
+  }
+  other <- other[intersect(chains, names(other))]
+  clones <- list()
+  blank <- integer()
+  names_of <- list()
+  for (name in IR_ENCODED_COLUMNS) {
+    values <- if (identical(name, "CTgene")) genes else column(name)
+    both <- ir_encode_ids(values)
+    clones[[name]] <- list(both = both$ids)
+    names_of[[name]] <- list(both = both$levels)
+    blank[[name]] <- match("", both$levels)
+    pairs <- ir_encode_pairs(gene_ids$ids, both$ids)
+    pair_gene <- gene_ids$ids[pairs$first]
+    for (first in c(TRUE, FALSE)) {
+      on_part <- intersect(
+        chains,
+        if (first) IR_FIRST_CHAINS else IR_SECOND_CHAINS
+      )
+      if (!length(on_part)) {
+        next
+      }
+      part <- ir_encode_part(values[pairs$first], first)
+      part[part %in% c("NA", "")] <- NA_character_
+      for (chain in on_part) {
+        ## A part whose gene belongs to another chain is no clone of this one.
+        other_gene <- other_genes[[chain]][pair_gene]
+        chain_part <- part
+        chain_part[!is.na(other_gene) & other_gene] <- NA_character_
+        ids <- ir_encode_ids(chain_part)
+        clones[[name]][[chain]] <- ids$ids[pairs$index]
+        names_of[[name]][[chain]] <- ids$levels
+      }
+    }
+  }
+
+  aa <- column("CTaa")
+  pairs <- ir_encode_pairs(gene_ids$ids, match(aa, unique(aa)))
+  gene_parts <- strsplit(genes[pairs$first], "_", fixed = TRUE)
+  aa_parts <- strsplit(aa[pairs$first], "_", fixed = TRUE)
+  sharing <- list()
+  for (chain in chains) {
+    ids <- ir_encode_ids(ir_encode_sharing_parts(gene_parts, aa_parts, chain))
+    sharing[[chain]] <- ids$ids[pairs$index]
+  }
+
+  isotypes <- ir_encode_isotypes(gene_ids$levels)
+  isotype_levels <- unique(isotypes[!is.na(isotypes)])
+  isotype <- match(isotypes, isotype_levels)[gene_ids$ids]
+
+  ## The tables' own categorical columns: a grouping column a table carries
+  ## is read from it rather than from the cell metadata. attr "samples" lists
+  ## the tables that carry a column the others lack.
+  carried <- Filter(function(frame) nrow(frame) > 0L, frames)
+  columns <- list()
+  for (name in setdiff(
+    unique(unlist(lapply(carried, names))),
+    IR_SCR_COLUMNS
+  )) {
+    has <- vapply(frames, function(frame) name %in% names(frame), logical(1))
+    values <- lapply(frames[has], `[[`, name)
+    if (
+      !all(vapply(values, function(v) is.character(v) || is.factor(v), TRUE))
+    ) {
+      next
+    }
+    character <- !all(vapply(values, is.factor, logical(1)))
+    levels <- if (character) NULL else unique(unlist(lapply(values, levels)))
+    values <- unlist(
+      lapply(seq_along(frames), function(i) {
+        if (has[[i]]) {
+          as.character(frames[[i]][[name]])
+        } else {
+          rep(NA_character_, sizes[[i]])
+        }
+      }),
+      use.names = FALSE
+    )
+    levels <- levels %||% unique(values[!is.na(values)])
+    columns[[name]] <- structure(
+      factor(values, levels = levels),
+      character = character,
+      samples = if (!all(has[sizes > 0L])) which(has)
+    )
+  }
+
+  list(
+    version = IR_ENCODING_VERSION,
+    samples = samples,
+    sample = rep.int(seq_along(frames), sizes),
+    cell = if (is.null(cells)) {
+      rep(NA_integer_, n)
+    } else {
+      match(barcodes, cells)
+    },
+    receptor = receptor,
+    receptors = c("TCR", "BCR")[c(
+      any(bitwAnd(receptor, 1L) > 0L),
+      any(bitwAnd(receptor, 2L) > 0L)
+    )],
+    chains = chains,
+    clones = clones,
+    blank = blank,
+    other = other,
+    sharing = sharing,
+    isotype = isotype,
+    isotype_levels = isotype_levels,
+    columns = columns,
+    rank = lapply(names_of, function(chains) {
+      lapply(chains, function(levels) {
+        rank <- integer(length(levels))
+        rank[order(levels)] <- seq_along(levels)
+        rank
+      })
+    }),
+    names = names_of
+  )
+}

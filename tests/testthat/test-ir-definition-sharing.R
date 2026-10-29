@@ -3,7 +3,7 @@
 # reactive context needed), so they source data.R's function definitions.
 #
 # data.R is a Shiny module fragment: its reactives reference `input`/`session`,
-# but the pure helpers below (ir_parse_segments / ir_sharing_classify / ...)
+# but the pure helpers below (ir_sharing_classes / ir_build_sharing_plot / ...)
 # are plain functions. We source data.R inside a throwaway
 # environment that stubs the reactive machinery, then lift just the helpers out.
 
@@ -41,68 +41,18 @@ sys.source(
   envir = ir_env,
   keep.source = FALSE
 )
+sys.source(
+  file.path(dirname(data_r), "encode.R"),
+  envir = ir_env,
+  keep.source = FALSE
+)
 sys.source(data_r, envir = ir_env, keep.source = FALSE)
+ir_encode <- ir_env$ir_encode_repertoire
 
-test_that("immune metadata joins follow only active analysis controls", {
-  fields <- ir_env$ir_requested_metadata_fields
-  expect_length(fields("SizeDist", "", "cell_type", "patient"), 0L)
-  expect_identical(
-    fields("Clone Sharing", "", "cell_type", "patient"),
-    "patient"
-  )
-  expect_identical(
-    fields("Clonal UMAP", "", "cell_type", "patient"),
-    "cell_type"
-  )
-  expect_identical(fields("SizeDist", "sample"), "sample")
-  expect_identical(fields("Clone Sharing", "", NULL, "sample"), character())
-})
-
-ir_parse_segments <- ir_env$ir_parse_segments
-ir_sharing_classify <- ir_env$ir_sharing_classify
 ir_is_bcr_chain <- ir_env$ir_is_bcr_chain
 ir_build_sharing_plot <- ir_env$ir_build_sharing_plot
-ir_chain_clone_values <- ir_env$ir_chain_clone_values
 ir_clone_size_profiles <- ir_env$ir_clone_size_profiles
 ir_size_profile_plot <- ir_env$ir_size_profile_plot
-
-test_that("immune metadata joins only requested columns in one aligned pass", {
-  data <- list(
-    a = data.frame(barcode = c("c3", "c1"), CTgene = c("x", "y")),
-    b = data.frame(barcode = "c2", CTgene = "z")
-  )
-  metadata <- data.frame(
-    cell_barcode = c("c1", "c2", "c3"),
-    group = c("g1", "g2", "g3"),
-    unused = c("u1", "u2", "u3"),
-    stringsAsFactors = FALSE
-  )
-
-  out <- ir_env$ir_annotate_metadata(data, metadata, "group")
-
-  expect_identical(out$a$group, c("g3", "g1"))
-  expect_identical(out$b$group, "g2")
-  expect_false("unused" %in% names(out$a))
-})
-
-test_that("segment parsing keeps only requested columns and supplies sample", {
-  data <- list(
-    donor_a = data.frame(
-      barcode = c("c1", "c2"),
-      CTgene = rep("TRBV1..TRBJ1.TRBC1", 2),
-      CTaa = rep("CASSA", 2),
-      unused = c("large-a", "large-b"),
-      stringsAsFactors = FALSE
-    )
-  )
-  out <- ir_parse_segments(data, "TRB", columns = "sample")
-  expect_named(
-    out,
-    c("barcode", "sample", "v_gene", "j_gene", "cdr3", "clone_vjc")
-  )
-  expect_identical(out$sample, rep("donor_a", 2))
-  expect_false("unused" %in% names(out))
-})
 
 test_that("empirical clone-size profiles preserve exact observed counts", {
   frame <- data.frame(
@@ -111,10 +61,11 @@ test_that("empirical clone-size profiles preserve exact observed counts", {
     cohort = c(rep("A", 6), "B", "B"),
     stringsAsFactors = FALSE
   )
+  encoded <- ir_encode(list(sample_1 = frame))
   profiles <- ir_clone_size_profiles(
-    list(sample_1 = frame),
-    chain = "TRB",
-    group_by = "cohort",
+    encoded,
+    chain = "both",
+    groups = ir_env$ir_row_values(encoded, "cohort", NULL),
     threshold = 1
   )
   expect_named(profiles$clone_counts, c("A", "B"))
@@ -128,48 +79,44 @@ test_that("empirical clone-size profiles preserve exact observed counts", {
 })
 
 test_that("clonal projection bounds the contextual background before rendering", {
+  scope <- new.env(parent = ir_env)
+  f <- ir_env$ir_clonal_umap_data
+  environment(f) <- scope
   cells <- paste0("c", seq_len(1000L))
   coords <- matrix(
     seq_len(2000L),
     ncol = 2L,
     dimnames = list(cells, c("x", "y"))
   )
-  ir_env$availableProjections <- function() "tsne"
-  ir_env$getProjection <- function(...) coords
-  ir_env$ir_data_annotated <- function() {
+  scope$availableProjections <- function() "tsne"
+  scope$viewerProjectionFirstFrameCoordinates <- function(...) coords
+  encoded <- ir_encode(
     list(
       sample = data.frame(
         barcode = cells[1:3],
         CTgene = c("TRB-a", "TRB-a", "TRB-b"),
         stringsAsFactors = FALSE
       )
-    )
-  }
-  ir_env$ir_clonecall_col <- function(...) "CTgene"
-  ir_env$ir_umap_chains <- function(...) "TRB"
-
-  out <- ir_env$ir_clonal_umap_data(
-    "tsne",
-    "TCR",
-    show_all = TRUE,
-    max_background = 10L
+    ),
+    cells
   )
+  scope$ir_encoded <- function() encoded
+
+  out <- f("tsne", "TCR", show_all = TRUE, max_background = 10L)
 
   expect_lte(nrow(out), 13L)
-  expect_setequal(out$barcode[!is.na(out$expansion)], cells[1:3])
+  expect_setequal(out$cell_index[!is.na(out$expansion)], 1:3)
 
-  sampled <- ir_env$ir_clonal_umap_data(
+  sampled <- f(
     "tsne",
     "TCR",
     show_all = TRUE,
     percentage = 34,
     max_background = 10L
   )
-  expect_false(any(
-    cells[1:3] %in% sampled$barcode[is.na(sampled$expansion)]
-  ))
+  expect_false(any(1:3 %in% sampled$cell_index[is.na(sampled$expansion)]))
 
-  grouped <- ir_env$ir_clonal_umap_data(
+  grouped <- f(
     "tsne",
     "TCR",
     show_all = TRUE,
@@ -179,20 +126,15 @@ test_that("clonal projection bounds the contextual background before rendering",
   expect_identical(grouped$trace_codes, c(NA_integer_, 1L, 2L))
   expect_identical(lengths(grouped$x), c(10L, 1L, 2L))
   expect_identical(lengths(grouped$y), c(10L, 1L, 2L))
-  expect_identical(grouped$key_type, "barcode")
+  expect_identical(grouped$key_type, "cell_index")
   grouped_coloured_keys <- unlist(lapply(
     grouped$coloured_rows,
     function(rows) grouped$coloured_key[rows]
   ))
-  expect_setequal(grouped_coloured_keys, cells[1:3])
-  expect_false(any(grouped$background_key %in% cells[1:3]))
-})
-
-test_that("clonal expansion sizes avoid sorting clone labels", {
-  expansion <- ir_env$ir_clone_expansion(c("clone-b", "clone-a", "clone-b"))
-
-  expect_identical(as.integer(expansion), c(2L, 1L, 2L))
-  expect_identical(levels(expansion), ir_env$IR_CLONE_LABELS)
+  expect_setequal(grouped_coloured_keys, 1:3)
+  expect_false(any(grouped$background_key %in% 1:3))
+  ## The BCR has no cell here: only the background is drawn.
+  expect_null(f("tsne", "BCR", show_all = FALSE))
 })
 
 test_that("default abundance reduces cells to clone-count bins", {
@@ -201,7 +143,7 @@ test_that("default abundance reduces cells to clone-count bins", {
     sample_b = data.frame(CTgene = c("x", "x", "x", "y"))
   )
 
-  counts <- ir_env$ir_clonal_abundance_counts(data, "CTgene")
+  counts <- ir_env$ir_abundance_histogram(ir_encode(data), "CTgene")
 
   expect_identical(
     counts$sample,
@@ -211,116 +153,19 @@ test_that("default abundance reduces cells to clone-count bins", {
   expect_identical(counts$n_clones, c(2L, 1L, 1L, 1L))
 })
 
-# --- ir_parse_segments -----------------------------------------------------
-
-test_that("ir_parse_segments extracts TRB V/J/CDR3 from CT* columns", {
-  data <- list(
-    s1 = data.frame(
-      barcode = c("bc1", "bc2", "bc3"),
-      CTgene = c(
-        "TRAV8-6.TRAJ8.TRAC_TRBV6-2..TRBJ2-6.TRBC2",
-        "NA_TRBV18..TRBJ2-5.TRBC2",
-        "TRAV3.TRAJ26.TRAC;TRAV16.TRAJ5.TRAC_TRBV14..TRBJ2-3.TRBC2"
-      ),
-      CTaa = c(
-        "CAVSAFFQKLVF_CASSYLPRRQDRESSGANVLTF",
-        "NA_CASSPMEPIGTQYF",
-        "CAVTHYGQNFVF;CASYTGRRALTF_CASSPGGQNTQYF"
-      ),
-      stringsAsFactors = FALSE
-    )
+## One row per (clone, unit[, group]); the classes of the clones in order.
+classes <- function(seg, group = TRUE) {
+  clone <- match(seg$clone_vjc, unique(seg$clone_vjc))
+  out <- ir_env$ir_sharing_classes(
+    clone,
+    max(clone),
+    seg$unit,
+    if (group) seg$grp
   )
-  out <- ir_parse_segments(data, chain = "TRB")
-  expect_equal(nrow(out), 3)
-  expect_equal(out$v_gene, c("TRBV6-2", "TRBV18", "TRBV14"))
-  expect_equal(out$j_gene, c("TRBJ2-6", "TRBJ2-5", "TRBJ2-3"))
-  expect_equal(
-    out$cdr3,
-    c("CASSYLPRRQDRESSGANVLTF", "CASSPMEPIGTQYF", "CASSPGGQNTQYF")
-  )
-  expect_equal(
-    out$clone_vjc,
-    paste(out$v_gene, out$j_gene, out$cdr3, sep = ";")
-  )
-})
+  setNames(as.character(out), unique(seg$clone_vjc))
+}
 
-test_that("ir_parse_segments drops rows lacking the requested chain", {
-  data <- list(
-    s1 = data.frame(
-      barcode = c("bc1", "bc2"),
-      CTgene = c(
-        "TRAV8-6.TRAJ8.TRAC_NA",
-        "TRAV3.TRAJ26.TRAC_TRBV14..TRBJ2-3.TRBC2"
-      ),
-      CTaa = c("CAVSAFFQKLVF_NA", "CAVTHYGQNFVF_CASSPGGQNTQYF"),
-      stringsAsFactors = FALSE
-    )
-  )
-  out <- ir_parse_segments(data, chain = "TRB")
-  expect_equal(nrow(out), 1)
-  expect_equal(out$barcode, "bc2")
-})
-
-test_that("ir_parse_segments carries metadata columns through", {
-  data <- list(
-    s1 = data.frame(
-      barcode = "bc1",
-      CTgene = "TRBV6-2..TRBJ2-6.TRBC2",
-      CTaa = "CASSYLPRRQDRESSGANVLTF",
-      condition = "A",
-      sample = "s1",
-      stringsAsFactors = FALSE
-    )
-  )
-  out <- ir_parse_segments(data, chain = "TRB")
-  expect_true(all(c("condition", "sample") %in% colnames(out)))
-  expect_equal(out$condition, "A")
-})
-
-test_that("ir_parse_segments returns NULL on empty or null input", {
-  expect_null(ir_parse_segments(NULL, "TRB"))
-  expect_null(ir_parse_segments(list(), "TRB"))
-})
-
-test_that("ir_parse_segments returns NULL when no row has the chain", {
-  data <- list(
-    s1 = data.frame(
-      barcode = c("bc1", "bc2"),
-      CTgene = c("TRAV8-6.TRAJ8.TRAC_NA", "TRAV3.TRAJ26.TRAC_NA"),
-      CTaa = c("CAVSAFFQKLVF_NA", "CAVTHYGQNFVF_NA"),
-      stringsAsFactors = FALSE
-    )
-  )
-  expect_null(ir_parse_segments(data, chain = "TRB"))
-})
-
-test_that("ir_parse_segments preserves per-sample metadata via column union", {
-  data <- list(
-    s1 = data.frame(
-      barcode = "bc1",
-      CTgene = "TRBV6-2..TRBJ2-6.TRBC2",
-      CTaa = "CASSYLPRRQDRESSGANVLTF",
-      condition = "A",
-      stringsAsFactors = FALSE
-    ),
-    s2 = data.frame(
-      barcode = "bc2",
-      CTgene = "TRBV14..TRBJ2-3.TRBC2",
-      CTaa = "CASSPGGQNTQYF",
-      treatment = "X",
-      stringsAsFactors = FALSE
-    )
-  )
-  out <- ir_parse_segments(data, chain = "TRB")
-  expect_equal(nrow(out), 2)
-  expect_true(all(c("condition", "treatment") %in% colnames(out)))
-  expect_equal(out$condition, c("A", NA))
-  expect_equal(out$treatment, c(NA, "X"))
-})
-
-# --- ir_sharing_classify ---------------------------------------------------
-
-test_that("ir_sharing_classify assigns Private / within / cross correctly", {
+test_that("ir_sharing_classes assigns Private / within / cross correctly", {
   # clone P: 1 unit only            -> Private
   # clone W: 2 units, same group    -> Public (within-group)
   # clone X: 2 units, 2 groups      -> Public (cross-group)
@@ -330,50 +175,34 @@ test_that("ir_sharing_classify assigns Private / within / cross correctly", {
     grp = c("A", "A", "A", "A", "B"),
     stringsAsFactors = FALSE
   )
-  out <- ir_sharing_classify(seg, unit_col = "unit", group_col = "grp")
-  cls <- setNames(out$sharing, out$clone_vjc)
-  expect_equal(as.character(cls[["P"]]), "Private")
-  expect_equal(as.character(cls[["W"]]), "Public (within-group)")
-  expect_equal(as.character(cls[["X"]]), "Public (cross-group)")
+  cls <- classes(seg)
+  expect_equal(cls[["P"]], "Private")
+  expect_equal(cls[["W"]], "Public (within-group)")
+  expect_equal(cls[["X"]], "Public (cross-group)")
 })
 
-test_that("ir_sharing_classify degrades to two classes without a group", {
+test_that("ir_sharing_classes degrades to two classes without a group", {
   seg <- data.frame(
     clone_vjc = c("P", "S", "S"),
     unit = c("s1", "s1", "s2"),
     stringsAsFactors = FALSE
   )
-  out <- ir_sharing_classify(seg, unit_col = "unit", group_col = NULL)
-  cls <- setNames(as.character(out$sharing), out$clone_vjc)
+  cls <- classes(seg, group = FALSE)
   expect_equal(cls[["P"]], "Private")
   expect_equal(cls[["S"]], "Public")
-  expect_false(any(grepl("group", out$sharing)))
+  expect_false(any(grepl("group", cls)))
 })
 
-test_that("ir_sharing_classify returns NULL on empty input or missing unit col", {
-  expect_null(ir_sharing_classify(NULL, unit_col = "unit", group_col = NULL))
-  expect_null(ir_sharing_classify(
-    data.frame(clone_vjc = character(0), unit = character(0)),
-    unit_col = "unit",
-    group_col = NULL
-  ))
-  expect_null(ir_sharing_classify(
-    data.frame(clone_vjc = "P", other = "x"),
-    unit_col = "unit",
-    group_col = NULL
-  ))
-})
-
-test_that("ir_sharing_classify sharing factor levels match the mode", {
+test_that("ir_sharing_classes sharing factor levels match the mode", {
   seg3 <- data.frame(
     clone_vjc = c("A", "A"),
     unit = c("s1", "s2"),
     grp = c("g1", "g2"),
     stringsAsFactors = FALSE
   )
-  out3 <- ir_sharing_classify(seg3, unit_col = "unit", group_col = "grp")
+  out3 <- ir_env$ir_sharing_classes(c(1L, 1L), 1L, seg3$unit, seg3$grp)
   expect_equal(
-    levels(out3$sharing),
+    levels(out3),
     c("Private", "Public (within-group)", "Public (cross-group)")
   )
   seg2 <- data.frame(
@@ -381,11 +210,11 @@ test_that("ir_sharing_classify sharing factor levels match the mode", {
     unit = c("s1", "s2"),
     stringsAsFactors = FALSE
   )
-  out2 <- ir_sharing_classify(seg2, unit_col = "unit", group_col = NULL)
-  expect_equal(levels(out2$sharing), c("Private", "Public"))
+  out2 <- ir_env$ir_sharing_classes(c(1L, 1L), 1L, seg2$unit)
+  expect_equal(levels(out2), c("Private", "Public"))
 })
 
-test_that("ir_sharing_classify ignores NA unit/group values when counting", {
+test_that("ir_sharing_classes ignores NA unit/group values when counting", {
   # clone P: 1 real unit + 1 NA-unit row -> still Private (NA must not count)
   # clone Q: 2 units in 1 real group + 1 NA-group row -> within-group, not cross
   seg <- data.frame(
@@ -394,8 +223,7 @@ test_that("ir_sharing_classify ignores NA unit/group values when counting", {
     grp = c("A", "A", "A", "A", NA),
     stringsAsFactors = FALSE
   )
-  out <- ir_sharing_classify(seg, unit_col = "unit", group_col = "grp")
-  cls <- setNames(as.character(out$sharing), out$clone_vjc)
+  cls <- classes(seg)
   expect_equal(cls[["P"]], "Private")
   expect_equal(cls[["Q"]], "Public (within-group)")
 })
@@ -422,7 +250,7 @@ test_that("ir_build_sharing_plot returns a ggplot and maps display labels", {
     )
   )
   p <- ir_build_sharing_plot(
-    data,
+    ir_encode(data),
     chain = "TRB",
     unit_col = "sample",
     group_by = NULL
@@ -446,7 +274,7 @@ test_that("ir_build_sharing_plot returns NULL when the unit column is absent", {
     )
   )
   expect_null(ir_build_sharing_plot(
-    data,
+    ir_encode(data),
     chain = "TRB",
     unit_col = "nonexistent_col",
     group_by = NULL
@@ -464,7 +292,7 @@ test_that("ir_build_sharing_plot adds a BCR caveat to the subtitle for IGH", {
     )
   )
   p <- ir_build_sharing_plot(
-    data,
+    ir_encode(data),
     chain = "IGH",
     unit_col = "sample",
     group_by = NULL
@@ -500,7 +328,7 @@ test_that("ir_build_sharing_plot keeps 3-class x order Private -> within -> acro
     )
   )
   p <- ir_build_sharing_plot(
-    data,
+    ir_encode(data),
     chain = "TRB",
     unit_col = "sample",
     group_by = "grp"
@@ -514,47 +342,25 @@ test_that("ir_build_sharing_plot keeps 3-class x order Private -> within -> acro
 })
 
 
-test_that("clonal expansion is independent of display filtering and pack presence", {
+test_that("clonal expansion is independent of display filtering", {
   scope <- new.env(parent = ir_env)
-  # Rebind the actual helper to an isolated fixture, without changing other tests.
   f <- ir_env$ir_clonal_umap_data
   environment(f) <- scope
   cells <- paste0("c", 1:6)
   coords <- data.frame(x = 1:6, y = 6:1, row.names = cells)
   scope$availableProjections <- function() "umap"
-  scope$getProjection <- function(...) coords
-  scope$ir_data_annotated <- function() {
-    list(
-      sample = data.frame(
-        barcode = cells,
-        CTgene = rep("TRB-clone", 6)
-      )
-    )
-  }
-  scope$ir_clonecall_col <- function(...) "CTgene"
-  scope$ir_umap_chains <- function(...) "TRB"
-  packed <- NULL
-  scope$viewerPackCurrent <- function() list(cells = cells)
-  scope$viewerPackImmuneIndex <- function(...) packed
-  plain <- f("umap", "TCR", cells = "c1", show_all = FALSE)
-  expect_identical(as.character(plain$expansion), "Medium (5 < X <= 20)")
-  packed <- list(
-    cell_index = 1:6,
-    clone = rep("TRB-clone", 6),
-    expansion = as.integer(ir_env$ir_clone_expansion(rep("TRB-clone", 6)))
-  )
-  cached <- f("umap", "TCR", cells = "c1", show_all = FALSE)
-  expect_identical(cached, plain)
-  scope$viewerPackCurrent <- function() {
-    list(cells = cells, canonical_order = TRUE)
-  }
   scope$viewerProjectionFirstFrameCoordinates <- function(...) coords
-  scope$viewerPackCellBarcodes <- function(...) cells
-  indexed <- f("umap", "TCR", cells = "c1", show_all = FALSE)
-  expect_identical(indexed$expansion, plain$expansion)
-  expect_equal(indexed$x, plain$x)
+  encoded <- ir_encode(
+    list(sample = data.frame(barcode = cells, CTgene = rep("TRB-clone", 6))),
+    cells
+  )
+  scope$ir_encoded <- function() encoded
+  ## Display filters name cells by canonical (metadata) row.
+  plain <- f("umap", "TCR", cells = 1L, show_all = FALSE)
+  expect_identical(as.character(plain$expansion), "Medium (5 < X <= 20)")
+  expect_identical(plain$cell_index, 1L)
+  expect_equal(plain$x, 1)
 })
-
 
 test_that("sharing choices discover metadata fields before any field is selected", {
   data <- list(
@@ -568,21 +374,20 @@ test_that("sharing choices discover metadata fields before any field is selected
     constant = c("x", "x", "x", "different"),
     score = 1:4
   )
-  choices <- ir_env$ir_discover_sharing_units(data, metadata)
+  encoded <- ir_encode(data, metadata$cell_barcode)
+  choices <- ir_env$ir_discover_sharing_units(encoded, metadata)
   expect_identical(choices, c("sample", "patient", "condition"))
-  expect_named(data$a, c("barcode", "CTgene"))
-  joined <- ir_env$ir_annotate_metadata(data, metadata, "patient")
-  expect_identical(joined$a$patient, c("p1", "p1"))
-  expect_identical(joined$b$patient, "p2")
-  expect_false("condition" %in% names(joined$a))
-  expect_identical(ir_env$ir_discover_sharing_units(joined, metadata), choices)
+  expect_identical(
+    ir_env$ir_row_values(encoded, "patient", metadata),
+    c("p1", "p1", "p2")
+  )
   data$a$native <- c("n1", "n2")
   data$b$native <- "n3"
-  expect_true("native" %in% ir_env$ir_discover_sharing_units(data, metadata))
+  encoded <- ir_encode(data, metadata$cell_barcode)
+  expect_true("native" %in% ir_env$ir_discover_sharing_units(encoded, metadata))
 })
 
-
-test_that("packed and fallback clone sizes use the same unique dataset cells", {
+test_that("clone sizes count each data set cell once", {
   scope <- new.env(parent = ir_env)
   f <- ir_env$ir_clonal_umap_data
   environment(f) <- scope
@@ -594,18 +399,11 @@ test_that("packed and fallback clone sizes use the same unique dataset cells", {
     )
   )
   scope$availableProjections <- function() "umap"
-  scope$getProjection <- function(...) {
+  scope$viewerProjectionFirstFrameCoordinates <- function(...) {
     data.frame(x = 1:5, y = 5:1, row.names = cells)
   }
-  scope$ir_data_annotated <- function() data
-  scope$ir_clonecall_col <- function(...) "CTgene"
-  scope$ir_umap_chains <- function(...) "TRB"
-  packed <- NULL
-  scope$viewerPackCurrent <- function() list(cells = cells)
-  scope$viewerPackImmuneIndex <- function(...) packed
-  plain <- f("umap", "TCR", cells = "c1", show_all = FALSE)
-  packed <- CerebroNexus:::.viewerPackImmuneIndex(data, cells, "TCR")
-  cached <- f("umap", "TCR", cells = "c1", show_all = FALSE)
-  expect_identical(cached, plain)
+  encoded <- ir_encode(data, cells)
+  scope$ir_encoded <- function() encoded
+  plain <- f("umap", "TCR", cells = 1L, show_all = FALSE)
   expect_identical(as.character(plain$expansion), "Small (1 < X <= 5)")
 })

@@ -22,7 +22,11 @@ output$ir_main_params_UI <- shiny::bindEvent(
     packed_landing <- identical(tab, "Clonal UMAP")
     summary <- getImmuneRepertoireSummary()
     summary_chains <- as.character(summary$chains)
-    raw <- if (packed_landing || length(summary_chains)) NULL else ir_data_raw()
+    encoded <- if (packed_landing || length(summary_chains)) {
+      NULL
+    } else {
+      ir_encoded()
+    }
     if (!isTRUE(summary$available)) {
       return(div(
         class = "alert alert-warning",
@@ -34,7 +38,7 @@ output$ir_main_params_UI <- shiny::bindEvent(
     chains_present <- if (length(summary_chains)) {
       summary_chains
     } else {
-      detect_chains(raw)
+      encoded$chains
     }
     tcr_present <- intersect(chains_present, c("TRA", "TRB", "TRG", "TRD"))
     bcr_present <- intersect(chains_present, c("IGH", "IGK", "IGL"))
@@ -49,20 +53,20 @@ output$ir_main_params_UI <- shiny::bindEvent(
       chain_choices <- c(chain_choices, setNames(bcr_present, bcr_present))
     }
 
-    # Grouping options come from the data set's declared grouping variables
-    # joined onto the IR data by barcode (see ir_data_annotated), so users can
+    # Grouping options come from the data set's declared grouping variables,
+    # read for every repertoire row at its cell (see ir_row_values), so users can
     # group by ANY metadata column (sample, condition, treatment, cell type, ...)
     # rather than only columns embedded in the IR table itself.
     available_groups <- character(0)
     if (ir_global_control_visible("ir_groupBy", tab)) {
+      # Column names only: the first-frame metadata has every column but the
+      # cell names, which a thin CRB reads from its H5 file and checks when
+      # the full table is hydrated (seconds for 398K cells).
       metadata_cols <- tryCatch(
-        colnames(getMetaData()),
+        colnames(viewerProjectionFirstFrameMetadata()),
         error = function(e) character()
       )
-      data_cols <- union(
-        if (length(raw)) names(raw[[1]]) else character(),
-        metadata_cols
-      )
+      data_cols <- union(names(encoded$columns), metadata_cols)
       groups <- tryCatch(getGroups(), error = function(e) character(0))
       available_groups <- intersect(groups, data_cols)
     }
@@ -434,8 +438,7 @@ n_samples <- reactive({
   if (length(samples)) {
     return(length(samples))
   }
-  data <- ir_data_raw()
-  if (is.null(data)) 0L else length(data)
+  length(ir_encoded()$samples)
 })
 
 ## ---- Scatter display options ------------------------------------------ ##
@@ -462,7 +465,8 @@ output$ir_display_panel <- renderUI({
     return(NULL)
   }
   if (identical(tab, "Clonal UMAP")) {
-    appearance <- current_scatter_defaults()
+    ## Later edits reach the bound sliders in the browser (cell_views.js).
+    appearance <- isolate(current_scatter_defaults())
     spec <- lapply(spec, function(p) {
       if (identical(p$id, "ir_d_point_size")) {
         p$value <- appearance$point_size
@@ -583,11 +587,11 @@ output$ir_group_filters_UI <- renderUI({
   )
 })
 
-## ---- Barcodes to show in the Clonal UMAP (from Group filters) ---------- ##
-## Reads the per-group controls and returns the barcodes whose cells pass
-## every active filter. Returns NULL when no filtering is in effect (every
-## level of every group still selected) so the renderer shows all cells.
-## Overrides the NULL default defined in data.R.
+## ---- Cells to show in the Clonal UMAP (from Group filters) ------------- ##
+## Reads the per-group controls and returns the canonical (metadata) rows of
+## the cells that pass every active filter. Returns NULL when no filtering is
+## in effect (every level of every group still selected) so the renderer shows
+## all cells. Overrides the NULL default defined in data.R.
 ir_umap_cells_to_show <- reactive({
   groups <- tryCatch(getGroups(), error = function(e) character(0))
   if (length(groups) == 0) {
@@ -612,17 +616,17 @@ ir_umap_cells_to_show <- reactive({
     return(NULL)
   }
 
-  md <- tryCatch(getMetaData(), error = function(e) NULL)
-  if (is.null(md) || !("cell_barcode" %in% colnames(md))) {
+  ## Rows rather than barcodes: the first-frame metadata has every group
+  ## column without the cell names, and the rows key the projection's memo and
+  ## select its cells without comparing a million strings.
+  md <- tryCatch(
+    viewerProjectionFirstFrameMetadata(),
+    error = function(e) NULL
+  )
+  if (!is.data.frame(md)) {
     return(NULL)
   }
-  keep <- rep(TRUE, nrow(md))
-  for (g in names(active_filters)) {
-    if (g %in% colnames(md)) {
-      keep <- keep & (as.character(md[[g]]) %in% active_filters[[g]])
-    }
-  }
-  as.character(md$cell_barcode[keep])
+  which(cerebroGroupFilterMask(md, active_filters))
 })
 
 ## ---- Info dialogs: explain the parameters shown on the current tab ---- ##

@@ -23,7 +23,7 @@ IR_GLOBAL_CONTROL_HIDDEN <- list(
   # global Clone call is intentionally fixed there so hidden state cannot affect
   # the plot. The other tabs either do not use cloneCall or enforce their own.
   ir_cloneCall = c("Clonal UMAP", "Isotype", "Clone Sharing"),
-  ir_chain = c("Clonal UMAP"),
+  ir_chain = c("Clonal UMAP", "Isotype"),
   ir_groupBy = c("Clonal UMAP")
 )
 

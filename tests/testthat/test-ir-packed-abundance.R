@@ -39,15 +39,12 @@ ir_test_body <- function(file, output, wrapper, env) {
   eval(call("function", as.pairlist(list()), body), env)
 }
 
-test_that("native SizeDist does not initialize the unused analytical fallback", {
+test_that("SizeDist draws the empirical profiles without scRepertoire", {
   env <- new.env(parent = asNamespace("shiny"))
   env$input <- list(ir_chain = "both", ir_groupBy = "")
   env$req_plot_space <- function(...) NULL
-  env$ir_params <- function() list(chain = "both", groupBy = NULL)
   env$ir_param <- function(name, default) default
-  data <- list(A = data.frame(CTstrict = rep("x", 100000)))
-  env$ir_data <- function() data
-  env$req_scRepertoire <- function() stop("analytical fallback")
+  env$req_scRepertoire <- function() stop("scRepertoire was loaded")
   env$ir_size_distribution_profile <- function() "compact profile"
   env$ir_size_profile_plot <- function(profiles, method) profiles
   env$ir_render_ggplotly <- function(p, ...) p
@@ -58,12 +55,11 @@ test_that("native SizeDist does not initialize the unused analytical fallback", 
     env
   )
   expect_identical(render(), "compact profile")
-  data <- list(A = data[[1]][1:2, , drop = FALSE])
-  expect_error(render(), "analytical fallback")
 })
 
-test_that("Abundance renderer reads the current pack before repertoire data", {
+test_that("Abundance renderer counts the encoded clones", {
   env <- new.env(parent = asNamespace("shiny"))
+  sys.source(file.path(ir_test_root, "encode.R"), envir = env)
   for (expr in parse(file.path(ir_test_root, "data.R"))) {
     if (
       is.call(expr) &&
@@ -80,33 +76,51 @@ test_that("Abundance renderer reads the current pack before repertoire data", {
   env$ir_param <- function(...) FALSE
   env$ir_order_by <- function() NULL
   env$ir_clonecall_col <- function(x) "CTgene"
-  env$ir_data <- function() stop("unexpected sidecar hydration")
-  env$ir_clonal_abundance_plotly <- identity
-  packed <- data.frame(sample = "A", abundance = 2L, n_clones = 3L)
-  env$viewerPackCurrent <- function() packed
-  env$viewerPackImmuneAbundance <- function(pack, column) pack
+  env$getImmuneRepertoire <- function() stop("unexpected sidecar hydration")
+  env$ir_cell_metadata <- function() NULL
+  env$ir_clonal_abundance_plotly <- function(counts, ...) counts
+  env$ir_abundance_counts <- function() {
+    env$ir_abundance_counts_for(env$ir_params(), env$ir_encoded())
+  }
+  encoded <- env$ir_encode_repertoire(list(
+    s1 = data.frame(
+      CTgene = c("TRAV1_TRBV2", "TRAV1_TRBV2", "TRAV3_TRBV2", "IGHV1_IGKV2"),
+      CTaa = c("CAA_CBB", "CAA_CBB", "CAC_CBB", "CHH_CKK"),
+      group = c("x", "y", "x", "x")
+    ),
+    s2 = data.frame(CTgene = c("a", "a", "b", ""), CTaa = "C")
+  ))
+  env$ir_encoded <- function() encoded
   render <- ir_test_body(
     "visualizations.R",
     "ir_plot_clonalAbundance",
     "plotly::renderPlotly",
     env
   )
-  expect_identical(render(), packed)
-  packed <- data.frame(sample = "B", abundance = 1L, n_clones = 8L)
-  expect_identical(render(), packed)
-  packed <- packed[FALSE, ]
-  expect_identical(render(), packed)
-  packed <- NULL
-  env$ir_data <- function() list(legacy = data.frame(CTgene = c("a", "a", "b")))
+  ## The blank clone is not counted.
   actual <- render()
-  expect_identical(actual$sample, c("legacy", "legacy"))
-  expect_identical(actual$abundance, c(1L, 2L))
-  expect_identical(actual$n_clones, c(1L, 1L))
+  expect_identical(actual$sample, c("s1", "s1", "s2", "s2"))
+  expect_identical(actual$abundance, c(1L, 2L, 1L, 2L))
+  expect_identical(actual$n_clones, c(2L, 1L, 1L, 1L))
   pars$chain <- NULL
   expect_error(render(), class = "shiny.silent.error")
+  ## Another chain or a grouping counts the clones in the app.
+  env$ir_clonecall_col <- function(x) "CTaa"
   pars$chain <- "TRB"
-  env$req_scRepertoire <- function() stop("analytical fallback")
-  expect_error(render(), "analytical fallback")
+  actual <- render()
+  expect_identical(actual$sample, "s1")
+  expect_identical(actual$abundance, 3L)
+  expect_identical(actual$n_clones, 1L)
+  pars$chain <- "both"
+  pars$groupBy <- "group"
+  encoded$columns$group <- factor(c("x", "y", "x", "x", NA, NA, NA, NA))
+  actual <- render()
+  actual <- actual[order(actual$sample, actual$abundance), ]
+  expect_identical(actual$sample, c("x", "x", "y"))
+  expect_identical(actual$abundance, c(1L, 2L, 2L))
+  expect_identical(actual$n_clones, c(2L, 1L, 1L))
+  encoded <- NULL
+  expect_error(render(), class = "shiny.silent.error")
 })
 
 test_that("IR controls use descriptor chains and retain legacy detection", {
@@ -115,10 +129,14 @@ test_that("IR controls use descriptor chains and retain legacy detection", {
   env$ir_param <- function(...) "Abundance"
   summary <- list(available = TRUE, chains = c("TRA", "TRB", "IGH"))
   env$getImmuneRepertoireSummary <- function() summary
-  env$ir_data_raw <- function() stop("unexpected sidecar hydration")
-  env$detect_chains <- function(raw) if (is.null(raw)) character() else "TRD"
+  env$ir_encoded <- function() stop("unexpected sidecar hydration")
   env$ir_global_control_visible <- function(...) TRUE
-  env$getMetaData <- function() data.frame(group = character())
+  ## Column names come from the first-frame metadata; the full table would
+  ## read every cell name of a thin CRB from its H5 file.
+  env$viewerProjectionFirstFrameMetadata <- function() {
+    data.frame(group = character())
+  }
+  env$getMetaData <- function() stop("unexpected metadata hydration")
   env$getGroups <- function() c("group", "missing")
   env$input <- list(ir_groupBy = "group")
   env$ir_flow_controls <- function(x) do.call(shiny::tagList, x)
@@ -134,7 +152,7 @@ test_that("IR controls use descriptor chains and retain legacy detection", {
   expect_match(html, 'value="group" selected', fixed = TRUE)
   expect_no_match(html, 'value="missing"', fixed = TRUE)
   summary$chains <- character()
-  env$ir_data_raw <- function() list(a = data.frame(CTgene = "TRD"))
+  env$ir_encoded <- function() list(chains = "TRD", columns = list())
   html <- as.character(render())
   expect_match(html, 'value="TRD"', fixed = TRUE)
   expect_no_match(html, 'value="IGH"', fixed = TRUE)
@@ -146,7 +164,7 @@ test_that("IR controls use descriptor chains and retain legacy detection", {
   )
 })
 
-test_that("Homeostasis renderer defers hydration and preserves analytical fallbacks", {
+test_that("Homeostasis renderer counts the encoded clones of every chain", {
   env <- new.env(parent = asNamespace("shiny"))
   env$req_plot_space <- function(...) NULL
   pars <- list(chain = "both", cloneCall = "gene", groupBy = NULL)
@@ -154,39 +172,40 @@ test_that("Homeostasis renderer defers hydration and preserves analytical fallba
   order <- NULL
   env$ir_order_by <- function() order
   env$ir_clonecall_col <- function(x) "CTgene"
-  env$ir_data <- function() stop("unexpected sidecar hydration")
-  env$ir_homeostasis_counts <- function(data, column) "packed counts"
-  env$ir_homeostasis_plot <- function(counts, ...) counts
+  env$ir_encoded <- function() "encoded"
+  env$ir_row_values <- function(encoded, name) name
+  env$ir_homeostasis_counts <- function(encoded, column, chain, groups) {
+    list(encoded, column, chain, groups)
+  }
+  env$ir_homeostasis_plot <- function(counts, clone_size, palette, order) {
+    if (is.null(order)) counts else list(counts, order)
+  }
   env$ir_clone_size <- function() 1
   env$IR_PALETTE <- "Harmonic"
   env$ir_render_ggplotly <- function(expr, ...) force(expr)
-  env$req_scRepertoire <- function() stop("analytical fallback")
+  env$req_scRepertoire <- function() stop("scRepertoire was loaded")
   render <- ir_test_body(
     "visualizations.R",
     "ir_plot_clonalHomeostasis",
     "plotly::renderPlotly",
     env
   )
-  expect_identical(render(), "packed counts")
+  expect_identical(render(), list("encoded", "CTgene", "both", NULL))
   pars$chain <- NULL
   expect_error(render(), class = "shiny.silent.error")
   pars$chain <- "TRB"
-  expect_error(render(), "analytical fallback")
-  pars$chain <- "both"
   pars$groupBy <- "patient"
   env$getGroups <- function() "patient"
-  env$ir_data <- function() "current raw data"
-  env$ir_grouped_homeostasis_counts <- function(data, column, group) {
-    expect_identical(data, "current raw data")
-    expect_identical(group, "patient")
-    "grouped counts"
-  }
-  expect_identical(render(), "grouped counts")
+  expect_identical(render(), list("encoded", "CTgene", "TRB", "patient"))
+  ## Dataset switches can deliver the old grouping before its selector resets.
   env$getGroups <- function() "new_dataset_group"
   expect_error(render(), class = "shiny.silent.error")
   pars$groupBy <- NULL
   order <- "alphanumeric"
-  expect_error(render(), "analytical fallback")
+  expect_identical(
+    render(),
+    list(list("encoded", "CTgene", "TRB", NULL), "alphanumeric")
+  )
 })
 
 test_that("rebuilt IR toolbars keep the chosen clone call and chain", {
@@ -196,8 +215,7 @@ test_that("rebuilt IR toolbars keep the chosen clone call and chain", {
   env$getImmuneRepertoireSummary <- function() {
     list(available = TRUE, chains = c("TRA", "TRB"))
   }
-  env$ir_data_raw <- function() stop("unexpected sidecar hydration")
-  env$detect_chains <- function(raw) character()
+  env$ir_encoded <- function() stop("unexpected sidecar hydration")
   env$ir_global_control_visible <- function(...) TRUE
   env$getMetaData <- function() data.frame(group = character())
   env$getGroups <- function() "group"

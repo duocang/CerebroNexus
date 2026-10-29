@@ -10,8 +10,8 @@ skip_if_not_installed("scRepertoire")
 
 example_crb <- inst_test_path("extdata", "examples", "example.crb")
 
-# Annotate the IR list with cell metadata by barcode (mirrors ir_data_annotated
-# in the module) so group.by columns are available.
+# Annotate the IR list with cell metadata by barcode (as the module reads a
+# grouping column at each cell) so group.by columns are available.
 load_ir <- function() {
   crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
@@ -182,23 +182,4 @@ test_that("bundled BCR data carries the heavy chains the isotype plot needs", {
   ir <- load_ir()
   all_ct <- paste(unlist(lapply(ir, function(d) d$CTgene)), collapse = ";")
   expect_true(grepl("IGH", all_ct)) # isotype needs IGH heavy-chain genes
-})
-
-test_that("BCR isotype extraction preserves sample names from the IR list", {
-  server_file <- viewer_test_path("immune_repertoire", "server.R")
-  skip_if_not(file.exists(server_file))
-  definition <- viewer_r_assignment(server_file, "bcr_extract_isotype")
-  env <- new.env(parent = globalenv())
-  eval(definition, envir = env)
-
-  extracted <- env$bcr_extract_isotype(list(
-    donor_a = data.frame(
-      barcode = "a",
-      CTgene = "IGHV1.IGHJ1.IGHM",
-      stringsAsFactors = FALSE
-    )
-  ))
-
-  expect_identical(extracted$sample, "donor_a")
-  expect_identical(extracted$isotype, "IGHM")
 })

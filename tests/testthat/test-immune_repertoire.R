@@ -193,33 +193,50 @@ test_that("grouped Clonal UMAP panels partition the cells and label their counts
     ),
     barcode = paste0("cell", 1:6),
     .umap_group = factor(
-      c("a", "a", "b", "b", "b", "b"),
+      c("b", "a", "b", "a", "b", "b"),
       levels = c("a", "b", "c")
     ),
+    .cell_row = c(11L, 12L, 13L, 14L, 15L, 16L),
     stringsAsFactors = FALSE
   )
   out <- env$ir_clonal_umap_panels(df, "umap")
 
-  ## cells of every group land in exactly one panel; the empty group has none
+  ## cells of every group land in exactly one panel, a slice of the frame's
+  ## rows; the empty group has none, and no panel carries its own arrays
   expect_length(out$panels, 2L)
-  keys <- lapply(out$panels, `[[`, "selection_key")
+  slice <- function(panel) panel$start + seq_len(panel$count)
+  expect_identical(lapply(out$panels, slice), list(1:2, 3:6))
+  expect_null(out$panels[[1L]][["selection_key"]])
+  expect_null(out$panels[[1L]][["x"]])
+  expect_null(out$panels[[1L]][["hover"]])
+  keys <- lapply(out$panels, function(panel) out$keys[slice(panel)])
   expect_identical(sort(unlist(keys)), sort(df$barcode))
-  expect_identical(keys[[1L]], c("cell1", "cell2"))
-  expect_setequal(keys[[2L]], c("cell3", "cell4", "cell5", "cell6"))
+  expect_setequal(keys[[1L]], c("cell2", "cell4"))
+  expect_setequal(keys[[2L]], c("cell1", "cell3", "cell5", "cell6"))
+  ## coordinates and canonical rows follow the same order as the keys
+  expect_identical(out$x, df$x[match(out$keys, df$barcode)])
+  expect_identical(out$rows, df$.cell_row[match(out$keys, df$barcode)])
+  ## colour codes index the levels
+  group <- out$levels[out$group_code + 1L]
+  expect_null(out[["group"]])
   ## titled with the group and its receptor-carrying cells
   expect_match(out$panels[[1L]]$label, "^a +· +1 cell with receptor$")
   expect_match(out$panels[[2L]]$label, "^b +· +3 cells with receptor$")
   ## panels share axis ranges so groups stay comparable
   expect_identical(out$panels[[1L]]$x_range, out$panels[[2L]]$x_range)
-  ## colour levels and colours line up; cells without the receptor come first
+  ## colour levels and colours line up; within each panel cells without the
+  ## receptor come first and the most expanded last
   expect_identical(out$levels, c("Other cells", "Single", "Small", "Medium"))
   expect_length(out$colors, length(out$levels))
-  expect_identical(
-    unname(out$group[seq_len(2)]),
-    c("Other cells", "Other cells")
-  )
-  expect_identical(out$group[[length(out$group)]], "Medium")
-  expect_length(out$group, length(out$keys))
+  expect_identical(group[1:2], c("Other cells", "Small"))
+  expect_identical(group[3:6], c("Other cells", "Single", "Single", "Medium"))
+  expect_length(group, length(out$keys))
+  ## Cells named by canonical row only carry no barcodes.
+  df$barcode <- NULL
+  by_row <- env$ir_clonal_umap_panels(df, "umap")
+  expect_null(by_row$keys)
+  expect_identical(by_row$rows, out$rows)
+  expect_identical(by_row$x, out$x)
 })
 
 # ---- Compare (interactive alluvial) ------------------------------------- #

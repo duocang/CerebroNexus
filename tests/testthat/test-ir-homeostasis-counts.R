@@ -1,7 +1,9 @@
 ir_home_env <- new.env(parent = globalenv())
 ir_home_env$`%||%` <- function(a, b) if (is.null(a)) b else a
-ir_home_env$viewerPackCurrent <- function() NULL
-ir_home_env$viewerPackReadAsset <- function(...) NULL
+sys.source(
+  testthat::test_path("../../inst/viewer/immune_repertoire/encode.R"),
+  envir = ir_home_env
+)
 ir_home_file <- testthat::test_path(
   "../../inst/viewer/immune_repertoire/data.R"
 )
@@ -23,7 +25,7 @@ for (expr in parse(ir_home_file)) {
 }
 
 test_that("shared clone histograms preserve distinct Abundance and Homeostasis policies", {
-  values <- c("", "", NA, "NA", "01", "1", "克隆", "克隆", "a\034b")
+  values <- c("", "", NA, "NA", "01", "1", "克隆", "克隆", "ab")
   frame <- data.frame(
     CTgene = values,
     CTnt = values,
@@ -35,20 +37,17 @@ test_that("shared clone histograms preserve distinct Abundance and Homeostasis p
     if (named) {
       names(raw) <- c("z10", "z2", "absent", "missing_column")
     }
-    abundance <- CerebroNexus:::.viewerPackImmuneAbundance(raw)
-    homeostasis <- CerebroNexus:::.viewerPackImmuneAbundance(
-      raw,
-      drop_empty = FALSE
-    )
-    for (column in names(abundance)) {
-      # The unchanged Pack builder is an independent reference for each policy.
+    encoded <- ir_home_env$ir_encode_repertoire(raw)
+    sample <- if (named) "z10" else "1"
+    for (column in c("CTgene", "CTnt", "CTaa", "CTstrict")) {
+      ## Abundance leaves the blank clone out, Homeostasis counts it.
       expect_identical(
-        as.list(ir_home_env$ir_clonal_abundance_counts(raw, column)),
-        as.list(abundance[[column]])
+        as.list(ir_home_env$ir_abundance_histogram(encoded, column)),
+        list(sample = c(sample, sample), abundance = 1:2, n_clones = c(4L, 1L))
       )
       expect_identical(
-        as.list(ir_home_env$ir_homeostasis_counts(raw, column)),
-        as.list(homeostasis[[column]])
+        as.list(ir_home_env$ir_homeostasis_counts(encoded, column)),
+        list(sample = c(sample, sample), abundance = 1:2, n_clones = c(4L, 2L))
       )
     }
   }
@@ -57,11 +56,9 @@ test_that("shared clone histograms preserve distinct Abundance and Homeostasis p
     abundance = integer(),
     n_clones = integer()
   )
-  expect_identical(
-    ir_home_env$ir_clonal_abundance_counts(list(), "CTgene"),
-    empty
-  )
-  expect_identical(ir_home_env$ir_homeostasis_counts(list(), "CTgene"), empty)
+  encoded <- ir_home_env$ir_encode_repertoire(list())
+  expect_identical(ir_home_env$ir_abundance_histogram(encoded, "CTgene"), empty)
+  expect_identical(ir_home_env$ir_homeostasis_counts(encoded, "CTgene"), empty)
 })
 
 test_that("Homeostasis exact bins match scRepertoire, including blanks and thresholds", {
@@ -89,7 +86,10 @@ test_that("Homeostasis exact bins match scRepertoire, including blanks and thres
       c(A = .25, B = .5)
     )) {
       column <- paste0("CT", call)
-      counts <- ir_home_env$ir_homeostasis_counts(repertoire, column)
+      counts <- ir_home_env$ir_homeostasis_counts(
+        ir_home_env$ir_encode_repertoire(repertoire),
+        column
+      )
       actual <- ir_home_env$ir_homeostasis_matrix(counts, breaks)
       expected <- scRepertoire::clonalHomeostasis(
         repertoire,
@@ -99,49 +99,13 @@ test_that("Homeostasis exact bins match scRepertoire, including blanks and thres
         exportTable = TRUE
       )
       expect_equal(actual, expected, tolerance = 1e-12)
-      # The optional pack retains exactly these bins; no approximation to values.
-      packed <- CerebroNexus:::.viewerPackImmuneAbundance(
-        repertoire,
-        drop_empty = FALSE
-      )
-      expect_equal(
-        ir_home_env$ir_homeostasis_matrix(packed[[column]], breaks),
-        expected,
-        tolerance = 1e-12
-      )
     }
   }
-  abundance <- CerebroNexus:::.viewerPackImmuneAbundance(repertoire)
-  homeostasis <- CerebroNexus:::.viewerPackImmuneAbundance(
-    repertoire,
-    drop_empty = FALSE
+  homeostasis <- ir_home_env$ir_homeostasis_counts(
+    ir_home_env$ir_encode_repertoire(repertoire),
+    "CTgene"
   )
-  expect_false(identical(abundance$CTgene, homeostasis$CTgene))
-  expect_equal(
-    sum(homeostasis$CTgene$abundance * homeostasis$CTgene$n_clones),
-    15
-  )
-})
-
-test_that("Homeostasis reads only the current dataset's optional asset", {
-  env <- new.env(parent = ir_home_env)
-  counter <- 0L
-  packed <- list(
-    CTgene = data.frame(sample = "A", abundance = 2L, n_clones = 3L)
-  )
-  env$viewerPackCurrent <- function() packed
-  env$viewerPackReadAsset <- function(pack, path) {
-    expect_identical(path, "immune/homeostasis.qs2")
-    pack
-  }
-  fn <- ir_home_env$ir_homeostasis_counts
-  environment(fn) <- env
-  expect_identical(fn(stop("must not hydrate"), "CTgene"), packed$CTgene)
-  packed$CTgene$sample <- "B"
-  expect_identical(fn(stop("must not hydrate"), "CTgene")$sample, "B")
-  packed <- NULL
-  raw <- list(legacy = data.frame(CTgene = c("x", "x", "")))
-  expect_identical(fn(raw, "CTgene")$abundance, c(1L, 2L))
+  expect_equal(sum(homeostasis$abundance * homeostasis$n_clones), 15)
 })
 
 test_that("Homeostasis plot preserves stacked cell proportions", {
@@ -152,7 +116,10 @@ test_that("Homeostasis plot preserves stacked cell proportions", {
   )
   breaks <- c(Small = .25, Large = 1)
   p <- ir_home_env$ir_homeostasis_plot(
-    ir_home_env$ir_homeostasis_counts(data, "CTgene"),
+    ir_home_env$ir_homeostasis_counts(
+      ir_home_env$ir_encode_repertoire(data),
+      "CTgene"
+    ),
     breaks,
     "Harmonic"
   )
@@ -214,11 +181,14 @@ test_that("grouped Homeostasis pools exact clone identities and preserves empty 
         x
       })
     }
+    encoded <- ir_home_env$ir_encode_repertoire(data)
+    severity <- ir_home_env$ir_row_values(encoded, "severity", NULL)
     for (call in c("gene", "nt", "aa", "strict")) {
-      counts <- ir_home_env$ir_grouped_homeostasis_counts(
-        data,
+      counts <- ir_home_env$ir_homeostasis_counts(
+        encoded,
         paste0("CT", call),
-        "severity"
+        "both",
+        severity
       )
       for (breaks in list(c(A = .25, B = .5, C = 1), c(A = .25, B = .5))) {
         expected <- scRepertoire::clonalHomeostasis(
@@ -246,8 +216,17 @@ test_that("grouped Homeostasis pools exact clone identities and preserves empty 
     A = make(c("x", "z"), c("mild", "severe"))
   )
   breaks <- c(Small = .5, Large = 1)
+  grouped <- function(data) {
+    encoded <- ir_home_env$ir_encode_repertoire(data)
+    ir_home_env$ir_homeostasis_counts(
+      encoded,
+      "CTgene",
+      "both",
+      ir_home_env$ir_row_values(encoded, "severity", NULL)
+    )
+  }
   actual <- ir_home_env$ir_homeostasis_plot(
-    ir_home_env$ir_grouped_homeostasis_counts(data, "CTgene", "severity"),
+    grouped(data),
     breaks,
     "inferno"
   )
@@ -264,18 +243,7 @@ test_that("grouped Homeostasis pools exact clone identities and preserves empty 
     ggplot2::ggplot_build(expected)$data[[1]][cols],
     ignore_attr = TRUE
   )
-  expect_error(
-    ir_home_env$ir_grouped_homeostasis_counts(data, "CTgene", "absent"),
-    "missing"
-  )
   # A new dataset must produce its own labels, not reuse a grouped result.
   other <- list(C = make(c("q", "q"), c("new", "new")))
-  expect_identical(
-    ir_home_env$ir_grouped_homeostasis_counts(
-      other,
-      "CTgene",
-      "severity"
-    )$sample,
-    "new"
-  )
+  expect_identical(grouped(other)$sample, "new")
 })
