@@ -211,6 +211,11 @@ test_that("Viewer Pack stores canonical trajectory row indexes", {
     envir = descriptor$cache,
     inherits = FALSE
   ))
+  meta <- object$getTrajectory("monocle2", "subset")$meta
+  runtime$viewerPackDropTrajectoryNames(descriptor, object)
+  compact <- object$getTrajectory("monocle2", "subset")$meta
+  expect_false(is.character(attr(compact, "row.names")))
+  expect_identical(unname(as.list(compact)), unname(as.list(meta)))
 
   frame <- runtime$viewerPackTrajectoryFrame(
     descriptor,
@@ -312,6 +317,36 @@ test_that("validated Viewer Pack descriptors are reused with session-local cache
   manifest <- file.path(pack_path, "manifest.json")
   writeLines("{invalid", manifest, useBytes = TRUE)
   expect_null(runtime$viewerPackOpenCached(crb, object, cache))
+})
+
+test_that("Viewer Pack assets are hashed once per file version", {
+  root <- tempfile("viewer-pack-md5-cache-")
+  dir.create(root)
+  crb <- viewer_pack_fixture(
+    file.path(root, "dataset.crb"),
+    n = 4L,
+    trajectory = TRUE
+  )
+  buildViewerPack(crb, viewer_binary = "always")
+  object <- readCerebro(crb)
+  runtime <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
+  hashed <- 0L
+  md5sum <- tools::md5sum
+  testthat::local_mocked_bindings(
+    md5sum = function(files) {
+      hashed <<- hashed + length(files)
+      md5sum(files)
+    },
+    .package = "tools"
+  )
+  path <- file.path("trajectory", "cell_index.qs2")
+  for (session in 1:2) {
+    descriptor <- runtime$viewerPackOpen(crb, object)
+    expect_false(is.null(runtime$viewerPackReadAsset(descriptor, path, FALSE)))
+  }
+  ## The CRB itself (once per open) and the asset once.
+  expect_identical(hashed, 3L)
 })
 
 test_that("Viewer Pack stores canonical spatial row indexes", {
@@ -505,9 +540,18 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
     object$getImmuneRepertoire(),
     object$getMetaData()
   )
+  expected_segments <- hla_parse_ir_segments(expected_annotated, "TRB")
+  expected_segments$cell_index <- match(
+    as.character(expected_segments$barcode),
+    object$getMetaData()$cell_barcode
+  )
+  expected_segments <- expected_segments[setdiff(
+    names(expected_segments),
+    c("CTgene", "CTnt", "CTaa", "CTstrict", "clone_vjc")
+  )]
   expect_identical(
     runtime$viewerPackHlaSegments(descriptor, "TRB"),
-    hla_parse_ir_segments(expected_annotated, "TRB")
+    expected_segments
   )
   first_frame <- runtime$viewerPackHlaFirstFrame(descriptor, "TRB")
   expect_identical(first_frame$version, 2L)
@@ -548,17 +592,6 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
   expect_identical(immune$clone, rep("TRBV1.TRBJ1", 4L))
   expect_identical(immune$ctaa, rep("CASSQ", 4L))
   expect_identical(immune$expansion, rep(2L, 4L))
-
-  abundance <- runtime$viewerPackImmuneAbundance(descriptor, "CTgene")
-  expect_identical(
-    abundance,
-    data.frame(
-      sample = "sample_1",
-      abundance = 4L,
-      n_clones = 1L,
-      stringsAsFactors = FALSE
-    )
-  )
 
   manifest <- jsonlite::read_json(
     file.path(pack, "manifest.json"),
@@ -753,12 +786,18 @@ test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
   }
   scope$viewerProjectionFirstFrameCoordinates <- function(name) coordinates
   scope$viewerPackCurrent <- function() descriptor
-  scope$viewerPackImmuneIndex <- runtime$viewerPackImmuneIndex
+  scope$viewerPackImmuneEncoded <- runtime$viewerPackImmuneEncoded
+  scope$data_set <- function() list()
   scope$detect_chains <- function(...) character()
   scope$input <- list()
   scope$session <- list()
   sys.source(
     viewer_test_path("clone_contract.R"),
+    envir = scope,
+    keep.source = FALSE
+  )
+  sys.source(
+    viewer_test_path("immune_repertoire", "encode.R"),
     envir = scope,
     keep.source = FALSE
   )

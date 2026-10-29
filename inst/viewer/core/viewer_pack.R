@@ -93,7 +93,7 @@ viewerPackSourceSignature <- function(file) {
   if (!file.exists(manifest_file) || dir.exists(manifest_file)) {
     return(NULL)
   }
-  info <- file.info(c(file, manifest_file))
+  info <- file.info(c(file, manifest_file), extra_cols = FALSE)
   if (anyNA(info$size) || anyNA(info$mtime)) {
     return(NULL)
   }
@@ -134,13 +134,51 @@ viewerPackOpenCached <- function(file, object, cache) {
   pack
 }
 
+## Process caches key one version of a file by its path as given, size and
+## mtime.
+.viewerFileVersionKey <- function(path, info) {
+  paste(
+    path,
+    info$size,
+    format(as.numeric(info$mtime), digits = 17),
+    sep = "\r"
+  )
+}
+## Viewer Pack assets are verified against their manifest checksum before a
+## session exposes them. Hash each file version once per process, not once per
+## session and asset.
+.viewer_file_md5_cache <- new.env(parent = emptyenv())
+.viewerFileMd5 <- function(paths) {
+  vapply(
+    as.character(paths),
+    function(path) {
+      info <- suppressWarnings(file.info(path, extra_cols = FALSE))
+      if (is.na(info$size) || isTRUE(info$isdir)) {
+        return(NA_character_)
+      }
+      key <- .viewerFileVersionKey(path, info)
+      cached <- .viewer_file_md5_cache[[key]]
+      if (!is.null(cached)) {
+        return(cached)
+      }
+      value <- unname(tools::md5sum(path))
+      if (!is.na(value)) {
+        assign(key, value, envir = .viewer_file_md5_cache)
+      }
+      value
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
+
 ## The manifest entry of `path` when its file matches the recorded size and
 ## checksum, else NULL. `accept(asset)` vets the manifest fields (dtype,
 ## dimensions, bytes) before any file IO, so a mismatch never hashes the file.
 viewerPackVerifiedAsset <- function(
   pack,
   path,
-  md5 = tools::md5sum,
+  md5 = .viewerFileMd5,
   accept = NULL
 ) {
   assets <- pack$manifest$assets
@@ -167,7 +205,10 @@ viewerPackVerifiedAsset <- function(
   file <- asset$file
   valid <- file.exists(file) &&
     !dir.exists(file) &&
-    identical(as.numeric(file.info(file)$size), asset$bytes) &&
+    identical(
+      as.numeric(file.info(file, extra_cols = FALSE)$size),
+      asset$bytes
+    ) &&
     identical(unname(md5(file)), asset$checksum)
   if (valid) asset else NULL
 }
@@ -251,6 +292,37 @@ viewerPackTrajectoryIndex <- function(pack, method, name) {
   )
   index <- indexes[[method]][[name]]
   if (is.null(index)) NULL else as.integer(index)
+}
+
+## Every reader finds a trajectory's cells through the Pack's cell index, so the
+## row names of its `meta` (1.28 M strings, about 90 MB for mouse brain 1M)
+## are dropped from `object` in place.
+viewerPackDropTrajectoryNames <- function(pack, object) {
+  trajectories <- object$trajectories
+  changed <- FALSE
+  for (method in names(trajectories)) {
+    for (name in names(trajectories[[method]])) {
+      meta <- trajectories[[method]][[name]][["meta"]]
+      if (!is.data.frame(meta) || !is.character(attr(meta, "row.names"))) {
+        next
+      }
+      index <- viewerPackTrajectoryIndex(pack, method, name)
+      if (
+        length(index) != nrow(meta) ||
+          anyNA(index) ||
+          !all(index >= 1L & index <= pack$cell_count)
+      ) {
+        next
+      }
+      rownames(meta) <- NULL
+      trajectories[[method]][[name]][["meta"]] <- meta
+      changed <- TRUE
+    }
+  }
+  if (changed) {
+    object$trajectories <- trajectories
+  }
+  invisible(object)
 }
 
 viewerPackTrajectoryFrame <- function(pack, method, name) {
@@ -451,10 +523,45 @@ viewerPackImmuneIndex <- function(pack, receptor) {
   viewerPackReadAsset(pack, file.path("immune", paste0(receptor, ".qs2")))
 }
 
-viewerPackImmuneAbundance <- function(pack, clone_col) {
-  values <- viewerPackReadAsset(pack, "immune/abundance.qs2")
-  if (is.null(values) || !(clone_col %in% names(values))) {
+## The repertoire's integer columns (immune_repertoire/encode.R); NULL for a
+## Pack built before them.
+viewerPackImmuneEncoded <- function(pack, version) {
+  if (!identical(as.integer(pack$manifest$immune_encoding), version)) {
     return(NULL)
   }
-  values[[clone_col]]
+  value <- viewerPackReadAsset(pack, "immune/encoded.qs2")
+  if (is.list(value) && identical(value$version, version)) value else NULL
+}
+
+## The clones `ids` of `column` on `chain`, read from the blocks that hold
+## them (`blocks`: the encoding's block size and offsets). The file is
+## verified once.
+viewerPackImmuneCloneNames <- function(pack, column, chain, ids, blocks) {
+  if (!column %in% c("CTgene", "CTnt", "CTaa", "CTstrict")) {
+    return(NULL)
+  }
+  path <- file.path("immune", "names", paste0(column, ".bin"))
+  key <- paste0(".verified:", path)
+  if (!exists(key, envir = pack$cache, inherits = FALSE)) {
+    assign(key, viewerPackVerifiedAsset(pack, path), envir = pack$cache)
+  }
+  asset <- get(key, envir = pack$cache, inherits = FALSE)
+  offsets <- blocks$offsets[[column]][[chain]]
+  if (is.null(asset) || is.null(offsets)) {
+    return(NULL)
+  }
+  size <- blocks$size
+  block <- (ids - 1L) %/% size + 1L
+  out <- character(length(ids))
+  con <- file(asset$file, "rb")
+  on.exit(close(con))
+  for (b in unique(block)) {
+    seek(con, offsets[[b]])
+    values <- qs2::qs_deserialize(
+      readBin(con, "raw", offsets[[b + 1L]] - offsets[[b]])
+    )
+    hit <- block == b
+    out[hit] <- values[(ids[hit] - 1L) %% size + 1L]
+  }
+  out
 }

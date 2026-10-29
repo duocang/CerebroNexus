@@ -179,7 +179,7 @@ start_crb_prefetch <- function(path, backend_identity) {
     })
   )
   crb_prefetch_tasks[[cache_key]] <- prefetch_task
-  print(glue::glue(
+  message(glue::glue(
     "[{Sys.time()}] CRB background prefetch started: {basename(path)}"
   ))
   shiny::withReactiveDomain(NULL, prefetch_task$invoke(path))
@@ -246,4 +246,79 @@ start_crb_prefetch <- function(path, backend_identity) {
     },
     error = function(error) FALSE
   ))
+}
+
+## A thin CRB's H5 file must hold the CRB's cell names before its expression is
+## read. Reading and hashing 1.3 M names took 0.86 s of the R thread, after the
+## first Gene expression paint and again in every session. A daemon computes
+## the hash as soon as the backend is attached; a confirmed file version is
+## kept for the process. Without a confirmation the session reads the names.
+.crb_h5_cell_checks <- new.env(parent = emptyenv())
+
+.crbH5CellCheckKey <- function(path, expected) {
+  info <- file.info(path, extra_cols = FALSE)
+  paste(
+    normalizePath(path, winslash = "/", mustWork = FALSE),
+    info$size,
+    format(as.numeric(info$mtime), digits = 17),
+    expected,
+    sep = "\r"
+  )
+}
+
+crb_h5_cell_check_start <- function(path, expected) {
+  key <- .crbH5CellCheckKey(path, expected)
+  if (!exists(key, envir = .crb_h5_cell_checks, inherits = FALSE)) {
+    entry <- new.env(parent = emptyenv())
+    entry$task <- tryCatch(
+      .viewerMirai(
+        rlang::hash(enc2utf8(as.character(as.vector(
+          rhdf5::h5read(path, "expression/genes")
+        )))),
+        path = path,
+        .timeout = 30000
+      ),
+      error = function(error) NULL
+    )
+    assign(key, entry, envir = .crb_h5_cell_checks)
+  }
+  invisible(key)
+}
+
+## TRUE when a daemon (or an earlier session) confirmed the file's cell names.
+## Never waits: while the daemon is still hashing (or hung), FALSE lets the
+## caller check the names itself, and the task stays for later sessions.
+crb_h5_cells_verified <- function(path, expected) {
+  entry <- .crb_h5_cell_checks[[.crbH5CellCheckKey(path, expected)]]
+  if (is.null(entry)) {
+    return(FALSE)
+  }
+  if (is.null(entry$verified)) {
+    if (inherits(entry$task, "mirai") && mirai::unresolved(entry$task)) {
+      return(FALSE)
+    }
+    value <- if (inherits(entry$task, "mirai")) {
+      mirai::call_mirai(entry$task)$data
+    }
+    entry$verified <- identical(value, expected)
+    entry$task <- NULL
+  }
+  isTRUE(entry$verified)
+}
+
+## TRUE while a daemon is still hashing the file's cell names.
+crb_h5_cells_pending <- function(path, expected) {
+  entry <- .crb_h5_cell_checks[[.crbH5CellCheckKey(path, expected)]]
+  !is.null(entry) &&
+    is.null(entry$verified) &&
+    inherits(entry$task, "mirai") &&
+    mirai::unresolved(entry$task)
+}
+
+## Records a check the session made itself, for the sessions after it.
+crb_h5_cells_confirm <- function(path, expected) {
+  entry <- new.env(parent = emptyenv())
+  entry$verified <- TRUE
+  assign(.crbH5CellCheckKey(path, expected), entry, envir = .crb_h5_cell_checks)
+  invisible(TRUE)
 }
