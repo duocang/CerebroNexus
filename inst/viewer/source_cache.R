@@ -38,6 +38,7 @@
   ".validateRuntimeBackendEntry",
   ".configuredRuntimeBackendPlan",
   ".runtimeBackendCacheIdentity",
+  ".crbBackendDescriptor",
   ".attachSpatialMoleculeBackend",
   ".validateThinCrbShape",
   ".runtimeH5Names",

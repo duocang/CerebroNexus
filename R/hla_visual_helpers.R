@@ -135,12 +135,3 @@ hla_cells_for_node_keys <- function(
   values <- unique(values[!is.na(values)])
   if (identical(column, "barcode")) as.character(values) else values
 }
-
-hla_node_keys_for_cells <- function(segments, cells, by_v = FALSE) {
-  if (!is.data.frame(segments) || !"barcode" %in% colnames(segments)) {
-    return(character(0))
-  }
-  keys <- hla_segment_node_keys(segments, by_v)
-  keep <- as.character(segments$barcode) %in% as.character(cells)
-  unique(keys[keep & !is.na(keys)])
-}

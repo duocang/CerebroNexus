@@ -53,10 +53,6 @@ test_that("HLA node selection maps cleanly between motif keys and cells", {
     hla_cells_for_node_keys(segments, "CASSA", by_v = FALSE),
     c("cell-1", "cell-2")
   )
-  expect_identical(
-    hla_node_keys_for_cells(segments, "cell-3", by_v = TRUE),
-    "TRBV2::CASSB"
-  )
   ## Viewer Pack segments carry the cells' canonical rows.
   expect_null(hla_cells_for_node_keys(segments, "CASSA", column = "cell_index"))
   segments$cell_index <- c(7L, 7L, 2L)
@@ -97,73 +93,6 @@ test_that("Projection adapter captures shared JSON and downloads its PNG", {
       calls = list("overview_projection")
     )
   )
-})
-
-test_that("HLA PNG adapter reports browser export success and failure", {
-  output <- run_node_script(c(
-    "const fs = require('fs');",
-    "global.window = global;",
-    "window.addEventListener = () => {};",
-    "let fail = false; let clicks = 0;",
-    "const canvas = {toDataURL: () => { if (fail) throw Error('blocked'); return 'data:image/png'; }};",
-    "window.HTMLWidgets = {find: () => ({network:{canvas:{frame:{canvas:canvas}}}})};",
-    "global.document = {readyState:'loading',addEventListener:()=>{},",
-    "  createElement:()=>({click:()=>{ clicks += 1; }}),getElementById:()=>null};",
-    js_eval_file(viewer_test_path("www", "hla_motifs.js")),
-    "const success = window.cerebroHlaMotifs.downloadPNG();",
-    "fail = true; const failure = window.cerebroHlaMotifs.downloadPNG();",
-    "console.log(JSON.stringify({success:success,failure:failure,clicks:clicks}));"
-  ))
-
-  expect_equal(attr(output, "status"), NULL)
-  expect_identical(
-    jsonlite::fromJSON(output, simplifyVector = FALSE),
-    list(success = TRUE, failure = FALSE, clicks = 1L)
-  )
-})
-
-test_that("HLA retires drawn selection geometry on a dataset request", {
-  result <- run_node_script(c(
-    "const fs=require('fs'),assert=require('assert'),events={},docEvents={},handlers={};let cleared=0;",
-    "const context={epoch:'test',dataset_key:'A',generation:1};",
-    "const network={canvas:{frame:{clientWidth:800,clientHeight:600}},DOMtoCanvas:p=>p,getScale:()=>1,setOptions:()=>{},selectNodes:()=>{},unselectAll:()=>cleared++};",
-    "global.window={HTMLWidgets:{find:()=>({network})},setTimeout:()=>{},CerebroDatasetContext:{phase:()=> 'ready',current:()=>context,readyContext:()=>context,readyKey:()=> 'A:1',key:()=> 'A:1',accepts:()=>true},addEventListener:(name,fn)=>{events[name]=fn}};",
-    "global.Shiny={addCustomMessageHandler:(name,fn)=>{handlers[name]=fn},setInputValue:()=>{}};window.Shiny=Shiny;",
-    "global.document={readyState:'loading',addEventListener:(name,fn)=>{docEvents[name]=fn},getElementById:()=>null,querySelectorAll:()=>[]};",
-    js_eval_file(viewer_test_path("www", "hla_motifs.js")),
-    "docEvents['shiny:connected']();handlers['hla_motif_selection_state']({node_keys:[],cells:['old-cell']});",
-    "const api=window.cerebroHlaMotifs,polygon=[[0,0],[10,0],[10,10],[0,10]];",
-    "api.applyState(null,{view:{mode:'box'},selection:{cells:['old-cell'],geometry:{polygon}}});",
-    "assert.deepStrictEqual(api.captureState().geometry.polygon,polygon);",
-    "events['cerebro:dataset-context']({detail:{phase:'ready'}});assert(api.captureState().geometry);",
-    "events['cerebro:dataset-context']({detail:{phase:'pending'}});assert.strictEqual(api.captureState(),null);assert.strictEqual(cleared,1);",
-    "console.log('HLA dataset geometry checks passed')"
-  ))
-  expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
-  expect_true("HLA dataset geometry checks passed" %in% result)
-})
-
-test_that("a late HLA selection reply keeps the Focus button on", {
-  result <- run_node_script(c(
-    "const fs=require('fs'),assert=require('assert'),docEvents={},handlers={};",
-    "const context={epoch:'test',dataset_key:'A',generation:1};",
-    "const classes=new Set(),attrs={};",
-    "const focus={classList:{toggle:(name,on)=>{on?classes.add(name):classes.delete(name)},contains:name=>classes.has(name)},setAttribute:(name,value)=>{attrs[name]=value},getAttribute:name=>attrs[name]};",
-    "global.window={HTMLWidgets:{find:()=>null},setTimeout:()=>{},CerebroDatasetContext:{phase:()=> 'ready',current:()=>context,readyContext:()=>context,readyKey:()=> 'A:1',key:()=> 'A:1',accepts:()=>true},addEventListener:()=>{},dispatchEvent:()=>{}};",
-    "global.CustomEvent=function(name,init){this.type=name;this.detail=init&&init.detail};",
-    "global.Shiny={addCustomMessageHandler:(name,fn)=>{handlers[name]=fn},setInputValue:()=>{}};window.Shiny=Shiny;",
-    "global.document={readyState:'loading',addEventListener:(name,fn)=>{docEvents[name]=fn},getElementById:id=>id==='hla_motif_network_focus_selection'?focus:null,querySelectorAll:()=>[]};",
-    js_eval_file(viewer_test_path("www", "hla_motifs.js")),
-    "docEvents['shiny:connected']();",
-    # The cell view turns Focus on when it is clicked ...
-    "focus.classList.toggle('is-on',true);focus.setAttribute('aria-pressed','true');",
-    # ... and only afterwards does the server's selection reply arrive.
-    "handlers['hla_motif_selection_state']({node_keys:['k1'],cells:['cell-1']});",
-    "assert(focus.classList.contains('is-on'));",
-    "assert.strictEqual(focus.getAttribute('aria-pressed'),'true');",
-    "console.log('HLA late reply checks passed')"
-  ))
-  expect_node_output(result, "HLA late reply checks passed")
 })
 
 test_that("successful specialist restoration does not replay stale state", {

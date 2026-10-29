@@ -26,19 +26,13 @@ trekker_crb <- file.path(local_inst, "extdata/examples/demo_trekker.crb")
 contract_file <- file.path(dirname(bundle_file), "..", "clone_contract.R")
 utility_file <- file.path(dirname(bundle_file), "..", "utility_functions.R")
 cv_env <- new.env()
-have_bundle <- nzchar(bundle_file) &&
-  file.exists(bundle_file) &&
-  file.exists(contract_file) &&
-  file.exists(utility_file)
-if (have_bundle) {
-  viewer_runtime_env(cv_env, root = dirname(utility_file))
-  sys.source(
-    file.path(dirname(bundle_file), "..", "spatial", "func_spatial_helpers.R"),
-    envir = cv_env
-  )
-  sys.source(contract_file, envir = cv_env)
-  sys.source(bundle_file, envir = cv_env)
-}
+viewer_runtime_env(cv_env, root = dirname(utility_file))
+sys.source(
+  file.path(dirname(bundle_file), "..", "spatial", "func_spatial_helpers.R"),
+  envir = cv_env
+)
+sys.source(contract_file, envir = cv_env)
+sys.source(bundle_file, envir = cv_env)
 
 new_cv_image_session <- function() {
   callbacks <- new.env(parent = emptyenv())
@@ -78,7 +72,6 @@ test_that("linked spatial images report decode failures and reject stale complet
 })
 
 test_that("Viewer Colour by honours registered groups and main group", {
-  skip_if_not(have_bundle)
   helper <- get0("viewerColourGroupChoices", envir = cv_env)
   expect_true(is.function(helper))
   if (!is.function(helper)) {
@@ -112,7 +105,6 @@ test_that("Viewer Colour by honours registered groups and main group", {
 })
 
 test_that("Linked views excludes unregistered metadata colourings", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2", "c3")
   metadata <- data.frame(
     cell_barcode = cells,
@@ -148,8 +140,6 @@ test_that("Linked views excludes unregistered metadata colourings", {
 })
 
 test_that("trajectory coordinates and graph enter Linked views", {
-  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
-
   trajectory <- list(
     meta = data.frame(
       DR_1 = c(10, 20),
@@ -193,7 +183,6 @@ test_that("trajectory coordinates and graph enter Linked views", {
 })
 
 test_that("trajectory rows come from the Viewer Pack index when it is valid", {
-  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
   meta <- data.frame(DR_1 = c(10, 20), row.names = c("cell_b", "cell_c"))
   cells <- c("cell_a", "cell_b", "cell_c")
   crb <- structure(
@@ -353,7 +342,6 @@ test_that("Trekker depth views form one collapsed insights region", {
 })
 
 test_that("cv_group/cv_space/cv_clone force JSON arrays even at length 1", {
-  skip_if_not(have_bundle)
   skip_if_not_installed("jsonlite")
   arr <- function(x) {
     as.character(jsonlite::toJSON(x, auto_unbox = TRUE))
@@ -382,7 +370,6 @@ test_that("cv_group/cv_space/cv_clone force JSON arrays even at length 1", {
 
 test_that("one-cell dynamic expression messages retain JSON arrays", {
   skip_if_not_installed("jsonlite")
-  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
 
   decode <- function(value) {
     jsonlite::fromJSON(
@@ -414,7 +401,6 @@ test_that("one-cell dynamic expression messages retain JSON arrays", {
 test_that("large linked-view vectors use a lossless compact wire format", {
   skip_if_not_installed("base64enc")
   skip_if_not_installed("jsonlite")
-  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
 
   bundle <- list(
     cells = I(c("cell-1", "cell-2")),
@@ -481,8 +467,6 @@ test_that("large linked-view vectors use a lossless compact wire format", {
 })
 
 test_that("saved per-gene panels use the dynamic payload contract", {
-  skip_if_not(have_bundle, "coordinated_views/bundle.R not found")
-
   payload <- cv_env$cv_gene_panels_payload(
     c("CD3D", "MS4A1"),
     list(c(0, 2), c(1, 4))
@@ -496,7 +480,6 @@ test_that("saved per-gene panels use the dynamic payload contract", {
 })
 
 test_that("single-cell projections and bundle cell IDs stay JSON arrays", {
-  skip_if_not(have_bundle)
   skip_if_not_installed("jsonlite")
   cells <- "c1"
   md <- data.frame(
@@ -531,7 +514,6 @@ test_that("single-cell projections and bundle cell IDs stay JSON arrays", {
 })
 
 test_that("Linked views does not duplicate immutable bundle data", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2")
   metadata <- data.frame(
     cell_barcode = cells,
@@ -564,7 +546,6 @@ test_that("Linked views does not duplicate immutable bundle data", {
 })
 
 test_that("primary bundle materializes only the first visible projection and colour", {
-  skip_if_not(have_bundle)
   cells <- paste0("c", 1:4)
   metadata <- data.frame(
     cell_barcode = cells,
@@ -635,7 +616,6 @@ test_that("primary bundle materializes only the first visible projection and col
 })
 
 test_that("primary bundle reuses thin CRB first-frame fields", {
-  skip_if_not(have_bundle)
   metadata <- data.frame(
     cell_type = factor(c("B", "T", "B", "T")),
     sample = factor(c("s1", "s1", "s2", "s2"))
@@ -673,7 +653,6 @@ test_that("primary bundle reuses thin CRB first-frame fields", {
 })
 
 test_that("thin preloaded primary and supplement align unverified projections once", {
-  skip_if_not(have_bundle)
   skip_if_not_installed("HDF5Array")
   cells <- c("3", "1", "2") # Numeric-looking barcodes are not row indices.
   shuffled <- data.frame(x = c(30, 20, 10), y = 3:1, row.names = rev(cells))
@@ -747,7 +726,6 @@ test_that("thin preloaded primary and supplement align unverified projections on
 })
 
 test_that("primary bundle can keep canonical projection coordinates external", {
-  skip_if_not(have_bundle)
   metadata <- data.frame(
     cell_type = factor(c("B", "T", "B", "T"))
   )
@@ -870,7 +848,6 @@ test_that("saved-view startup identity does not materialize cell names", {
 })
 
 test_that("primary colour selection does not scan unused categorical columns", {
-  skip_if_not(have_bundle)
   old <- get0("as.character.unscannable", envir = .GlobalEnv, inherits = FALSE)
   assign(
     "as.character.unscannable",
@@ -907,7 +884,6 @@ test_that("primary colour selection does not scan unused categorical columns", {
 })
 
 test_that("deferred metadata builds only the requested attribute", {
-  skip_if_not(have_bundle)
   metadata <- data.frame(
     cell_type = factor(c("B", "T", "B")),
     donor = c("d1", "d1", "d2"),
@@ -945,7 +921,6 @@ test_that("deferred metadata builds only the requested attribute", {
 })
 
 test_that("deferred assets leave only descriptors in the supplement", {
-  skip_if_not(have_bundle)
   value <- list(
     dataset_id = "xenium",
     dataset_fingerprint = "md5-cell-set-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -1002,7 +977,6 @@ test_that("deferred assets leave only descriptors in the supplement", {
 })
 
 test_that("external image files stay server-side until requested", {
-  skip_if_not(have_bundle)
   skip_if_not_installed("base64enc")
   image_path <- tempfile(fileext = ".png")
   on.exit(unlink(image_path), add = TRUE)
@@ -1035,7 +1009,6 @@ test_that("external image files stay server-side until requested", {
 })
 
 test_that("bundle cell identity falls back to metadata row names", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2")
   md <- data.frame(
     cluster = c("A", "B"),
@@ -1062,7 +1035,6 @@ test_that("bundle cell identity falls back to metadata row names", {
 })
 
 test_that("canonical zero-based indices resolve only requested cell IDs", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2", "c3", "c4")
 
   expect_identical(
@@ -1073,7 +1045,6 @@ test_that("canonical zero-based indices resolve only requested cell IDs", {
 })
 
 test_that("rownames-only metadata supports selection", {
-  skip_if_not(have_bundle)
   metadata <- data.frame(
     cluster = c("A", "B", "A"),
     score = c(1, 2, 3),
@@ -1087,7 +1058,6 @@ test_that("rownames-only metadata supports selection", {
 })
 
 test_that("explicit cell barcodes remain authoritative", {
-  skip_if_not(have_bundle)
   metadata <- data.frame(
     cell_barcode = c("explicit-2", "explicit-1"),
     row.names = c("row-1", "row-2"),
@@ -1105,7 +1075,6 @@ test_that("explicit cell barcodes remain authoritative", {
 })
 
 test_that("cv_color_patch carries only palette updates for the current bundle", {
-  skip_if_not(have_bundle)
   bundle <- list(
     dataset_id = "example.crb",
     groups = list(
@@ -1129,7 +1098,6 @@ test_that("cv_color_patch carries only palette updates for the current bundle", 
 })
 
 test_that("palette patches can refresh an existing bundle", {
-  skip_if_not(have_bundle)
   bundle <- list(
     groups = list(
       cluster = cv_env$cv_group(0L, "A", "#aaaaaa")
@@ -1171,7 +1139,6 @@ cv_ir_fixture <- function() {
 }
 
 test_that("cv_clone_per_cell aligns clone identity to cells, NA when unmatched", {
-  skip_if_not(have_bundle)
   ir <- cv_ir_fixture()
   cells <- c("c3", "c1", "cX") # cX carries no receptor
   out <- cv_env$cv_clone_per_cell(ir, cells)
@@ -1189,7 +1156,6 @@ test_that("cv_clone_per_cell aligns clone identity to cells, NA when unmatched",
 })
 
 test_that("receptor detection falls back from empty CTstrict values", {
-  skip_if_not(have_bundle)
   ir <- list(data.frame(
     CTgene = c(
       "TRAV1-2.TRAJ33.TRAC_TRBV6-4.TRBJ2-1.TRBC2",
@@ -1207,7 +1173,6 @@ test_that("receptor detection falls back from empty CTstrict values", {
 })
 
 test_that("cv_clone_per_cell calls clones the way the Clonal UMAP does", {
-  skip_if_not(have_bundle)
   ir <- cv_ir_fixture()
   cells <- c("c1", "c2", "c3")
   out <- cv_env$cv_clone_per_cell(ir, cells)
@@ -1219,7 +1184,6 @@ test_that("cv_clone_per_cell calls clones the way the Clonal UMAP does", {
 })
 
 test_that("cv_clone_per_cell keeps to one receptor class", {
-  skip_if_not(have_bundle)
   ir <- cv_ir_fixture()
   ## b1 is a B cell. Mixing it in would put BCR and TCR clonotypes in one ranking
   ## and one expansion legend, which no page in the app does.
@@ -1234,7 +1198,6 @@ test_that("cv_clone_per_cell keeps to one receptor class", {
 })
 
 test_that("both clone pages read one definition of a clone", {
-  skip_if_not(have_bundle)
   ## The contract itself.
   expect_equal(cv_env$CEREBRO_CLONE_BINS, c(0, 1, 5, 20, 100, Inf))
   expect_equal(length(cv_env$CEREBRO_CLONE_LABELS), 5)
@@ -1243,7 +1206,6 @@ test_that("both clone pages read one definition of a clone", {
 })
 
 test_that("cv_build_projections records dimensionality instead of dropping it", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2")
   crb <- list(
     availableProjections = function() c("umap", "umap_3D"),
@@ -1270,7 +1232,6 @@ test_that("cv_build_projections records dimensionality instead of dropping it", 
 })
 
 test_that("cv_build_bundle safely handles no registered grouping variable", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2", "c3")
   md <- data.frame(
     cell_barcode = cells,
@@ -1298,7 +1259,6 @@ test_that("cv_build_bundle safely handles no registered grouping variable", {
 })
 
 test_that("Linked views consumes the selected dataset point appearance", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2", "c3")
   md <- data.frame(
     cell_barcode = cells,
@@ -1361,7 +1321,6 @@ test_that("Linked views consumes the selected dataset point appearance", {
 })
 
 test_that("spatial and Trekker spaces do not require an expression projection", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2")
   md <- data.frame(cell_barcode = cells, row.names = cells)
   base <- list(
@@ -1420,7 +1379,6 @@ test_that("spatial and Trekker spaces do not require an expression projection", 
 })
 
 test_that("Builder Trekker backgrounds and appearance reach Linked views", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2")
   md <- data.frame(cell_barcode = cells, row.names = cells)
   crb <- list(
@@ -1501,7 +1459,6 @@ test_that("Builder Trekker backgrounds and appearance reach Linked views", {
 })
 
 test_that("a clone's label names its dominant CDR3 and says how many it hides", {
-  skip_if_not(have_bundle)
   ## A clone is called on CTgene, and one CTgene clone routinely covers several
   ## CDR3s in realistic receptor data can do this. Naming the row after
   ## whichever CDR3 came first presented one sequence while the row selected
@@ -1532,7 +1489,6 @@ test_that("a clone's label names its dominant CDR3 and says how many it hides", 
 })
 
 test_that("a single-CDR3 clone is not annotated", {
-  skip_if_not(have_bundle)
   ir <- list(data.frame(
     barcode = c("c1", "c2"),
     CTgene = rep("TRAV1-2.TRAJ33.TRAC_TRBV6-4.TRBJ2-1.TRBC2", 2),
@@ -1547,7 +1503,6 @@ test_that("a single-CDR3 clone is not annotated", {
 })
 
 test_that("sparse clone transport expands to the legacy cell-aligned values", {
-  skip_if_not(have_bundle)
   ir <- list(data.frame(
     barcode = c("c2", "c4", "c5"),
     CTgene = c(
@@ -1581,7 +1536,6 @@ test_that("sparse clone transport expands to the legacy cell-aligned values", {
 })
 
 test_that("Viewer Pack builds sparse clones from canonical indices", {
-  skip_if_not(have_bundle)
   old_reader <- get0("viewerPackImmuneIndex", envir = cv_env, inherits = FALSE)
   on.exit(
     {
@@ -1607,7 +1561,7 @@ test_that("Viewer Pack builds sparse clones from canonical indices", {
   )
   crb <- list(getImmuneRepertoire = function() stop("CRB fallback used"))
   attr(crb, "cerebro_viewer_pack") <- list(
-    cells = paste0("c", 1:6),
+    canonical_order = TRUE,
     manifest = list(immune_receptors = "TCR")
   )
 
@@ -1619,7 +1573,6 @@ test_that("Viewer Pack builds sparse clones from canonical indices", {
 })
 
 test_that("compact supplement avoids full CRB hydration", {
-  skip_if_not(have_bundle)
   immune_index_calls <- 0L
   old_reader <- get0("viewerPackImmuneIndex", envir = cv_env, inherits = FALSE)
   on.exit(
@@ -1666,7 +1619,7 @@ test_that("compact supplement avoids full CRB hydration", {
     getImmuneRepertoire = function() stop("immune fallback was forced")
   )
   attr(crb, "cerebro_viewer_pack") <- list(
-    cells = paste0("c", 1:4),
+    canonical_order = TRUE,
     manifest = list(
       n_cells = 4L,
       cell_order_fingerprint = "md5-cell-order-v1:order",
@@ -1816,7 +1769,6 @@ test_that("clone core omits duplicate indices and deferred labels", {
 ## a clone's size the way each page does, on the same object, and compares -- the
 ## only shape of test that can fail when the two drift apart again.
 test_that("both pages give a clone the same size", {
-  skip_if_not(have_bundle)
   skip_if_not(nzchar(tcr_crb) && file.exists(tcr_crb))
 
   crb <- readCerebro(tcr_crb)
@@ -1869,8 +1821,7 @@ test_that("both pages give a clone the same size", {
 })
 
 test_that("receptor detection does not stop at the third sample", {
-  skip_if_not(have_bundle)
-  ## detect_chains() samples the first three list entries, which is fine for
+  ## Sampling only the first three list entries is fine for
   ## guessing a default gene family and wrong for deciding which receptor a page
   ## defaults to: a data set whose FOURTH sample is the only one carrying TCR
   ## would have shown BCR on one page and TCR on the other.
@@ -1904,7 +1855,6 @@ test_that("receptor detection does not stop at the third sample", {
 ## printing position confidence twice -- once from `conf`, once from the field of
 ## the same name. These assertions are on the real output for the real object.
 test_that("the trekker bundle carries what a placement is judged on", {
-  skip_if_not(have_bundle)
   skip_if_not(file.exists(trekker_crb))
 
   b <- cv_env$cv_build_bundle(readCerebro(trekker_crb))
@@ -1946,7 +1896,6 @@ test_that("the trekker bundle carries what a placement is judged on", {
 })
 
 test_that("each section offers only its own configured backgrounds", {
-  skip_if_not(have_bundle)
   ## Embedded and external used to be exclusive -- an object carrying its own
   ## histology silently dropped whatever the deployment had configured -- and
   ## only the FIRST configured file was read. Two files of the same basename
@@ -2129,7 +2078,6 @@ test_that("each section offers only its own configured backgrounds", {
 })
 
 test_that("per-image settings also apply to embedded backgrounds", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2")
   crb <- list(getSpatialData = function(name, hydrate_molecules = TRUE) {
     list(
@@ -2234,7 +2182,6 @@ test_that("per-image settings also apply to embedded backgrounds", {
 })
 
 test_that("embedded spatial images share identity and point appearance", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2")
   crb <- list(getSpatialData = function(name, hydrate_molecules = TRUE) {
     list(
@@ -2295,7 +2242,6 @@ test_that("embedded spatial images share identity and point appearance", {
 })
 
 test_that("Linked views keeps the all-ROI coordinate layout unchanged", {
-  skip_if_not(have_bundle)
   cells <- c("c1", "c2")
   crb <- list(getSpatialData = function(name, hydrate_molecules = TRUE) {
     list(
@@ -2472,7 +2418,6 @@ test_that("Linked labels remain reachable in Settings", {
 })
 
 test_that("external backgrounds require matching PNG or JPEG magic bytes", {
-  skip_if_not(have_bundle)
   tmp <- file.path(tempdir(), "cv_external_magic")
   unlink(tmp, recursive = TRUE)
   assets <- file.path(tmp, "spatial-assets")
@@ -2546,7 +2491,6 @@ test_that("external backgrounds require matching PNG or JPEG magic bytes", {
 })
 
 test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", {
-  skip_if_not(have_bundle)
   root <- withr::local_tempdir()
   dir.create(file.path(root, "spatial-assets"))
   # The resolver reads only the PNG signature; rendering is tested in-browser.

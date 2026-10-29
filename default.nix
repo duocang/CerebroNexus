@@ -54,8 +54,7 @@
 #  > "stringr",
 #  > "tibble",
 #  > "tidyr",
-#  > "tidyselect",
-#  > "visNetwork"),
+#  > "tidyselect"),
 #  > system_pkgs = c("chromium",
 #  > "nodejs",
 #  > "pandoc"),
@@ -124,7 +123,6 @@ let
       tibble
       tidyr
       tidyselect
-      visNetwork
       withr
       xml2;
   };

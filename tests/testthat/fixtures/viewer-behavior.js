@@ -29,7 +29,7 @@ window.viewerScenarios = {
     t.check(document.getElementById('cv-cv-a')===canvas,'Recolor keeps canvas');
     t.check(t.arcs().length>0,'New values repaint');
     t.check(document.getElementById('cv-cbar').textContent.includes('NEW'),'Legend updates');
-    await t.recolor({rgb:{r:[255,0,0],g:[0,255,0],b:[0,0,255]},rgb_scaled:true,rgb_genes:{r:'A',g:'B',b:'C'}},
+    await t.recolor({rgb:{r:[255,0,0],g:[0,255,0],b:[0,0,255]},rgb_genes:{r:'A',g:'B',b:'C'}},
       {color_type:'rgb',color_variable:'RGB'});
     t.equal(cerebroCellViews.captureState('expression_projection').cells,['b']);
     t.check(document.getElementById('cv-legend').textContent.includes('A'),'RGB legend updates');
@@ -725,7 +725,7 @@ window.viewerScenarios = {
     const combinations=rgb.r.length;
     for(const key of ['r','g','b'])while(rgb[key].length<n)rgb[key].push(0);
     const x=Float32Array.from({length:n},(_,i)=>i),y=Float32Array.from(x,v=>v%100);
-    await t.render({n,selection_key:Array.from({length:n},(_,i)=>'c'+i),x,y,rgb,rgb_scaled:true},
+    await t.render({n,selection_key:Array.from({length:n},(_,i)=>'c'+i),x,y,rgb},
       {color_type:'rgb',color_variable:'RGB'});
     const out=t.uploads.at(-1);t.check(out,'RGB reaches GPU');
     const byIndex=new Map();for(let j=0;j<out.count;j++)byIndex.set(Math.round(out.positions[j*2]*(n-1)),out.colors.slice(j*4,j*4+3));

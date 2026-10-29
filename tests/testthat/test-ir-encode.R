@@ -274,7 +274,7 @@ test_that("the Viewer Pack stores the encoded repertoire and its clone names", {
   )
   runtime <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
-  descriptor <- runtime$viewerPackOpen(crb, object)
+  descriptor <- runtime$viewerPackOpen(crb)
   encoded <- runtime$viewerPackImmuneEncoded(descriptor, 1L)
   blocks <- encoded$name_blocks
   encoded$name_blocks <- NULL

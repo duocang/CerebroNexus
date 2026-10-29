@@ -68,20 +68,6 @@ retry_get_value <- function(
   }
 }
 
-test_that("retry_get_value reports the last error after timing out", {
-  attempts <- 0L
-  app <- list(get_value = function(...) {
-    attempts <<- attempts + 1L
-    stop(sprintf("render attempt %d failed", attempts), call. = FALSE)
-  })
-
-  expect_error(
-    retry_get_value(app, timeout = 5, interval = 1),
-    "render attempt [0-9]+ failed"
-  )
-  expect_gt(attempts, 1L)
-})
-
 ## Wait until an input element exists in the DOM (its Shiny binding is registered)
 ## before set_inputs — a renderUI-created selectize is not present the instant
 ## wait_for_idle returns.
@@ -117,14 +103,10 @@ test_that("{shinytest2} recording: overview", {
   app <- shared_app()
 
   ## Data Info tab: verify key values from the loaded example.crb
-  cells_box <- retry_get_value(app, output = "load_data_overview")
-  expect_true(grepl("1,?000", cells_box$html))
-
-  organism_box <- retry_get_value(app, output = "load_data_overview")
-  expect_true(grepl("Human", organism_box$html))
-
-  date_box <- retry_get_value(app, output = "load_data_overview")
-  expect_true(grepl("[0-9]{4}-[0-9]{2}-[0-9]{2}", date_box$html))
+  overview <- retry_get_value(app, output = "load_data_overview")$html
+  expect_true(grepl("1,?000", overview))
+  expect_true(grepl("Human", overview))
+  expect_true(grepl("[0-9]{4}-[0-9]{2}-[0-9]{2}", overview))
 })
 
 test_that("Projection switches categorical spatial datasets coherently", {

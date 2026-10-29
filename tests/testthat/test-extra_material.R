@@ -1,6 +1,5 @@
 # test-extra_material.R — Tests for extra material module
 
-shiny_root <- system.file("viewer", package = "CerebroNexus")
 example_crb <- system.file(
   "extdata/examples/example.crb",
   package = "CerebroNexus"
@@ -28,13 +27,9 @@ fresh_extra_material_crb <- function(include_plots = FALSE) {
   readRDS(path)
 }
 
-test_that("extra_material module files parse without errors", {
-  mod_files <- c("UI.R", "server.R", "content.R", "select_content.R")
-  for (f in mod_files) {
-    fpath <- file.path(shiny_root, "extra_material", f)
-    skip_if_not(file.exists(fpath), message = paste("Missing:", f))
-    expect_no_error(parse(file = fpath))
-  }
+## UI.R, content.R and select_content.R are sourced by the page tests.
+test_that("extra_material server parses without errors", {
+  expect_no_error(parse(file = viewer_test_path("extra_material", "server.R")))
 })
 
 test_that("extra_material UI defines correct tabName", {
@@ -45,7 +40,6 @@ test_that("extra_material UI defines correct tabName", {
 })
 
 test_that("example.crb extra material returns valid content", {
-  skip_if_not(file.exists(example_crb))
   crb <- readCerebro(example_crb)
   categories <- crb$getExtraMaterialCategories()
   expect_true(is.character(categories))
@@ -53,7 +47,6 @@ test_that("example.crb extra material returns valid content", {
 })
 
 test_that("extra material tables are accessible", {
-  skip_if_not(file.exists(example_crb))
   crb <- readCerebro(example_crb)
   tables <- crb$getNamesOfExtraTables()
   expect_true(is.character(tables))
@@ -61,13 +54,11 @@ test_that("extra material tables are accessible", {
 })
 
 test_that("checkForExtraTables returns TRUE for example.crb", {
-  skip_if_not(file.exists(example_crb))
   crb <- readCerebro(example_crb)
   expect_true(crb$checkForExtraTables())
 })
 
 test_that("getExtraTable returns a data.frame", {
-  skip_if_not(file.exists(example_crb))
   crb <- readCerebro(example_crb)
   tables <- crb$getNamesOfExtraTables()
   skip_if(length(tables) == 0, "No tables in example.crb")

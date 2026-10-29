@@ -31,21 +31,6 @@ async function rejected(data,overrides={}) {
   return t;
 }
 const scenarios={
-  async motion() {
-    const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-    const t=setup(), actions={}, calls=[], preference={matches:false};
-    const button=action=>({dataset:{act:action},addEventListener(name,fn){actions[action]=fn;},
-      classList:{toggle(){}},setAttribute(){}});
-    const buttons=['reset','zoomin','zoomout'].map(button);
-    t.hosts['hla-modebar']={querySelectorAll:()=>buttons};
-    t.scope.matchMedia=()=>preference;
-    t.scope.HTMLWidgets={find:()=>({network:{getScale:()=>1,fit:value=>calls.push(value),moveTo:value=>calls.push(value)}})};
-    vm.runInContext(fs.readFileSync(path.join(root,'hla_motifs.js'),'utf8'),t.scope,{filename:'hla_motifs.js'});
-    actions.reset();assert.equal(calls.at(-1).animation.duration,300);
-    actions.zoomin();assert.equal(calls.at(-1).scale,1.3);assert.equal(calls.at(-1).animation.duration,200);
-    preference.matches=true;actions.reset();assert.equal(calls.at(-1).animation,false);
-    actions.zoomout();assert.equal(calls.at(-1).animation,false);assert.equal(calls.at(-1).scale,1/1.3);
-  },
   async identity() {
     const t=setup();await t.deliver(t.frame());assert.equal(t.summary().ready,true);
     assert.equal(t.summary().xExtent.min,1);assert.equal(t.summary().xExtent.max,3);

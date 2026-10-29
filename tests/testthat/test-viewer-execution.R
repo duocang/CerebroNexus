@@ -26,10 +26,6 @@ test_that("Resource caches reuse current bytes and reject retired requests", {
   viewer_node_test("caches")
 })
 
-test_that("HLA navigation respects reduced motion", {
-  viewer_node_test("motion")
-})
-
 test_that("Gene hydration preserves f64 values, missing values and cache reuse", {
   viewer_browser_test("colors")
 })

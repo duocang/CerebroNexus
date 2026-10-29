@@ -8,104 +8,11 @@ groupsMetadataColumns <- function(columns) {
   viewerProjectionSubsetRows(metadata, seq_len(nrow(metadata)), columns)
 }
 
-## Groups only needs a two-way contingency table. Building that table directly
-## avoids sorting all cells and starting the full dplyr grouping pipeline on the
-## first visit. The returned columns and factor levels match calculateTableAB().
-groupsCalculateTableAB <- function(table, groupA, groupB, mode, percent) {
-  ## Characters and other non-factors become factors over their sorted values.
-  as_levels <- function(values) {
-    if (is.factor(values)) {
-      return(values)
-    }
-    factor(values, levels = sort(unique(values)), exclude = NULL)
-  }
-  values_a <- as_levels(table[[groupA]])
-  values_b <- as_levels(table[[groupB]])
-
-  factor_codes <- function(values) {
-    codes <- as.integer(values)
-    labels <- levels(values)
-    has_na <- anyNA(codes)
-    if (has_na) {
-      codes[is.na(codes)] <- length(labels) + 1L
-    }
-    list(codes = codes, labels = labels, has_na = has_na)
-  }
-  encoded_a <- factor_codes(values_a)
-  encoded_b <- factor_codes(values_b)
-  n_a <- length(encoded_a$labels) + as.integer(encoded_a$has_na)
-  n_b <- length(encoded_b$labels) + as.integer(encoded_b$has_na)
-  linear <- (encoded_a$codes - 1L) * n_b + encoded_b$codes
-  cell_counts <- tabulate(linear, nbins = n_a * n_b)
-  occupied <- which(cell_counts > 0L)
-  index_a <- (occupied - 1L) %/% n_b + 1L
-  index_b <- (occupied - 1L) %% n_b + 1L
-
-  decode <- function(index, encoded) {
-    labels <- encoded$labels[index]
-    factor(labels, levels = encoded$labels)
-  }
-  counts <- data.frame(
-    decode(index_a, encoded_a),
-    decode(index_b, encoded_b),
-    count = cell_counts[occupied],
-    total_cell_count = tabulate(encoded_a$codes, nbins = n_a)[index_a],
-    check.names = FALSE
-  )
-  names(counts)[1:2] <- c(groupA, groupB)
-
-  groupsFormatComposition(
-    counts,
-    groupA,
-    groupB,
-    mode,
-    percent,
-    levels(values_b)
-  )
-}
-
-groupsFormatComposition <- function(
-  counts,
-  groupA,
-  groupB,
-  mode,
-  percent,
-  levels_group_b = levels(counts[[groupB]])
-) {
-  if (isTRUE(percent)) {
-    counts[["count"]] <- counts[["count"]] / counts[["total_cell_count"]]
-    counts <- counts[, c(groupA, "total_cell_count", groupB, "count")]
-  }
-
-  if (identical(mode, "wide")) {
-    counts <- tidyr::pivot_wider(
-      counts,
-      id_cols = dplyr::all_of(c(groupA, "total_cell_count")),
-      names_from = dplyr::all_of(groupB),
-      values_from = "count",
-      values_fill = 0
-    ) %>%
-      dplyr::select(
-        dplyr::all_of(c(groupA, "total_cell_count")),
-        dplyr::any_of(levels_group_b)
-      )
-    if (all(c("G1", "G2M", "S") %in% colnames(counts))) {
-      counts <- counts %>%
-        dplyr::select(
-          dplyr::all_of(c(groupA, "total_cell_count", "G1", "S", "G2M")),
-          dplyr::everything()
-        )
-    }
-  }
-
-  counts
-}
-
 groups_composition_counts <- reactive({
   first <- input[["groups_selected_group"]]
   second <- input[["groups_by_other_group_second_group"]]
   req(first %in% getGroups(), second %in% getGroups(), first != second)
-  groupsCalculateTableAB(
+  calculateTableAB(
     groupsMetadataColumns(c(first, second)),
     first,
     second,
@@ -115,7 +22,7 @@ groups_composition_counts <- reactive({
 })
 
 groupsCompositionTable <- function(mode, percent) {
-  groupsFormatComposition(
+  formatTableAB(
     groups_composition_counts(),
     input[["groups_selected_group"]],
     input[["groups_by_other_group_second_group"]],

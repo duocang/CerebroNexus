@@ -1,9 +1,9 @@
 groups_charts_env <- function() {
   scope <- new.env(parent = asNamespace("shiny"))
   sys.source(viewer_test_path("plotting_functions.R"), scope)
-  composition <- viewer_test_path("groups", "composition.R")
-  for (name in c("groupsFormatComposition", "groupsCalculateTableAB")) {
-    eval(viewer_r_assignment(composition, name), scope)
+  utilities <- viewer_test_path("utility_functions.R")
+  for (name in c("formatTableAB", "calculateTableAB")) {
+    eval(viewer_r_assignment(utilities, name), scope)
   }
   scope
 }
@@ -26,14 +26,14 @@ test_that("bar payloads hold the composition table counts and fractions", {
   metadata <- groups_charts_metadata()
   colors <- c(c2 = "#00ff00", c1 = "#ff0000", other = "#0000ff")
   for (percent in c(FALSE, TRUE)) {
-    long <- scope$groupsCalculateTableAB(
+    long <- scope$calculateTableAB(
       metadata,
       "sample",
       "cluster",
       "long",
       percent
     )
-    wide <- scope$groupsCalculateTableAB(
+    wide <- scope$calculateTableAB(
       metadata,
       "sample",
       "cluster",
@@ -62,7 +62,7 @@ test_that("bar payloads hold the composition table counts and fractions", {
 test_that("Sankey links add up to the cells counted in both groups", {
   scope <- groups_charts_env()
   metadata <- groups_charts_metadata()
-  long <- scope$groupsCalculateTableAB(
+  long <- scope$calculateTableAB(
     metadata,
     "sample",
     "cluster",
@@ -197,7 +197,7 @@ test_that("Shiny-serialised payloads draw as SVG in the browser renderer", {
   skip_if_no_node()
   scope <- groups_charts_env()
   metadata <- groups_charts_metadata()
-  long <- scope$groupsCalculateTableAB(
+  long <- scope$calculateTableAB(
     metadata,
     "sample",
     "cluster",

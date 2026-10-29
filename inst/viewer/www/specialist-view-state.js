@@ -65,8 +65,7 @@
     });
   }
 
-  function engine(spec) {
-    if (spec.engine === 'network') return window.cerebroHlaMotifs;
+  function engine() {
     return window.cerebroCellViews;
   }
 
@@ -193,11 +192,11 @@
       id: id,
       label: spec.label,
       ready: function () {
-        var api = engine(spec);
+        var api = engine();
         return !!currentState(id, api);
       },
       capture: function () {
-        var api = engine(spec);
+        var api = engine();
         var state = currentState(id, api);
         if (!state) throw new Error(spec.label + ' is not ready to save.');
         return {
@@ -216,7 +215,7 @@
         };
       },
       downloadPNG: function () {
-        var api = engine(spec);
+        var api = engine();
         return !!(currentState(id, api) && api.downloadPNG && api.downloadPNG(id));
       },
       apply: function (config) {
@@ -230,15 +229,15 @@
         // Restored controls re-render the plot (a grouping column turns it
         // into panels), and that render resets the panels and the brush, so
         // the state is applied again once it arrives, however long the render
-        // takes. The network engine already waits for its own draw.
-        if (rerender && spec.engine !== 'network') {
-          engine(spec).applyState(id, config, { afterRender: true });
+        // takes.
+        if (rerender) {
+          engine().applyState(id, config, { afterRender: true });
         }
         [0, 250, 750].forEach(function (delay) {
           window.setTimeout(function () {
             if (applied || restoreSequence !== stateRestoreSequence ||
                 !restoreContext || restoreContext !== currentContextKey()) return;
-            var api = engine(spec);
+            var api = engine();
             if (api && api.applyState) applied = !!api.applyState(id, config);
           }, delay);
         });

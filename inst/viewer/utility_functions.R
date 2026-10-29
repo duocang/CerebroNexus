@@ -1622,7 +1622,6 @@ cerebroCellViewRecolor <- function(
   fields <- c(
     "color",
     "rgb",
-    "rgb_scaled",
     "rgb_genes",
     "colorscale",
     "panel_colorscales",
@@ -3075,113 +3074,106 @@ prepareEmptyTable <- function(table) {
 }
 
 ##----------------------------------------------------------------------------##
-## Function to calculate A-by-B tables, e.g. samples by clusters.
+## A-by-B composition tables, e.g. samples by clusters (Groups, Trajectory).
+##
+## Built as a two-way contingency table: no sort of all cells and no dplyr
+## grouping pipeline. Factors keep their levels, characters become factors over
+## their sorted values, other columns (e.g. a numeric trajectory state) keep
+## their values. Rows are ordered by A, then B, with NA last.
 ##----------------------------------------------------------------------------##
-calculateTableAB <- function(
-  table,
+calculateTableAB <- function(table, groupA, groupB, mode, percent) {
+  for (group in c(groupA, groupB)) {
+    if (!group %in% colnames(table)) {
+      stop(
+        "Column `",
+        group,
+        "` could not be found in meta data.",
+        call. = FALSE
+      )
+    }
+  }
+  encode <- function(values) {
+    raw <- if (is.factor(values) || is.character(values)) {
+      NULL
+    } else {
+      sort(unique(values))
+    }
+    if (!is.factor(values)) {
+      values <- factor(values, levels = sort(unique(values)), exclude = NULL)
+    }
+    codes <- as.integer(values)
+    labels <- levels(values)
+    has_na <- anyNA(codes)
+    if (has_na) {
+      codes[is.na(codes)] <- length(labels) + 1L
+    }
+    list(codes = codes, labels = labels, raw = raw, has_na = has_na)
+  }
+  decode <- function(index, encoded) {
+    if (!is.null(encoded$raw)) {
+      return(encoded$raw[index])
+    }
+    factor(encoded$labels[index], levels = encoded$labels)
+  }
+  encoded_a <- encode(table[[groupA]])
+  encoded_b <- encode(table[[groupB]])
+  n_a <- length(encoded_a$labels) + as.integer(encoded_a$has_na)
+  n_b <- length(encoded_b$labels) + as.integer(encoded_b$has_na)
+  linear <- (encoded_a$codes - 1L) * n_b + encoded_b$codes
+  cell_counts <- tabulate(linear, nbins = n_a * n_b)
+  occupied <- which(cell_counts > 0L)
+  index_a <- (occupied - 1L) %/% n_b + 1L
+  index_b <- (occupied - 1L) %% n_b + 1L
+
+  counts <- data.frame(
+    decode(index_a, encoded_a),
+    decode(index_b, encoded_b),
+    count = cell_counts[occupied],
+    total_cell_count = tabulate(encoded_a$codes, nbins = n_a)[index_a],
+    check.names = FALSE
+  )
+  names(counts)[1:2] <- c(groupA, groupB)
+
+  formatTableAB(counts, groupA, groupB, mode, percent, encoded_b$labels)
+}
+
+## Percentages and/or wide format of a long calculateTableAB() table.
+formatTableAB <- function(
+  counts,
   groupA,
   groupB,
   mode,
-  percent
+  percent,
+  levels_group_b = levels(counts[[groupB]])
 ) {
-  ## check if specified group columns exist in table
-  if (groupA %in% colnames(table) == FALSE) {
-    stop(
-      glue::glue(
-        "Column specified as groupA (`{groupA}`) could not be found in meta ",
-        "data."
-      ),
-      call. = FALSE
-    )
+  if (isTRUE(percent)) {
+    counts[["count"]] <- counts[["count"]] / counts[["total_cell_count"]]
+    counts <- counts[, c(groupA, "total_cell_count", groupB, "count")]
   }
 
-  if (groupB %in% colnames(table) == FALSE) {
-    stop(
-      glue::glue(
-        "Column specified as groupB (`{groupB}`) could not be found in meta ",
-        "data."
-      ),
-      call. = FALSE
-    )
-  }
-
-  ## subset columns
-  table <- table[, c(groupA, groupB)]
-
-  ## factorize group columns A if not already a factor
-  if (is.character(table[[groupA]])) {
-    levels_groupA <- table[[groupA]] %>% unique() %>% sort()
-    table[, groupA] <- factor(
-      table[[groupA]],
-      levels = levels_groupA,
-      exclude = NULL
-    )
-  } else {
-    levels_groupA <- levels(table[, groupA])
-  }
-
-  ## factorize group columns B if not already a factor
-  if (is.character(table[[groupB]])) {
-    levels_groupB <- table[[groupB]] %>% unique() %>% sort()
-    table[, groupB] <- factor(
-      table[[groupB]],
-      levels = levels_groupB,
-      exclude = NULL
-    )
-  } else {
-    levels_groupB <- levels(table[, groupB])
-  }
-
-  ## prepare table in long format
-  table <- table %>%
-    dplyr::arrange(dplyr::across(dplyr::all_of(c(groupA, groupB)))) %>%
-    dplyr::group_by(dplyr::across(dplyr::all_of(c(groupA, groupB)))) %>%
-    dplyr::summarise(count = dplyr::n(), .groups = 'drop') %>%
-    dplyr::group_by(dplyr::across(dplyr::all_of(groupA))) %>%
-    dplyr::mutate(total_cell_count = sum(count)) %>%
-    dplyr::ungroup()
-
-  ## convert counts to percent
-  if (percent == TRUE) {
-    table <- table %>%
-      dplyr::mutate(count = count / total_cell_count) %>%
+  if (identical(mode, "wide")) {
+    counts <- tidyr::pivot_wider(
+      counts,
+      id_cols = dplyr::all_of(c(groupA, "total_cell_count")),
+      names_from = dplyr::all_of(groupB),
+      values_from = "count",
+      values_fill = 0
+    ) %>%
       dplyr::select(
-        dplyr::all_of(c(groupA, "total_cell_count", groupB, "count"))
+        dplyr::all_of(c(groupA, "total_cell_count")),
+        dplyr::any_of(levels_group_b)
       )
-  }
-
-  ## bring table into wide format
-  if (mode == "wide") {
-    table <- table %>%
-      tidyr::pivot_wider(
-        id_cols = dplyr::all_of(c(groupA, "total_cell_count")),
-        names_from = dplyr::all_of(groupB),
-        values_from = "count",
-        values_fill = 0
-      ) %>%
-      dplyr::select(
-        dplyr::all_of(groupA),
-        'total_cell_count',
-        dplyr::any_of(levels_groupB)
-      )
-
-    ## fix order of columns if cell cycle info was chosen as second group
-    if (
-      'G1' %in%
-        colnames(table) &&
-        'G2M' %in% colnames(table) &&
-        'S' %in% colnames(table)
-    ) {
-      table <- table %>%
+    ## cell cycle phases in their natural order
+    if (all(c("G1", "G2M", "S") %in% colnames(counts))) {
+      counts <- counts %>%
         dplyr::select(
-          dplyr::all_of(c(groupA, 'total_cell_count', 'G1', 'S', 'G2M')),
+          dplyr::all_of(c(groupA, "total_cell_count", "G1", "S", "G2M")),
           dplyr::everything()
         )
     }
   }
 
-  ##
-  return(table)
+  counts
 }
 
 ##----------------------------------------------------------------------------##
@@ -3302,40 +3294,6 @@ cerebroProjectionHoverColumns <- function(
     )
   }
   columns
-}
-
-buildHoverInfoForProjections <- function(table) {
-  ## Count fields have many repeated values. Format each distinct value once,
-  ## then restore cell order without changing the displayed precision.
-  format_counts <- function(values) {
-    distinct <- unique(values)
-    formatC(distinct, format = "f", big.mark = ",", digits = 0)[
-      match(values, distinct)
-    ]
-  }
-  cell_ids <- if ("cell_barcode" %in% names(table)) {
-    table[["cell_barcode"]]
-  } else {
-    rownames(table)
-  }
-  template <- c("<b>Cell</b>: {cell_ids}")
-  if ("nUMI" %in% names(table)) {
-    umi <- format_counts(table[["nUMI"]])
-    template <- c(template, "<br><b>Transcripts</b>: {umi}")
-  }
-  if ("nGene" %in% names(table)) {
-    genes <- format_counts(table[["nGene"]])
-    template <- c(template, "<br><b>Expressed genes</b>: {genes}")
-  }
-  hover_info <- glue::glue(paste0(template, collapse = ""))
-  ## add info for known grouping variables
-  for (group in intersect(getGroups(), names(table))) {
-    hover_info <- glue::glue(
-      "{hover_info}<br>",
-      "<b>{group}</b>: {table[[ group ]]}"
-    )
-  }
-  return(hover_info)
 }
 
 ##----------------------------------------------------------------------------##
@@ -3901,18 +3859,24 @@ get_or_load_crb <- function(
   obj
 }
 
-.attachImmuneRepertoireBackend <- function(obj, crb_path) {
-  field <- "immune_repertoire_backend"
+## The plain backend descriptor stored in `obj[[field]]`, or NULL when there is
+## none. An active or lazy binding is rejected without being evaluated.
+.crbBackendDescriptor <- function(obj, field, invalid) {
   if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
-    return(obj)
+    return(NULL)
   }
   if (
     bindingIsActive(field, obj) ||
       isTRUE(rlang::env_binding_are_lazy(obj, field))
   ) {
-    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+    stop(invalid, call. = FALSE)
   }
-  backend <- obj[[field]]
+  obj[[field]]
+}
+
+.attachImmuneRepertoireBackend <- function(obj, crb_path) {
+  invalid <- "The immune repertoire sidecar descriptor is invalid."
+  backend <- .crbBackendDescriptor(obj, "immune_repertoire_backend", invalid)
   if (is.null(backend)) {
     return(obj)
   }
@@ -3929,12 +3893,12 @@ get_or_load_crb <- function(
     !is.na(backend$md5) &&
     grepl("^[[:xdigit:]]{32}$", backend$md5)
   if (!valid) {
-    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+    stop(invalid, call. = FALSE)
   }
   backend$samples <- unique(as.character(backend$samples %||% character()))
   backend$chains <- unique(as.character(backend$chains %||% character()))
   if (anyNA(backend$samples) || anyNA(backend$chains)) {
-    stop("The immune repertoire sidecar descriptor is invalid.", call. = FALSE)
+    stop(invalid, call. = FALSE)
   }
   backend$samples <- backend$samples[nzchar(backend$samples)]
   backend$chains <- backend$chains[nzchar(backend$chains)]
@@ -3948,22 +3912,13 @@ get_or_load_crb <- function(
     )
   }
   backend$root <- root
-  obj[[field]] <- backend
+  obj[["immune_repertoire_backend"]] <- backend
   obj
 }
 
 .attachSpatialMoleculeBackend <- function(obj, crb_path) {
-  field <- "spatial_molecule_backend"
-  if (!is.environment(obj) || !exists(field, envir = obj, inherits = FALSE)) {
-    return(obj)
-  }
-  if (
-    bindingIsActive(field, obj) ||
-      isTRUE(rlang::env_binding_are_lazy(obj, field))
-  ) {
-    stop("The spatial molecule backend descriptor is invalid.", call. = FALSE)
-  }
-  backend <- obj[[field]]
+  invalid <- "The spatial molecule backend descriptor is invalid."
+  backend <- .crbBackendDescriptor(obj, "spatial_molecule_backend", invalid)
   if (is.null(backend)) {
     return(obj)
   }
@@ -3976,7 +3931,7 @@ get_or_load_crb <- function(
     !backend$location %in% c(".", "..") &&
     !grepl("[/\\\\]", backend$location)
   if (!valid) {
-    stop("The spatial molecule backend descriptor is invalid.", call. = FALSE)
+    stop(invalid, call. = FALSE)
   }
   root <- file.path(
     dirname(normalizePath(crb_path, mustWork = FALSE)),
@@ -3986,7 +3941,7 @@ get_or_load_crb <- function(
     stop("The spatial molecule sidecar is missing: ", root, call. = FALSE)
   }
   backend$root <- root
-  obj[[field]] <- backend
+  obj[["spatial_molecule_backend"]] <- backend
   obj
 }
 
@@ -5438,22 +5393,29 @@ cerebroRegisterInfo <- function(input, input_id, info) {
   })
 }
 
+## Help for the "Automatically format numbers" and "Highlight values with
+## colours" switches of the prettified tables; ends every table info box.
+cerebroTableOptionsHelp <- function() {
+  "
+    <b>Automatically format numbers</b><br>
+    When active, columns in the table that contain different types of numeric values will be formatted based on what they <u>seem</u> to be. The algorithm will look for integers (no decimal values), percentages, p-values, log-fold changes and apply different formatting schemes to each of them. Importantly, this process does that always work perfectly. If it fails and hinders working with the table, automatic formatting can be deactivated.<br>
+    <em>This feature does not work on columns that contain 'NA' values.</em><br>
+    <b>Highlight values with colours</b><br>
+    Similar to the automatic formatting option, when active, CerebroNexus will look for known columns in the table (those that contain grouping variables), try to interpret column content, and use colours and other stylistic elements to facilitate quick interpretation of the values. If you prefer the table without colours and/or the identification does not work properly, you can simply deactivate this feature.<br>
+    <em>This feature does not work on columns that contain 'NA' values.</em><br>
+    <br>
+    <em>Columns can be re-ordered by dragging their respective header.</em>"
+}
+
 cerebroSelectedCellsTableInfo <- function() {
   list(
     title = "Details of selected cells",
-    text = shiny::HTML(
+    text = shiny::HTML(paste0(
       "
       Table containing meta data (some columns may be hidden, check the 'Column visibility' button) for cells selected in the plot using the box or lasso selection tool. If you want the table to contain all cells in the data set, you must select all cells in the plot. The table can be saved to disk in CSV or Excel format for further analysis.
-      <h4>Options</h4>
-      <b>Automatically format numbers</b><br>
-      When activated, columns in the table that contain different types of numeric values will be formatted based on what they <u>seem</u> to be. The algorithm will look for integers (no decimal values), percentages, p-values, log-fold changes and apply different formatting schemes to each of them. Importantly, this process does that always work perfectly. If it fails and hinders working with the table, automatic formatting can be deactivated.<br>
-      <em>This feature does not work on columns that contain 'NA' values.</em><br>
-      <b>Highlight values with colours</b><br>
-      Similar to the automatic formatting option, when activated, CerebroNexus will look for known columns in the table (those that contain grouping variables), try to interpret column content, and use colours and other stylistic elements to facilitate quick interpretation of the values. If you prefer the table without colours and/or the identification does not work properly, you can simply deactivate this feature.<br>
-      <em>This feature does not work on columns that contain 'NA' values.</em><br>
-      <br>
-      <em>Columns can be re-ordered by dragging their respective header.</em>"
-    )
+      <h4>Options</h4>",
+      cerebroTableOptionsHelp()
+    ))
   )
 }
 

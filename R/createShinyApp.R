@@ -647,13 +647,6 @@
   "getTrajectory"
 )
 
-.isRecognizedCerebroObject <- function(object) {
-  is.environment(object) &&
-    inherits(object, "R6") &&
-    any(startsWith(class(object), "Cerebro")) &&
-    environmentIsLocked(object)
-}
-
 ## Treat the ordinary field as data. The getter binding is checked only as a
 ## format marker and is never invoked during preflight. Callers check the
 ## location's portability with their own message.
@@ -661,7 +654,7 @@
   crb_path,
   object = .readCerebroPayload(crb_path)
 ) {
-  recognized <- .isRecognizedCerebroObject(object)
+  recognized <- .recognizedCerebroObject(object)
   if (recognized) {
     for (method in .bundleRequiredCerebroMethods) {
       if (
@@ -784,7 +777,7 @@
 }
 
 .readBundleDatasetInfo <- function(object, label, path) {
-  if (!.isRecognizedCerebroObject(object)) {
+  if (!.recognizedCerebroObject(object)) {
     stop(
       "Dataset information requires a recognized Cerebro object.",
       call. = FALSE
@@ -916,7 +909,7 @@
     tryCatch(
       {
         backends[[index]] <- inspect_backend(cerebro_data[[index]], object)
-        if (.isRecognizedCerebroObject(object)) {
+        if (.recognizedCerebroObject(object)) {
           dataset_catalog[index] <- list(.readBundleDatasetInfo(
             object,
             names(cerebro_data)[[index]],

@@ -298,22 +298,6 @@ sample_level_meta <- function(encoded, metadata = NULL, group_by = NULL) {
 }
 
 
-detect_chains <- function(data) {
-  if (is.null(data) || !is.list(data) || length(data) == 0) {
-    return(character(0))
-  }
-  sample_dfs <- data[seq_len(min(length(data), 3))]
-  all_ct <- unlist(lapply(sample_dfs, function(df) {
-    if ("CTgene" %in% names(df)) as.character(df$CTgene) else character(0)
-  }))
-  chains <- c("TRA", "TRB", "TRG", "TRD", "IGH", "IGK", "IGL")
-  chains[vapply(
-    chains,
-    function(chain) any(grepl(chain, all_ct, fixed = TRUE)),
-    logical(1)
-  )]
-}
-
 ## The plots depend on the data set and their controls only (no session state:
 ## palettes and the plot theme are constants), so sessions of the process that
 ## open the same data set files share them: a new session, a reload or a

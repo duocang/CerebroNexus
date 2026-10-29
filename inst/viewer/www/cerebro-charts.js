@@ -1163,11 +1163,8 @@
     normalize: normalize,
     chartSvg: chartSvg,
     exportSvg: exportSvg,
-    legendHtml: legendHtml,
     ticks: ticks,
     fixed: fixed,
-    significant: significant,
-    render: render,
-    report: report
+    render: render
   };
 })(typeof window !== 'undefined' ? window : this);

@@ -152,7 +152,6 @@ if (length(.crb_launch_state$prototypes)) {
   for (prototype_path in names(.crb_launch_state$prototypes)) {
     viewerCellNamesFile(viewerPackOpenCached(
       prototype_path,
-      .crb_launch_state$prototypes[[prototype_path]],
       .viewer_pack_process_cache
     ))
   }
@@ -1034,11 +1033,7 @@ server <- function(input, output, session) {
             length(dataset_to_load) == 1L &&
             file.exists(dataset_to_load)
         ) {
-          viewerPackOpenCached(
-            dataset_to_load,
-            data,
-            .viewer_pack_process_cache
-          )
+          viewerPackOpenCached(dataset_to_load, .viewer_pack_process_cache)
         } else {
           NULL
         }
@@ -2079,10 +2074,6 @@ server <- function(input, output, session) {
     req(data_set())
     getGeneNames()
   })
-
-  ## Dynamic sidebar: conditional tabs are shown or hidden based on dataset
-  ## content (see toggleConditionalTab() below).
-  ##--------------------------------------------------------------------------##
 
   ##--------------------------------------------------------------------------##
   ## Print message when session is closed due to inactivity.

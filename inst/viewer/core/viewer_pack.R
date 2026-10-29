@@ -14,7 +14,7 @@ viewerPackCellOrderFingerprint <- function(cells) {
   paste0("md5-cell-order-v1:", unname(tools::md5sum(path)))
 }
 
-viewerPackOpen <- function(file, object) {
+viewerPackOpen <- function(file) {
   if (
     !is.character(file) ||
       length(file) != 1L ||
@@ -67,7 +67,6 @@ viewerPackOpen <- function(file, object) {
   list(
     path = pack,
     manifest = manifest,
-    cells = NULL,
     cell_count = cell_count,
     canonical_order = TRUE,
     cache = new.env(parent = emptyenv())
@@ -104,7 +103,7 @@ viewerPackSourceSignature <- function(file) {
   )
 }
 
-viewerPackOpenCached <- function(file, object, cache) {
+viewerPackOpenCached <- function(file, cache) {
   if (!is.environment(cache)) {
     stop("Viewer Pack descriptor cache must be an environment.", call. = FALSE)
   }
@@ -118,7 +117,7 @@ viewerPackOpenCached <- function(file, object, cache) {
     pack$cache <- new.env(parent = emptyenv())
     return(pack)
   }
-  pack <- viewerPackOpen(file, object)
+  pack <- viewerPackOpen(file)
   if (is.null(pack)) {
     if (!is.null(cached)) {
       rm(list = signature$key, envir = cache)
@@ -213,34 +212,8 @@ viewerPackVerifiedAsset <- function(
   if (valid) asset else NULL
 }
 
-viewerPackValidateCellOrder <- function(pack) {
-  if (isTRUE(pack$canonical_order)) {
-    return(TRUE)
-  }
-  key <- ".cell_order_valid"
-  if (exists(key, envir = pack$cache, inherits = FALSE)) {
-    return(isTRUE(get(key, envir = pack$cache, inherits = FALSE)))
-  }
-  path <- "common/cell_order.qs2"
-  asset <- viewerPackVerifiedAsset(pack, path)
-  stored <- if (is.null(asset)) {
-    NULL
-  } else {
-    tryCatch(qs2::qs_read(asset$file), error = function(error) NULL)
-  }
-  valid <- is.character(stored) && identical(stored, pack$cells)
-  if (valid) {
-    assign(path, stored, envir = pack$cache)
-  }
-  assign(key, valid, envir = pack$cache)
-  valid
-}
-
-viewerPackReadAsset <- function(pack, path, validate_cell_order = TRUE) {
+viewerPackReadAsset <- function(pack, path) {
   if (is.null(pack) || !is.list(pack) || !is.environment(pack$cache)) {
-    return(NULL)
-  }
-  if (isTRUE(validate_cell_order) && !viewerPackValidateCellOrder(pack)) {
     return(NULL)
   }
   if (exists(path, envir = pack$cache, inherits = FALSE)) {
@@ -258,14 +231,7 @@ viewerPackReadAsset <- function(pack, path, validate_cell_order = TRUE) {
 }
 
 viewerPackCellBarcodes <- function(pack, index = NULL) {
-  cells <- pack$cells
-  if (is.null(cells)) {
-    cells <- viewerPackReadAsset(
-      pack,
-      "common/cell_order.qs2",
-      validate_cell_order = FALSE
-    )
-  }
+  cells <- viewerPackReadAsset(pack, "common/cell_order.qs2")
   if (
     !is.character(cells) ||
       length(cells) != pack$cell_count ||
@@ -287,8 +253,7 @@ viewerPackCellBarcodes <- function(pack, index = NULL) {
 viewerPackTrajectoryIndex <- function(pack, method, name) {
   indexes <- viewerPackReadAsset(
     pack,
-    file.path("trajectory", "cell_index.qs2"),
-    validate_cell_order = FALSE
+    file.path("trajectory", "cell_index.qs2")
   )
   index <- indexes[[method]][[name]]
   if (is.null(index)) NULL else as.integer(index)
@@ -408,8 +373,7 @@ viewerPackTrajectoryEdges <- function(pack, method, name) {
   }
   edges <- viewerPackReadAsset(
     pack,
-    frame$edges_path,
-    validate_cell_order = FALSE
+    frame$edges_path
   )
   required <- c(
     "source_dim_1",
@@ -426,8 +390,7 @@ viewerPackTrajectoryEdges <- function(pack, method, name) {
 viewerPackSpatialIndex <- function(pack, name) {
   indexes <- viewerPackReadAsset(
     pack,
-    file.path("spatial", "cell_index.qs2"),
-    validate_cell_order = FALSE
+    file.path("spatial", "cell_index.qs2")
   )
   index <- indexes[[name]]
   if (is.null(index)) NULL else as.integer(index)
@@ -478,8 +441,7 @@ viewerPackGroupMetric <- function(pack, group, metric) {
   }
   value <- viewerPackReadAsset(
     pack,
-    path,
-    validate_cell_order = FALSE
+    path
   )
   if (
     !is.data.frame(value) ||
@@ -507,8 +469,7 @@ viewerPackHlaFirstFrame <- function(pack, chain) {
   }
   viewerPackReadAsset(
     pack,
-    file.path("hla_tcr", paste0(chain, ".first.qs2")),
-    validate_cell_order = FALSE
+    file.path("hla_tcr", paste0(chain, ".first.qs2"))
   )
 }
 

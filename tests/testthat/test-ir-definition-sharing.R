@@ -27,7 +27,6 @@ ir_env$getImmuneRepertoire <- function(...) NULL
 ir_env$getMetaData <- function(...) NULL
 ir_env$availableProjections <- function(...) character(0)
 ir_env$getProjection <- function(...) NULL
-ir_env$detect_chains <- function(...) character(0)
 ir_env$viewerMemoOne <- function() function(key, compute) compute()
 # Shared palette helper (defined in color_setup.R inside the running app); the
 # plot builders call it for fill colours, so provide a lightweight stand-in.

@@ -762,7 +762,7 @@ hla_motif_blocked <- reactive({
   if (!hla_has_deps()) {
     return(list(
       kind = "empty",
-      text = "The motif network requires the 'visNetwork' and 'stringdist' packages."
+      text = "The motif network requires the 'stringdist' and 'igraph' packages."
     ))
   }
   ## The Viewer Pack's snapshot is the graph these settings build, and is

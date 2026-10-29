@@ -285,15 +285,6 @@ output[["trekker_number_of_selected_cells"]] <- renderUI({
   )
 })
 
-## Moran's I "Show in plot" link: switch to gene mode and select the gene. The
-## widget updates drive the observers above, which send the expression vector.
-observeEvent(input[["trekker_moran_gene"]], {
-  g <- input[["trekker_moran_gene"]]
-  req(g, nzchar(g))
-  updateSelectInput(session, "trekker_mode", selected = "gene")
-  updateSelectizeInput(session, "trekker_gene_pick", selected = g)
-})
-
 ##----------------------------------------------------------------------------##
 ## Info modals (same pattern as the other tabs)
 ##----------------------------------------------------------------------------##

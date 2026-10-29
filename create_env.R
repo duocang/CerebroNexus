@@ -81,8 +81,7 @@ rix(
     "stringr",
     "tibble",
     "tidyr",
-    "tidyselect",
-    "visNetwork"
+    "tidyselect"
   ),
   system_pkgs = c(
     "chromium", # headless browser for shinytest2

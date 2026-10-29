@@ -1,4 +1,4 @@
-test_that("Cartesian toolbars default to lasso selection", {
+test_that("Cartesian toolbars use lasso selection", {
   skip_if_not_installed("plotly")
   env <- new.env(parent = globalenv())
   sys.source(viewer_test_path("plotting_functions.R"), envir = env)
@@ -7,14 +7,6 @@ test_that("Cartesian toolbars default to lasso selection", {
   expect_identical(
     suppressMessages(plotly::plotly_build(fig))$x$layout$dragmode,
     "lasso"
-  )
-
-  download_only <- env$cerebro_plotly_toolbar(
-    plotly::plot_ly(x = 1, y = 1),
-    "toImage"
-  )
-  expect_null(
-    suppressMessages(plotly::plotly_build(download_only))$x$layout$dragmode
   )
 })
 

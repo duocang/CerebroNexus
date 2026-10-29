@@ -1698,20 +1698,18 @@ cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
   } else {
     character()
   }
+  ## The Pack's clone index is in canonical row order: it serves the sparse
+  ## form over all cells; anything else reads the repertoire.
   packed <- if (
-    length(receptors) && exists("viewerPackImmuneIndex", mode = "function")
+    isTRUE(sparse) &&
+      isTRUE(pack$canonical_order) &&
+      identical(cells, seq_len(n)) &&
+      length(receptors) &&
+      exists("viewerPackImmuneIndex", mode = "function")
   ) {
     viewerPackImmuneIndex(pack, receptors[[1L]])
-  } else {
-    NULL
   }
-  canonical_packed <- !is.null(packed) &&
-    (isTRUE(pack$canonical_order) &&
-      identical(cells, seq_len(n)) ||
-      length(pack$cells) == n &&
-        (identical(cells, seq_len(n)) ||
-          identical(as.character(cells), pack$cells)))
-  if (isTRUE(sparse) && canonical_packed) {
+  if (!is.null(packed)) {
     return(cv_build_clone_rows(
       as.character(packed$clone),
       as.character(packed$ctaa),
@@ -1721,18 +1719,8 @@ cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
       TRUE
     ))
   }
-  cp <- if (!is.null(packed) && length(pack$cells) == n) {
-    clone <- rep(NA_character_, length(cells))
-    ctaa <- rep(NA_character_, length(cells))
-    at <- match(pack$cells[packed$cell_index], cells)
-    keep <- !is.na(at)
-    clone[at[keep]] <- packed$clone[keep]
-    ctaa[at[keep]] <- packed$ctaa[keep]
-    list(clone = clone, ctaa = ctaa, receptor = packed$receptor)
-  } else {
-    ir <- tryCatch(crb$getImmuneRepertoire(), error = function(e) NULL)
-    cv_clone_per_cell(ir, cells)
-  }
+  ir <- tryCatch(crb$getImmuneRepertoire(), error = function(e) NULL)
+  cp <- cv_clone_per_cell(ir, cells)
   if (is.null(cp) || !any(!is.na(cp$clone))) {
     return(NULL)
   }

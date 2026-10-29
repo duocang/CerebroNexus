@@ -141,6 +141,12 @@ test_that("Groups shares counts across display forms but refreshes data", {
         viewer_test_path("groups", "composition.R"),
         environment()
       )
+      for (name in c("calculateTableAB", "formatTableAB")) {
+        eval(
+          viewer_r_assignment(viewer_test_path("utility_functions.R"), name),
+          environment()
+        )
+      }
       groupsMetadataColumns <- function(...) {
         generation()
         counter$calls <- counter$calls + 1L

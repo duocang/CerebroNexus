@@ -99,7 +99,6 @@ coordviews_clone_task <- shiny::ExtendedTask$new(function(
       pack <- list(
         path = spec$pack_path,
         manifest = spec$manifest,
-        cells = NULL,
         cell_count = spec$n,
         canonical_order = TRUE,
         cache = new.env(parent = emptyenv())
@@ -1193,9 +1192,6 @@ coordviews_selected_rows <- reactive({
       viewerDatasetContextEqual(indices$dataset_context, current)
   ) {
     rows <- viewerDecodeRowBits(indices$indices_bits)
-    if (is.null(rows) && length(indices$indices)) {
-      rows <- suppressWarnings(as.integer(unlist(indices$indices))) + 1L
-    }
     rows <- rows[!is.na(rows) & rows >= 1L & rows <= n]
     return(if (length(rows)) rows else NULL)
   }

@@ -73,14 +73,12 @@ test_that("Groups reads only the active columns after its viewport gate", {
 
 groups_test_function <- function(name) {
   assignment <- viewer_r_assignment(
-    viewer_test_path("groups", "composition.R"),
+    viewer_test_path("utility_functions.R"),
     name
   )
   scope <- new.env(parent = globalenv())
-  if (!identical(name, "groupsFormatComposition")) {
-    scope$groupsFormatComposition <- groups_test_function(
-      "groupsFormatComposition"
-    )
+  if (!identical(name, "formatTableAB")) {
+    scope$formatTableAB <- groups_test_function("formatTableAB")
   }
   eval(assignment, envir = scope)
   scope[[name]]
@@ -143,7 +141,7 @@ test_that("Groups charts report request-bound readiness after drawing", {
 })
 
 test_that("Groups composition counts factors without sorting every cell", {
-  calculate <- groups_test_function("groupsCalculateTableAB")
+  calculate <- groups_test_function("calculateTableAB")
   metadata <- data.frame(
     major = factor(c("A", "A", "B", "B", NA), levels = c("A", "B")),
     subtype = factor(

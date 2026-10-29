@@ -8,12 +8,11 @@
 ##----------------------------------------------------------------------------##
 
 ## ---- Optional-dependency gate ----------------------------------------- ##
-## visNetwork + stringdist are Imports, so they are present in a normal install.
+## stringdist + igraph are Imports, so they are present in a normal install.
 ## The gate stays as a defensive guard for unusual environments.
 hla_has_deps <- function() {
   requireNamespace("stringdist", quietly = TRUE) &&
-    requireNamespace("igraph", quietly = TRUE) &&
-    requireNamespace("visNetwork", quietly = TRUE)
+    requireNamespace("igraph", quietly = TRUE)
 }
 
 ## ---- Per-session cache wrapper (module-local, no cross-module coupling) ##

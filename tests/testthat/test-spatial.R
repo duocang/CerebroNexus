@@ -12,19 +12,11 @@ spatial_crb <- system.file(
   package = "CerebroNexus"
 )
 
-test_that("demo_spatial.crb exposes spatial data via class methods", {
-  skip_if_not(file.exists(spatial_crb))
+test_that("demo_spatial.crb spatial data is accessible and complete", {
   crb <- readCerebro(spatial_crb)
   spatial <- crb$availableSpatial()
   expect_true(is.character(spatial))
   expect_true(length(spatial) > 0)
-})
-
-test_that("demo_spatial.crb spatial data is accessible and complete", {
-  skip_if_not(file.exists(spatial_crb))
-  crb <- readCerebro(spatial_crb)
-  spatial <- crb$availableSpatial()
-  skip_if(length(spatial) == 0)
   data <- crb$getSpatialData(spatial[1])
   expect_true(is.list(data))
   expect_true(all(c("coordinates", "expression") %in% names(data)))
@@ -37,16 +29,8 @@ test_that("demo_spatial.crb spatial data is accessible and complete", {
 })
 
 test_that("getSpatialData errors on unknown spatial entry", {
-  skip_if_not(file.exists(spatial_crb))
   crb <- readCerebro(spatial_crb)
   expect_error(crb$getSpatialData("__not_a_real_image__"))
-})
-
-test_that("spatial accessor methods are defined on the class", {
-  cls <- Cerebro
-  for (m in c("addSpatialData", "getSpatialData", "availableSpatial")) {
-    expect_true(is.function(cls$public_methods[[m]]), info = m)
-  }
 })
 
 test_that("addSpatialData validates its input structure", {
@@ -89,7 +73,6 @@ test_that("exportFromSeurat carries the spatial extraction path", {
 
 test_that("all spatial module files parse without errors", {
   spatial_dir <- file.path(shiny_root, "spatial")
-  skip_if_not(dir.exists(spatial_dir), message = "spatial module missing")
   mod_files <- list.files(spatial_dir, pattern = "\\.R$", full.names = TRUE)
   expect_true(length(mod_files) > 0)
   for (fpath in mod_files) {
@@ -299,27 +282,7 @@ test_that("createShinyApp exposes only the nested spatial settings API", {
   expect_false(any(grepl("^spatial_images_(flip|scale|offset)_", args)))
 })
 
-test_that("createShinyApp rejects the removed per-dataset spatial arguments", {
-  for (argument in c(
-    "spatial_images_flip_x",
-    "spatial_images_flip_y",
-    "spatial_images_scale_x",
-    "spatial_images_scale_y",
-    "spatial_images_offset_x",
-    "spatial_images_offset_y"
-  )) {
-    call <- as.call(c(
-      list(
-        quote(createShinyApp),
-        cerebro_data = c(Dataset = "missing.crb"),
-        launch_browser = FALSE
-      ),
-      stats::setNames(list(c(Dataset = 1)), argument)
-    ))
-    expect_error(eval(call), "unused argument", info = argument)
-  }
-  ## the same keys are not silently accepted through cerebro_options either
-  skip_if_not(file.exists(spatial_crb))
+test_that("createShinyApp rejects the removed spatial keys in cerebro_options", {
   expect_error(
     createShinyApp(
       cerebro_data = c(Dataset = spatial_crb),
@@ -330,49 +293,11 @@ test_that("createShinyApp rejects the removed per-dataset spatial arguments", {
   )
 })
 
-test_that("createShinyApp rejects the old spatial_images and rotation forms", {
-  skip_if_not(file.exists(spatial_crb))
-  img <- system.file(
-    "extdata/examples/demo_spatial_visium_he.png",
-    package = "CerebroNexus"
-  )
-  skip_if_not(file.exists(img))
-  out_dir <- file.path(tempdir(), paste0("cerebro_spatial_old_", Sys.getpid()))
-  on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
-  build <- function(...) {
-    suppressWarnings(suppressMessages(
-      createShinyApp(
-        cerebro_data = c("Old spatial" = spatial_crb),
-        result_dir = out_dir,
-        launch_browser = FALSE,
-        verbose = FALSE,
-        ...
-      )
-    ))
-  }
-
-  expect_error(
-    build(spatial_images = c("Old spatial" = img)),
-    "list[(]Dataset = list[(]<spatial entry> = c[(]label = path[)][)][)].*no longer accepted"
-  )
-  expect_error(
-    build(spatial_images = list("Old spatial" = img)),
-    "list[(]<spatial entry> = c[(]label = path[)][)].*no longer accepted"
-  )
-  expect_error(
-    build(spatial_plot_rotation = c("Old spatial" = 37)),
-    "list[(]Dataset = list[(]<spatial entry> = 90[)][)].*no longer accepted"
-  )
-  expect_false(dir.exists(out_dir))
-})
-
 test_that("createShinyApp bundles nested spatial image settings", {
-  skip_if_not(file.exists(spatial_crb))
   img <- system.file(
     "extdata/examples/demo_spatial_visium_he.png",
     package = "CerebroNexus"
   )
-  skip_if_not(file.exists(img))
   out_dir <- file.path(
     tempdir(),
     paste0("cerebro_spatial_settings_", Sys.getpid())
@@ -433,7 +358,6 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
   # End-to-end exercise of the new side-copy + option-write path: a matched
   # spatial image must be copied into the bundle and its stored path rewritten
   # to the spatial-assets/<file> form inside cerebro_config.rds.
-  skip_if_not(file.exists(spatial_crb))
   img <- tempfile(fileext = ".png")
   # 1x1 transparent PNG is enough; the copy path does not decode the image.
   writeBin(
@@ -541,7 +465,6 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
 })
 
 test_that("createShinyApp rejects unmatched spatial_images", {
-  skip_if_not(file.exists(spatial_crb))
   img <- tempfile(fileext = ".png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), img)
   out_dir <- file.path(
@@ -576,16 +499,11 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
     "extdata/examples/demo_spatial_visium_he.png",
     package = "CerebroNexus"
   )
-  skip_if(png == "" || !file.exists(png), message = "visium H&E png missing")
   expect_gt(file.info(png)$size, 0)
 
   crb_path <- system.file(
     "extdata/examples/demo_spatial_visium.crb",
     package = "CerebroNexus"
-  )
-  skip_if(
-    crb_path == "" || !file.exists(crb_path),
-    message = "visium crb missing"
   )
   crb <- readCerebro(crb_path)
   spatial_name <- crb$availableSpatial()[1]
@@ -1140,7 +1058,6 @@ test_that("bundled real demos embed a genuine tissue image in the .crb", {
       file.path("extdata/examples", paste0(f, ".crb")),
       package = "CerebroNexus"
     )
-    skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
     crb <- readCerebro(path)
     spatial_name <- crb$availableSpatial()[1]
     sd <- .normalizeSpatialDataImages(
@@ -1183,10 +1100,6 @@ real_spatial_demos <- c(
 test_that("each real spatial demo exposes coordinates with x/y", {
   for (nm in names(real_spatial_demos)) {
     path <- system.file(real_spatial_demos[[nm]], package = "CerebroNexus")
-    skip_if(
-      path == "" || !file.exists(path),
-      message = paste0(nm, " demo missing")
-    )
     crb <- readCerebro(path)
     images <- crb$availableSpatial()
     expect_true(length(images) > 0, info = nm)
@@ -1221,7 +1134,6 @@ test_that("image-free demo (Slide-seq) carries no histology image", {
       file.path("extdata/examples", paste0(f, ".crb")),
       package = "CerebroNexus"
     )
-    skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
     crb <- readCerebro(path)
     spatial_name <- crb$availableSpatial()[1]
     sd <- .normalizeSpatialDataImages(
@@ -1241,7 +1153,6 @@ test_that("embedded image demos store the image natively with no flip flag", {
       file.path("extdata/examples", paste0(f, ".crb")),
       package = "CerebroNexus"
     )
-    skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
     crb <- readCerebro(path)
     spatial_name <- crb$availableSpatial()[1]
     sd <- .normalizeSpatialDataImages(

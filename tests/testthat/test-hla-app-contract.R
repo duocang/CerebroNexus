@@ -452,7 +452,7 @@ test_that("a first frame drawn from the graph snapshot builds no graph to check 
 })
 
 test_that("the page's nav gate scans every sample, like the core does", {
-  # The IR module's detect_chains() stops after three samples. The HLA page is
+  # Scanning only the first three samples is not enough here. The HLA page is
   # gated on chains being present, and it is also the only route to its own
   # Data & QC tab -- so a cohort whose TCR happens to start at sample four would
   # be locked out of a page that could analyse it.

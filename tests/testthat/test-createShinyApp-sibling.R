@@ -120,7 +120,7 @@ test_that("CRB preflight reads, inspects, and releases one dataset at a time", {
 test_that("CRB preflight keeps each spatial backend at its dataset index", {
   sidecar <- list(type = "directory", location = "second.spatial")
   local_mocked_bindings(
-    .isRecognizedCerebroObject = function(object) TRUE,
+    .recognizedCerebroObject = function(object) TRUE,
     .readBundleDatasetInfo = function(object, label, path) list(),
     .spatialMoleculeBackend = function(object, file) {
       if (identical(file, "second.crb")) sidecar else NULL
@@ -3490,7 +3490,7 @@ test_that("colliding CRB basenames keep each pack beside its final bundled name"
     for (i in seq_along(sources)) {
       target <- file.path(app, CerebroNexus:::.datasetBundleTarget(labels[i]))
       expect_true(file.exists(target))
-      pack <- scope$viewerPackOpen(target, readCerebro(target))
+      pack <- scope$viewerPackOpen(target)
       if (i == 1L || both) {
         expect_true(validateViewerPack(target)$valid)
         expect_false(is.null(pack))

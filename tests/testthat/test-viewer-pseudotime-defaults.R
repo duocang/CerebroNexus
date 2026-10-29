@@ -33,12 +33,9 @@ test_that("pseudotime controls consume author defaults and hiding the trend stil
     trajectory_data_reactive <- function() list(meta = cells)
     trajectory_cells_reactive <- function(...) cells
     assignColorsToGroups <- function(...) c(A = "#008080")
-    cerebro_plotly_axis <- function(...) list(...)
-    cerebro_plotly_hoverlabel <- function() list()
     cerebro_plotly_theme <- function() {
       list(transparent = "transparent", axis = "#222222", accent = "#cc6600")
     }
-    cerebro_plotly_toolbar <- identity
     `%>%` <- dplyr::`%>%`
     sys.source(
       viewer_test_path("trajectory", "distribution_along_pseudotime.R"),

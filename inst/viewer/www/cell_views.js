@@ -4149,7 +4149,6 @@
       var linkedSpec = hasSelection && linkedSelectionSpec();
       if (shiny) {
         Shiny.setInputValue('coordviews_selection_indices', {
-          indices: [],
           indices_bits: hasSelection ? selectionRowBits(sel, 'all') : null,
           client_plot: !!linkedSpec,
           client_table: !!(linkedSpec && linkedSpec.cell_names),
@@ -4499,12 +4498,6 @@
     host.innerHTML = head + '<div class="cv-bars">' + compBars(comp, g) + '</div></div>';
     return true;
   }
-  function median(values) {
-    if (!values.length) return null;
-    values.sort(function (a, b) { return a - b; });
-    var m = Math.floor(values.length / 2);
-    return values.length % 2 ? values[m] : (values[m - 1] + values[m]) / 2;
-  }
   function fieldSummaryHtml() {
     var fld = fieldOf();
     if (!fld || fld.source !== 'trekker') return '';
@@ -4512,7 +4505,7 @@
       ? '<div class="cv-field-desc">' + esc(fld.desc) + '</div>' : '';
     var g = catOf(compGroupName()), selected = !!(sel && sel.size), rows = [];
     if (g) {
-      var all = {}, chosen = {}, i;
+      var all = {}, chosen = {}, i, asc = function (a, b) { return a - b; };
       for (i = 0; i < D.n; i++) {
         if (!visible(i)) continue;
         var value = fieldValue(fld, i); if (value == null) continue;
@@ -4523,8 +4516,8 @@
       Object.keys(all).forEach(function (level) {
         rows.push({
           label: g.levels[+level],
-          all: median(all[level]),
-          selected: selected ? median(chosen[level] || []) : null
+          all: quantile7(all[level].sort(asc), 0.5),
+          selected: chosen[level] ? quantile7(chosen[level].sort(asc), 0.5) : null
         });
       });
     } else if (fld.by_type && fld.by_type.length) {
@@ -4749,13 +4742,6 @@
   function renderLegend() {
     var L = $('cv-legend'); if (!L) return;
     var singlePayload = singleActive && singleView(singleActive);
-    var hideSingleLegend = !!(singlePayload && singlePayload.meta &&
-      singlePayload.meta.legend_position === 'none');
-    L.style.display = hideSingleLegend ? 'none' : '';
-    var singleFontSize = Number(singlePayload && singlePayload.meta &&
-      singlePayload.meta.legend_font_size);
-    L.style.fontSize = isFinite(singleFontSize) && singleFontSize > 0
-      ? singleFontSize + 'px' : '';
     L.innerHTML = '';
     if (singlePayload && singlePayload.meta && singlePayload.meta.show_color_scale === false) {
       renderColorbar(false);
@@ -7027,8 +7013,6 @@
     tick('cv-img-flipx', v.flipX);
     tick('cv-img-flipy', v.flipY);
     tick('cv-img-show', v.show !== false);
-    var activeLabel = $('cv-img-active-label');
-    if (activeLabel) activeLabel.textContent = sp._sampleName || '';
   }
 
   // Back to the alignment THIS (section, image) shipped with -- and only this
@@ -9243,9 +9227,7 @@
         values[at] = value; if (value > maximum) maximum = value;
       }
       var scaled = new Uint8Array(values.length);
-      if (data.rgb_scaled) {
-        scaled.set(values);
-      } else if (maximum > 0) {
+      if (maximum > 0) {
         for (i = 0; i < values.length; i++) {
           scaled[i] = Math.round(values[i] / maximum * 255);
         }
@@ -10077,7 +10059,7 @@
       id: id, meta: meta || {}, data: data || {}, hover: hover || {},
       extra: extra || {}, dataset_context: context,
       render_token: renderToken, aux_render_token: renderToken,
-      datasetIdentity: message.dataset_identity || {}, transportProfile: message.transport_profile || {},
+      datasetIdentity: message.dataset_identity || {},
       background_identity: backgroundIdentity,
       background_identity_value: backgroundIdentityValue
     });
@@ -10094,7 +10076,7 @@
   }
   // The data fields a cell_view_recolor message may replace.
   var SINGLE_COLOR_FIELDS = [
-    'color', 'rgb', 'rgb_scaled', 'rgb_genes', 'colorscale', 'panel_colorscales',
+    'color', 'rgb', 'rgb_genes', 'colorscale', 'panel_colorscales',
     'color_range', 'reversescale', 'paint_order', 'render_key', 'sparse_color',
     'color_cache_key', 'packed_rgb', 'packed_rgb_cache_keys', 'zero_color'
   ];
@@ -10344,11 +10326,7 @@
     });
     if (!incomingIdentity || (incomingIdentity !== view.background_identity && !panelMatch)) return false;
     var values = message.values || {};
-    var names = {
-      opacity: 'opacity', offsetX: 'offsetX', offsetY: 'offsetY',
-      scaleX: 'scaleX', scaleY: 'scaleY', flipX: 'flipX',
-      flipY: 'flipY', rotate: 'rotate'
-    };
+    var names = ['opacity', 'offsetX', 'offsetY', 'scaleX', 'scaleY', 'flipX', 'flipY', 'rotate'];
     view.backgroundEdits = view.backgroundEdits || {};
     var oldEdit = view.backgroundEdits[incomingIdentity];
     view.backgroundEdits[incomingIdentity] = { identity: message.background_identity,
@@ -10359,9 +10337,9 @@
     singleSpaceIds.forEach(function (spaceId) {
       var space = spaceById[spaceId]; if (!space || !space._imgState) return;
       if (panelMatch && space._backgroundIdentity !== incomingIdentity) return;
-      Object.keys(names).forEach(function (name) {
-        if (values[name] == null || space._imgState[names[name]] === values[name]) return;
-        space._imgState[names[name]] = values[name]; changed = true;
+      names.forEach(function (name) {
+        if (values[name] == null || space._imgState[name] === values[name]) return;
+        space._imgState[name] = values[name]; changed = true;
       });
       stashImgState(space);
     });
@@ -11818,71 +11796,6 @@
     }
   }
 
-  function linkedVisualReady() {
-    if (!workspaceSummary().ready) {
-      return Promise.resolve({ ready: false, reason: 'logical-not-ready' });
-    }
-    var visible = panels.filter(function (panel) {
-      return panel.spaceId && panel.canvas &&
-        Number(panel.canvas.dataset.pointCount) === D.n;
-    });
-    if (!visible.length || (D.clone && !visible.some(function (panel) {
-      return panel.spaceId === 'clone';
-    }))) {
-      return Promise.resolve({ ready: false, reason: 'panel-not-ready' });
-    }
-    var idle = visible.map(function (panel) {
-      return panel.gpu && panel.gpu.idle ? panel.gpu.idle() : Promise.resolve();
-    });
-    return Promise.all(idle).then(function () {
-      return new Promise(function (resolve) {
-        var previous = null;
-        var stable = 0;
-        var frames = 0;
-        function sample() {
-          requestAnimationFrame(function () {
-            frames++;
-            var signature = JSON.stringify(visible.map(function (panel) {
-              var rect = panel.pane.getBoundingClientRect();
-              return [
-                panel.spaceId,
-                rect.left,
-                rect.top,
-                rect.width,
-                rect.height,
-                getComputedStyle(panel.pane).opacity,
-                panel.canvas.width,
-                panel.canvas.height,
-                panel.canvas.dataset.pointCount
-              ];
-            }));
-            stable = signature === previous ? stable + 1 : 0;
-            previous = signature;
-            var gpuReady = visible.every(function (panel) {
-              return !panel.gpu || !panel.gpu.isReady || panel.gpu.isReady();
-            });
-            if (stable >= 1 && gpuReady) {
-              resolve({
-                ready: true,
-                frames: frames,
-                panels: visible.length,
-                clone: !D.clone || visible.some(function (panel) {
-                  return panel.spaceId === 'clone';
-                }),
-                at: performance.now()
-              });
-            } else if (frames >= 300) {
-              resolve({ ready: false, reason: 'layout-not-stable', frames: frames });
-            } else {
-              sample();
-            }
-          });
-        }
-        sample();
-      });
-    });
-  }
-
   function reportWorkspaceReady(eventKind) {
     var summary = workspaceSummary();
     // Primary UMAP delivery starts the supplement request, but is not yet the
@@ -11909,9 +11822,7 @@
   }
 
   window.cerebroLinkedViewsState = Object.freeze({
-    primaryReady: function () { return workspaceSummary().primaryReady; },
     ready: function () { return workspaceSummary().ready; },
-    visualReady: linkedVisualReady,
     capture: exportWorkspace,
     apply: applyWorkspace,
     summary: workspaceSummary,

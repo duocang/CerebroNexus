@@ -16,7 +16,6 @@ test_that("immune_repertoire UI defines correct tabName", {
 })
 
 test_that("example.crb contains real immune repertoire data", {
-  skip_if_not(file.exists(example_crb))
   crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   expect_true(is.list(ir))
@@ -33,10 +32,10 @@ test_that("example.crb contains real immune repertoire data", {
 })
 
 test_that("example.crb IR barcodes align with cell metadata", {
-  skip_if_not(file.exists(example_crb))
   crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
+  expect_false(is.null(crb$experiment))
   ir_bc <- unlist(lapply(ir, function(df) df$barcode), use.names = FALSE)
   overlap <- length(intersect(ir_bc, md$cell_barcode))
   expect_true(overlap > 0)
@@ -50,7 +49,6 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
   # onto the IR rows by barcode at runtime. This verifies that join is possible
   # for the example data set, so the Group by dropdown is populated regardless
   # of which columns a producer embedded in the IR table.
-  skip_if_not(file.exists(example_crb))
   crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
@@ -74,21 +72,11 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
 })
 
 test_that("example.crb IR contains both TCR and BCR clonotypes", {
-  skip_if_not(file.exists(example_crb))
   crb <- readCerebro(example_crb)
   ir <- crb$getImmuneRepertoire()
   all_ct <- paste(unlist(lapply(ir, function(df) df$CTgene)), collapse = ";")
   expect_true(grepl("TR[AB]", all_ct)) # TCR present
   expect_true(grepl("IG[HKL]", all_ct)) # BCR present
-})
-
-test_that("example.crb IR has TCR chains detectable from CTgene", {
-  skip_if_not(file.exists(example_crb))
-  crb <- readCerebro(example_crb)
-  ir <- crb$getImmuneRepertoire()
-  all_ct <- paste(unlist(lapply(ir, function(df) df$CTgene)), collapse = ";")
-  has_tcr <- grepl("TRA", all_ct) || grepl("TRB", all_ct)
-  expect_true(has_tcr)
 })
 
 test_that("paired scatter falls back to manual sample selection", {
@@ -114,17 +102,8 @@ test_that("paired scatter falls back to manual sample selection", {
   expect_equal(choices$sample_choices, meta$.sample_name)
 })
 
-test_that("example.crb preserves core data fields", {
-  skip_if_not(file.exists(example_crb))
-  crb <- readCerebro(example_crb)
-  expect_true(!is.null(crb$getMetaData()))
-  expect_true(nrow(crb$getMetaData()) > 0)
-  expect_true(!is.null(crb$experiment))
-})
-
 test_that("a grouping that cannot be drawn as panels falls back with a notice", {
   viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
-  skip_if_not(file.exists(viz))
   env <- new.env(parent = baseenv())
   env$`%||%` <- function(x, y) if (is.null(x)) y else x
   eval(viewer_r_assignment(viz, "IR_CLONAL_UMAP_MAX_PANELS"), env)
@@ -177,7 +156,6 @@ test_that("a grouping that cannot be drawn as panels falls back with a notice", 
 
 test_that("grouped Clonal UMAP panels partition the cells and label their counts", {
   viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
-  skip_if_not(file.exists(viz))
   env <- new.env(parent = baseenv())
   env$IR_CLONE_LABELS <- c("Single", "Small", "Medium")
   env$IR_EXPANSION_COLORS <- c(Single = "#1", Small = "#2", Medium = "#3")
@@ -246,9 +224,6 @@ test_that("grouped Clonal UMAP panels partition the cells and label their counts
 # plain data.frame shaped like clonalCompare(exportTable = TRUE)).
 compare_env <- local({
   helper <- file.path(shiny_root, "immune_repertoire", "compare_helpers.R")
-  if (!file.exists(helper)) {
-    return(NULL)
-  }
   e <- new.env(parent = globalenv())
   sys.source(file.path(shiny_root, "plotting_functions.R"), envir = e)
   sys.source(helper, envir = e)
@@ -265,7 +240,6 @@ compare_tab_2grp <- data.frame(
 )
 
 test_that("compare prep stacks two groups and links only shared clones", {
-  skip_if(is.null(compare_env))
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
     c("sample_1", "sample_2"),
@@ -284,7 +258,6 @@ test_that("compare prep stacks two groups and links only shared clones", {
 })
 
 test_that("compare ribbon ends have different widths when the clone changes size", {
-  skip_if(is.null(compare_env))
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
     c("sample_1", "sample_2"),
@@ -300,7 +273,6 @@ test_that("compare ribbon ends have different widths when the clone changes size
 })
 
 test_that("compare prep detects the Count column in count mode", {
-  skip_if(is.null(compare_env))
   tab <- data.frame(
     clones = c("A", "A"),
     Count = c(10, 4),
@@ -318,7 +290,6 @@ test_that("compare prep detects the Count column in count mode", {
 })
 
 test_that("compare prep stacks every column in one shared clone order", {
-  skip_if(is.null(compare_env))
   # A has the largest total, then B, then C. All columns must stack in that
   # SHARED order (A bottom, C top) so a clone keeps a consistent band and its
   # ribbons run parallel without crossing — even though within s2 the sizes
@@ -347,7 +318,6 @@ test_that("compare prep stacks every column in one shared clone order", {
 })
 
 test_that("compare prep reports per-clone totals in clone order", {
-  skip_if(is.null(compare_env))
   tab <- data.frame(
     clones = c("A", "B", "A", "C"),
     Proportion = c(0.5, 0.3, 0.2, 0.4),
@@ -376,7 +346,6 @@ test_that("compare prep reports per-clone totals in clone order", {
 })
 
 test_that("compare prep links only adjacent groups across three groups", {
-  skip_if(is.null(compare_env))
   tab <- data.frame(
     clones = rep("A", 3),
     Proportion = c(0.4, 0.3, 0.5),
@@ -394,7 +363,6 @@ test_that("compare prep links only adjacent groups across three groups", {
 })
 
 test_that("compare prep preserves the requested group order", {
-  skip_if(is.null(compare_env))
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
     c("sample_2", "sample_1"), # reversed
@@ -404,7 +372,6 @@ test_that("compare prep preserves the requested group order", {
 })
 
 test_that("compare prep returns friendly empty states", {
-  skip_if(is.null(compare_env))
   # Empty table.
   e1 <- compare_env$ir_prepare_compare_alluvial(
     data.frame(),
@@ -433,7 +400,6 @@ test_that("compare prep returns friendly empty states", {
 })
 
 test_that("compare plotly shows exactly one legend entry per clone", {
-  skip_if(is.null(compare_env))
   skip_if_not_installed("plotly")
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
@@ -486,7 +452,6 @@ test_that("compare plotly shows exactly one legend entry per clone", {
 })
 
 test_that("compare hover comes from single-tooltip anchor markers", {
-  skip_if(is.null(compare_env))
   skip_if_not_installed("plotly")
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
@@ -531,7 +496,6 @@ test_that("compare hover comes from single-tooltip anchor markers", {
 })
 
 test_that("compare plotly hover keeps the full clone and honours the value mode", {
-  skip_if(is.null(compare_env))
   skip_if_not_installed("plotly")
   long_clone <- paste(rep("IGHV3-23.IGHJ4", 6), collapse = "_")
   tab <- data.frame(

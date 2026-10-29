@@ -200,7 +200,7 @@ test_that("Viewer Pack stores canonical trajectory row indexes", {
   object <- readCerebro(crb)
   runtime <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
-  descriptor <- runtime$viewerPackOpen(crb, object)
+  descriptor <- runtime$viewerPackOpen(crb)
 
   expect_identical(
     runtime$viewerPackTrajectoryIndex(descriptor, "monocle2", "subset"),
@@ -269,10 +269,9 @@ test_that("Viewer Pack links exact trajectory geometry to canonical projection",
     trajectory_match = TRUE
   )
   buildViewerPack(crb, viewer_binary = "always")
-  object <- readCerebro(crb)
   runtime <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
-  descriptor <- runtime$viewerPackOpen(crb, object)
+  descriptor <- runtime$viewerPackOpen(crb)
   frame <- runtime$viewerPackTrajectoryFrame(
     descriptor,
     "monocle2",
@@ -301,14 +300,13 @@ test_that("validated Viewer Pack descriptors are reused with session-local cache
   dir.create(root)
   crb <- viewer_pack_fixture(file.path(root, "dataset.crb"), n = 4L)
   pack_path <- buildViewerPack(crb, viewer_binary = "always")
-  object <- readCerebro(crb)
   runtime <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
   cache <- new.env(parent = emptyenv())
 
-  first <- runtime$viewerPackOpenCached(crb, object, cache)
+  first <- runtime$viewerPackOpenCached(crb, cache)
   assign("session-value", TRUE, envir = first$cache)
-  second <- runtime$viewerPackOpenCached(crb, object, cache)
+  second <- runtime$viewerPackOpenCached(crb, cache)
 
   expect_identical(second$manifest, first$manifest)
   expect_false(identical(second$cache, first$cache))
@@ -316,7 +314,7 @@ test_that("validated Viewer Pack descriptors are reused with session-local cache
 
   manifest <- file.path(pack_path, "manifest.json")
   writeLines("{invalid", manifest, useBytes = TRUE)
-  expect_null(runtime$viewerPackOpenCached(crb, object, cache))
+  expect_null(runtime$viewerPackOpenCached(crb, cache))
 })
 
 test_that("Viewer Pack assets are hashed once per file version", {
@@ -328,7 +326,6 @@ test_that("Viewer Pack assets are hashed once per file version", {
     trajectory = TRUE
   )
   buildViewerPack(crb, viewer_binary = "always")
-  object <- readCerebro(crb)
   runtime <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
   hashed <- 0L
@@ -342,8 +339,8 @@ test_that("Viewer Pack assets are hashed once per file version", {
   )
   path <- file.path("trajectory", "cell_index.qs2")
   for (session in 1:2) {
-    descriptor <- runtime$viewerPackOpen(crb, object)
-    expect_false(is.null(runtime$viewerPackReadAsset(descriptor, path, FALSE)))
+    descriptor <- runtime$viewerPackOpen(crb)
+    expect_false(is.null(runtime$viewerPackReadAsset(descriptor, path)))
   }
   ## The CRB itself (once per open) and the asset once.
   expect_identical(hashed, 3L)
@@ -358,10 +355,9 @@ test_that("Viewer Pack stores canonical spatial row indexes", {
     spatial = TRUE
   )
   buildViewerPack(crb, viewer_binary = "always")
-  object <- readCerebro(crb)
   runtime <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
-  descriptor <- runtime$viewerPackOpen(crb, object)
+  descriptor <- runtime$viewerPackOpen(crb)
 
   expect_identical(
     runtime$viewerPackSpatialIndex(descriptor, "slice"),
@@ -394,10 +390,9 @@ test_that("Viewer Pack stores compact group metric frames", {
     groups = TRUE
   )
   buildViewerPack(crb, viewer_binary = "always")
-  object <- readCerebro(crb)
   runtime <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
-  descriptor <- runtime$viewerPackOpen(crb, object)
+  descriptor <- runtime$viewerPackOpen(crb)
 
   packed <- runtime$viewerPackGroupMetric(descriptor, "group", "nUMI")
   expect_named(packed, c("group", "nUMI"))
@@ -529,7 +524,7 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
     envir = runtime
   )
 
-  descriptor <- runtime$viewerPackOpen(crb, object)
+  descriptor <- runtime$viewerPackOpen(crb)
   expect_type(descriptor, "list")
   expect_false(exists(
     ".cell_order_valid",
@@ -603,14 +598,14 @@ test_that("Viewer Pack runtime loads HLA assets with exact fallback", {
   expect_length(first_path, 1L)
   writeBin(as.raw(1:3), file.path(pack, first_path))
   expect_null(runtime$viewerPackHlaFirstFrame(
-    runtime$viewerPackOpen(crb, object),
+    runtime$viewerPackOpen(crb),
     "TRB"
   ))
 
   trb <- manifest$assets$path[grepl("hla_tcr/TRB[.]qs2$", manifest$assets$path)]
   writeBin(as.raw(1:3), file.path(pack, trb))
   expect_null(runtime$viewerPackHlaSegments(
-    runtime$viewerPackOpen(crb, object),
+    runtime$viewerPackOpen(crb),
     "TRB"
   ))
 })
@@ -620,7 +615,6 @@ test_that("Viewer Pack runtime fails closed on incompatible identity", {
   dir.create(root)
   crb <- viewer_pack_fixture(file.path(root, "dataset.crb"), n = 3L)
   pack <- buildViewerPack(crb, viewer_binary = "always")
-  object <- readCerebro(crb)
   runtime <- new.env(parent = globalenv())
   sys.source(
     viewer_test_path("core", "viewer_pack.R"),
@@ -636,7 +630,7 @@ test_that("Viewer Pack runtime fails closed on incompatible identity", {
     auto_unbox = TRUE,
     dataframe = "rows"
   )
-  expect_null(runtime$viewerPackOpen(crb, object))
+  expect_null(runtime$viewerPackOpen(crb))
 
   manifest$schema_version <- 1L
   manifest$dataset_fingerprint <- "md5-crb-v1:00000000000000000000000000000000"
@@ -646,7 +640,7 @@ test_that("Viewer Pack runtime fails closed on incompatible identity", {
     auto_unbox = TRUE,
     dataframe = "rows"
   )
-  expect_null(runtime$viewerPackOpen(crb, object))
+  expect_null(runtime$viewerPackOpen(crb))
 })
 
 test_that("a pack of another schema is invalid and is rebuilt over", {
@@ -677,61 +671,22 @@ test_that("a pack of another schema is invalid and is rebuilt over", {
   expect_true(validateViewerPack(crb)$valid)
 })
 
-test_that("thin CRBs open Viewer Packs without hydrating cell barcodes", {
-  root <- tempfile("viewer-pack-thin-runtime-")
+test_that("Viewer Packs open from the CRB file alone", {
+  root <- tempfile("viewer-pack-runtime-")
   dir.create(root)
   crb <- viewer_pack_fixture(file.path(root, "dataset.crb"), n = 4L)
   buildViewerPack(crb, viewer_binary = "always")
-  calls <- 0L
-  object <- new.env(parent = emptyenv())
-  object$crb_schema <- list(
-    version = 3L,
-    cell_names_hash = paste(rep("a", 32L), collapse = ""),
-    projection_rownames = "umap",
-    n_cells = 4L
-  )
-  object$getMetaData <- function() {
-    calls <<- calls + 1L
-    stop("cell hydration must stay dormant")
-  }
   runtime <- new.env(parent = globalenv())
   sys.source(
     viewer_test_path("core", "viewer_pack.R"),
     envir = runtime
   )
 
-  descriptor <- runtime$viewerPackOpen(crb, object)
+  descriptor <- runtime$viewerPackOpen(crb)
 
   expect_type(descriptor, "list")
-  expect_identical(calls, 0L)
   expect_true(isTRUE(descriptor$canonical_order))
   expect_identical(descriptor$cell_count, 4L)
-  expect_null(descriptor$cells)
-  expect_true(runtime$viewerPackValidateCellOrder(descriptor))
-})
-
-test_that("full CRBs open Viewer Packs without hydrating metadata", {
-  root <- tempfile("viewer-pack-full-runtime-")
-  dir.create(root)
-  crb <- viewer_pack_fixture(file.path(root, "dataset.crb"), n = 4L)
-  buildViewerPack(crb, viewer_binary = "always")
-  calls <- 0L
-  object <- new.env(parent = emptyenv())
-  object$getMetaData <- function() {
-    calls <<- calls + 1L
-    stop("metadata hydration must stay dormant")
-  }
-  runtime <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("core", "viewer_pack.R"),
-    envir = runtime
-  )
-
-  descriptor <- runtime$viewerPackOpen(crb, object)
-
-  expect_type(descriptor, "list")
-  expect_identical(calls, 0L)
-  expect_true(isTRUE(descriptor$canonical_order))
   expect_null(descriptor$cells)
   expect_identical(
     runtime$viewerPackCellBarcodes(descriptor),
@@ -750,15 +705,13 @@ test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
   buildViewerPack(crb, viewer_binary = "always")
   object <- readCerebro(crb)
   coordinates <- unname(object$getProjection("umap"))
-  thin <- new.env(parent = emptyenv())
-  thin$crb_schema <- list(version = 3L, n_cells = 4L)
 
   runtime <- new.env(parent = globalenv())
   sys.source(
     viewer_test_path("core", "viewer_pack.R"),
     envir = runtime
   )
-  descriptor <- runtime$viewerPackOpen(crb, thin)
+  descriptor <- runtime$viewerPackOpen(crb)
   expect_null(descriptor$cells)
   expect_true(exists(
     "viewerPackCellBarcodes",
@@ -788,7 +741,6 @@ test_that("Viewer Pack IR indexes first-frame coordinates without barcodes", {
   scope$viewerPackCurrent <- function() descriptor
   scope$viewerPackImmuneEncoded <- runtime$viewerPackImmuneEncoded
   scope$data_set <- function() list()
-  scope$detect_chains <- function(...) character()
   scope$input <- list()
   scope$session <- list()
   sys.source(
@@ -843,7 +795,7 @@ test_that("packed violin summaries survive serialization without altering statis
   buildViewerPack(crb, viewer_binary = "always")
   scope <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_pack.R"), scope)
-  pack <- scope$viewerPackOpen(crb, object)
+  pack <- scope$viewerPackOpen(crb)
   value <- scope$viewerPackGroupMetric(pack, "group", "nUMI")
   expected <- CerebroNexus:::.viewerPackCompactViolinData(
     object$getMetaData(),

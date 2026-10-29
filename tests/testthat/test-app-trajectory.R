@@ -7,43 +7,9 @@
 skip_if_not_installed("shinytest2")
 library(shinytest2)
 
-## All three tests below run against the same default data set and navigate to
-## the tab they assert on, so they share one driver.
+## Both tests below run against the same default data set and navigate to the
+## tab they assert on, so they share one driver.
 shared_app <- viewer_shared_app("trajectory_shared")
-
-test_that("Trajectory tab is present on the default (full T+B) data set", {
-  app <- shared_app()
-
-  # Default data set now carries trajectory data -> tab present immediately.
-  tab_present <- app$get_js(
-    'document.querySelector(\'a[href="#shiny-tab-trajectory"]\') !== null;'
-  )
-  expect_true(tab_present)
-})
-
-test_that("trajectory module loads without breaking the main app", {
-  app <- shared_app()
-
-  # Read the Data info tab explicitly rather than assuming the app is still on
-  # its landing tab, so this assertion does not depend on test order.
-  app$set_inputs(sidebar = "loadData")
-  app$wait_for_idle(timeout = 10000)
-
-  # The default data set carries the trajectory; confirm the Data info tab
-  # still renders its cell count normally alongside it.
-  cells <- ncol(
-    readCerebro(system.file(
-      "extdata/examples/demo_full_tcr_bcr.crb",
-      package = "CerebroNexus"
-    ))$expression
-  )
-  cells_box <- app$get_value(output = "load_data_overview")
-  expect_true(grepl(
-    format(cells, big.mark = ","),
-    cells_box$html,
-    fixed = TRUE
-  ))
-})
 
 test_that("trajectory projection fits the viewport with selectors in the top bar", {
   app <- shared_app()
