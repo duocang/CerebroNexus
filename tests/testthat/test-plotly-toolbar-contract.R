@@ -32,13 +32,13 @@ test_that("the declared Shiny minimum supplies Font Awesome 6", {
   expect_gte(utils::compareVersion(declared, "1.7.2.1"), 0L)
 })
 
-test_that("shared Plotly toolbars render their icons and charts", {
+test_that("Groups charts render their download toolbar, bars and Sankey", {
   skip_if_not_installed("shinytest2")
   inst_dir <- viewer_app_test_path()
   suppressWarnings(shinytest2::local_app_support(inst_dir))
   app <- shinytest2::AppDriver$new(
     inst_dir,
-    name = "plotly_toolbar",
+    name = "groups_chart_toolbar",
     height = 950,
     width = 1619,
     load_timeout = 60000
@@ -47,24 +47,44 @@ test_that("shared Plotly toolbars render their icons and charts", {
 
   app$click(selector = 'a[href="#shiny-tab-groups"]')
   app$wait_for_js(
-    "document.querySelectorAll('#shiny-tab-groups .modebar-btn').length >= 7",
+    paste0(
+      "document.querySelectorAll(",
+      "'#groups_by_other_group_plot .cc-plot svg rect').length > 0"
+    ),
     timeout = 20000
   )
 
-  glyphs <- app$get_js(paste0(
+  bar <- app$get_js(paste0(
     "(() => {",
-    "const buttons=[...document.querySelectorAll(",
-    "'#shiny-tab-groups .modebar-btn')];",
-    "const styles=buttons.map(button => getComputedStyle(button, '::before'));",
-    "return {count:buttons.length, visible:styles.every(style => ",
-    "style.opacity === '1' && style.display !== 'none'), ",
-    "aligned:styles.every(style => style.position === 'static')};",
+    "const plot=document.getElementById('groups_by_other_group_plot');",
+    "const buttons=[...plot.querySelectorAll('.cc-btn')];",
+    "const glyphs=buttons.map(button => getComputedStyle(button, '::before'));",
+    "return {buttons:buttons.map(button => button.title),",
+    "glyphs:glyphs.every(style => style.content !== 'none'),",
+    "legend:plot.querySelectorAll('.cc-legend-item').length,",
+    "plotly:document.querySelectorAll('#shiny-tab-groups .js-plotly-plot').length};",
     "})()"
   ))
 
-  expect_gte(glyphs$count, 7)
-  expect_true(glyphs$visible)
-  expect_true(glyphs$aligned)
+  expect_identical(
+    unlist(bar$buttons, use.names = FALSE),
+    c("Download plot as SVG", "Download plot as a png")
+  )
+  expect_true(bar$glyphs)
+  expect_gt(bar$legend, 0)
+  expect_equal(bar$plotly, 0)
+
+  app$run_js(paste0(
+    "document.querySelector(",
+    "'#groups_by_other_group_plot .cc-legend-item').click();"
+  ))
+  expect_equal(
+    app$get_js(paste0(
+      "document.querySelectorAll(",
+      "'#groups_by_other_group_plot .cc-legend-item.is-hidden').length"
+    )),
+    1
+  )
 
   app$run_js(paste0(
     "document.querySelector(",
@@ -74,24 +94,9 @@ test_that("shared Plotly toolbars render their icons and charts", {
   ))
   app$wait_for_js(
     paste0(
-      "document.getElementById('groups_by_other_group_plot')",
-      "?._fullData?.[0]?.type === 'sankey'"
+      "document.querySelectorAll(",
+      "'#groups_by_other_group_plot path.cc-link').length > 0"
     ),
     timeout = 10000
-  )
-
-  sankey <- app$get_js(paste0(
-    "(() => {",
-    "const plot=document.getElementById('groups_by_other_group_plot');",
-    "return {links:plot._fullData[0].link.value.length, buttons:",
-    "[...plot.querySelectorAll('.modebar-btn')].map(button => ",
-    "button.dataset.title)};",
-    "})()"
-  ))
-
-  expect_gt(sankey$links, 0)
-  expect_identical(
-    unlist(sankey$buttons, use.names = FALSE),
-    "Download plot as a png"
   )
 })

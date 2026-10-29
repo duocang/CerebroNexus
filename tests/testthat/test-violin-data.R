@@ -66,7 +66,7 @@ test_that("skewed violins keep measurement scale and exact full-data boxes", {
     plotting_env$compactViolinData(packed, "value", "group"),
     packed
   )
-  plot <- plotting_env$plotlyViolin(
+  chart <- plotting_env$cerebroViolinData(
     table,
     "value",
     "group",
@@ -74,14 +74,14 @@ test_that("skewed violins keep measurement scale and exact full-data boxes", {
     "Value",
     "integer"
   )
-  traces <- plotly::plotly_build(plot)$x$data
-  box <- Filter(function(x) identical(x$type, "box"), traces)[[1L]]
-  expect_equal(as.numeric(box$median), 5.5)
-  expect_equal(as.numeric(box$q3), 8)
-  expect_equal(as.numeric(box$mean), mean(x))
-  violin <- Filter(function(x) identical(x$type, "violin"), traces)[[1L]]
-  expect_false(violin$box$visible)
-  expect_false(violin$meanline$visible)
+  ## The box comes from every observation, the density from the compact rows
+  ## over the exact range.
+  expect_equal(as.numeric(chart$median), 5.5)
+  expect_equal(as.numeric(chart$q3), 8)
+  expect_equal(as.numeric(chart$mean), mean(x))
+  expect_equal(as.numeric(chart$maximum), 1e9)
+  expect_equal(chart$violins[[1L]]$lo, 1)
+  expect_equal(chart$violins[[1L]]$hi, 1e9)
 })
 
 test_that("empty, constant and non-finite violin groups have valid exact summaries", {

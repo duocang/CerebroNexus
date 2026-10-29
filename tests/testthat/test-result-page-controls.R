@@ -234,8 +234,10 @@ test_that("Abundance waits for dynamic controls before choosing a renderer", {
     stop("must not send unbound controls upstream")
   }
   scope$ir_clonecall_col <- identity
-  scope$ir_clonal_abundance_counts <- function(data, clone_col) clone_col
-  scope$ir_clonal_abundance_plotly <- identity
+  scope$ir_abundance_counts <- function() {
+    scope$ir_clonecall_col(scope$parameters$cloneCall)
+  }
+  scope$ir_clonal_abundance_plotly <- function(counts, ...) counts
   render <- eval(
     call("function", pairlist(), definition[[3L]][[2L]][[2L]]),
     scope

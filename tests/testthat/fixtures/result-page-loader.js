@@ -69,11 +69,12 @@ vm.runInNewContext(fs.readFileSync(require('path').join(require('path').dirname(
     CustomEvent:class {constructor(type, options={}) {this.type=type;this.detail=options.detail;}}});
   function emit(name,target=table,extra={}) { for(const f of handlers[name] || [])f({target,...extra}); }
   function flush() { const batch=timers.splice(0);batch.forEach(t=>{if(!t.cancel&&t.ms<1000)t.fn();}); }
+  function flushBelow(ms) { const due=timers.filter(t=>t.ms<ms);due.forEach(t=>timers.splice(timers.indexOf(t),1));due.forEach(t=>{if(!t.cancel)t.fn();}); }
   function frame() { frames.splice(0).forEach(f=>f()); }
   function values() { [controls,slot,table].forEach(n=>emit('shiny:value',n));flush(); }
   function start() { emit('shown',pane); }
   function mutation() {observer([{target:tableDom,type:'attributes',attributeName:'style'}]);}
-  return {nodes,pane,loader,announcement,region,table,tableDom,controls,slot,emit,flush,frame,values,start,mutation,events,
+  return {nodes,pane,loader,announcement,region,table,tableDom,controls,slot,emit,flush,flushBelow,frame,values,start,mutation,events,
     phase:v=>phase=v,active:v=>active=v,focus:v=>document.activeElement=v,Node};
 }
 {
@@ -189,10 +190,10 @@ function replaceTable(s) {
 }
 {
   const s=scenario('groups');s.controls.classList.add('cerebro-groups-controls');s.table.visible=false;
-  const plot=new s.Node('groups_by_other_group_plot','plotly shiny-bound-output',s.pane);
-  s.start();s.values();s.emit('shiny:value',plot);s.flush();s.frame();s.frame();s.flush();
-  check(!s.loader.hidden,'Groups waits for afterplot, not only a value');
-  s.emit('plotly_afterplot',plot);s.frame();s.mutation();
+  const plot=new s.Node('groups_by_other_group_plot','cerebro-chart shiny-bound-output',s.pane);
+  s.start();s.values();s.flush();s.frame();s.frame();s.flush();
+  check(!s.loader.hidden,'Groups waits for the composition chart');
+  s.emit('shiny:value',plot);s.flush();s.frame();s.mutation();
   s.emit('shiny:inputchanged',s.nodes.select,{name:'select',el:s.nodes.select});
   const lazy = new s.Node('groups_nUMI_plot','shiny-bound-output',s.pane);
   s.emit('shiny:outputinvalidated',lazy);s.emit('shiny:value',lazy);s.frame();s.flush();
@@ -233,5 +234,19 @@ function replaceTable(s) {
   delete s.pane.dataset.cerebroPageReady;
   s.active(s.pane);s.emit('shown',s.pane);
   check(s.loader.hidden,'returning from a loading plot hides the old card');
+}
+{
+  // A page whose outputs arrived before the card's delay is not covered by it.
+  const s=scenario('about');s.start();
+  s.emit('shiny:busy');s.emit('shiny:value',s.slot);s.emit('shiny:idle');
+  s.flushBelow(100);s.flushBelow(1000);
+  check(s.loader.hidden,'outputs that already arrived are not covered by the card');
+  s.frame();s.frame();
+  check(s.pane.getAttribute('aria-busy')===null,'the short quiet wait then finishes the page');
+  // A page that is still working once its first output arrived gets the card.
+  const t=scenario('about');t.start();
+  t.emit('shiny:busy');t.emit('shiny:value',t.slot);t.emit('shiny:idle');
+  t.flushBelow(100);t.emit('shiny:busy');t.flushBelow(1000);
+  check(!t.loader.hidden,'more work after the first output still shows the card');
 }
 console.log(count+' result page loader assertions passed');
