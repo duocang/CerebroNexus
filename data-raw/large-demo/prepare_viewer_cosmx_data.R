@@ -156,7 +156,10 @@
       "The CosMx flat files of ",
       sample,
       " lack columns: ",
-      paste(c(missing, setdiff(c("fov", "cell_ID"), names(expression))), collapse = ", "),
+      paste(
+        c(missing, setdiff(c("fov", "cell_ID"), names(expression))),
+        collapse = ", "
+      ),
       call. = FALSE
     )
   }
@@ -271,7 +274,12 @@
   names(sections) <- samples$sample
   for (index in seq_len(nrow(samples))) {
     sample <- samples$sample[[index]]
-    message(sprintf("Reading CosMx section %d of %d: %s", index, nrow(samples), sample))
+    message(sprintf(
+      "Reading CosMx section %d of %d: %s",
+      index,
+      nrow(samples),
+      sample
+    ))
     files <- .viewerCosMxExtract(
       paths$archives[[sample]],
       sample,
@@ -329,7 +337,10 @@
   for (sample in names(sections)) {
     object$addSpatialData(
       sample,
-      .viewerCosMxSpatialEntry(sections[[sample]]$coordinates, rownames(expression))
+      .viewerCosMxSpatialEntry(
+        sections[[sample]]$coordinates,
+        rownames(expression)
+      )
     )
   }
   object$addExtraTable(

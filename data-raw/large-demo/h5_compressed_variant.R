@@ -13,7 +13,10 @@
 .demoCompressedFormat <- 1L
 
 .demoCompressionLevel <- function() {
-  level <- suppressWarnings(as.integer(Sys.getenv("CEREBRO_DEMO_H5_LEVEL", "3")))
+  level <- suppressWarnings(as.integer(Sys.getenv(
+    "CEREBRO_DEMO_H5_LEVEL",
+    "3"
+  )))
   if (length(level) != 1L || is.na(level) || level < 1L || level > 9L) {
     stop("CEREBRO_DEMO_H5_LEVEL must be an integer from 1 to 9.", call. = FALSE)
   }
@@ -25,7 +28,10 @@
     as.integer(Sys.getenv("CEREBRO_DEMO_H5_CHUNK", "65536"))
   )
   if (length(chunk) != 1L || is.na(chunk) || chunk < 1024L) {
-    stop("CEREBRO_DEMO_H5_CHUNK must be an integer of at least 1024.", call. = FALSE)
+    stop(
+      "CEREBRO_DEMO_H5_CHUNK must be an integer of at least 1024.",
+      call. = FALSE
+    )
   }
   chunk
 }
@@ -104,7 +110,12 @@
     for (start in seq(1, total, by = step)) {
       count <- min(step, total - start + 1)
       rhdf5::h5write(
-        as.vector(rhdf5::h5read(src, at(dataset), start = start, count = count)),
+        as.vector(rhdf5::h5read(
+          src,
+          at(dataset),
+          start = start,
+          count = count
+        )),
         dst,
         at(dataset),
         start = start,
