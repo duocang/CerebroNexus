@@ -1,23 +1,25 @@
 # Large demo data sets
 
-These scripts download and prepare the two large demo data sets that `run-demo.R` opens in the Viewer: the mouse brain E18 data set (all 1,306,127 cells of the 10x 1M neurons matrix) and the Ren et al. COVID-19 atlas (1.46M cells with paired TCR/BCR data). They are not shipped in `inst/extdata/examples/`, `data-raw/` is excluded from package builds, and they are not part of the test suite. `tests/testthat/test-run-demo.R`, `test-ren-demo.R`, `test-million-cell-viewer.R` and `test-demo-h5-transpose.R` test them with small synthetic data.
+These scripts download and prepare the large demo data sets that `run-demo.R` opens in the Viewer: the mouse brain E18 data set (all 1,306,127 cells of the 10x 1M neurons matrix), the Ren et al. COVID-19 atlas (1.46M cells with paired TCR/BCR data), and, on request, the NanoString CosMx NSCLC spatial data set (eight tissue sections) and the Zheng et al. pan-cancer T-cell atlas (397,810 cells with TCR sequences and the CD8 exhaustion pseudotime). They are not shipped in `inst/extdata/examples/`, `data-raw/` is excluded from package builds, and they are not part of the test suite. `tests/testthat/test-run-demo.R`, `test-ren-demo.R`, `test-large-demos.R`, `test-million-cell-viewer.R` and `test-demo-h5-transpose.R` test them with small synthetic data.
 
 ## How to run
 
 You normally do not run these scripts yourself. From the repository root, run the launcher:
 
 ```bash
-Rscript run-demo.R                  # both data sets, then the Viewer in the browser
-Rscript run-demo.R --ren-only       # only the Ren atlas
-Rscript run-demo.R --prepare-only   # download and convert, do not start the Viewer
-Rscript run-demo.R --no-browser     # start the Viewer without opening a browser
+Rscript run-demo.R                             # the mouse brain, then the Viewer in the browser
+Rscript run-demo.R --data=ren                  # only the Ren atlas
+Rscript run-demo.R --data=1m,ren,cosmx,tcell   # all four large data sets
+Rscript run-demo.R --data=ren --prepare-only   # download and convert, do not start the Viewer
 ```
+
+`--data` takes a comma-separated list of `1m` (the mouse brain), `ren`, `cosmx` and `tcell`; without it the launcher prepares the mouse brain. Each prepared data set also gets a compressed twin of its H5 file next to it (deflate level 3, 65,536-value chunks; `CEREBRO_DEMO_H5_LEVEL` and `CEREBRO_DEMO_H5_CHUNK` change them), listed in the data set menu as "<name> [compressed]", so the two can be compared.
 
 The launcher loads this checkout with `pkgload`, sources the scripts below, prepares each data set (a complete cache is reused, so only the first run downloads and converts), builds the Viewer Pack, and starts the app on `http://127.0.0.1:7451`. It needs `pkgload`, `rhdf5`, `HDF5Array`, `DelayedArray`, `readxl` and `qs2`, plus the packages the Viewer itself uses.
 
-## What `Rscript run-demo.R --ren-only` does the first time
+## What `Rscript run-demo.R --data=ren` does the first time
 
-There is no prompt: if the cache has no finished Ren data, the launcher starts downloading and converting right away, then opens the Viewer. The options only change which data sets are prepared (`--ren-only` skips the one-million-cell mouse data set; the small example data sets of the app are always there). The steps, in order:
+There is no prompt: if the cache has no finished Ren data, the launcher starts downloading and converting right away, then opens the Viewer. The options only change which data sets are prepared (`--data=ren` skips the one-million-cell mouse data set; the small example data sets of the app are always there). The steps, in order:
 
 1. **Check the cache.** If a finished Ren data set is already there, skip to step 7.
 2. **Download five files** into `large-examples/ren/source/`: the 14 GB `.h5ad` archive, the cell annotation table, the TCR table, the BCR table and the clinical sample table. Each file is checked against its expected size and SHA256; a file that is already complete is not downloaded again. The log says `Preparing Ren source: <file>`.
@@ -45,11 +47,34 @@ crb <- prepareViewerRenDemoData()   # returns the path of the prepared .crb
 
 - `prepare_viewer_1m_data.R`: downloads the 10x 1M neurons matrix and builds the mouse brain E18 `.crb` from all 1,306,127 cells. Entry function: `prepareViewer1mBenchmarkData()`.
 - `prepare_viewer_ren_data.R`: downloads the Ren et al. atlas (about 61 GB as `.h5ad`), the cell annotation, the clinical sample table and the TCR/BCR tables, and builds the Ren `.crb` with its immune repertoire. Entry function: `prepareViewerRenDemoData()`.
+- `prepare_viewer_cosmx_data.R`: downloads the eight section archives of the CosMx NSCLC data set (11.3 GB), reads the expression and cell tables, and builds the CosMx `.crb` with one spatial entry per section. Entry function: `prepareViewerCosMxDemoData()`. Source, licence status and changes: [`cosmx.ATTRIBUTION.md`](cosmx.ATTRIBUTION.md).
+- `prepare_viewer_tcell_data.R`: downloads the Zenodo files of the pan-cancer T-cell atlas (14.1 GB), joins the 70 per-data-set expression objects, computes the joint embedding and builds the `.crb` with the TCR repertoire and the CD8 trajectory. Entry function: `prepareViewerTcellDemoData()`. Source, licence and changes: [`tcell.ATTRIBUTION.md`](tcell.ATTRIBUTION.md).
+- `download_helpers.R`: the cache folder, the checked download (size, then MD5 or SHA256, resumable) and the publish-by-rename shared by the two scripts above. `run-demo.R` sources it before them.
 - `prepare_viewer_pack.R`: builds or reuses the Viewer Pack of a prepared `.crb`. Entry function: `prepareDemoViewerPack()`.
 - `h5_transposed_write.R`: a helper, not a script to run. Both `prepare_viewer_*_data.R` scripts call its `.demoWriteH5Transposed()` to write the expression matrix as the cells x genes H5 sidecar, so it has to be sourced before them (`run-demo.R` does this). It exists because `HDF5Array::writeTENxMatrix()` can only write one gene after the other, and a source stored by cells is then scanned from start to end for every block of genes, which takes days for these atlases. The helper reads the cells once in chunks (directly from the CSR arrays for an AnnData file) on several processes, then assembles blocks of genes from the chunk files and appends each block to the H5 file. It is kept in its own file because two scripts share it.
 
 ## Where the data goes
 
 Downloads and prepared files are written to the user cache directory (`tools::R_user_dir("CerebroNexus", "cache")`, under `large-examples/`), shared by all checkouts and worktrees. Set `CEREBRO_LARGE_CACHE` to use another folder, for example on a cluster. The Ren data set alone needs about 105 GB. The conversion of the counts to H5 runs on 2 R processes by default; set `CEREBRO_DEMO_WORKERS` to use more (each process needs about 3 to 5 GB of memory, an estimate, not a measurement). On a 24-core workstation, reading the 1.46M Ren cells took about 80 seconds on 8 processes.
+
+## The CosMx and T-cell data sets
+
+Both are built the way the Ren data set is: the sources are downloaded once into `large-examples/<name>/source/` (each file is checked against its published size and checksum; a complete file is not downloaded again and an interrupted download is resumed), the result is built in a temporary folder of the cache and renamed to `cerebro-v<version>/` only when it is complete, and the last file written is `demo-version`. A change of the version number in the script (`.viewerCosMxVersion`, `.viewerTcellVersion`) makes the next run build the data set again.
+
+| | `--data=cosmx` | `--data=tcell` |
+|---|---|---|
+| Environment variable read by the Viewer | `CEREBRO_COSMX_DEMO_CRB` | `CEREBRO_TCELL_DEMO_CRB` |
+| Cache folder | `large-examples/cosmx/` | `large-examples/tcell/` |
+| Data set menu entry | CosMx SMI NSCLC (8 sections) | Zheng et al. pan-cancer T cells (398K + TCR) |
+| Pages it is meant to exercise | Spatial, Gene expression | Immune repertoire, Trajectory |
+| Download | 8 files, 11.3 GB | 3 files, 14.1 GB |
+
+Notes on the T-cell data set:
+
+- The expression matrix is the authors' normalised matrix, joined over the union of the genes of 70 files and reduced to gene symbols that at least 20 cells express (36,625 genes). 10x data are log-normalised, Smart-seq2 data are log2(TPM + 1).
+- The atlas publishes no single-cell embedding. The `harmony_umap` projection is computed by the script (2,000 variable genes chosen per data set, 30 principal components, Harmony across the 35 data sets, UMAP). On the 24-core test machine this step took about 8 minutes.
+- The TCR table covers 168,901 cells of 86 patients; a repertoire sample is a patient and a tissue site (`patient (T)`, `patient (N)`, `patient (P)`), so Compare and Clone Sharing follow a patient's clones between sites.
+- The trajectory (`published_pseudotime`, "Published pseudotime" in the Viewer) is the CD8 continuum with the authors' diffusion pseudotime, which belongs to mini-clusters; see the attribution file for exactly what is inherited and rescaled.
+- The H5 file and the intermediate matrix are held in memory while the data set is built: the peak was about 52 GB of resident memory.
 
 Benchmarks and smoke checks live in [CerebroNexus_paper_code](https://github.com/duocang/CerebroNexus_paper_code) (`viewer/` and `benchmark/`).

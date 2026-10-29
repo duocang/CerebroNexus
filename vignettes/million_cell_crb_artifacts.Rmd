@@ -172,8 +172,8 @@ To test Ren without the 10x dataset, and to separate download/preparation
 failures from Viewer errors (`--prepare-only` exits before starting Shiny):
 
 ```{bash, eval=FALSE}
-Rscript run-demo.R --ren-only --prepare-only
-Rscript run-demo.R --ren-only --no-browser
+Rscript run-demo.R --data=ren --prepare-only
+Rscript run-demo.R --data=ren
 ```
 
 The launcher prints the URL, the source directory and the Ren data version
