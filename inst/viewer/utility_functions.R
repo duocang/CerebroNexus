@@ -299,13 +299,17 @@ viewerDatasetLoadRequired <- function(
   is.null(info) || viewerDatasetLoadOnTab(FALSE, tab)
 }
 
+## Tabs that never read the selected dataset. Opening one keeps the CRB
+## unloaded until an analysis tab asks for it.
+viewer_dataset_free_tabs <- c("loadData", "about", "geneIdConversion")
+
 viewerDatasetLoadOnTab <- function(current, tab) {
   isTRUE(current) ||
     (is.character(tab) &&
       length(tab) == 1L &&
       !is.na(tab) &&
       nzchar(tab) &&
-      !identical(tab, "loadData"))
+      !tab %in% viewer_dataset_free_tabs)
 }
 
 viewerColourGroupChoices <- function(
@@ -745,6 +749,27 @@ viewerPublishChanged <- function(state, value) {
   invisible(value)
 }
 
+## A renderUI control's value as page code should read it: the bound input, or,
+## until the control has bound, `default()`, the value it will bind with. A
+## first frame then need not wait for the controls to reach the browser and
+## back, and the binding of an equal value invalidates nothing. Bound inputs
+## keep their value even when it is NULL (a cleared multi-select), so presence
+## in `input` separates "not yet bound" from "none".
+viewerControlValue <- function(input, id, default) {
+  value <- shiny::reactiveVal(NULL)
+  shiny::observe(
+    {
+      current <- input[[id]]
+      if (is.null(current) && !id %in% shiny::isolate(names(input))) {
+        current <- default()
+      }
+      viewerPublishChanged(value, current)
+    },
+    priority = 1000
+  )
+  value
+}
+
 ## A slider bounded by one preference's min/max/step limits.
 viewerLimitedSlider <- function(
   inputId,
@@ -853,7 +878,10 @@ viewerSharedProjectionName <- function(
     if (!exists("input", inherits = TRUE)) {
       return(NULL)
     }
-    shared <- input[["coordviews_shared_base"]]
+    ## A snapshot, not a dependency: the browser republishes the shared
+    ## geometry after every paint, and a render observer subscribed to it
+    ## would draw its frame a second time.
+    shared <- shiny::isolate(input[["coordviews_shared_base"]])
   }
   if (is.null(identity)) {
     if (!exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
@@ -913,20 +941,46 @@ viewerProjectionDefaults <- function(
   )
 }
 
-## Apply the shared projection filters and sample original metadata row ids.
-viewerProjectionCellIndices <- function(
-  prefix,
-  metadata = getMetaData(),
-  percentage = input[[paste0(prefix, "_percentage_cells_to_show")]]
-) {
-  ## A `percentage` random sample of the given cells.
-  sample_of <- function(indices) {
-    if (!length(indices) || percentage >= 100) {
-      return(indices)
-    }
-    size <- ceiling(length(indices) * percentage / 100)
-    indices[sample.int(length(indices), size)]
+## The canonical metadata row of each row of a trajectory, in the trajectory's
+## order: from the Viewer Pack index, the Pack cell order, or the cell names.
+viewerTrajectoryCellIndex <- function(trajectory, method, name) {
+  trajectory_cells <- rownames(trajectory[["meta"]])
+  pack <- viewerPackCurrent()
+  pack_cell_count <- suppressWarnings(as.integer(pack$cell_count))
+  valid_pack_count <- length(pack_cell_count) == 1L &&
+    !is.na(pack_cell_count)
+  index <- viewerPackTrajectoryIndex(pack, method, name)
+  valid_index <- length(index) == nrow(trajectory[["meta"]]) &&
+    !anyNA(index) &&
+    isTRUE(all(index >= 1L))
+  if (!isTRUE(valid_index)) {
+    index <- NULL
   }
+  pack_order_matches <-
+    is.null(index) &&
+    !is.null(pack) &&
+    is.list(pack) &&
+    valid_pack_count &&
+    length(trajectory_cells) == pack_cell_count &&
+    identical(
+      viewerPackCellOrderFingerprint(trajectory_cells),
+      as.character(pack$manifest$cell_order_fingerprint)
+    )
+  if (isTRUE(pack_order_matches)) {
+    index <- seq_len(pack_cell_count)
+  }
+  if (is.null(index)) {
+    metadata <- getMetaData()
+    index <- match(trajectory_cells, metadata[["cell_barcode"]])
+  }
+  if (anyNA(index)) {
+    stop("Trajectory cells do not match the canonical dataset order.")
+  }
+  as.integer(index)
+}
+
+## The group filters of `prefix` that leave cells out: group -> allowed levels.
+viewerProjectionGroupFilters <- function(prefix, metadata = getMetaData()) {
   groups <- getGroups()
   filter_ids <- paste0(prefix, "_group_filter_", groups)
   bound_inputs <- shiny::isolate(names(input))
@@ -937,7 +991,7 @@ viewerProjectionCellIndices <- function(
     groups
   )
   if (!length(groups) || !any(filter_ids %in% bound_inputs)) {
-    return(sample_of(seq_len(nrow(metadata))))
+    return(list())
   }
   filters <- stats::setNames(
     lapply(groups, function(group) {
@@ -977,10 +1031,64 @@ viewerProjectionCellIndices <- function(
       logical(1)
     )
   ]
+  filters
+}
+
+## Apply the shared projection filters and sample original metadata row ids.
+viewerProjectionCellIndices <- function(
+  prefix,
+  metadata = getMetaData(),
+  percentage = input[[paste0(prefix, "_percentage_cells_to_show")]],
+  filters = viewerProjectionGroupFilters(prefix, metadata)
+) {
+  ## A `percentage` random sample of the given cells.
+  sample_of <- function(indices) {
+    if (!length(indices) || percentage >= 100) {
+      return(indices)
+    }
+    size <- ceiling(length(indices) * percentage / 100)
+    indices[sample.int(length(indices), size)]
+  }
   if (!length(filters)) {
     return(sample_of(seq_len(nrow(metadata))))
   }
   sample_of(which(cerebroGroupFilterMask(metadata, filters)))
+}
+
+## The group filters as the browser applies them to a frame of every cell:
+## each group's Viewer Pack codes and the indices of its allowed levels. NULL
+## when a filtered group has no Pack codes; the server then filters the frame.
+viewerClientFilterDescriptors <- function(filters) {
+  descriptors <- lapply(names(filters), function(group) {
+    levels <- as.character(getGroupLevels(group))
+    resource <- viewerMetadataCodesAsset(group, levels)
+    if (is.null(resource)) {
+      return(NULL)
+    }
+    allowed <- match(as.character(filters[[group]]), levels) - 1L
+    list(
+      name = group,
+      levels = I(levels),
+      allowed = I(allowed[!is.na(allowed)]),
+      resource = resource
+    )
+  })
+  if (any(vapply(descriptors, is.null, logical(1)))) {
+    return(NULL)
+  }
+  descriptors
+}
+
+## Tell the browser which group filters to apply to the drawn frame of `id`.
+viewerSendClientFilters <- function(id, descriptors, dataset_context) {
+  session$sendCustomMessage(
+    "cell_view_filters",
+    list(
+      id = id,
+      dataset_context = dataset_context,
+      filters = unname(descriptors %||% list())
+    )
+  )
 }
 
 viewerProjectionMetadataColumns <- function(
@@ -1036,9 +1144,7 @@ viewerExpressionCells <- function(data_set, cells) {
       error = function(e) NULL
     ))
   ) {
-    n_cells <- tryCatch(ncol(data_set$expression), error = function(e) {
-      NA_integer_
-    })
+    n_cells <- viewerExpressionCellCount(data_set)
     if (
       length(n_cells) == 1L &&
         !is.na(n_cells) &&
@@ -1053,7 +1159,33 @@ viewerExpressionCells <- function(data_set, cells) {
   if (is.null(cell_names)) cells else cell_names[as.integer(cells)]
 }
 
+## Cells of the expression matrix, without attaching an H5 backend.
+viewerExpressionCellCount <- function(data_set) {
+  rows <- attr(data_set, "cerebro_h5_rows", exact = TRUE)
+  tryCatch(
+    if (is.list(rows)) rows$n_cells() else ncol(data_set$expression),
+    error = function(e) NA_integer_
+  )
+}
+
+## Rows of an H5 sidecar straight from the file (all cells, or cell indices);
+## NULL when that does not apply, so the caller uses the R6 accessors.
+viewerH5ExpressionRows <- function(data_set, cells, genes) {
+  rows <- attr(data_set, "cerebro_h5_rows", exact = TRUE)
+  if (!is.list(rows) || !(is.null(cells) || is.numeric(cells))) {
+    return(NULL)
+  }
+  values <- lapply(genes, rows$row)
+  names(values) <- genes
+  values <- values[!vapply(values, is.null, logical(1))]
+  if (is.null(cells)) values else lapply(values, `[`, as.integer(cells))
+}
+
 viewerExpressionRow <- function(data_set, cells, gene) {
+  direct <- viewerH5ExpressionRows(data_set, cells, gene)
+  if (!is.null(direct) && length(direct)) {
+    return(direct[[1L]])
+  }
   cells <- viewerExpressionCells(data_set, cells)
   as.numeric(data_set$getExpressionRow(gene = gene, cells = cells))
 }
@@ -1068,6 +1200,13 @@ viewerExpressionValues <- function(data_set, cells, genes) {
   genes <- genes[!is.na(genes) & nzchar(genes)]
   if (!length(genes)) {
     return(list())
+  }
+
+  ## A gene the file lacks is omitted, and the genes it has are not read
+  ## again. With none found, the R6 path below reports the missing gene.
+  direct <- viewerH5ExpressionRows(data_set, cells, genes)
+  if (!is.null(direct) && length(direct)) {
+    return(direct)
   }
 
   if (length(genes) == 1L) {
@@ -1121,8 +1260,17 @@ cerebroCellViewMessage <- function(
   extra = list(),
   dataset_context = NULL
 ) {
+  ## I() on a vector the caller still holds copies it (1.3 M cells: x, y,
+  ## colour, keys and hover columns, about 50 MB per frame); a value that is
+  ## already a bare AsIs array is sent as it is.
   wire_array <- function(value) {
-    if (is.null(value)) NULL else I(unname(value))
+    if (is.null(value)) {
+      NULL
+    } else if (inherits(value, "AsIs") && is.null(names(value))) {
+      value
+    } else {
+      I(unname(value))
+    }
   }
   wire_nested <- function(value) {
     if (is.null(value)) {
@@ -1143,7 +1291,17 @@ cerebroCellViewMessage <- function(
 
   nested <- identical(meta$color_type, "categorical") && is.null(data$panels)
   for (field in intersect(
-    c("x", "y", "z", "selection_key", "color", "group", "point_sizes"),
+    c(
+      "x",
+      "y",
+      "z",
+      "selection_key",
+      "selection_index",
+      "color",
+      "group",
+      "group_code",
+      "point_sizes"
+    ),
     names(data)
   )) {
     value <- data[[field]]
@@ -1371,11 +1529,16 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
 ## later render with the same cells lets the browser reuse those barcodes.
 .cerebro_cell_view_aux_served <- new.env(parent = emptyenv())
 
+## With a cell-name resource, `cell_rows` (canonical rows of the points) are
+## sent instead of `cell_barcodes`, and the browser looks the names up.
 cerebroCellViewDeferredAux <- function(
   selection_rows,
   cell_barcodes,
   hover_columns = list(),
-  hover = FALSE
+  hover = FALSE,
+  names_resource = NULL,
+  cell_rows = NULL,
+  keys = TRUE
 ) {
   grouped <- is.list(selection_rows)
   reorder <- function(values) {
@@ -1392,22 +1555,42 @@ cerebroCellViewDeferredAux <- function(
   } else {
     list()
   }
-  list(
-    selection_key = reorder(as.character(cell_barcodes)),
-    hover = list(
-      hoverinfo = if (isTRUE(hover)) "text" else "skip",
-      columns = columns
+  ## FALSE when the browser already holds the cells' names (see
+  ## cerebroCellViewResolveDeferredAux()).
+  key_fields <- if (!isTRUE(keys)) {
+    list()
+  } else if (is.list(names_resource)) {
+    list(
+      selection_index = reorder(as.integer(cell_rows) - 1L),
+      cell_names_resource = names_resource
+    )
+  } else {
+    list(selection_key = reorder(as.character(cell_barcodes)))
+  }
+  c(
+    key_fields,
+    list(
+      hover = list(
+        hoverinfo = if (isTRUE(hover)) "text" else "skip",
+        columns = columns
+      )
     )
   )
 }
 
-cerebroCellViewResolveDeferredAux <- function(message) {
+## `keys = FALSE`: the core delivery already named the cells, so a builder that
+## takes `keys` neither reads nor sends them again.
+cerebroCellViewResolveDeferredAux <- function(message, keys = TRUE) {
   if (!is.function(message$build)) {
     return(message)
   }
   build <- message$build
   message$build <- NULL
-  resolved <- build()
+  resolved <- if (!isTRUE(keys) && "keys" %in% names(formals(build))) {
+    build(keys = FALSE)
+  } else {
+    build()
+  }
   if (!is.list(resolved)) {
     stop("deferred cell-view auxiliary data must be a list")
   }
@@ -1527,14 +1710,31 @@ cerebroCellViewAuxRequest <- function(request) {
   rm(list = key, envir = .cerebro_cell_view_aux_pending)
   core_sent <- isTRUE(message$core_sent)
   message$core_sent <- NULL
-  message <- cerebroCellViewResolveDeferredAux(message)
+  message <- cerebroCellViewResolveDeferredAux(message, keys = !core_sent)
   if (core_sent) {
     message$selection_key <- NULL
   }
+  ## The browser never reads aux_key; only this server compares it.
+  sent <- message
+  sent$aux_key <- NULL
   session$sendBinaryMessage(
     "cell_view_aux_binary",
-    cv_wire_pack_message(message)
+    cv_wire_pack_message(sent)
   )
+  ## All of it was sent at once: a later frame of the same cells names it, as
+  ## after a core delivery above.
+  if (
+    !core_sent &&
+      !is.null(message$aux_key) &&
+      !(is.null(message$selection_key) && is.null(message$selection_index)) &&
+      !isTRUE(message$hover$pending)
+  ) {
+    .cerebro_cell_view_aux_served[[message$id]] <- list(
+      key = message$aux_key,
+      wire_token = message$wire_token,
+      dataset_context = message$dataset_context
+    )
+  }
   invisible(TRUE)
 }
 
@@ -2053,10 +2253,36 @@ cerebroCellViewScatterPayload <- function(
     return(list(meta = meta, data = data, hover = hover_data))
   }
 
-  color <- as.character(color)
-  color[is.na(color)] <- "(missing)"
+  ## A factor is split on its codes: as.character() and match() over every
+  ## cell would hash each of a million strings again.
+  group_labels <- NULL
+  if (factor_color) {
+    group_labels <- factor_levels
+    group_codes <- factor_codes
+    if (has_missing_color) {
+      missing_code <- match("(missing)", group_labels)
+      if (is.na(missing_code)) {
+        group_labels <- c(group_labels, "(missing)")
+        missing_code <- length(group_labels)
+      }
+      group_codes[is.na(group_codes)] <- missing_code
+    }
+    ## An NA level reads as "(missing)" too: merge it by its label.
+    if (anyNA(group_labels)) {
+      group_labels <- NULL
+    }
+  }
+  if (is.null(group_labels)) {
+    color <- as.character(color)
+    color[is.na(color)] <- "(missing)"
+    cells_by_group <- split(seq_along(color), color)
+  } else {
+    cells_by_group <- split(
+      seq_along(group_codes),
+      structure(group_codes, levels = group_labels, class = "factor")
+    )
+  }
   meta[["traces"]] <- list()
-  cells_by_group <- split(seq_along(color), color)
   hover_names <- names(hover_info)
   aligned_hover <- if (!show_hover) {
     NULL
@@ -2070,8 +2296,9 @@ cerebroCellViewScatterPayload <- function(
   }
   index <- 1L
   for (group in names(color_assignments)) {
+    ## A factor split also lists the levels no cell has.
     cells <- cells_by_group[[group]]
-    if (is.null(cells)) {
+    if (!length(cells)) {
       next
     }
     meta[["traces"]][[index]] <- group
@@ -2097,21 +2324,17 @@ cerebroCellViewScatterPayload <- function(
     length(color) >= 4096L &&
       identical(as.integer(selection_keys), seq_along(selection_keys))
   ) {
+    traces <- unlist(meta[["traces"]], use.names = FALSE)
     data[["canonical_group"]] <- I(as.integer(
-      match(color, unlist(meta[["traces"]], use.names = FALSE)) - 1L
+      if (is.null(group_labels)) {
+        match(color, traces) - 1L
+      } else {
+        (match(group_labels, traces) - 1L)[group_codes]
+      }
     ))
   }
 
   list(meta = meta, data = data, hover = hover_data)
-}
-
-cerebroSelectionCount <- function(selection) {
-  ids <- if (is.list(selection) && !is.null(selection$ids)) {
-    selection$ids
-  } else {
-    selection
-  }
-  length(ids)
 }
 
 cerebroSelectionSummary <- function(
@@ -2138,14 +2361,47 @@ cerebroSelectionSummary <- function(
     character(0)
   }
   keys <- unique(as.character(keys[!is.na(keys) & nzchar(keys)]))
+  ## A selection reported by row is read by position: no names to match, and
+  ## the first-frame metadata has every group column.
+  selected_rows <- viewerSelectionRows(selection)
+  if (!is.null(selected_rows) && missing(metadata)) {
+    metadata <- viewerProjectionFirstFrameMetadata()
+  }
+  has_cells <- length(keys) > 0L || length(selected_rows) > 0L
+  ## The values of `group` for the selected cells.
+  selected_values <- function(group) {
+    if (!is.null(selected_rows)) {
+      return(metadata[[group]][selected_rows[selected_rows <= nrow(metadata)]])
+    }
+    metadata[[group]][match(keys, as.character(metadata[["cell_barcode"]]))]
+  }
+  ## Cells per value, without turning every selected cell into a string.
+  count_values <- function(values) {
+    if (is.factor(values)) {
+      counts <- tabulate(as.integer(values), nbins = nlevels(values))
+      names(counts) <- levels(values)
+      counts <- counts[counts > 0L & nzchar(levels(values))]
+      return(as.table(counts))
+    }
+    values <- as.character(values)
+    table(values[!is.na(values) & nzchar(values)])
+  }
   # Composition has nothing to render until stable selection keys arrive.
   # Return before forcing the lazy metadata/groups defaults: on million-cell
   # datasets those accessors can hydrate the complete per-cell metadata even
   # though the result below would immediately be discarded.
-  if (isTRUE(composition) && !length(keys)) {
+  if (isTRUE(composition) && !has_cells) {
     return(NULL)
   }
-  n_selected <- if (length(keys)) {
+  # Without keys the summary needs only the row count. The first-frame
+  # metadata has it; the getMetaData() default would read every cell name of
+  # a thin CRB first (1.9 s on 1.46 M cells, right after the first paint).
+  if (missing(metadata) && !has_cells) {
+    metadata <- viewerProjectionFirstFrameMetadata()
+  }
+  n_selected <- if (!is.null(selected_rows)) {
+    length(selected_rows)
+  } else if (length(keys)) {
     length(keys)
   } else if (is.data.frame(selection)) {
     nrow(selection)
@@ -2181,22 +2437,19 @@ cerebroSelectionSummary <- function(
         comp_candidates %in% colnames(metadata)
     ]
     if (
-      !length(keys) ||
+      !has_cells ||
         !length(comp_candidates) ||
-        !"cell_barcode" %in% colnames(metadata)
+        (is.null(selected_rows) && !"cell_barcode" %in% colnames(metadata))
     ) {
       return(NULL)
     }
     comp_group <- comp_candidates[[1L]]
-    values <- as.character(metadata[[comp_group]][
-      match(keys, as.character(metadata[["cell_barcode"]]))
-    ])
-    values <- values[!is.na(values) & nzchar(values)]
-    if (!length(values)) {
+    counts <- count_values(selected_values(comp_group))
+    if (!length(counts)) {
       return(NULL)
     }
 
-    counts <- sort(table(values), decreasing = TRUE)
+    counts <- sort(counts, decreasing = TRUE)
     max_groups <- max(1L, as.integer(max_groups[[1L]]))
     shown_counts <- utils::head(counts, max_groups)
     if (length(counts) > max_groups) {
@@ -2302,23 +2555,19 @@ cerebroSelectionSummary <- function(
 
   profile <- NULL
   if (
-    length(keys) &&
+    has_cells &&
       length(candidates) &&
-      "cell_barcode" %in% colnames(metadata)
+      (!is.null(selected_rows) || "cell_barcode" %in% colnames(metadata))
   ) {
-    values <- as.character(metadata[[candidates[[1L]]]][
-      match(keys, as.character(metadata[["cell_barcode"]]))
-    ])
-    values <- values[!is.na(values) & nzchar(values)]
-    if (length(values)) {
-      counts <- table(values)
+    counts <- count_values(selected_values(candidates[[1L]]))
+    if (length(counts)) {
       dominant <- names(counts)[[which.max(counts)]]
       profile <- shiny::tags$span(
         class = "cerebro-selection-status-profile",
         paste0(
           dominant,
           " \u00b7 ",
-          round(100 * max(counts) / length(values)),
+          round(100 * max(counts) / sum(counts)),
           "%"
         )
       )
@@ -2727,7 +2976,14 @@ prettifyTable <- function(
         return(table)
       }
       for (i in columns) {
-        range <- range(table_original[[i]])
+        ## Over the known values: a column may be NA for some cells (a
+        ## pseudotime that exists for one lineage only) or for all of them.
+        values <- table_original[[i]]
+        values <- values[is.finite(values)]
+        if (length(values) < 2L) {
+          next
+        }
+        range <- range(values)
         if (range[1] != range[2]) {
           table <- table %>%
             DT::formatStyle(
@@ -3004,7 +3260,7 @@ cerebroProjectionHoverColumns <- function(
     if (is.na(group) || !nzchar(group) || !group %in% colnames(table)) {
       next
     }
-    values <- as.character(table[[group]])
+    column <- table[[group]]
     # Registered levels are a small dictionary. Avoid hashing every string
     # again with unique() after the million-cell rows have been shuffled.
     levels <- tryCatch(as.character(group_levels(group)), error = function(e) {
@@ -3012,9 +3268,20 @@ cerebroProjectionHoverColumns <- function(
     })
     levels[is.na(levels)] <- "NA"
     levels <- unique(c(levels, "NA"))
-    codes <- match(values, levels)
-    codes[is.na(values)] <- match("NA", levels)
+    # A factor maps its own levels, not the label of every cell.
+    if (is.factor(column) && !anyNA(levels(column))) {
+      values <- NULL
+      codes <- match(levels(column), levels)[as.integer(column)]
+      codes[is.na(column)] <- match("NA", levels)
+    } else {
+      values <- as.character(column)
+      codes <- match(values, levels)
+      codes[is.na(values)] <- match("NA", levels)
+    }
     if (anyNA(codes)) {
+      if (is.null(values)) {
+        values <- as.character(column)
+      }
       # Unregistered metadata, and registered levels that miss values
       # (addGroup() does not check them), keep the first-occurrence encoding,
       # including literal/missing NA.
@@ -3084,7 +3351,17 @@ cerebroGroupFilterMask <- function(metadata, filters) {
     if (is.null(selected) || !length(selected)) {
       return(rep(FALSE, nrow(metadata)))
     }
-    keep <- keep & metadata[[group]] %in% selected
+    values <- metadata[[group]]
+    keep <- keep &
+      if (is.factor(values)) {
+        ## Look up the levels once, then index by code: %in% would turn every
+        ## cell's level into a string first. The last entry stands for NA.
+        codes <- as.integer(values)
+        codes[is.na(codes)] <- nlevels(values) + 1L
+        c(levels(values) %in% selected, NA %in% selected)[codes]
+      } else {
+        values %in% selected
+      }
   }
   keep
 }
@@ -3264,7 +3541,7 @@ getGroupLevels <- function(group) {
   }
   if (
     is.list(schema) &&
-      identical(schema$version, 3L) &&
+      isTRUE(schema$version %in% c(3L, 4L)) &&
       is.integer(schema$n_cells) &&
       length(schema$n_cells) == 1L &&
       !is.na(schema$n_cells)
@@ -3296,9 +3573,12 @@ availableProjections <- function() {
 ##----------------------------------------------------------------------------##
 getVariableToCompareChoices <- function() {
   ## default: all metadata columns except cell_barcode
-  all_cols <- colnames(getMetaData())[
-    !colnames(getMetaData()) %in% c("cell_barcode")
-  ]
+  ## The first-frame metadata has the same columns without the cell names; a
+  ## thin CRB is not hydrated just to list them.
+  all_cols <- setdiff(
+    colnames(viewerProjectionFirstFrameMetadata()),
+    "cell_barcode"
+  )
 
   ## check if variable_to_compare option exists
   if (
@@ -3601,10 +3881,10 @@ get_or_load_crb <- function(
   .checkCrbBackendIdentity(cache_key, cache_identity)
   cached <- .touchCrbPrototype(cache_key)
   if (!is.null(cached)) {
-    print(glue::glue("[{Sys.time()}] CRB cache hit: {basename(path)}"))
+    message(glue::glue("[{Sys.time()}] CRB cache hit: {basename(path)}"))
     prototype <- cached$object
   } else {
-    print(glue::glue(
+    message(glue::glue(
       "[{Sys.time()}] CRB cache miss, loading: {basename(path)}"
     ))
     prototype <- read_cerebro_file(path)
@@ -3742,6 +4022,62 @@ get_or_load_crb <- function(
   as.integer(as.vector(rhdf5::h5read(sidecar, "expression/shape")))[[1L]]
 }
 
+## One gene's values for every cell, read with rhdf5 from the gene's slice of
+## the TENx arrays (/expression/indptr, indices, data). The DelayedArray path
+## returns the same values but first loads HDF5Array (seconds for its S4
+## classes and methods) and reads every cell name. `verify` runs before the
+## first read (the thin-CRB cell-name check).
+.h5ExpressionRows <- function(sidecar, verify) {
+  state <- new.env(parent = emptyenv())
+  prepare <- function() {
+    if (is.null(state$genes)) {
+      verify()
+      state$n_cells <- .runtimeH5CellCount(sidecar)
+      state$genes <- .runtimeH5Names(sidecar, "barcodes")
+    }
+  }
+  list(
+    n_cells = function() {
+      prepare()
+      state$n_cells
+    },
+    ## NULL for a gene the file does not have.
+    row = function(gene) {
+      prepare()
+      column <- match(gene, state$genes)
+      if (is.na(column)) {
+        return(NULL)
+      }
+      bounds <- as.vector(rhdf5::h5read(
+        sidecar,
+        "expression/indptr",
+        start = column,
+        count = 2L,
+        bit64conversion = "double"
+      ))
+      values <- numeric(state$n_cells)
+      count <- bounds[[2L]] - bounds[[1L]]
+      if (count > 0) {
+        start <- bounds[[1L]] + 1
+        cells <- rhdf5::h5read(
+          sidecar,
+          "expression/indices",
+          start = start,
+          count = count,
+          bit64conversion = "double"
+        )
+        values[as.vector(cells) + 1] <- as.vector(rhdf5::h5read(
+          sidecar,
+          "expression/data",
+          start = start,
+          count = count
+        ))
+      }
+      values
+    }
+  )
+}
+
 .checkThinCrbCells <- function(cells, schema, crb_path) {
   if (
     !identical(
@@ -3813,7 +4149,10 @@ get_or_load_crb <- function(
   }
   for (name in schema$projection_rownames) {
     projection <- projections[[name]]
-    rownames(projection) <- cells
+    ## `cells` passed the checks above and .validateThinCrbShape() found every
+    ## projection a data frame of as many rows; rownames<- would look for
+    ## duplicates again for every projection.
+    attr(projection, "row.names") <- cells
     projections[[name]] <- projection
   }
   rownames(metadata) <- NULL
@@ -3899,6 +4238,33 @@ get_or_load_crb <- function(
   "Did the .h5 sibling get moved or dropped when the CRB was copied?"
 }
 
+## The H5 file a thin CRB attaches and the CRB's cell-name checksum, computed
+## as .attachExternalExpression() does; NULL for any other CRB or any problem.
+.thinCrbH5CellCheck <- function(obj, crb_path, effective_backend = NULL) {
+  tryCatch(
+    {
+      schema <- .readRuntimeCrbSchema(obj, crb_path)
+      be <- if (is.null(effective_backend)) {
+        .fallbackRuntimeBackendPlan(obj, crb_path)
+      } else {
+        .validateRuntimeBackendEntry(effective_backend, crb_path)
+      }
+      if (is.null(schema) || identical(be$mode, "embedded")) {
+        NULL
+      } else {
+        list(
+          path = file.path(
+            dirname(normalizePath(crb_path, mustWork = FALSE)),
+            be$location
+          ),
+          expected = schema$cell_names_hash
+        )
+      }
+    },
+    error = function(error) NULL
+  )
+}
+
 .attachExternalExpression <- function(
   obj,
   crb_path,
@@ -3970,21 +4336,47 @@ get_or_load_crb <- function(
   ## A thin CRB stores no cell names, so the H5 file's names are compared with
   ## its checksum here: the attach above only compared the cell count, and
   ## expression of another data set with as many cells must not be painted.
+  ## The Viewer's process cache (crb_cache.R) checks the names in a daemon.
+  process_check <- !is.null(crb_schema) &&
+    exists("crb_h5_cell_check_start", mode = "function")
+  if (process_check) {
+    crb_h5_cell_check_start(loc_abs, crb_schema$cell_names_hash)
+  }
+  verify_cells <- function() {
+    if (!is.null(crb_schema) && !isTRUE(cell_names_state$verified)) {
+      if (
+        process_check &&
+          crb_h5_cells_verified(loc_abs, crb_schema$cell_names_hash)
+      ) {
+        cell_names_state$verified <- TRUE
+        return(invisible())
+      }
+      ## Callers often wrap the first expression access in tryCatch(), so the
+      ## refusal is also logged.
+      tryCatch(
+        .thinCrbCellNames(cell_names_state, loc_abs, crb_schema, crb_path),
+        error = function(error) {
+          message(glue::glue("[{Sys.time()}] {conditionMessage(error)}"))
+          stop(error)
+        }
+      )
+      if (process_check) {
+        crb_h5_cells_confirm(loc_abs, crb_schema$cell_names_hash)
+      }
+    }
+  }
+  attr(obj, "cerebro_h5_rows") <- .h5ExpressionRows(loc_abs, verify_cells)
+  ## Lets optional work wait for the daemon without blocking the session.
+  attr(obj, "cerebro_h5_cells_pending") <- function() {
+    process_check &&
+      !isTRUE(cell_names_state$verified) &&
+      crb_h5_cells_pending(loc_abs, crb_schema$cell_names_hash)
+  }
   delayedAssign(
     "expression",
     {
-      if (!is.null(crb_schema) && !isTRUE(cell_names_state$verified)) {
-        ## Callers often wrap the first expression access in tryCatch(), so the
-        ## refusal is also logged.
-        tryCatch(
-          .thinCrbCellNames(cell_names_state, loc_abs, crb_schema, crb_path),
-          error = function(error) {
-            print(glue::glue("[{Sys.time()}] {conditionMessage(error)}"))
-            stop(error)
-          }
-        )
-      }
-      print(glue::glue(
+      verify_cells()
+      message(glue::glue(
         "[{Sys.time()}] Attaching h5 backend (lazy TENxMatrix): {loc_abs}"
       ))
       t(HDF5Array::TENxMatrix(loc_abs, group = "expression"))
@@ -4455,6 +4847,70 @@ canonicalGeneSelection <- function(selected, genes) {
 ## Gene expression registers four selectors on the same gene list; a locale
 ## sort of a whole transcriptome takes about half a second. Share one.
 .viewer_sorted_gene_choices <- viewerMemoOne()
+
+## Gene selectors search the whole gene list in the browser (www/gene-selector.js).
+## A server-side search answered from the first 1000 genes until the typed
+## text's request returned, so typing "CD4" highlighted ABCD4 and Enter chose
+## it; text typed before the search existed was never searched at all. The
+## list is about 270 KB of JSON for 28,000 genes; encode it once per process.
+.viewer_gene_choices_json <- viewerMemoOne()
+
+viewerGeneChoicesJSON <- function(data, req) {
+  shiny::httpResponse(
+    200L,
+    "application/json",
+    .viewer_gene_choices_json(list(data$genes), function() {
+      enc2utf8(as.character(jsonlite::toJSON(as.character(data$genes))))
+    }),
+    headers = list("Cache-Control" = "private, max-age=3600")
+  )
+}
+
+## One gene list URL per gene list in a session. The gene selectors of a page
+## (single gene, R/G/B channels) share it, so the list reaches the browser once.
+viewerGeneChoicesUrl <- function(session, genes) {
+  cache <- session$userData$cerebro_gene_choice_urls
+  if (is.null(cache)) {
+    cache <- session$userData$cerebro_gene_choice_urls <- new.env(
+      parent = emptyenv()
+    )
+    cache$entries <- list()
+    cache$count <- 0L
+  }
+  for (entry in cache$entries) {
+    if (identical(entry$genes, genes)) {
+      return(entry$url)
+    }
+  }
+  cache$count <- cache$count + 1L
+  url <- session$registerDataObj(
+    paste0("cerebro-gene-choices-", cache$count),
+    list(genes = genes),
+    viewerGeneChoicesJSON
+  )
+  cache$entries <- c(
+    list(list(genes = genes, url = url)),
+    utils::head(cache$entries, 7L)
+  )
+  url
+}
+
+## Like updateSelectizeInput(session, inputId, choices, selected), but the
+## browser fetches the choices from a URL shared by every selector of the same
+## genes and searches them itself (www/gene-selector.js).
+viewerUpdateGeneSelector <- function(session, inputId, choices, selected) {
+  session$sendInputMessage(
+    inputId,
+    Filter(
+      Negate(is.null),
+      list(
+        value = unname(selected),
+        cerebro_gene_choices = viewerGeneChoicesUrl(session, choices)
+      )
+    )
+  )
+}
+
 serverSideGeneSelector <- function(
   session,
   input_id,
@@ -4529,17 +4985,11 @@ serverSideGeneSelector <- function(
       if (isTRUE(canonical_selection)) {
         selected <- canonicalGeneSelection(selected, genes)
       }
-      updateSelectizeInput(
-        session,
-        input_id,
-        choices = genes,
-        selected = selected,
-        server = TRUE
-      )
+      viewerUpdateGeneSelector(session, input_id, genes, selected)
       if (!isTRUE(refresh_on_activation)) registered_dataset <<- dataset
     }
 
-    ## Dynamic renderUI() + updateSelectizeInput(server=TRUE) race on the
+    ## Dynamic renderUI() + a selector's input message race on the
     ## client: the selectize binding initialises asynchronously, so an update
     ## message can arrive while the binding doesn't yet exist and gets silently
     ## dropped. onFlushed fires right after R's flush but before the browser
@@ -4621,6 +5071,199 @@ filterSelectionByHiddenGroups <- function(
   selection[keep, , drop = FALSE]
 }
 
+## The rows (1-based) of a base64 bit set from the browser: bit r of byte
+## r %/% 8 stands for row r + 1 (selectionRowBits() in cell_views.js).
+viewerDecodeRowBits <- function(bits) {
+  if (
+    !is.character(bits) || length(bits) != 1L || is.na(bits) || !nzchar(bits)
+  ) {
+    return(NULL)
+  }
+  raw <- tryCatch(jsonlite::base64_dec(bits), error = function(e) NULL)
+  if (!length(raw)) {
+    return(NULL)
+  }
+  rows <- which(as.logical(rawToBits(raw)))
+  if (length(rows)) rows else NULL
+}
+
+## TRUE when the browser draws `part` of the selection of view `id` itself
+## ("summary", "table", "expression"; Linked views: "plot", "table"): it
+## reported the selection by row with `client_<part>` set and holds the
+## columns to draw it (see reportSelection() in cell_views.js).
+viewerClientSelection <- function(
+  id,
+  part = "summary",
+  input_id = paste0(id, "_persistent_selection")
+) {
+  selection <- input[[input_id]]
+  is.list(selection) &&
+    isTRUE(selection[[paste0("client_", part)]]) &&
+    viewerDatasetContextEqual(
+      selection[["dataset_context"]],
+      viewer_loaded_dataset_context()
+    )
+}
+
+## TRUE while view `id` has a selection. It invalidates only when that
+## changes, so the boxes of selection results are not rebuilt (nor the
+## selection decoded) for each new selection.
+viewerSelectionPresence <- function(
+  id,
+  input_id = paste0(id, "_persistent_selection")
+) {
+  present <- shiny::reactiveVal(FALSE)
+  shiny::observe({
+    selection <- input[[input_id]]
+    now <- is.list(selection) &&
+      viewerDatasetContextEqual(
+        selection[["dataset_context"]],
+        viewer_loaded_dataset_context()
+      ) &&
+      (nzchar(selection[["rows_bits"]] %||% "") ||
+        nzchar(selection[["indices_bits"]] %||% "") ||
+        length(selection[["indices"]]) > 0L ||
+        length(selection[["ids"]]) > 0L ||
+        length(selection[["x"]]) > 0L)
+    present(isTRUE(now))
+  })
+  present
+}
+
+## The count (`count_id`) and composition (`<id>_composition`) of the cells
+## `selection()` holds, unless the browser draws them; the count first, as it
+## is the cheapest of the selection results. `source()` names the selected
+## space, `color()` the variable the cells are coloured by.
+viewerSelectionSummaryOutputs <- function(
+  id,
+  count_id,
+  selection,
+  source,
+  color = function() NULL,
+  require_cells = FALSE
+) {
+  summary <- function(composition) {
+    renderUI({
+      if (viewerClientSelection(id)) {
+        return(NULL)
+      }
+      cells <- selection()
+      if (require_cells) {
+        req(NROW(cells) > 0L)
+      }
+      cerebroSelectionSummary(
+        cells,
+        source(),
+        color(),
+        composition = composition
+      )
+    })
+  }
+  output[[count_id]] <<- summary(FALSE)
+  output[[paste0(id, "_composition")]] <<- summary(TRUE)
+  if (inherits(output, "shinyoutput")) {
+    outputOptions(output, count_id, priority = 10)
+  }
+}
+
+## The canonical rows of a selection reported by row, else NULL.
+viewerSelectionRows <- function(selection) {
+  if (is.data.frame(selection) && "row" %in% colnames(selection)) {
+    as.integer(selection[["row"]])
+  } else {
+    NULL
+  }
+}
+
+## Which of `rows` (canonical rows, NA allowed) are among `selected`.
+viewerRowMask <- function(selected, rows) {
+  n <- max(c(0L, selected, rows), na.rm = TRUE)
+  lookup <- logical(n)
+  lookup[selected] <- TRUE
+  mask <- lookup[rows]
+  mask[is.na(mask)] <- FALSE
+  mask
+}
+
+## The cell-name resource when it names every one of `rows` (canonical rows),
+## else NULL.
+viewerCellNamesResourceFor <- function(rows) {
+  resource <- if (exists("viewerCellNamesResource", mode = "function")) {
+    viewerCellNamesResource()
+  }
+  if (
+    is.list(resource) &&
+      length(rows) &&
+      !anyNA(rows) &&
+      max(rows) <= resource$cells
+  ) {
+    resource
+  }
+}
+
+## The cell names of canonical rows. They come from the Viewer Pack when there
+## is one, so a thin CRB is not hydrated for them; the names read from it are
+## kept for that pack, not read again for every table.
+.viewer_pack_cell_names <- new.env(parent = emptyenv())
+## Every cell name in canonical order from the Viewer Pack, or NULL.
+viewerPackCellNames <- function() {
+  pack <- if (exists("viewerPackCellBarcodes", mode = "function")) {
+    viewerPackCurrent()
+  }
+  if (!is.list(pack)) {
+    return(NULL)
+  }
+  cache <- .viewer_pack_cell_names
+  if (!identical(cache$pack, pack)) {
+    cache$pack <- pack
+    cache$cells <- viewerPackCellBarcodes(pack)
+  }
+  cache$cells
+}
+viewerCellBarcodesAt <- function(rows) {
+  cells <- viewerPackCellNames()
+  barcodes <- if (
+    !is.null(cells) &&
+      !anyNA(rows) &&
+      all(rows >= 1L & rows <= length(cells))
+  ) {
+    cells[rows]
+  }
+  barcodes %||% as.character(getMetaData()[["cell_barcode"]][rows])
+}
+
+## A selection of named cells as their canonical rows (a selection by row),
+## from the Viewer Pack names: the thin CRB is not hydrated, and the hash is
+## built over the selected names rather than over every cell. NULL without a
+## Viewer Pack.
+viewerSelectionRowsForNames <- function(names) {
+  cells <- viewerPackCellNames()
+  if (is.null(cells)) {
+    return(NULL)
+  }
+  data.frame(row = which(cells %in% as.character(names)))
+}
+
+## Metadata of canonical rows, cell names first, for a table of selected cells.
+viewerSelectedRowsMetadata <- function(rows) {
+  metadata <- viewerProjectionFirstFrameMetadata()
+  rows <- rows[!is.na(rows) & rows >= 1L & rows <= nrow(metadata)]
+  table <- metadata[rows, , drop = FALSE]
+  if (!"cell_barcode" %in% colnames(table)) {
+    table <- data.frame(
+      cell_barcode = viewerCellBarcodesAt(rows),
+      table,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }
+  rownames(table) <- NULL
+  table[,
+    c("cell_barcode", setdiff(colnames(table), "cell_barcode")),
+    drop = FALSE
+  ]
+}
+
 viewerPersistentSelection <- function(selection, dataset_context) {
   if (
     !is.list(selection) ||
@@ -4630,6 +5273,11 @@ viewerPersistentSelection <- function(selection, dataset_context) {
       )
   ) {
     return(NULL)
+  }
+  ## Canonical rows, when the browser knows them: no names to match.
+  rows <- viewerDecodeRowBits(selection[["rows_bits"]])
+  if (!is.null(rows)) {
+    return(data.frame(row = rows))
   }
   ## Stable cell IDs identify a selection on their own. Coordinate identifiers
   ## are only the fallback for cells without one; formatting them for every
@@ -4665,8 +5313,36 @@ prepareSelectedCellDistribution <- function(
   metadata,
   selection,
   color_variable,
-  coordinate_keys = FALSE
+  coordinate_keys = FALSE,
+  rows = NULL
 ) {
+  selected_rows <- viewerSelectionRows(selection)
+  if (
+    !is.null(selected_rows) &&
+      !is.null(rows) &&
+      color_variable %in% colnames(metadata)
+  ) {
+    ## By row: only the compared column, no cell names or coordinates. Built
+    ## as a list: data.frame() would check a million row names.
+    values <- metadata[[color_variable]]
+    if (length(values) != length(rows)) {
+      values <- values[rows]
+    }
+    cells_df <- list(
+      group = structure(
+        2L - viewerRowMask(selected_rows, rows),
+        levels = c("selected", "not selected"),
+        class = "factor"
+      ),
+      values
+    )
+    names(cells_df) <- c("group", color_variable)
+    return(structure(
+      cells_df,
+      class = "data.frame",
+      row.names = c(NA_integer_, -length(rows))
+    ))
+  }
   cells_df <- cbind(coordinates, metadata)
   if (is.null(selection)) {
     cells_df[["group"]] <- rep("not selected", nrow(cells_df))
@@ -4698,7 +5374,20 @@ prepareSelectedCellDistribution <- function(
   cells_df[, unique(c("group", color_variable)), drop = FALSE]
 }
 
-selectedCellMask <- function(selection_key, identifier, selection) {
+## `rows`: the canonical rows of the cells, for a selection reported by row.
+selectedCellMask <- function(
+  selection_key,
+  identifier,
+  selection,
+  rows = NULL
+) {
+  selected_rows <- viewerSelectionRows(selection)
+  if (!is.null(selected_rows)) {
+    if (is.null(rows)) {
+      return(rep(FALSE, length(selection_key)))
+    }
+    return(viewerRowMask(selected_rows, rows))
+  }
   coordinate_frame <- is.data.frame(identifier)
   if (coordinate_frame) {
     if (ncol(identifier) != 2L) {
@@ -4821,11 +5510,14 @@ cerebroSelectedCellsPlotUI <- function(prefix, choices) {
         label = "Variable to compare:",
         choices = choices
       ),
-      plotly::plotlyOutput(paste0(prefix, "_details_selected_cells_plot"))
+      cerebroChartOutput(paste0(prefix, "_details_selected_cells_plot"))
     )
   ))
 }
 
+## `rows`: the canonical rows the table may list (NULL: every cell). A
+## selection reported by row builds only its own rows; `cells_df` is then not
+## evaluated, so its full projection and metadata are never put together.
 cerebroSelectedCellsTable <- function(
   cells_df,
   empty_data,
@@ -4833,13 +5525,34 @@ cerebroSelectedCellsTable <- function(
   fallback_key = c("row", "identifier"),
   number_formatting = TRUE,
   color_highlighting = TRUE,
-  download_file_name
+  download_file_name,
+  rows = NULL
 ) {
   empty_table <- function() {
     prepareEmptyTable(empty_data[0, , drop = FALSE])
   }
   if (is.null(selection)) {
     return(empty_table())
+  }
+  selected_rows <- viewerSelectionRows(selection)
+  if (!is.null(selected_rows)) {
+    if (!is.null(rows)) {
+      selected_rows <- selected_rows[viewerRowMask(rows, selected_rows)]
+    }
+    table <- viewerSelectedRowsMetadata(selected_rows)
+    if (!nrow(table)) {
+      return(empty_table())
+    }
+    return(prettifyTable(
+      table,
+      filter = list(position = "top", clear = TRUE),
+      dom = "Brtlip",
+      show_buttons = TRUE,
+      number_formatting = number_formatting,
+      color_highlighting = color_highlighting,
+      hide_long_columns = TRUE,
+      download_file_name = download_file_name
+    ))
   }
 
   fallback_key <- match.arg(fallback_key)
@@ -4889,20 +5602,41 @@ cerebroSelectedCellsTable <- function(
   )
 }
 
+## `rows`: the canonical rows of the cells compared (NULL: every cell). A
+## selection reported by row reads only the compared column of those rows.
 cerebroSelectedCellsPlot <- function(
   cells_df,
   selection,
   color_variable,
-  fallback_key = c("row", "identifier")
+  fallback_key = c("row", "identifier"),
+  rows = NULL
 ) {
   fallback_key <- match.arg(fallback_key)
-  cells_df <- prepareSelectedCellDistribution(
-    cells_df[, 1:2, drop = FALSE],
-    cells_df[, -(1:2), drop = FALSE],
-    selection,
-    color_variable,
-    coordinate_keys = identical(fallback_key, "identifier")
-  )
+  metadata <- if (!is.null(viewerSelectionRows(selection))) {
+    viewerProjectionFirstFrameMetadata()
+  }
+  cells_df <- if (
+    !is.null(metadata) && color_variable %in% colnames(metadata)
+  ) {
+    if (is.null(rows)) {
+      rows <- seq_len(nrow(metadata))
+    }
+    prepareSelectedCellDistribution(
+      NULL,
+      metadata,
+      selection,
+      color_variable,
+      rows = rows
+    )
+  } else {
+    prepareSelectedCellDistribution(
+      cells_df[, 1:2, drop = FALSE],
+      cells_df[, -(1:2), drop = FALSE],
+      selection,
+      color_variable,
+      coordinate_keys = identical(fallback_key, "identifier")
+    )
+  }
 
   if (
     is.factor(cells_df[[color_variable]]) ||
@@ -4923,59 +5657,26 @@ cerebroSelectedCellsPlot <- function(
       cells_df <- data.frame(group = group_levels, n = 0) %>%
         dplyr::rename(!!color_variable := group)
     }
-    colors_for_groups <- assignColorsToGroups(cells_df, color_variable)
-    cells_df[[1L]] <- as.character(cells_df[[1L]])
-    plot <- plotly::plot_ly(
-      cells_df,
-      x = ~ cells_df[[1L]],
-      y = ~ cells_df[[2L]],
-      type = "bar",
-      color = ~ cells_df[[1L]],
-      colors = colors_for_groups,
-      source = "subset",
-      showlegend = FALSE,
-      hoverinfo = "y"
+    cerebroCountBarData(
+      cells_df[[1L]],
+      cells_df[[2L]],
+      assignColorsToGroups(cells_df, color_variable)
     )
-    y_axis_title <- "Number of cells"
   } else {
-    cells_df <- cells_df[, c("group", color_variable), drop = FALSE]
-    cells_df <- compactViolinData(cells_df, color_variable, "group")
-    plot <- plotly::plot_ly(
-      cells_df,
-      x = ~ cells_df[["group"]],
-      y = ~ cells_df[[color_variable]],
-      type = "violin",
-      box = list(visible = FALSE),
-      meanline = list(visible = FALSE),
-      color = ~ cells_df[[1L]],
-      colors = stats::setNames(
-        c("#e74c3c", "#7f8c8d"),
-        c("selected", "not selected")
-      ),
-      source = "subset",
-      showlegend = FALSE,
-      hoverinfo = "y",
-      marker = list(size = 5)
+    cerebroViolinData(
+      cells_df[, c("group", color_variable), drop = FALSE],
+      color_variable,
+      "group",
+      cerebroSelectionColors(),
+      color_variable,
+      "number"
     )
-    plot <- addExactViolinSummary(plot, cells_df)
-    y_axis_title <- colnames(cells_df)[[2L]]
   }
+}
 
-  plot %>%
-    plotly::layout(
-      title = "",
-      xaxis = list(title = "", mirror = TRUE, showline = TRUE),
-      yaxis = list(
-        title = y_axis_title,
-        tickformat = ",.0f",
-        hoverformat = ",.0f",
-        mirror = TRUE,
-        showline = TRUE
-      ),
-      dragmode = "lasso",
-      hovermode = "compare"
-    ) %>%
-    cerebro_plotly_toolbar()
+## Colours of the "selected" / "not selected" violins.
+cerebroSelectionColors <- function() {
+  c(selected = "#e74c3c", `not selected` = "#7f8c8d")
 }
 
 cerebroProjectionInfo <- function() {
@@ -5613,6 +6314,23 @@ viewerVisibleSelection <- function(
   }
   if (!length(hidden_groups)) {
     return(selection)
+  }
+  selected_rows <- viewerSelectionRows(selection)
+  if (!is.null(selected_rows)) {
+    ## By row: the group of each selected row, from the first-frame metadata.
+    metadata <- viewerProjectionFirstFrameMetadata()
+    if (is.null(color_variable) || !color_variable %in% colnames(metadata)) {
+      return(selection)
+    }
+    groups <- metadata[[color_variable]]
+    hidden <- if (is.factor(groups)) {
+      (levels(groups) %in% hidden_groups)[as.integer(groups[selected_rows])]
+    } else {
+      groups[selected_rows] %in% hidden_groups
+    }
+    hidden[is.na(hidden)] <- NA %in% hidden_groups
+    selection <- selection[!hidden, , drop = FALSE]
+    return(if (nrow(selection) == 0) NULL else selection)
   }
   metadata <- metadata_fn()
   metadata[["selection_key"]] <- if ("cell_barcode" %in% colnames(metadata)) {

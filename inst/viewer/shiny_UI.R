@@ -646,6 +646,8 @@ ui <- dashboardPage(
       cerebro_js("viewer-shell.js", defer = TRUE),
       cerebro_js("gene-feedback.js", defer = TRUE),
       cerebro_js("view-feedback.js", defer = TRUE),
+      cerebro_js("cerebro-charts.js", defer = TRUE),
+      cerebro_js("selection-table.js", defer = TRUE),
       cerebro_js("multiselect.js", defer = TRUE),
       cerebro_js("gene-selector.js", defer = TRUE),
       cerebro_js("background-model.js"),

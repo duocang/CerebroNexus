@@ -3227,7 +3227,8 @@ test_that("a thin H5 CRB is bundled with its H5 file and keeps its gene count", 
   skip_if_not_installed("rhdf5")
   root <- withr::local_tempdir()
   built <- write_thin_h5_crb(file.path(root, "source"))
-  expect_identical(readRDS(built$crb)$crb_schema$version, 3L)
+  ## Thin CRBs are schema 3 and later (4 stores repertoire barcodes by cell).
+  expect_gte(readRDS(built$crb)$crb_schema$version, 3L)
   app <- file.path(root, "app")
 
   build_test_app(c(Dataset = built$crb), app)

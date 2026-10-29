@@ -622,13 +622,24 @@ test_that("{shinytest2} recording: groups", {
 
   ## composition plot renders
   plot_val <- retry_get_value(app, output = "groups_by_other_group_plot")
-  expect_false(is.null(plot_val))
+  ## One value holds the counts, the percentages and the Sankey plot.
+  expect_identical(plot_val$type, "switch")
+  expect_identical(plot_val$views[["Bar chart|FALSE"]]$type, "bar")
+  expect_true(isTRUE(plot_val$views[["Bar chart|TRUE"]]$percent))
+  expect_identical(plot_val$views[["Sankey plot|FALSE"]]$type, "sankey")
+  app$wait_for_js(
+    "document.querySelectorAll('#groups_by_other_group_plot svg rect').length > 0",
+    timeout = 10000
+  )
 
   ## switch to percent view
   app$set_inputs(groups_by_other_group_show_as_percent = TRUE)
   app$wait_for_idle(timeout = 10000)
-  plot_pct <- retry_get_value(app, output = "groups_by_other_group_plot")
-  expect_false(is.null(plot_pct))
+  ## The browser switches to the percentages without a new value.
+  app$wait_for_js(
+    "Array.from(document.querySelectorAll('#groups_by_other_group_plot svg text')).some(function (t) { return /%$/.test(t.textContent); })",
+    timeout = 10000
+  )
 
   ## show table
   app$set_inputs(groups_by_other_group_show_table = TRUE)

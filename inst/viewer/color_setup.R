@@ -132,12 +132,32 @@ configured_colors_for_current_dataset <- function() {
   )
 }
 
+## The ids of the colour inputs the session has (Color management's pickers).
+## Palettes read only these: reading one input per level registered a
+## dependency each, about half a millisecond, and a data set's palettes have
+## hundreds of levels. Changes only when a picker appears or goes away.
+color_picker_ids <- reactiveVal(character(0))
+observe(
+  {
+    ids <- grep("^color_", names(input), value = TRUE)
+    if (!setequal(ids, isolate(color_picker_ids()))) {
+      color_picker_ids(ids)
+    }
+  },
+  priority = 1000
+)
+
 resolve_reactive_palette <- function(variable, levels, defaults) {
   configured <- configured_colors_for_current_dataset()
   names(defaults) <- levels
   defaults <- apply_configured_colors(defaults, configured[[variable]])
+  pickers <- color_picker_ids()
+  if (!length(pickers)) {
+    return(defaults)
+  }
   for (level in levels) {
-    picked <- input[[color_input_id(variable, level)]]
+    id <- color_input_id(variable, level)
+    picked <- if (id %in% pickers) input[[id]]
     if (!is.null(picked)) {
       defaults[level] <- picked
     }

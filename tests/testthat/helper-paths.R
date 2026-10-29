@@ -25,6 +25,7 @@ viewer_runtime_env <- function(
   root = viewer_test_path()
 ) {
   for (file in c(
+    "plotting_functions.R",
     "core/crb_contract.R",
     "msigdb.R",
     "crb_cache.R",

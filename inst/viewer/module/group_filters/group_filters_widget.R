@@ -34,25 +34,33 @@ groupFilterControl <- function(
         shiny::tags$button(type = "button", `data-act` = "all", "All"),
         shiny::tags$button(type = "button", `data-act` = "none", "None")
       ),
-      lapply(seq_along(levels), function(index) {
-        level <- levels[[index]]
-        shiny::tags$label(
-          class = "cv-filt-item",
-          shiny::tags$input(
-            type = "checkbox",
-            name = input_id,
-            value = level,
-            checked = if (level %in% selected) "checked" else NULL
-          ),
-          shiny::tags$span(
-            class = "cv-dot",
-            style = paste0("background:", colors[[index]])
-          ),
-          shiny::tags$span(level)
-        )
-      })
+      groupFilterItems(input_id, levels, colors, selected)
     )
   )
+}
+
+## The checkbox of every level, written as one HTML string: the same markup as
+## tags$label(tags$input(), tags$span(), tags$span()) per level, without
+## building and rendering three tag objects for each of hundreds of levels.
+groupFilterItems <- function(input_id, levels, colors, selected) {
+  if (!length(levels)) {
+    return(NULL)
+  }
+  attr <- function(x) htmltools::htmlEscape(as.character(x), attribute = TRUE)
+  shiny::HTML(paste0(
+    "<label class=\"cv-filt-item\">\n<input type=\"checkbox\" name=\"",
+    attr(input_id),
+    "\" value=\"",
+    attr(levels),
+    "\"",
+    ifelse(levels %in% selected, " checked=\"checked\"", ""),
+    "/>\n<span class=\"cv-dot\" style=\"",
+    attr(paste0("background:", colors)),
+    "\"></span>\n<span>",
+    htmltools::htmlEscape(as.character(levels)),
+    "</span>\n</label>",
+    collapse = "\n"
+  ))
 }
 
 #' Register the group-filters renderUI for a projection-style tab.

@@ -18,6 +18,8 @@
   "rotateSpatialCoordinates",
   "viewerOutputTab",
   "viewerExpressionCells",
+  "viewerExpressionCellCount",
+  "viewerH5ExpressionRows",
   "viewerExpressionRow",
   "viewerExpressionValues",
   "findColumnsInteger",
@@ -47,9 +49,12 @@
   ".fallbackRuntimeBackendPlan",
   ".runtimeBackendRecoveryAdvice",
   ".attachExternalExpression",
+  ".h5ExpressionRows",
   "extra_material_table_filter",
   "viewerHasTcrRepertoire",
   "filterSelectionByHiddenGroups",
+  "viewerSelectionRows",
+  "viewerRowMask",
   "selectedCellMask",
   "trajectorySelectionValid"
 )
@@ -68,9 +73,46 @@
   NA_character_
 }
 
+## The installed package's byte code for a Viewer file's helper functions
+## (written by R CMD INSTALL, see R/viewer_bytecode.R), or NULL when there is
+## none for this exact file and R version. Bundles have none.
+.viewerBytecode <- function(path) {
+  root <- tryCatch(Cerebro.options[["cerebro_root"]], error = function(e) NULL)
+  if (!is.character(root) || length(root) != 1L || !nzchar(root)) {
+    return(NULL)
+  }
+  viewer <- normalizePath(
+    file.path(root, "viewer"),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  source_path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  if (!startsWith(source_path, paste0(viewer, "/"))) {
+    return(NULL)
+  }
+  file <- file.path(
+    root,
+    "viewer-bytecode",
+    paste0(substring(source_path, nchar(viewer) + 2L), ".rds")
+  )
+  if (!file.exists(file)) {
+    return(NULL)
+  }
+  bytecode <- tryCatch(readRDS(file), error = function(e) NULL)
+  if (
+    !is.list(bytecode) ||
+      !identical(bytecode$r_version, R.version.string) ||
+      !identical(bytecode$md5, unname(tools::md5sum(path)))
+  ) {
+    return(NULL)
+  }
+  bytecode
+}
+
+## The cache is keyed by the path as given: normalizePath() costs 1-3 ms per
+## call on Windows.
 viewerSource <- function(path, envir = parent.frame()) {
-  path <- normalizePath(path, mustWork = TRUE)
-  info <- file.info(path)
+  info <- file.info(path, extra_cols = FALSE)
   fingerprint <- c(size = info$size, mtime = as.numeric(info$mtime))
   cached <- .viewer_source_cache[[path]]
   if (is.null(cached) || !identical(cached$fingerprint, fingerprint)) {
@@ -79,6 +121,11 @@ viewerSource <- function(path, envir = parent.frame()) {
       vapply(expressions, .viewerSourceAssignment, character(1))
     } else {
       rep(NA_character_, length(expressions))
+    }
+    ## Helpers then run compiled from their first call in this process.
+    bytecode <- .viewerBytecode(path)
+    if (!is.null(bytecode) && max(bytecode$index) <= length(expressions)) {
+      expressions[bytecode$index] <- bytecode$code
     }
     shared <- !is.na(shared_names) &
       shared_names %in% .viewer_process_function_names
@@ -98,4 +145,21 @@ viewerSource <- function(path, envir = parent.frame()) {
     assign(name, cached$shared_environment[[name]], envir = envir)
   }
   invisible(eval(cached$expressions, envir = envir))
+}
+
+## Runs `tasks` (functions named by the work they do) one per event-loop turn
+## while `active()` is TRUE, so a click waits for one task at most. Each name is
+## done once per process.
+.viewer_idle_done <- new.env(parent = emptyenv())
+viewerIdleRun <- function(tasks, active, delay = 0.01) {
+  tasks <- tasks[!names(tasks) %in% ls(.viewer_idle_done, all.names = TRUE)]
+  step <- function(i) {
+    if (i > length(tasks) || !isTRUE(active())) {
+      return(invisible())
+    }
+    assign(names(tasks)[[i]], TRUE, envir = .viewer_idle_done)
+    try(tasks[[i]](), silent = TRUE)
+    later::later(function() step(i + 1L), delay)
+  }
+  later::later(function() step(1L), delay)
 }

@@ -73,8 +73,58 @@ test_that("catalog-backed Data Info defers the full dataset load", {
   ))
 
   expect_false(load_on_tab(FALSE, "loadData"))
+  expect_false(load_on_tab(FALSE, "about"))
+  expect_false(load_on_tab(FALSE, "geneIdConversion"))
   expect_true(load_on_tab(FALSE, "overview"))
+  expect_true(load_on_tab(FALSE, "color_management"))
   expect_true(load_on_tab(TRUE, "loadData"))
+  expect_true(load_on_tab(TRUE, "about"))
+  expect_false(load_required("about", info))
+  expect_true(load_required("about", NULL))
+})
+
+test_that("control values stand in for a renderUI control until it binds", {
+  control_value <- utils_env$viewerControlValue
+  expect_true(is.function(control_value))
+  if (!is.function(control_value)) {
+    return()
+  }
+  shiny::testServer(
+    function(input, output, session) {
+      mode <- control_value(input, "mode", function() "combined")
+      runs <- new.env()
+      runs$n <- 0L
+      shiny::observe({
+        mode()
+        runs$n <- runs$n + 1L
+      })
+    },
+    {
+      session$flushReact()
+      expect_identical(mode(), "combined")
+      expect_identical(runs$n, 1L)
+      ## The control binds with the value the default stood in for.
+      session$setInputs(mode = "combined")
+      expect_identical(runs$n, 1L)
+      session$setInputs(mode = "separate")
+      expect_identical(mode(), "separate")
+      expect_identical(runs$n, 2L)
+    }
+  )
+})
+
+test_that("an empty selection summary counts cells without the full metadata", {
+  scope <- viewer_runtime_env(new.env())
+  scope$getMetaData <- function() stop("full metadata was read")
+  scope$viewerProjectionFirstFrameMetadata <- function() {
+    data.frame(cluster = c("A", "A", "B"))
+  }
+  scope$getGroups <- function() "cluster"
+  scope$getObservationUnit <- function() list(plural = "cells")
+  scope$getParameters <- function() list(main_group = "cluster")
+  summary <- as.character(scope$cerebroSelectionSummary(character(0), "UMAP"))
+  expect_match(summary, "Selected", fixed = TRUE)
+  expect_match(summary, "/[[:space:]]*3[[:space:]]*cells")
 })
 
 test_that("Data Info uses the catalog before the full dataset", {
@@ -186,6 +236,40 @@ test_that("ordinary Viewer tables escape HTML by default", {
 
   expect_identical(attr(populated$x$options, "escapeIdx"), "true")
   expect_identical(attr(empty$x$options, "escapeIdx"), "true")
+})
+
+test_that("numeric columns with missing values are coloured by their known values", {
+  env <- viewer_runtime_env(new.env())
+  ## No grouping or cell-cycle column to colour by palette.
+  env$getGroups <- function() character()
+  env$getCellCycle <- function() character()
+  ## A published pseudotime exists only for the cells of one lineage; a
+  ## selection of other cells has none of it.
+  table <- data.frame(
+    cell_barcode = c("a", "b", "c"),
+    cd8_dpt = c(0.85, NA, 0.88),
+    age = c(NA_real_, NA_real_, NA_real_),
+    score = c(0.1, 0.5, 0.9)
+  )
+
+  ## As the Table of selected cells calls it.
+  widget <- env$prettifyTable(
+    table,
+    filter = "none",
+    dom = "t",
+    number_formatting = TRUE,
+    color_highlighting = TRUE,
+    hide_long_columns = TRUE
+  )
+
+  styles <- paste(
+    deparse(widget$x$options$rowCallback),
+    collapse = "
+"
+  )
+  ## cd8_dpt is ramped over its known values 0.85..0.88; age has none.
+  expect_match(styles, "0.8503", fixed = TRUE)
+  expect_match(styles, "0.8797", fixed = TRUE)
 })
 
 test_that("Viewer tables can explicitly opt out of HTML escaping", {
@@ -475,10 +559,11 @@ test_that("CRB cache log lines omit directory paths", {
   object <- Cerebro$new()
   object$setExpressionBackend(type = "embedded")
   saveRDS(object, path)
-  output <- capture.output({
+  output <- capture.output(type = "message", {
     utils_env$get_or_load_crb(path)
     utils_env$get_or_load_crb(path)
   })
+  output <- grep("CRB cache", output, value = TRUE)
   expect_match(output[[1L]], "CRB cache miss, loading: uploaded-dataset.crb$")
   expect_match(output[[2L]], "CRB cache hit: uploaded-dataset.crb$")
   expect_false(any(grepl(basename(root), output, fixed = TRUE)))
@@ -822,18 +907,6 @@ test_that("canonical scatter resources avoid materializing million-cell vectors"
     4096L
   )
   expect_identical(length(wire_categories$data$canonical_group), 4096L)
-})
-
-test_that("selection counts use payload cell IDs", {
-  expect_identical(
-    utils_env$cerebroSelectionCount(list(
-      ids = paste0("cell-", seq_len(2536)),
-      source = "trekker",
-      geometry = list()
-    )),
-    2536L
-  )
-  expect_identical(utils_env$cerebroSelectionCount(c("c1", "c2")), 2L)
 })
 
 test_that("selected-cell tables preserve identity and skip eager cell work", {
