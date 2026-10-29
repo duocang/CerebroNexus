@@ -500,7 +500,8 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
     selection_rows,
     cell_barcodes,
     hover_columns,
-    hover
+    hover,
+    keys = TRUE
   ) {
     list(selection_key = cell_barcodes[selection_rows])
   }
@@ -598,7 +599,8 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     selection_rows,
     cell_barcodes,
     hover_columns,
-    hover
+    hover,
+    keys = TRUE
   ) {
     list(selection_key = cell_barcodes[selection_rows])
   }

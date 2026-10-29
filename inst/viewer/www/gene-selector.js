@@ -1,67 +1,79 @@
-/* Refresh mounted gene searches atomically; late search results cannot restore
-   an old selection or inject choices from the previous dataset. */
+/* Gene selectors search the whole gene list in the browser. The server sends
+   the URL of the list, shared by every selector of the same genes; the list is
+   fetched once and searched locally, so text typed before it arrives is
+   searched when it does, and the best match of the typed text is highlighted.
+   A list that arrives late cannot restore an old selection or inject the genes
+   of a previous dataset. */
 (function () {
   'use strict';
+
+  var lists = {};
+
+  function geneList(url) {
+    if (!lists[url]) {
+      lists[url] = window.fetch(url, {credentials: 'same-origin'}).then(function (response) {
+        if (!response.ok) throw new Error('Gene list request failed: HTTP ' + response.status);
+        return response.json();
+      });
+      lists[url].catch(function () { delete lists[url]; });
+    }
+    return lists[url];
+  }
+
+  function option(selectize, value) {
+    var result = {};
+    result[selectize.settings.valueField] = result[selectize.settings.labelField] = value;
+    return result;
+  }
+
+  function ready(selectize) {
+    return !!selectize && selectize._cerebroGeneChoicesReady === true;
+  }
+
+  function receive(element, message) {
+    var selectize = element.selectize;
+    var token = selectize._cerebroGeneChoicesToken = {};
+    var selected = Object.prototype.hasOwnProperty.call(message, 'value')
+      ? message.value : selectize.getValue();
+    var values = Array.isArray(selected) ? selected : selected ? [selected] : [];
+    selectize._cerebroGeneChoicesReady = false;
+    // No server search, and none of the previous list's genes. clearOptions()
+    // also clears the selection silently; it is set again at once.
+    selectize.settings.load = null;
+    selectize.clearOptions(true);
+    values.forEach(function (value) { selectize.addOption(option(selectize, value)); });
+    selectize.setValue(selected, true);
+    // Report the selection, as Shiny's own update does.
+    if (window.jQuery) window.jQuery(element).trigger('change');
+    // Not returned: Shiny waits for receiveMessage before the next message.
+    geneList(message.cerebro_gene_choices).then(function (genes) {
+      if (token !== selectize._cerebroGeneChoicesToken) return;
+      selectize.addOption(genes.map(function (gene) { return option(selectize, gene); }));
+      selectize._cerebroGeneChoicesReady = true;
+      // Search what was typed while the list was on its way.
+      if (selectize.isFocused) selectize.refreshOptions(true);
+    }, function (error) {
+      if (window.console) window.console.warn(error);
+    });
+  }
 
   function install() {
     if (!window.Shiny || !Shiny.inputBindings) return;
     Shiny.inputBindings.getBindings().forEach(function (entry) {
       var binding = entry.binding;
       if (binding.name !== 'shiny.selectInput' || binding._cerebroGeneChoices) return;
-      var receive = binding.receiveMessage;
+      var original = binding.receiveMessage;
       binding.receiveMessage = function (element, message) {
-        var selectize = element.selectize;
-        if (!/^expression_(genes_input|rgb_gene_[rgb])$/.test(element.id) ||
-            !selectize || !message.url) {
-          return receive.apply(this, arguments);
+        if (!element.selectize || !message || !message.cerebro_gene_choices) {
+          return original.apply(this, arguments);
         }
-        var selected = Object.prototype.hasOwnProperty.call(message, 'value')
-          ? message.value : selectize.getValue();
-        var values = Array.isArray(selected) ? selected.slice() : selected ? [selected] : [];
-        var options = values.map(function (value) {
-          var option = selectize.options[value];
-          if (option) return option;
-          option = {};
-          option[selectize.settings.valueField] = option[selectize.settings.labelField] = value;
-          return option;
-        });
-        selectize._cerebroGeneChoicesToken = {};
-        if (!selectize._cerebroGeneLoad) {
-          var load = selectize.load;
-          selectize.load = function (fn) {
-            var self = this, token = self._cerebroGeneChoicesToken;
-            return load.call(self, function (callback) {
-              fn.call(self, function (choices) {
-                callback(token === self._cerebroGeneChoicesToken ? choices : []);
-              });
-            });
-          };
-          selectize._cerebroGeneLoad = true;
-        }
-        var update = Object.assign({}, message);
-        // Shiny reads value again when the asynchronous choices request ends.
-        // Use the then-current selection, including a deliberate user clear.
-        Object.defineProperty(update, 'value', {
-          enumerable: true,
-          get: function () { return selectize.getValue(); }
-        });
-        // Shiny clears synchronously, then starts its asynchronous search. Keep
-        // that internal empty value out of both Shiny inputs and feedback UI.
-        var clear = selectize.clear, result;
-        selectize.clear = function () { return clear.call(this, true); };
-        try {
-          result = receive.call(this, element, update);
-          options.forEach(function (option) { selectize.addOption(option); });
-          selectize.setValue(selected, true);
-        } finally {
-          selectize.clear = clear;
-        }
-        return result;
+        receive(element, message);
       };
       binding._cerebroGeneChoices = true;
     });
   }
 
+  window.CerebroGeneSelector = {ready: ready};
   install();
   document.addEventListener('DOMContentLoaded', install);
   if (window.jQuery) window.jQuery(document).on('shiny:connected', install);

@@ -26,7 +26,7 @@ test_that("shared renderer restores every page and retains late Linked supplemen
   )
 })
 
-test_that("gene search refresh is atomic and rejects late selections and choices", {
+test_that("gene selectors search a local list and reject late selections and choices", {
   expect_node_fixture(
     "gene-selector.js",
     viewer_test_path("www", "gene-selector.js")
@@ -76,5 +76,12 @@ test_that("startup waits for the active page and releases errors and empty resul
     "startup-lifecycle.js",
     viewer_test_path("www", "startup.js"),
     pass = "PASS startup readiness"
+  )
+})
+
+test_that("the browser table of selected cells matches the DT table's rules", {
+  expect_node_fixture(
+    "selection-table.js",
+    viewer_test_path("www", "selection-table.js")
   )
 })

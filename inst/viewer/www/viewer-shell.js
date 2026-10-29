@@ -484,6 +484,9 @@
     var drawnPlots = new WeakSet();
     var controlValues = new Map();
     var localFinishPending = false;
+    // A non-local page whose outputs have arrived waits out a short quiet
+    // period before it finishes; the loader is not shown during that wait.
+    var quietFinishPending = false;
     var canvasTabs = new Set([
       "overview",
       "coordinated_views",
@@ -535,6 +538,10 @@
     function cancelScheduledFinish() {
       settleToken += 1;
       localFinishPending = false;
+      quietFinishPending = false;
+    }
+    function finishUnderway() {
+      return !shinyBusy && (localFinishPending || quietFinishPending);
     }
     function localCompletion(pane) {
       // Open mode without a selected dataset still needs to expose its upload
@@ -624,10 +631,13 @@
       if (pane !== activePane) return;
       if (announcement) announcement.textContent = '';
       clearLoaderTimers();
-      loader.classList.remove("is-visible");
-      hideTimer = window.setTimeout(function () {
-        if (!loader.classList.contains("is-visible")) loader.hidden = true;
-      }, 150);
+      // A card that never appeared has nothing to fade out.
+      if (!loader.hidden) {
+        loader.classList.remove("is-visible");
+        hideTimer = window.setTimeout(function () {
+          if (!loader.classList.contains("is-visible")) loader.hidden = true;
+        }, 150);
+      }
       activePane = null;
     }
     function begin(pane) {
@@ -658,12 +668,20 @@
       mountLoader(pane);
       loader.hidden = true;
       loader.classList.remove("is-visible");
-      showTimer = window.setTimeout(function () {
+      // Show the card only for a page that is still loading: one whose
+      // outputs have arrived is about to finish, so look again shortly instead
+      // of covering content that is already on screen.
+      var showWhenStillLoading = function () {
         if (pane !== activePane) return;
+        if (finishUnderway()) {
+          showTimer = window.setTimeout(showWhenStillLoading, 100);
+          return;
+        }
         showDetail("Loading " + pageLabel(pane) + "…");
         loader.hidden = false;
         loader.classList.add("is-visible");
-      }, 180);
+      };
+      showTimer = window.setTimeout(showWhenStillLoading, 180);
       slowTimer = window.setTimeout(function () {
         if (pane === activePane) {
           showDetail("Still loading " + pageLabel(pane) + "…");
@@ -689,6 +707,7 @@
         return;
       }
       var token = ++settleToken;
+      quietFinishPending = true;
       // Shiny can emit several values for one page. Wait for a short quiet
       // period, then cross two browser paint boundaries, so the overlay never
       // disappears between the first small output and the final chart/table.
@@ -700,7 +719,7 @@
             finish(pane);
           });
         });
-      }, 180);
+      }, 60);
     }
     function resetPages() {
       delivered = new Set();
@@ -753,7 +772,7 @@
         // input binding messages are not user edits and can arrive after draw.
         if (paneName(activePane) === 'groups' && !input.closest('#groups_controls_UI')) return;
         cancelScheduledFinish();
-        activePane.querySelectorAll('.datatables, .plotly, .shiny-plot-output').forEach(function (output) {
+        activePane.querySelectorAll('.datatables, .plotly, .shiny-plot-output, .cerebro-chart').forEach(function (output) {
           clearDelivered(output); drawnTables.delete(output); drawnPlots.delete(output);
         });
       })

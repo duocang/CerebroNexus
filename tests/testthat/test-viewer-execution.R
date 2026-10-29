@@ -62,12 +62,76 @@ test_that("Linked tooltips, deferred groups and selection survive hover toggles"
   viewer_browser_test("linked")
 })
 
+test_that("Single views take cell names from the canonical cell-name resource", {
+  viewer_browser_test("auxCellNames")
+})
+
+test_that("Cell names delivered to a single view survive the first Linked views bundle", {
+  viewer_browser_test("auxAcrossLinked")
+})
+
 test_that("Background selection and assets belong to their dataset generation", {
   viewer_browser_test("backgrounds")
 })
 
 test_that("Supplements restore selection and reject stale or malformed geometry", {
   viewer_browser_test("supplement")
+})
+
+test_that("Compact spatial scenes draw and identify only their own cells", {
+  viewer_browser_test("spatialScenes")
+})
+
+test_that("Spatial GPU buffers cover their scene and survive an unused gene", {
+  viewer_browser_test("spatialGpu")
+})
+
+test_that("A colour change keeps GPU geometry and recolours every point", {
+  viewer_browser_test("gpuColour")
+})
+
+test_that("Region outlines patch the drawn frame in place", {
+  viewer_browser_test("outlinePatch")
+})
+
+test_that("Zooming one linked panel redraws only that panel", {
+  viewer_browser_test("zoomOnePanel")
+})
+
+test_that("An unavailable gene redraws only when a gene was drawn", {
+  viewer_browser_test("geneUnavailable")
+})
+
+test_that("A filter on a deferred group draws once its values arrive", {
+  viewer_browser_test("deferredFilter")
+})
+
+test_that("Slice panels draw shared rows named through the cell-name resource", {
+  viewer_browser_test("slicePanels")
+})
+
+test_that("An appearance patch with the drawn values does not redraw", {
+  viewer_browser_test("appearanceUnchanged")
+})
+
+test_that("A point size slider draws in the browser before R replies", {
+  viewer_browser_test("pointSliderLocal")
+})
+
+test_that("A display toggle draws in the browser before R replies", {
+  viewer_browser_test("toggleLocal")
+})
+
+test_that("A paint-order patch reorders the drawn cells", {
+  viewer_browser_test("paintOrderPatch")
+})
+
+test_that("Group filters sent as codes filter the drawn frame in the browser", {
+  viewer_browser_test("singleClientFilters")
+})
+
+test_that("A colour change that resizes the legend draws once", {
+  viewer_browser_test("legendRelayout")
 })
 
 test_that("Linked resource hydration validates the primary bundle identity", {

@@ -112,11 +112,11 @@ viewer_drag_mouse <- function(app, x1, y1, x2, y2) {
 viewer_set_selectize <- function(app, input_id, value) {
   input_json <- jsonlite::toJSON(input_id, auto_unbox = TRUE)
   values_json <- jsonlite::toJSON(as.character(value), auto_unbox = FALSE)
-  ## Gene controls register their search on the first visit, after the page's
+  ## Gene controls receive their gene list on the first visit, after the page's
   ## data chain has run; allow for that under load.
   app$wait_for_js(
     sprintf(
-      "typeof document.getElementById(%s)?.selectize?.settings.load === 'function'",
+      "window.CerebroGeneSelector?.ready(document.getElementById(%s)?.selectize)",
       input_json
     ),
     timeout = 15000

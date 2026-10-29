@@ -166,6 +166,11 @@
       scatterControlFields[prefix + '_' + field] = field;
     });
   });
+  // Spatial keeps its own point settings per section/ROI (never shared).
+  var spatialPointFields = {
+    'spatial_projection_point_size': 'point_size',
+    'spatial_projection_point_opacity': 'point_opacity'
+  };
   function sharedScatterValues() {
     return sharedScatter && sameDatasetContext(sharedScatter.dataset_context,
       currentDatasetContext()) ? sharedScatter.values : null;
@@ -185,7 +190,10 @@
     // Spatial has its own section/ROI settings. Never apply projection edits.
     if (singleActive === 'spatial_projection') return;
     ps = values.point_size; pointOpacity = values.point_opacity;
-    if (!singleActive || singleClientPercentage()) {
+    // Every caller built the mask for the current cells; an echo of the
+    // drawn value keeps it.
+    if ((!singleActive || singleClientPercentage()) &&
+        pctShow !== values.percentage_cells_to_show) {
       pctShow = values.percentage_cells_to_show;
       rebuildPctMask();
     }
@@ -195,6 +203,14 @@
   function singleClientPercentage() {
     var view = singleActive && singleView(singleActive);
     return !!(view && view.data && view.data.client_percentage);
+  }
+  // The IR display sliders set the shared scatter settings only for the
+  // Clonal UMAP; on Paired Scatter they restyle that plot alone.
+  function sharedScatterControl(id) {
+    if (!/^ir_d_/.test(id)) return true;
+    var inputs = window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$inputValues;
+    var tab = inputs ? inputs.ir_tabs : null;
+    return !tab || tab === 'Clonal UMAP';
   }
   function publishScatterEdit(field, value) {
     if (!field || !currentDatasetContext()) return;
@@ -227,6 +243,16 @@
   function currentDatasetContextKey() {
     var api = datasetContextApi();
     return api && api.key ? api.key(currentDatasetContext()) : '';
+  }
+  // Views are requested while their context is still pending. A frame that
+  // arrives before the context is ready (the server already had the dataset,
+  // as after a reconnect) cannot be drawn: forget its request, so the view is
+  // requested again once the context is ready.
+  function releaseEarlySingleRequest(message) {
+    var api = datasetContextApi();
+    if (!message || !message.id || !api || api.phase() !== 'pending' ||
+        api.key(message.dataset_context) !== currentDatasetContextKey()) return;
+    singleRequests.delete(singleRequestKey(message.id, message.dataset_context));
   }
   function datasetMessageFresh(message) {
     var api = datasetContextApi();
@@ -403,6 +429,9 @@
       return el.getContext('2d');
     } catch (e) { return null; }
   })();
+  // Parsed colours by input string ('' when the canvas rejects it): per-cell
+  // colours repeat, and each parse sets fillStyle four times.
+  var cssColorCache = new Map();
   function cssColor(c, fallback) {
     var s = String(c == null ? '' : c).trim();
     var fb = fallback || '#888888';
@@ -410,10 +439,16 @@
       return /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s)
         ? s : fb;
     }
-    _colCtx.fillStyle = '#000000'; _colCtx.fillStyle = s;
-    var a = _colCtx.fillStyle;
-    _colCtx.fillStyle = '#ffffff'; _colCtx.fillStyle = s;
-    return a === _colCtx.fillStyle ? a : fb;
+    var parsed = cssColorCache.get(s);
+    if (parsed === undefined) {
+      _colCtx.fillStyle = '#000000'; _colCtx.fillStyle = s;
+      var a = _colCtx.fillStyle;
+      _colCtx.fillStyle = '#ffffff'; _colCtx.fillStyle = s;
+      parsed = a === _colCtx.fillStyle ? a : '';
+      if (cssColorCache.size >= 65536) cssColorCache.clear();
+      cssColorCache.set(s, parsed);
+    }
+    return parsed || fb;
   }
   // Validate every colour once, as the bundle lands, so no consumer has to
   // remember to. The canvas is why this is done here rather than at each sink:
@@ -552,6 +587,9 @@
   function unitOf(space) {
     var xs = space.x, ys = space.y, zs = space.z || null, n = xs.length;
     var xr = space.xRange, yr = space.yRange;
+    // A spatial scene lists its cells; every other cell has no position.
+    var cells = !zs && space._cells && space._cells.length <= n ? space._cells : null;
+    var m = cells ? cells.length : n;
     // A linked spatial lens must use the current section's occupied extent as
     // its initial camera. Builder/editor viewports can still travel with the
     // data as coordinate metadata, but a viewport saved in a differently
@@ -568,7 +606,8 @@
     var x1 = fixedX ? Math.max(Number(xr[0]), Number(xr[1])) : -Infinity;
     var y0 = fixedY ? Math.min(Number(yr[0]), Number(yr[1])) : Infinity;
     var y1 = fixedY ? Math.max(Number(yr[0]), Number(yr[1])) : -Infinity;
-    for (var i = 0; i < n; i++) {
+    for (var c = 0; c < m; c++) {
+      var i = cells ? cells[c] : c;
       var xv = xs[i], yv = ys[i];
       if (xv == null || yv == null || isNaN(xv) || isNaN(yv)) continue;
       if (!fixedX) { if (xv < x0) x0 = xv; if (xv > x1) x1 = xv; }
@@ -626,7 +665,8 @@
     // at a corner of the BOX can still show nothing at all.
     var occ = new Uint8Array(OCC * OCC), cmx = 0, cmy = 0, cnt = 0;
     var sh = nz ? space._shrink3 : 1;
-    for (var j = 0; j < n; j++) {
+    for (var cj = 0; cj < m; cj++) {
+      var j = cells ? cells[cj] : cj;
       var a = xs[j], b = ys[j];
       if (a == null || isNaN(a) || b == null || isNaN(b)) { ok[j] = 0; continue; }
       // 3-D clouds shrink about the centre so x/y/z share one scale and the
@@ -759,15 +799,15 @@
   }
   function paintOrder(p) {
     if (!D) return null;
-    var mode = panelColorMode(p);
-    var key = mode + '|' + (D.gene ? D.gene.gene : '');
+    var mode = panelColorMode(p), f = fieldForMode(mode);
+    var key = mode + '|' + (D.gene ? D.gene.gene : '') + '|' +
+      !!(f && f.paintOrder !== false);
     if (_ordD === D && _ordKey === key) return _ordVal;
     var vals = null, span = 255;
     if (mode === GENE_MODE && D.gene) {
       vals = D.gene.v;
-    } else {
-      var f = fieldForMode(mode);
-      if (f && f.paintOrder !== false) { vals = f.v; span = f.scale || 255; }
+    } else if (f && f.paintOrder !== false) {
+      vals = f.v; span = f.scale || 255;
     }
     // Expression fields keep full-precision values: match Seurat's ascending
     // order, with missing values first and stable ties. Quantised-only sources
@@ -863,7 +903,8 @@
     var fld = fieldForMode(mode);
     if (fld) {
       if (fld.constantColor) return fld.constantColor;
-      if (fld.colors) return cssColor(fld.colors[i], '#e6e7ea');
+      // directColorField() already validated these colours.
+      if (fld.colors) return fld.colors[i] || '#e6e7ea';
       var fv = fld.v[i];
       if (fv == null || isNaN(fv)) return '#e6e7ea';   // unpositioned / NA → faint
       var t = clipT(fv, fld.scale || 255, clipRange(p));
@@ -949,6 +990,8 @@
   // After a filter / subsample change: drop now-inactive cells from the current
   // selection, then redraw. Keeps the coordinated selection consistent.
   function applyActiveChange() {
+    // A single view's legend counts the cells it shows.
+    if (singleActive) renderLegend();
     if (sel) {
       var s = new Set();
       sel.forEach(function (i) { if (panels.some(function (p) { return p.spaceId && shown(i, p); })) s.add(i); });
@@ -1175,7 +1218,7 @@
   // narrow, which shrinks the minimap.
   function resizePanel(p, width, height) {
     var dpr = window.devicePixelRatio || 1;
-    p.W = width; p.H = height;
+    p.W = width; p.H = height; p._dpr = dpr; p._resizedUndrawn = true;
     resizePanelLayers(p, width, height, dpr);
     if (p.pane) {
       p.pane.classList.toggle('cv-narrow', width < 420);
@@ -1681,12 +1724,19 @@
     }
     return pointOpacity;
   }
+  // Per-view factor on a frame's own point sizes (HLA node size), so a size
+  // slider redraws without a new frame. Set by cerebroCellViews.scalePointSizes
+  // or a frame's data.point_scale; 1 by default.
+  var singlePointScale = Object.create(null);
+  var singlePointScaleFrame = Object.create(null);
   function radiusOf(p, i) {
     var space = spaceById[p.spaceId];
     var pointSizes = space && space.pointSizes;
     var pointSize = p._renderPointSize == null
       ? pointSizeOf(p) : p._renderPointSize;
-    if (pointSizes && Number(pointSizes[i]) > 0) pointSize = Number(pointSizes[i]);
+    if (pointSizes && Number(pointSizes[i]) > 0) {
+      pointSize = Number(pointSizes[i]) * (singlePointScale[space._pointScaleId] || 1);
+    }
     var radius = pointSize / 2;
     if (!p.depth) return radius;
     var t = (p.depth[i] - p._dmin) / p._dspan;   // 0 = furthest, 1 = nearest
@@ -1705,6 +1755,48 @@
   }
 
   var allShownData = null, allShownMask = null;
+  // Shown points of panel `p` inside `poly` (screen coordinates). The polygon
+  // is filled on a canvas over its bounding box and each point reads its
+  // pixel: a covered pixel is inside, an empty one outside, and only points
+  // on the anti-aliased edge are tested exactly (even-odd, as CBGeom.inPoly).
+  var lassoCanvas = null;
+  function lassoHits(p, poly) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, k;
+    for (k = 0; k < poly.length; k++) {
+      if (poly[k][0] < minX) minX = poly[k][0];
+      if (poly[k][0] > maxX) maxX = poly[k][0];
+      if (poly[k][1] < minY) minY = poly[k][1];
+      if (poly[k][1] > maxY) maxY = poly[k][1];
+    }
+    var x0 = Math.floor(minX), y0 = Math.floor(minY);
+    var w = Math.ceil(maxX) - x0 + 1, h = Math.ceil(maxY) - y0 + 1;
+    var hits = new Set(), mask = shownState(p).mask, sx = p.sx, sy = p.sy, ok = p.ok, i;
+    if (!(w > 0 && h > 0) || w * h > 64e6) {
+      for (i = 0; i < D.n; i++) {
+        if (ok[i] && mask[i] && CBGeom.inPoly(sx[i], sy[i], poly)) hits.add(i);
+      }
+      return hits;
+    }
+    lassoCanvas = lassoCanvas || document.createElement('canvas');
+    lassoCanvas.width = w; lassoCanvas.height = h;
+    var ctx = lassoCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0, 0, w, h);
+    ctx.beginPath();
+    ctx.moveTo(poly[0][0] - x0, poly[0][1] - y0);
+    for (k = 1; k < poly.length; k++) ctx.lineTo(poly[k][0] - x0, poly[k][1] - y0);
+    ctx.closePath();
+    ctx.fillStyle = '#000';
+    ctx.fill('evenodd');
+    var alpha = ctx.getImageData(0, 0, w, h).data;
+    for (i = 0; i < D.n; i++) {
+      if (!ok[i] || !mask[i]) continue;
+      var x = sx[i] - x0, y = sy[i] - y0;
+      if (!(x >= 0 && y >= 0 && x < w && y < h)) continue;
+      var a = alpha[((y | 0) * w + (x | 0)) * 4 + 3];
+      if (a === 255 || (a > 0 && CBGeom.inPoly(sx[i], sy[i], poly))) hits.add(i);
+    }
+    return hits;
+  }
   function shownState(p) {
     var filtered = panelPctMask(p) || dissolveThresh != null || hidden.size;
     if (!filtered) {
@@ -1720,11 +1812,42 @@
       }
       return { mask: allShownMask, count: D.n };
     }
+    // Pan, zoom and lasso redraw a panel many times with the same filters:
+    // rebuild its mask only when something that decides shown() changed.
+    var key = shownMaskKey(p), cached = p._shownCache;
+    if (cached && sameShownMaskKey(cached.key, key)) return cached.state;
     var mask = new Uint8Array(D.n), count = 0;
     for (var i = 0; i < D.n; i++) {
       if (shown(i, p)) { mask[i] = 1; count++; }
     }
-    return { mask: mask, count: count };
+    var state = { mask: mask, count: count };
+    p._shownCache = { key: key, state: state };
+    return state;
+  }
+  // Everything visible() and activeCell() read for panel `p`.
+  function shownMaskKey(p) {
+    var mode = panelColorMode(p), group = catOf(mode);
+    return {
+      data: D,
+      mode: mode,
+      continuous: mode === GENE_MODE || mode === RGB_MODE || !!fieldForMode(mode),
+      groupValues: group && group.values,
+      pctMask: panelPctMask(p),
+      dissolve: dissolveThresh,
+      conf: D.trekker && D.trekker.conf,
+      filter: gpuFilterKey(),
+      filterValues: Object.keys(groupFilter).sort().map(function (name) {
+        var g = groupFilter[name] && D.groups[name];
+        return g ? g.values : null;
+      })
+    };
+  }
+  function sameShownMaskKey(a, b) {
+    return Object.keys(a).every(function (key) {
+      if (key !== 'filterValues') return a[key] === b[key];
+      return a.filterValues.length === b.filterValues.length &&
+        a.filterValues.every(function (values, i) { return values === b.filterValues[i]; });
+    });
   }
 
   var GPU_MIN_CELLS = 20000;
@@ -1765,18 +1888,23 @@
 
   function gpuDataState(p) {
     var mode = panelColorMode(p), field = fieldForMode(mode), group = catOf(mode);
+    // Gene and RGB values colour only their own modes. Clearing an unused gene
+    // (null after undefined) must not rebuild every panel.
+    var gene = mode === GENE_MODE && D.gene ? D.gene.v : null;
+    var rgb = mode === RGB_MODE && D.rgb ? D.rgb : null;
     return {
       dataset: D.dataset_fingerprint || D.cell_fingerprint || D.dataset_id || D,
       unit: spaceById[p.spaceId] && spaceById[p.spaceId]._unit,
       mode: mode,
-      gene: D.gene && D.gene.v,
-      rgbR: D.rgb && D.rgb.r,
-      rgbG: D.rgb && D.rgb.g,
-      rgbB: D.rgb && D.rgb.b,
+      gene: gene,
+      rgbR: rgb && rgb.r,
+      rgbG: rgb && rgb.g,
+      rgbB: rgb && rgb.b,
       fieldValues: field && field.v,
       fieldColors: field && field.colors,
       fieldPalette: field && field.palette && field.palette.join(','),
       fieldConstantColor: field && field.constantColor,
+      fieldPaintOrder: !!(field && field.paintOrder),
       groupValues: group && group.values,
       groupColors: group && group.colors && group.colors.join(','),
       pctMask: panelPctMask(p),
@@ -1984,7 +2112,8 @@
     var previous = p.gpuData, oldState = p.gpuDataState;
     if (!previous || !oldState || !previous.opaque || !previous.vertexIndex ||
         panelColorMode(p) === RGB_MODE || Object.keys(state).some(function (key) {
-          return key !== 'selection' && key !== 'niche' && state[key] !== oldState[key];
+          return key !== 'selection' && key !== 'niche' && key !== 'opacity' &&
+            state[key] !== oldState[key];
         })) return null;
     // Selection only changes alpha and foreground layers. Keep the sorted
     // positions and RGB bytes; the vertex map preserves filtered/invalid cells.
@@ -2002,7 +2131,67 @@
     p.gpuDataState = state;
     p.gpuData = {positions: previous.positions, colors: colors, layers: layers,
       count: previous.count, foreground: foreground, opaque: true,
-      vertexIndex: previous.vertexIndex};
+      vertexIndex: previous.vertexIndex, ordered: previous.ordered};
+    return p.gpuData;
+  }
+
+  // A colour-only change (colour variable, palette, gene values, opacity,
+  // selection) of a panel that still draws the same cells in the same order
+  // keeps its positions: only colour and layer bytes are rebuilt, and the
+  // renderer uploads no new geometry.
+  var GPU_COLOUR_KEYS = ['mode', 'gene', 'fieldValues', 'fieldColors', 'fieldPalette',
+    'fieldConstantColor', 'groupValues', 'groupColors', 'clip', 'opacity', 'selection', 'niche'];
+  function updateGpuColors(p, state, hiSet, shownMask) {
+    var previous = p.gpuData, oldState = p.gpuDataState, unit = state.unit;
+    if (!previous || !oldState || !previous.vertexIndex || previous.ordered ||
+        !unit || unit._pending || panelColorMode(p) === RGB_MODE || paintOrder(p) ||
+        Object.keys(state).some(function (key) {
+          return GPU_COLOUR_KEYS.indexOf(key) < 0 && state[key] !== oldState[key];
+        })) return null;
+    var n = D.n, vertexIndex = previous.vertexIndex, space = spaceById[p.spaceId];
+    var cells = space && space._cells && space._cells.length <= n ? space._cells : null;
+    var visits = cells ? cells.length : n, drawn = 0, at, i;
+    for (at = 0; at < visits; at++) {
+      i = cells ? cells[at] : at;
+      var shown = !!(unit.ok[i] && shownMask[i]);
+      if (shown !== (vertexIndex[i] > 0)) return null;
+      if (shown) drawn++;
+    }
+    if (drawn !== previous.count) return null;
+    var colors = new Uint8Array(previous.colors.length);
+    // Layers follow only the selection/niche: keep them, and their upload,
+    // when only the colours change.
+    var sameLayers = state.selection === oldState.selection &&
+      state.niche === oldState.niche;
+    var layers = sameLayers ? previous.layers : new Uint32Array(previous.layers.length);
+    var group = catOf(panelColorMode(p));
+    var palette = group ? group.levels.map(function (_level, index) {
+      return gpuColor((group.colors && group.colors[index]) || PAL[index % PAL.length]);
+    }) : null;
+    var missing = group ? gpuColor('#cccccc') : null;
+    var opacity = pointOpacityOf(p), opaque = true, foreground = false;
+    for (at = 0; at < visits; at++) {
+      i = cells ? cells[at] : at;
+      var vertex = vertexIndex[i] - 1;
+      if (vertex < 0) continue;
+      var fg = !!(hiSet && hiSet.has(i));
+      var alpha = hiSet ? (fg ? 0.95 : 0.05) : opacity;
+      var category = group && group.values[i];
+      var rgba = group
+        ? (category == null || category < 0 || category >= palette.length ? missing : palette[category])
+        : gpuColor(colorOf(i, p));
+      if (rgba[3] !== 255) opaque = false;
+      colors[vertex * 4] = rgba[0];
+      colors[vertex * 4 + 1] = rgba[1];
+      colors[vertex * 4 + 2] = rgba[2];
+      colors[vertex * 4 + 3] = Math.round(rgba[3] * alpha);
+      if (!sameLayers) layers[vertex] = fg ? 1 : 0;
+      foreground = foreground || fg;
+    }
+    p.gpuDataState = state;
+    p.gpuData = {positions: previous.positions, colors: colors, layers: layers,
+      count: previous.count, foreground: foreground, opaque: opaque,
+      vertexIndex: vertexIndex, ordered: false};
     return p.gpuData;
   }
 
@@ -2013,10 +2202,17 @@
     var hiSet = (sel && sel.size) ? sel : nicheSet;
     var selectionData = updateGpuSelection(p, state, hiSet);
     if (selectionData) return selectionData;
+    var colourData = updateGpuColors(p, state, hiSet, shownMask);
+    if (colourData) return colourData;
     var unit = state.unit, order = paintOrder(p), n = D.n;
     var shared = window.CerebroSharedDatasetState;
     var sharedName = null;
     var currentSpace = spaceById[p.spaceId];
+    // A spatial scene's panel visits and uploads only the scene's cells.
+    var cells = !order && currentSpace && currentSpace._cells &&
+      currentSpace._cells.length <= n ? currentSpace._cells : null;
+    var visits = cells ? cells.length : n;
+    var capacity = cells ? Math.min(shownCount, cells.length) : shownCount;
     if (shared && shownCount === n && !order && currentSpace) {
       Object.keys(shared.projections || {}).some(function (name) {
         var projection = shared.projections[name];
@@ -2027,15 +2223,15 @@
     var projectionCache = sharedName && shared.projections[sharedName];
     var positions = sharedName && shared.gpuPositions[sharedName];
     var sharedPositionsReady = !!(positions &&
-      positions.length === shownCount * 2 && projectionCache &&
+      positions.length === capacity * 2 && projectionCache &&
       Number.isInteger(projectionCache.gpuPositionCount));
-    if (!positions || positions.length !== shownCount * 2) {
-      positions = new Float32Array(shownCount * 2);
+    if (!positions || positions.length !== capacity * 2) {
+      positions = new Float32Array(capacity * 2);
       if (sharedName) shared.gpuPositions[sharedName] = positions;
       sharedPositionsReady = false;
     }
-    var colors = new Uint8Array(shownCount * 4);
-    var layers = new Uint32Array(shownCount);
+    var colors = new Uint8Array(capacity * 4);
+    var layers = new Uint32Array(capacity);
     var categoricalGroup = rgb ? null : catOf(panelColorMode(p));
     var categoricalRgba = categoricalGroup
       ? categoricalGroup.levels.map(function (_level, index) {
@@ -2060,7 +2256,8 @@
           for (var i = 0; i < n; i++) if (unit.ok[i]) vertexIndex[i] = ++vertex;
         }
       } else {
-        for (var i = 0; i < n; i++) {
+        for (var visit = 0; visit < visits; visit++) {
+          var i = cells ? cells[visit] : visit;
           if (pending) {
             var x = pending.x[i], y = pending.y[i];
             if (x != null && y != null && isFinite(x) && isFinite(y)) {
@@ -2085,8 +2282,8 @@
         (flatRgba[2] << 16) | (flatAlpha << 24)) >>> 0;
       new Uint32Array(colors.buffer).fill(packedRgba);
     } else {
-      for (var at = 0; at < n; at++) {
-        i = order ? order[at] : at;
+      for (var at = 0; at < visits; at++) {
+        i = order ? order[at] : cells ? cells[at] : at;
         if (pending) {
           x = pending.x[i]; y = pending.y[i];
           if (x != null && y != null && isFinite(x) && isFinite(y)) {
@@ -2146,7 +2343,8 @@
       count: out,
       opaque: !rgb && opaque,
       vertexIndex: vertexIndex,
-      foreground: foreground
+      foreground: foreground,
+      ordered: !!order
     };
     return p.gpuData;
   }
@@ -2174,6 +2372,7 @@
 
   function requestSingleAux() {
     var id = singleActive, view = id && singleView(id);
+    if (view && CLIENT_SUMMARY_VIEWS[id]) requestSelectionSpec(view.dataset_context);
     var token = CBViewState.specialistLifecycle.requestAux(view);
     if (token == null) return;
     requestAnimationFrame(function () {
@@ -2243,6 +2442,7 @@
   }
 
   function draw(p, shownMask, shownCount) {
+    p._resizedUndrawn = false;
     var c = p.ctx; clearPanelLayers(p);
     if (needsUnderlay(p)) attachUnderlay(p);
     var underlay = p.underlayCtx || c;
@@ -2453,6 +2653,13 @@
     if (first) renderShownCount(first.count);
     updateResetButtons();
   }
+  // One panel whose own view changed (zoom, reset): the others are unchanged.
+  function drawPanel(p) {
+    if (drawAllDeferred || !p || !p.spaceId) return;
+    var state = shownState(p);
+    draw(p, state.mask, state.count);
+    updateResetButtons();
+  }
   // Drop any committed lasso outlines when an interaction deliberately changes
   // what the region means (for example a new selection or selection zoom).
   // Returns true if anything was cleared.
@@ -2500,7 +2707,8 @@
     var el = $(id); if (!el) return;
     el.value = String(value);
     var slider = window.jQuery(el).data('ionRangeSlider');
-    if (!slider) return;
+    // update() rebuilds the slider, ending a drag in progress on it.
+    if (!slider || (step == null && slider.result.from === Number(value))) return;
     var options = { from: Number(value) };
     if (step != null) options.step = step;
     el._cvSyncing = true;
@@ -2678,7 +2886,8 @@
     syncFocusButtons();
   }
   // Zoom one requested panel to the bounding box of its selected cells.
-  function zoomToSelection(p) {
+  // `noDraw`: the caller draws once after zooming several panels.
+  function zoomToSelection(p, noDraw) {
     if (!canZoomPanel(p)) return false;
     if (!p.focusFrom) p.focusFrom = { view: p.view };
     var u = spaceById[p.spaceId]._unit;
@@ -2694,7 +2903,7 @@
     ));
     syncFocusButtons();
     project(p);
-    drawAll();
+    if (!noDraw) drawAll();
     return true;
   }
   // Draws focusPanel: the enlarged pane first, the others as its context, and
@@ -2842,9 +3051,11 @@
   function toggleSelectionFocus(id) {
     if (id && singleActive !== id) return;
     if (syncFocusButtons()) { leaveFocus(); drawAll(); return; }
+    var zoomed = false;
     panels.forEach(function (panel) {
-      if (canZoomPanel(panel)) zoomToSelection(panel);
+      if (canZoomPanel(panel) && zoomToSelection(panel, true)) zoomed = true;
     });
+    if (zoomed) drawAll();
   }
   // Sync the active drag-mode highlight (box vs lasso) across every toolbar.
   function syncModeButtons() {
@@ -2947,7 +3158,7 @@
       p.view = clampView(p, next);
       project(p);
     }
-    drawAll();
+    drawPanel(p);
   }
   function zoomStep(p, factor) {
     if (!p._SX || !p._SY) return;
@@ -3198,27 +3409,779 @@
       pngFilename('linked-views')
     );
   }
+  // The canonical rows of the selected points as a base64 bit set (bit r of
+  // byte r >> 3 is row r): 1.3 M rows take 220 KB whatever the selection.
+  // `rows` is 'all' when point i is row i. Null if a point has no row.
+  function selectionRowBits(selection, rows) {
+    var max = -1, all = rows === 'all';
+    var ok = true;
+    selection.forEach(function (index) {
+      var row = all ? index : rows[index];
+      if (!(row >= 0)) ok = false;
+      else if (row > max) max = row;
+    });
+    if (!ok || max < 0) return null;
+    var bits = new Uint8Array((max >> 3) + 1);
+    selection.forEach(function (index) {
+      var row = all ? index : rows[index];
+      bits[row >> 3] |= 1 << (row & 7);
+    });
+    var text = '';
+    for (var i = 0; i < bits.length; i += 0x8000) {
+      text += String.fromCharCode.apply(null, bits.subarray(i, i + 0x8000));
+    }
+    return btoa(text);
+  }
+
+  // ---- single-view selection summary, drawn here --------------------------
+  // The count, profile, composition card and selected-cells plot of a
+  // selection reported by row are computed from the Viewer Pack's canonical
+  // metadata columns, not on the server (viewerSelectionSpec() in
+  // shiny_server.R). The browser writes them into elements next to the Shiny
+  // outputs, which the server leaves empty while `client_summary` is set.
+  // The ids of a cerebroSelectedCellsTableUI() box.
+  function selectionTable(prefix, extra) {
+    return Object.assign({
+      ui: prefix + '_selected_cells_table_UI',
+      output: prefix + '_details_selected_cells_table',
+      formatting: prefix + '_details_selected_cells_table_number_formatting',
+      highlighting: prefix + '_details_selected_cells_table_color_highlighting',
+      file: prefix + '_details_of_selected_cells'
+    }, extra);
+  }
+  var CLIENT_SUMMARY_VIEWS = {
+    overview_projection: { prefix: 'overview', plot: true, table: selectionTable('overview') },
+    expression_projection: { prefix: 'expression', plot: false, table: {
+      ui: 'expression_details_selected_cells_UI', output: 'expression_details_selected_cells',
+      formatting: 'expression_details_selected_cells_number_formatting',
+      highlighting: 'expression_details_selected_cells_color_highlighting',
+      file: 'expression_details_of_selected_cells', expression: true },
+      expressionPlot: { ui: 'expression_in_selected_cells_UI', output: 'expression_in_selected_cells' } },
+    spatial_projection: { prefix: 'spatial', plot: true, table: selectionTable('spatial') },
+    trajectory_projection: { prefix: 'trajectory', plot: false,
+      table: selectionTable('trajectory', { trajectory: true }) },
+    // Summarised by the main group, cell type or first group (not the colour).
+    ir_clonalUMAP_projection: { prefix: 'ir_clonalUMAP', plot: false, table: null,
+      source: 'Clonal projection', ignoreColor: true }
+  };
+  var SELECTION_COLORS = ['#e74c3c', '#7f8c8d'];
+  var selectionSpec = null, selectionSpecRequested = null;
+  var clientColumnWaiters = {}, clientSummarySerial = 0, clientPlotSerial = 0;
+  var metadataValuesResourceCache = new Map();
+
+  function whenIdle(task) {
+    if (window.requestIdleCallback) window.requestIdleCallback(task, { timeout: 2000 });
+    else setTimeout(task, 200);
+  }
+  function requestSelectionSpec(context) {
+    if (typeof Shiny === 'undefined' || !Shiny.setInputValue || !context) return;
+    if (selectionSpec && sameDatasetContext(selectionSpec.dataset_context, context)) return;
+    if (selectionSpecRequested && sameDatasetContext(selectionSpecRequested, context)) return;
+    selectionSpecRequested = context;
+    Shiny.setInputValue('cell_view_selection_spec_request',
+      { dataset_context: context, nonce: Date.now() }, { priority: 'event' });
+  }
+  function receiveSelectionSpec(message) {
+    if (!message || !datasetMessageFresh(message)) return;
+    selectionSpec = message;
+    // Fetch the columns while the user draws: the first selection then needs
+    // no request (they are canonical files, cached by the browser).
+    var view = singleActive ? singleView(singleActive) : null;
+    var context = view ? view.dataset_context : D && D.dataset_context;
+    var identity = view ? view.datasetIdentity : D && linkedBundleResourceIdentity(D);
+    if (message.unavailable || !context || !sameDatasetContext(context, message.dataset_context)) return;
+    var prefetch = function () {
+      if (selectionSpec !== message) return;
+      (message.metadata_columns || []).forEach(function (name) {
+        clientColumn(message, name, identity).catch(function () {});
+      });
+    };
+    whenIdle(prefetch);
+    // A trajectory table also reads the trajectory's own columns.
+    if (singleActive === 'trajectory_projection') {
+      whenIdle(function () {
+        if (selectionSpec === message) requestTrajectoryTable(context).catch(function () {});
+      });
+    }
+  }
+  function clientSummarySpec(id, view) {
+    var spec = selectionSpec;
+    return CLIENT_SUMMARY_VIEWS[id] && view && !view._clientSummaryOff && spec &&
+      !spec.unavailable && sameDatasetContext(spec.dataset_context, view.dataset_context)
+      ? spec : null;
+  }
+  function fetchMetadataValuesResource(resource, identity) {
+    var n = Number(resource && resource.cells);
+    if (!resource || resource.protocol !== 'canonical-metadata-values-v1' ||
+        resource.dtype !== 'float32' || !(n > 0) ||
+        !canonicalResourceIdentityMatches(resource, identity)) {
+      return Promise.reject(new Error('Metadata values resource mismatch'));
+    }
+    return fetchCachedResource(
+      resource, metadataValuesResourceCache, 'Metadata values', '',
+      function (buffer) {
+        if (buffer.byteLength !== n * 4) {
+          throw new Error('Metadata values byte count mismatch');
+        }
+        return { values: new Float32Array(buffer), bytes: buffer.byteLength };
+      }
+    );
+  }
+  // One metadata column in canonical order: categorical codes (index into
+  // `levels`, -1 for missing) or numeric values. Kept on the spec, so a new
+  // data set starts empty.
+  function clientColumn(spec, name, identity) {
+    var cache = spec._columns || (spec._columns = {});
+    if (cache[name]) return cache[name];
+    var described = spec.columns && spec.columns[name];
+    var pending = (described ? Promise.resolve(described) : requestClientColumn(spec, name))
+      .then(function (column) {
+        if (!column || column.unavailable || !column.resource) {
+          throw new Error('Metadata column unavailable');
+        }
+        if (column.kind === 'numeric') {
+          return fetchMetadataValuesResource(column.resource, identity).then(function (result) {
+            return { kind: 'numeric', name: name, values: result.values };
+          });
+        }
+        return fetchValidatedMetadataCodesResource(
+          column.resource, Number(column.resource.cells), identity
+        ).then(function (result) {
+          return { kind: 'categorical', name: name, levels: column.levels || [],
+            colors: column.colors || [], palette: !!column.palette, values: result.values };
+        });
+      });
+    cache[name] = pending;
+    pending.catch(function () { if (cache[name] === pending) delete cache[name]; });
+    return pending;
+  }
+  // Columns asked for in the same turn go in one request (an input sent twice
+  // in one batch would keep only the last value).
+  var clientColumnBatch = null;
+  function requestClientColumn(spec, name) {
+    return new Promise(function (resolve) {
+      (clientColumnWaiters[name] = clientColumnWaiters[name] || []).push({ spec: spec, resolve: resolve });
+      if (!clientColumnBatch) {
+        clientColumnBatch = { spec: spec, names: [] };
+        setTimeout(function () {
+          var batch = clientColumnBatch;
+          clientColumnBatch = null;
+          Shiny.setInputValue('cell_view_column_request',
+            { names: batch.names, dataset_context: batch.spec.dataset_context, nonce: Date.now() },
+            { priority: 'event' });
+        }, 0);
+      }
+      if (clientColumnBatch.names.indexOf(name) < 0) clientColumnBatch.names.push(name);
+    });
+  }
+  function receiveClientColumn(message) {
+    var columns = message && message.columns;
+    if (!columns) return;
+    Object.keys(columns).forEach(function (name) {
+      var waiters = clientColumnWaiters[name] || [];
+      delete clientColumnWaiters[name];
+      waiters.forEach(function (waiter) {
+        waiter.resolve(sameDatasetContext(waiter.spec.dataset_context, message.dataset_context)
+          ? columns[name] : null);
+      });
+    });
+  }
+  // Canonical rows of the selected points, without the cells of legend groups
+  // that are hidden (as viewerVisibleSelection() on the server).
+  // `points` (optional) receives the point index of each row.
+  function clientSelectedRows(points) {
+    var rows = D.rows, all = rows === 'all';
+    var group = hidden.size ? catOf(singleSpaceModes[singleSpaceIds[0]]) : null;
+    var out = new Int32Array(sel.size), k = 0;
+    sel.forEach(function (i) {
+      if (group && hidden.has(+group.values[i])) return;
+      if (points) points[k] = i;
+      out[k++] = all ? i : rows[i];
+    });
+    return out.subarray(0, k);
+  }
+  function clientSummaryTargets(id) {
+    var config = CLIENT_SUMMARY_VIEWS[id] || {};
+    return {
+      count: $(config.prefix + '_number_of_selected_cells'),
+      composition: $(id + '_composition'),
+      plot: config.plot ? $(config.prefix + '_details_selected_cells_plot') : null,
+      variable: config.plot ? $(config.prefix + '_selected_cells_plot_select_variable') : null
+    };
+  }
+  // The element the browser writes in place of a Shiny output, next to it
+  // (without an id, so no output binding takes it): shown, the output hidden.
+  function showClientTwin(el, tag, className) {
+    if (!el || !el.parentNode) return null;
+    var twin = el.nextElementSibling;
+    if (!twin || twin.getAttribute('data-client-twin') !== el.id) {
+      twin = document.createElement(tag);
+      twin.setAttribute('data-client-twin', el.id);
+      twin.className = className;
+      el.parentNode.insertBefore(twin, el.nextSibling);
+    }
+    el.style.display = 'none';
+    twin.style.display = '';
+    return twin;
+  }
+  // The Shiny output shown again in place of its twin.
+  function hideClientTwin(el) {
+    if (!el) return;
+    el.style.display = '';
+    var twin = el.nextElementSibling;
+    if (twin && twin.getAttribute('data-client-twin') === el.id) twin.style.display = 'none';
+  }
+  function hideClientSummary(id) {
+    var targets = clientSummaryTargets(id), config = CLIENT_SUMMARY_VIEWS[id] || {};
+    [targets.count, targets.composition, targets.plot,
+      config.table && $(config.table.output),
+      config.expressionPlot && $(config.expressionPlot.output)].forEach(hideClientTwin);
+  }
+  // A summary that cannot be drawn here goes back to the server.
+  function clientSummaryFailed(id) {
+    var view = singleView(id);
+    if (view) view._clientSummaryOff = true;
+    hideClientSummary(id);
+    if (singleActive === id) reportSelection('interaction');
+  }
+  function countCodes(column, rows) {
+    var counts = new Float64Array(column.levels.length), values = column.values;
+    for (var k = 0; k < rows.length; k++) {
+      var code = values[rows[k]];
+      if (code >= 0) counts[code]++;
+    }
+    return counts;
+  }
+  function renderClientCount(el, spec, rows, profile, source) {
+    if (!el) return;
+    var html = '<span>Selected <b>' + fmt(rows.length) + '</b> / ' + fmt(spec.total) +
+      ' ' + esc(spec.unit || 'cells') + '</span>';
+    if (profile) {
+      var counts = countCodes(profile, rows), top = -1, sum = 0;
+      for (var c = 0; c < counts.length; c++) {
+        sum += counts[c];
+        if (counts[c] > 0 && (top < 0 || counts[c] > counts[top])) top = c;
+      }
+      if (top >= 0) {
+        html += '<span class="cerebro-selection-status-profile">' +
+          esc(profile.levels[top]) + ' · ' +
+          Math.round(100 * counts[top] / sum) + '%</span>';
+      }
+    }
+    if (source) {
+      html += '<span class="cerebro-selection-status-origin">Selected in ' +
+        esc(source) + '</span>';
+    }
+    el.innerHTML = html;
+  }
+  function renderClientComposition(el, spec, rows, column) {
+    if (!el) return;
+    if (!column || !rows.length) { el.innerHTML = ''; return; }
+    var counts = countCodes(column, rows), order = [], total = 0;
+    for (var c = 0; c < counts.length; c++) {
+      if (counts[c] > 0 && String(column.levels[c]) !== '') { order.push(c); total += counts[c]; }
+    }
+    if (!total) { el.innerHTML = ''; return; }
+    order.sort(function (a, b) { return counts[b] - counts[a] || a - b; });
+    var shown = order.slice(0, 5).map(function (c) {
+      return { label: column.levels[c], count: counts[c], color: column.colors[c] };
+    });
+    if (order.length > 5) {
+      var other = 0;
+      order.slice(5).forEach(function (c) { other += counts[c]; });
+      shown.push({ label: 'Other', count: other, color: '#aeb5bb' });
+    }
+    var rowsHtml = shown.map(function (item) {
+      var percent = 100 * item.count / total;
+      var color = cssColor(item.color) || '#aeb5bb';
+      return '<div class="cerebro-selection-composition-row">' +
+        '<span class="cerebro-selection-composition-label"><i style="background:' + color +
+        '"></i><span>' + esc(item.label) + '</span></span>' +
+        '<span class="cerebro-selection-composition-track"><i style="width:' +
+        percent.toFixed(1) + '%;background:' + color + '"></i></span>' +
+        '<span class="cerebro-selection-composition-value">' + fmt(item.count) +
+        ' · ' + Math.round(percent) + '%</span></div>';
+    }).join('');
+    el.innerHTML = '<div class="cerebro-selection-composition-card" role="status" aria-live="polite">' +
+      '<div class="cerebro-selection-composition-head">' +
+      '<button type="button" class="cerebro-selection-composition-drag" ' +
+      'aria-label="Move composition card; use arrow keys" title="Drag to move">' +
+      '<span aria-hidden="true">&#10247;</span></button>' +
+      '<strong>Composition</strong><span>' + fmt(rows.length) + ' / ' + fmt(spec.total) +
+      '</span></div><div class="cerebro-selection-composition-sub">Selected ' +
+      esc(spec.unit || 'cells') + ' · by ' + esc(column.name) +
+      '</div><div class="cerebro-selection-composition-rows">' + rowsHtml + '</div></div>';
+  }
+  function updateClientSelectionSummary(id) {
+    var view = singleView(id), spec = clientSummarySpec(id, view);
+    if (!spec || !sel || !sel.size || !D || !D.rows) {
+      hideClientSummary(id);
+      return;
+    }
+    var targets = clientSummaryTargets(id);
+    var countEl = showClientTwin(targets.count, 'span', 'cerebro-selection-status-count');
+    var compositionEl = showClientTwin(targets.composition, 'div',
+      'cerebro-selection-composition-slot');
+    var serial = ++clientSummarySerial, rows = clientSelectedRows();
+    var summaryConfig = CLIENT_SUMMARY_VIEWS[id];
+    var source = summaryConfig.source || (view.meta && view.meta.space_label);
+    renderClientCount(countEl, spec, rows, null, source);
+    // The groups the server summarised by (cerebroSelectionSummary()).
+    var groups = spec.groups || [];
+    var colorVariable = !summaryConfig.ignoreColor && view.meta && view.meta.color_variable;
+    var described = function (name) { return name && spec.columns && spec.columns[name]; };
+    var cellType = groups.filter(function (name) {
+      return String(name).toLowerCase().replace(/[^a-z0-9]/g, '').indexOf('celltype') === 0;
+    })[0];
+    var colored = groups.indexOf(colorVariable) >= 0 ? colorVariable : null;
+    var profileName = [spec.main_group, cellType, colored].concat(groups).filter(described)[0];
+    var compositionName = [cellType, colored].concat(groups).filter(described)[0];
+    var names = [profileName, compositionName].filter(Boolean);
+    Promise.all(names.map(function (name) {
+      return clientColumn(spec, name, view.datasetIdentity);
+    })).then(function (columns) {
+      if (serial !== clientSummarySerial || singleActive !== id) return;
+      var byName = {};
+      names.forEach(function (name, k) { byName[name] = columns[k]; });
+      renderClientCount(countEl, spec, rows, byName[profileName], source);
+      renderClientComposition(compositionEl, spec, rows, byName[compositionName]);
+    }).catch(function () { clientSummaryFailed(id); });
+    renderClientSelectionPlot(id);
+  }
+  // R's quantile(type = 7) of sorted values.
+  function quantile7(sorted, p) {
+    var h = (sorted.length - 1) * p, lo = Math.floor(h);
+    return lo + 1 < sorted.length ? sorted[lo] + (h - lo) * (sorted[lo + 1] - sorted[lo]) : sorted[lo];
+  }
+  // R's quantile(type = 8) of sorted values (compactViolinData()'s sample).
+  function quantile8(sorted, p) {
+    var n = sorted.length, h = (n + 1 / 3) * p + 1 / 3, j = Math.floor(h);
+    if (j < 1) return sorted[0];
+    if (j >= n) return sorted[n - 1];
+    return sorted[j - 1] + (h - j) * (sorted[j] - sorted[j - 1]);
+  }
+  // One violin of cerebroViolinData(): exact summary of every value, density
+  // over at most 4096 mid-quantiles (cerebroViolinDensity()).
+  function violinGroup(values, maxPoints) {
+    maxPoints = maxPoints || 4096;
+    var sorted = values.sort(), n = sorted.length, sum = 0;
+    for (var i = 0; i < n; i++) sum += sorted[i];
+    var q1 = quantile7(sorted, 0.25), median = quantile7(sorted, 0.5), q3 = quantile7(sorted, 0.75);
+    var iqr = q3 - q1, lowerfence = sorted[n - 1], upperfence = sorted[0];
+    for (i = 0; i < n; i++) if (sorted[i] >= q1 - 1.5 * iqr) { lowerfence = sorted[i]; break; }
+    for (i = n - 1; i >= 0; i--) if (sorted[i] <= q3 + 1.5 * iqr) { upperfence = sorted[i]; break; }
+    var m = Math.min(n, maxPoints), sample = new Float64Array(m);
+    for (i = 0; i < m; i++) sample[i] = n > maxPoints ? quantile8(sorted, (i + 0.5) / m) : sorted[i];
+    var lo = sorted[0], hi = sorted[n - 1], density = [];
+    if (m >= 2 && hi > lo) {
+      var mean = 0, ss = 0;
+      for (i = 0; i < m; i++) mean += sample[i];
+      mean /= m;
+      for (i = 0; i < m; i++) ss += (sample[i] - mean) * (sample[i] - mean);
+      var sd = Math.sqrt(ss / (m - 1));
+      var spread = Math.min(sd, (quantile7(sample, 0.75) - quantile7(sample, 0.25)) / 1.349);
+      if (!(spread > 0)) spread = sd;
+      var bw = 1.059 * spread * Math.pow(m, -0.2);
+      if (bw > 0 && isFinite(bw)) {
+        var peak = 0;
+        for (var g = 0; g < 96; g++) {
+          var x = lo + (hi - lo) * g / 95, d = 0;
+          for (i = 0; i < m; i++) { var z = (x - sample[i]) / bw; d += Math.exp(-0.5 * z * z); }
+          density.push(d);
+          if (d > peak) peak = d;
+        }
+        density = density.map(function (d) { return Number((d / peak).toPrecision(3)); });
+      }
+    }
+    return {
+      n: n, mean: sum / n, q1: q1, median: median, q3: q3, lowerfence: lowerfence,
+      upperfence: upperfence, minimum: lo, maximum: hi, approximate: n > maxPoints,
+      violin: { lo: lo, hi: hi, density: density }
+    };
+  }
+  function selectionViolinChart(column, rows, universe, total, name) {
+    var values = column.values, n = universe === 'all' ? total : universe.length;
+    var chosen = new Uint8Array(values.length), k;
+    for (k = 0; k < rows.length; k++) chosen[rows[k]] = 1;
+    var picked = new Float32Array(rows.length), rest = new Float32Array(n);
+    var a = 0, b = 0;
+    for (k = 0; k < rows.length; k++) {
+      var v = values[rows[k]];
+      if (isFinite(v)) picked[a++] = v;
+    }
+    for (k = 0; k < n; k++) {
+      var row = universe === 'all' ? k : universe[k];
+      if (chosen[row]) continue;
+      var w = values[row];
+      if (isFinite(w)) rest[b++] = w;
+    }
+    return selectedViolins(name, picked.subarray(0, a), rest.subarray(0, b));
+  }
+  // cerebroViolinData() of the selected against the other values.
+  // `fill` colours both violins (an RGB channel), `panel` titles a panel.
+  function selectedViolins(title, selected, others, fill, maxPoints, panel) {
+    var chart = { type: 'violin', mode: 'number', y_title: title, title: panel || null,
+      groups: [], colors: [], n: [], mean: [], q1: [], median: [], q3: [],
+      lowerfence: [], upperfence: [], minimum: [], maximum: [], approximate: [], violins: [] };
+    [['selected', selected, 0], ['not selected', others, 1]].forEach(function (entry) {
+      if (!entry[1].length) return;
+      var group = violinGroup(entry[1], maxPoints);
+      chart.groups.push(entry[0]); chart.colors.push(fill || SELECTION_COLORS[entry[2]]);
+      ['n', 'mean', 'q1', 'median', 'q3', 'lowerfence', 'upperfence', 'minimum',
+        'maximum', 'approximate'].forEach(function (key) { chart[key].push(group[key]); });
+      chart.violins.push(group.violin);
+    });
+    return chart;
+  }
+  function selectionBarChart(column, rows) {
+    var counts = countCodes(column, rows), categories = [], colors = [], values = [];
+    for (var c = 0; c < counts.length; c++) {
+      if (!(counts[c] > 0)) continue;
+      categories.push(String(column.levels[c]));
+      colors.push(column.colors[c] || '#898989');
+      values.push(counts[c]);
+    }
+    return { type: 'bar', categories: categories, series: ['Number of cells'],
+      category_colors: colors, values: [values], percent: false, format: 'integer',
+      outline: null, y_title: 'Number of cells' };
+  }
+  // The expression column of a Gene expression table: the drawn values of
+  // one flat panel (a gene, or the mean of several), else none.
+  // The expression series of a Gene expression frame, as
+  // expressionSummaryData() on the server: one (a gene, or the mean of
+  // several; column expression_level), one per gene in separate panels, or one
+  // per RGB channel. Null when the frame does not hold them.
+  var RGB_CHANNELS = { r: '#dc2626', g: '#16a34a', b: '#2563eb' };
+  function clientExpressionSeries(view) {
+    var data = view && view.data, meta = view && view.meta || {};
+    if (!data || !D) return null;
+    var aligned = function (values) { return values instanceof Float64Array && values.length === D.n; };
+    if (meta.color_type === 'rgb') {
+      var genes = data.rgb_genes || {}, rgb = data.rgb || {};
+      var channels = Object.keys(RGB_CHANNELS).filter(function (c) { return genes[c] != null; });
+      if (!channels.length || !channels.every(function (c) { return aligned(rgb[c]); })) return null;
+      return channels.map(function (c) {
+        return { label: c.toUpperCase() + ' · ' + genes[c], values: rgb[c], color: RGB_CHANNELS[c] };
+      });
+    }
+    if (meta.color_type !== 'continuous') return null;
+    if (aligned(data.color)) {
+      return [{ label: 'expression_level', values: data.color }];
+    }
+    var map = data.color && typeof data.color === 'object' ? data.color : null;
+    var names = map ? Object.keys(map) : [];
+    if (names.length < 2 || !names.every(function (name) { return aligned(map[name]); })) return null;
+    return names.map(function (name) { return { label: name, values: map[name] }; });
+  }
+  function clientTableReady(id, view) {
+    var config = CLIENT_SUMMARY_VIEWS[id];
+    return !!(config && config.table && D && Array.isArray(D.cells) && D.cells.length === D.n &&
+      (!config.table.expression || clientExpressionSeries(view)));
+  }
+  // The shown trajectory's DR_1, DR_2, pseudotime and state by canonical row
+  // (trajectory_table_resource() on the server), for its table.
+  var trajectoryTableWaiters = [], trajectoryTableFiles = new Map();
+  function requestTrajectoryTable(context) {
+    return new Promise(function (resolve) {
+      trajectoryTableWaiters.push({ context: context, resolve: resolve });
+      if (trajectoryTableWaiters.length === 1) {
+        Shiny.setInputValue('trajectory_table_resource_request',
+          { dataset_context: context, nonce: Date.now() }, { priority: 'event' });
+      }
+    }).then(function (message) {
+      if (!message || message.unavailable || !message.url) throw new Error('Trajectory table unavailable');
+      var url = String(message.url), n = Number(message.cells);
+      if (!trajectoryTableFiles.has(url)) {
+        var pending = window.fetch(url, { credentials: 'same-origin', cache: 'force-cache' })
+          .then(function (response) {
+            if (!response.ok) throw new Error('Trajectory table request failed');
+            return response.arrayBuffer();
+          }).then(function (buffer) {
+            if (buffer.byteLength !== n * 20) throw new Error('Trajectory table byte count mismatch');
+            return {
+              rows: new Int32Array(buffer, 0, n), dr1: new Float32Array(buffer, 4 * n, n),
+              dr2: new Float32Array(buffer, 8 * n, n), pseudotime: new Float32Array(buffer, 12 * n, n),
+              state: new Int32Array(buffer, 16 * n, n), levels: message.state_levels || [], lookup: null
+            };
+          });
+        trajectoryTableFiles.set(url, pending);
+        pending.catch(function () { trajectoryTableFiles.delete(url); });
+      }
+      return trajectoryTableFiles.get(url);
+    });
+  }
+  function receiveTrajectoryTable(message) {
+    var waiters = trajectoryTableWaiters;
+    trajectoryTableWaiters = [];
+    waiters.forEach(function (waiter) {
+      waiter.resolve(message && sameDatasetContext(waiter.context, message.dataset_context)
+        ? message : null);
+    });
+  }
+  // The metadata columns of a table, read at the listed canonical rows.
+  function metadataTableColumns(loaded, rows) {
+    return loaded.filter(Boolean).map(function (column) {
+      var values = column.values;
+      return { name: column.name, kind: column.kind, levels: column.levels,
+        colors: column.colors, palette: column.palette,
+        value: function (i) { return values[rows[i]]; } };
+    });
+  }
+  // `holder` keeps whether the table is open across rebuilt boxes.
+  function mountSelectionTable(twin, n, columns, table, spec, holder) {
+    var formatting = $(table.formatting), highlighting = $(table.highlighting);
+    window.CerebroSelectionTable.mount(twin, {
+      n: n, columns: columns, fileName: table.file,
+      numberFormatting: !formatting || formatting.checked,
+      colorHighlighting: !highlighting || highlighting.checked,
+      colors: spec.table_colors,
+      open: !!holder._clientTableOpen,
+      onToggle: function (open) { holder._clientTableOpen = open; }
+    });
+  }
+  var clientTableSerial = 0;
+  function renderClientSelectionTable(id) {
+    var view = singleView(id), spec = clientSummarySpec(id, view);
+    var config = CLIENT_SUMMARY_VIEWS[id], table = config && config.table;
+    var output = table && $(table.output);
+    if (!spec || !output || !window.CerebroSelectionTable || !sel || !sel.size ||
+        !D || !D.rows || !clientTableReady(id, view)) return;
+    var twin = showClientTwin(output, 'div', 'cerebro-selection-table');
+    var points = new Int32Array(sel.size), rows = clientSelectedRows(points);
+    var cells = D.cells, expression = table.expression ? clientExpressionSeries(view) : null;
+    var names = (spec.metadata_columns || []).slice();
+    var serial = ++clientTableSerial;
+    var trajectory = table.trajectory
+      ? requestTrajectoryTable(view.dataset_context)
+      : Promise.resolve(null);
+    Promise.all([trajectory].concat(names.map(function (name) {
+      return clientColumn(spec, name, view.datasetIdentity).catch(function () { return null; });
+    }))).then(function (all) {
+      if (serial !== clientTableSerial || singleActive !== id || !twin.isConnected) return;
+      var path = all[0], loaded = all.slice(1);
+      var columns = [{ name: 'cell_barcode', kind: 'text',
+        value: function (i) { return cells[points[i]]; } }];
+      if (path) {
+        // As the server's table: the trajectory's columns after the names,
+        // then the metadata and the canonical row (cell_index).
+        if (!path.lookup) {
+          path.lookup = new Int32Array(spec.total).fill(-1);
+          for (var r = 0; r < path.rows.length; r++) path.lookup[path.rows[r]] = r;
+        }
+        var at = function (i) { return path.lookup[rows[i]]; };
+        [['DR_1', path.dr1], ['DR_2', path.dr2], ['pseudotime', path.pseudotime]].forEach(function (entry) {
+          var values = entry[1];
+          columns.push({ name: entry[0], kind: 'numeric',
+            value: function (i) { var k = at(i); return k >= 0 ? values[k] : NaN; } });
+        });
+        columns.push({ name: 'state', kind: 'categorical', levels: path.levels, colors: [],
+          value: function (i) { var k = at(i); return k >= 0 ? path.state[k] : -1; } });
+      }
+      (expression || []).forEach(function (series) {
+        var values = series.values;
+        columns.push({ name: series.label, kind: 'numeric',
+          value: function (i) { return values[points[i]]; } });
+      });
+      columns = columns.concat(metadataTableColumns(loaded, rows));
+      if (path) {
+        columns.push({ name: 'cell_index', kind: 'numeric',
+          value: function (i) { return rows[i] + 1; } });
+      }
+      mountSelectionTable(twin, rows.length, columns, table, spec, view);
+    }).catch(function () { clientSummaryFailed(id); });
+  }
+  // Gene expression's "Expression in selected cells" for one flat panel: the
+  // drawn values of the selected points against the other points the group
+  // filters keep (plotExpressionSummary() on the server).
+  function clientFilterPass(i) {
+    for (var name in groupFilter) {
+      if (name.indexOf(SINGLE_FILTER_PREFIX) !== 0 || !groupFilter[name]) continue;
+      var group = D.groups[name];
+      if (group && !groupFilter[name].has(+group.values[i])) return false;
+    }
+    return true;
+  }
+  var clientExpressionSerial = 0;
+  function renderClientExpressionPlot(id) {
+    var view = singleView(id), config = CLIENT_SUMMARY_VIEWS[id];
+    var target = config && config.expressionPlot && $(config.expressionPlot.output);
+    var series = clientExpressionSeries(view);
+    if (!target || !series || !clientSummarySpec(id, view) || !window.CerebroCharts ||
+        !sel || !sel.size || !D) return;
+    var twin = showClientTwin(target, 'div', 'cerebro-chart');
+    var serial = ++clientExpressionSerial, n = D.n, chosen = new Uint8Array(n), kept = new Uint8Array(n);
+    sel.forEach(function (i) { chosen[i] = 1; });
+    for (var i = 0; i < n; i++) kept[i] = clientFilterPass(i) ? 1 : 0;
+    // The density budget of plotExpressionSummary(), shared by the panels.
+    var points = Math.max(32, Math.min(4096, Math.floor(65536 / (2 * series.length))));
+    var panels = series.map(function (entry) {
+      var values = entry.values, picked = new Float32Array(sel.size), rest = new Float32Array(n);
+      var a = 0, b = 0;
+      for (var k = 0; k < n; k++) {
+        var v = values[k];
+        if (!kept[k] || !isFinite(v)) continue;
+        if (chosen[k]) picked[a++] = v; else rest[b++] = v;
+      }
+      return selectedViolins('Expression level', picked.subarray(0, a), rest.subarray(0, b),
+        entry.color, points, series.length > 1 ? entry.label : null);
+    });
+    if (serial === clientExpressionSerial && twin.isConnected) {
+      window.CerebroCharts.render(twin, panels.length === 1 ? panels[0]
+        : { type: 'violin', mode: 'number', y_title: 'Expression level', panels: panels });
+    }
+  }
+  // Linked views' plot and table of selected cells. The panels hold every
+  // cell in canonical order, so a selected index is a canonical row.
+  var LINKED_SELECTION = {
+    ui: 'coordviews_selected_cells_UI', plot: 'coordviews_selected_cells_plot',
+    variable: 'coordviews_selected_cells_plot_variable', table: 'coordviews_selected_cells_table',
+    formatting: 'coordviews_selected_cells_table_number_formatting',
+    highlighting: 'coordviews_selected_cells_table_color_highlighting',
+    file: 'linked_views_selected_cells'
+  };
+  var linkedClientOff = false, linkedSelectionSerial = 0;
+  function linkedSelectionSpec() {
+    var spec = selectionSpec;
+    return !singleActive && D && !linkedClientOff && spec && !spec.unavailable &&
+      sameDatasetContext(spec.dataset_context, D.dataset_context) ? spec : null;
+  }
+  function linkedSelectionRows() {
+    var rows = new Int32Array(sel.size), k = 0;
+    sel.forEach(function (i) { rows[k++] = i; });
+    return rows;
+  }
+  function linkedSelectionFailed() {
+    linkedClientOff = true;
+    hideClientTwin($(LINKED_SELECTION.plot));
+    hideClientTwin($(LINKED_SELECTION.table));
+    if (!singleActive) reportSelection('interaction');
+  }
+  function renderLinkedSelection() {
+    var spec = linkedSelectionSpec();
+    if (!spec || !sel || !sel.size || !window.CerebroCharts || !window.CerebroSelectionTable) return;
+    var identity = linkedBundleResourceIdentity(D), serial = ++linkedSelectionSerial;
+    var rows = linkedSelectionRows(), total = D.n;
+    var plot = $(LINKED_SELECTION.plot), variable = $(LINKED_SELECTION.variable);
+    if (plot && variable && variable.value) {
+      var plotTwin = showClientTwin(plot, 'div', 'cerebro-chart');
+      var name = variable.value;
+      clientColumn(spec, name, identity).then(function (column) {
+        if (serial !== linkedSelectionSerial || singleActive || !plotTwin.isConnected) return;
+        window.CerebroCharts.render(plotTwin, column.kind === 'numeric'
+          ? selectionViolinChart(column, rows, 'all', total, name)
+          : selectionBarChart(column, rows));
+      }).catch(linkedSelectionFailed);
+    }
+    var table = $(LINKED_SELECTION.table);
+    if (!table || !spec.cell_names) return;
+    var tableTwin = showClientTwin(table, 'div', 'cerebro-selection-table');
+    var names = (spec.metadata_columns || []).slice();
+    Promise.all([fetchCellNames(spec.cell_names, identity)].concat(names.map(function (n) {
+      return clientColumn(spec, n, identity).catch(function () { return null; });
+    }))).then(function (loaded) {
+      if (serial !== linkedSelectionSerial || singleActive || !tableTwin.isConnected) return;
+      var cellNames = loaded[0].names;
+      mountSelectionTable(tableTwin, rows.length, [{ name: 'cell_barcode', kind: 'text',
+        value: function (i) { return cellNames[rows[i]]; } }]
+        .concat(metadataTableColumns(loaded.slice(1), rows)), LINKED_SELECTION, spec, LINKED_SELECTION);
+    }).catch(linkedSelectionFailed);
+  }
+  function renderClientSelectionPlot(id) {
+    var view = singleView(id), spec = clientSummarySpec(id, view);
+    var targets = clientSummaryTargets(id);
+    if (!spec || !targets.plot || !targets.variable || !window.CerebroCharts ||
+        !sel || !sel.size || !D || !D.rows) return;
+    var name = targets.variable.value;
+    if (!name) return;
+    var twin = showClientTwin(targets.plot, 'div', 'cerebro-chart');
+    var serial = ++clientPlotSerial, rows = clientSelectedRows(), universe = D.rows;
+    clientColumn(spec, name, view.datasetIdentity).then(function (column) {
+      if (serial !== clientPlotSerial || singleActive !== id || !twin.isConnected) return;
+      window.CerebroCharts.render(twin, column.kind === 'numeric'
+        ? selectionViolinChart(column, rows, universe, spec.total, name)
+        : selectionBarChart(column, rows));
+    }).catch(function () { clientSummaryFailed(id); });
+  }
+  // The plot box is rebuilt by the server for each selection, and its variable
+  // is a Shiny input: draw again once either has changed.
+  if (window.jQuery) {
+    window.jQuery(document).on('shiny:value shiny:inputchanged', function (event) {
+      if (!singleActive && [LINKED_SELECTION.ui, LINKED_SELECTION.variable,
+        LINKED_SELECTION.formatting, LINKED_SELECTION.highlighting].indexOf(event.name) >= 0) {
+        setTimeout(function () { if (!singleActive) renderLinkedSelection(); }, 0);
+        return;
+      }
+      var id = singleActive, config = id && CLIENT_SUMMARY_VIEWS[id];
+      var table = config && config.table;
+      if (config && config.expressionPlot && event.name === config.expressionPlot.ui) {
+        setTimeout(function () {
+          if (singleActive === id && clientSummarySpec(id, singleView(id))) {
+            renderClientExpressionPlot(id);
+          }
+        }, 0);
+        return;
+      }
+      if (table && (event.name === table.ui || event.name === table.formatting ||
+          event.name === table.highlighting)) {
+        setTimeout(function () {
+          if (singleActive === id && clientSummarySpec(id, singleView(id))) {
+            renderClientSelectionTable(id);
+          }
+        }, 0);
+        return;
+      }
+      if (!config || !config.plot) return;
+      if (event.name !== config.prefix + '_selected_cells_plot_UI' &&
+          event.name !== config.prefix + '_selected_cells_plot_select_variable') return;
+      setTimeout(function () {
+        if (singleActive === id && clientSummarySpec(id, singleView(id))) {
+          renderClientSelectionPlot(id);
+        }
+      }, 0);
+    });
+  }
   function reportSelection(eventKind) {
     eventKind = eventKind || 'interaction';
     var hasSelection = !!(sel && sel.size);
     var shiny = typeof Shiny !== 'undefined' && Shiny.setInputValue;
     if (!singleActive) {
+      if (D) requestSelectionSpec(D.dataset_context);
+      var linkedSpec = hasSelection && linkedSelectionSpec();
       if (shiny) {
-        Shiny.setInputValue('coordviews_selection_indices', {indices:hasSelection ? Array.from(sel) : [], dataset_context:D && D.dataset_context});
+        Shiny.setInputValue('coordviews_selection_indices', {
+          indices: [],
+          indices_bits: hasSelection ? selectionRowBits(sel, 'all') : null,
+          client_plot: !!linkedSpec,
+          client_table: !!(linkedSpec && linkedSpec.cell_names),
+          dataset_context: D && D.dataset_context
+        });
       }
+      if (linkedSpec) renderLinkedSelection();
       window.dispatchEvent(new CustomEvent('cerebro:linkedviews-selection', {
         detail: { selectedCells: hasSelection ? sel.size : 0, dataset_context: D && D.dataset_context }
       }));
       return;
     }
-    var specialistReport = window.CBViewState.specialistSelectionReport(
-      sel, D && D.cells, D && D.n
-    );
+    // Points with canonical rows are reported by row: the server reads the
+    // selected cells by position instead of matching a million names, and the
+    // browser never sends those names (tens of MB) back.
+    var rowBits = hasSelection && D && D.rows ? selectionRowBits(sel, D.rows) : null;
+    var specialistReport = rowBits
+      ? {pending: false, ids: [], selectedCells: sel.size}
+      : window.CBViewState.specialistSelectionReport(sel, D && D.cells, D && D.n);
     var pendingStableSelection = specialistReport.pending;
     var arr = specialistReport.ids;
     // The specialist-state event below reports these with or without Shiny.
     var activeView = singleView(singleActive);
     var renderKey = activeView && activeView.data && activeView.data.render_key;
+    // Summarised here when the browser holds the codes to count the rows.
+    var clientSummary = !!(rowBits && clientSummarySpec(singleActive, activeView));
+    var clientTable = clientSummary && clientTableReady(singleActive, activeView);
+    var clientExpression = clientSummary && !!(CLIENT_SUMMARY_VIEWS[singleActive].expressionPlot &&
+      clientExpressionSeries(activeView));
+    if (CLIENT_SUMMARY_VIEWS[singleActive] && activeView) {
+      requestSelectionSpec(activeView.dataset_context);
+    }
     if (shiny) {
       // Stable IDs identify the selection on their own. Send coordinates
       // only as the fallback key when some selected cell has no ID.
@@ -3234,7 +4197,14 @@
       // gated off instead of retaining stale/empty Plot and Table shells.
       // onSingleAuxBinary() reports only the then-current selection as soon
       // as the deferred IDs have been attached.
-      Shiny.setInputValue(singleActive + '_persistent_selection', {
+      Shiny.setInputValue(singleActive + '_persistent_selection', rowBits ? {
+        x: [], y: [], ids: [],
+        rows_bits: rowBits,
+        client_summary: clientSummary,
+        client_table: clientTable,
+        client_expression: clientExpression,
+        dataset_context: activeView && activeView.dataset_context
+      } : {
         x: pendingStableSelection || !arr ? [] : x,
         y: pendingStableSelection || !arr ? [] : y,
         ids: pendingStableSelection || !arr ? [] : arr,
@@ -3251,6 +4221,13 @@
           { priority: 'event' }
         );
       }
+    }
+    if (clientSummary) {
+      updateClientSelectionSummary(singleActive);
+      if (clientTable) renderClientSelectionTable(singleActive);
+      if (clientExpression) renderClientExpressionPlot(singleActive);
+    } else if (CLIENT_SUMMARY_VIEWS[singleActive]) {
+      hideClientSummary(singleActive);
     }
     var guide = $(singleActive + '_selection_guide');
     var active = $(singleActive + '_selection_active');
@@ -3319,6 +4296,9 @@
       groups: names,
       dataset_context: view && view.dataset_context
     });
+    if (sel && sel.size && clientSummarySpec(singleActive, view) && D && D.rows) {
+      updateClientSelectionSummary(singleActive);
+    }
   }
 
   // ---- readouts (composition + top clonotypes) — fully client-side --------
@@ -3873,8 +4853,17 @@
     renderColorbar(false);
     var g = catOf(colorBy);
     if (!g) { appendEvidenceLegend(); return; }
-    var counts = {};
-    for (var i = 0; i < D.n; i++) counts[g.values[i]] = (counts[g.values[i]] || 0) + 1;
+    // A single view counts the cells it shows, also when "% of cells" and the
+    // group filters are applied here rather than by the server.
+    var counts = new Float64Array(g.levels.length + 1), values = g.values;
+    var mask = singleActive ? pctMask : null;
+    var filtered = !!singleActive && Object.keys(groupFilter).length > 0;
+    for (var i = 0; i < D.n; i++) {
+      if (mask && !mask[i]) continue;
+      if (filtered && !activeCell(i)) continue;
+      var level = values[i];
+      if (level != null && level >= 0 && level < g.levels.length) counts[level]++;
+    }
     g.levels.forEach(function (nm, li) {
       var col = cssColor((g.colors && g.colors[li]) || PAL[li % PAL.length]);
       item('cv-lg' + (hidden.has(li) ? ' off' : ''),
@@ -4010,6 +4999,14 @@
           esc(lines.join('\n')).replace(/\n/g, '<br>') + '</div>';
       }
       var raw = singleSpace && singleNestedValue(singleSpace, singleSpace._hover, i);
+      var codedGroup = !raw && activeSingleView && activeSingleView.data &&
+        activeSingleView.data.group_code != null && catOf(colorBy);
+      if (codedGroup) {
+        // Coded frames carry no per-cell text: name the cell and its colour level.
+        var codedLevel = codedGroup.levels[codedGroup.values[i]];
+        raw = 'Cell: ' + cellLabel(i) + '\n' + activeSingleView.meta.color_variable +
+          ': ' + (codedLevel == null ? 'NA' : codedLevel);
+      }
       var text = String(raw || cellLabel(i))
         .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
       return '<div class="cv-tip-row">' + esc(text).replace(/\n/g, '<br>') + '</div>';
@@ -4634,6 +5631,26 @@
       // panel's) or comes up empty (the selection goes); a click keeps it.
       p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start];
     });
+    // A drag updates its state on every mousemove but draws at most once per
+    // frame; mouseup takes over (and drops) a frame still waiting.
+    var dragFrame = 0, dragProjects = false;
+    var drawDragFrame = function (projects) {
+      dragProjects = dragProjects || projects;
+      if (dragFrame) return;
+      dragFrame = requestAnimationFrame(function () {
+        dragFrame = 0;
+        var projects = dragProjects; dragProjects = false;
+        // A data set switch ends the drag before the frame comes.
+        if (!p.panning && !p.orbiting && !p.drag) return;
+        if (projects) project(p);
+        draw(p);
+      });
+    };
+    var settleDragFrame = function () {
+      if (!dragFrame) return;
+      cancelAnimationFrame(dragFrame); dragFrame = 0;
+      if (dragProjects) { dragProjects = false; project(p); }
+    };
     window.addEventListener('mousemove', function (e) {
       if (p.orbiting) {
         var oq = pos(e), RAD = 0.009;   // radians per pixel dragged
@@ -4645,7 +5662,7 @@
           rx: Math.max(-1.4, Math.min(1.4,
             p.orbitBase.rx + (oq[1] - p.orbitFrom[1]) * RAD))
         };
-        project(p); draw(p);
+        drawDragFrame(true);
         return;
       }
       if (p.panning) {
@@ -4659,7 +5676,7 @@
           (pq[0] - p.panFrom[0]) / SX,
           (pq[1] - p.panFrom[1]) / SY
         ));
-        project(p); draw(p);
+        drawDragFrame(true);
         return;
       }
       if (!p.drag) return;
@@ -4670,12 +5687,12 @@
         var a = p.start;
         if (Math.abs(q[0] - a[0]) + Math.abs(q[1] - a[1]) > 3) {
           p.lasso = [[a[0], a[1]], [q[0], a[1]], [q[0], q[1]], [a[0], q[1]]];
-          p.moved = true; draw(p);
+          p.moved = true; drawDragFrame(false);
         }
       } else {
         var last = p.lasso[p.lasso.length - 1];
         if (Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) > 3) {
-          p.lasso.push(q); p.moved = true; draw(p);
+          p.lasso.push(q); p.moved = true; drawDragFrame(false);
         }
       }
     });
@@ -4684,6 +5701,7 @@
     // it instead, and on a trackpad the two gestures are the same one. The wheel
     // is therefore left to the page.
     window.addEventListener('mouseup', function (e) {
+      settleDragFrame();
       if (p.orbiting) {
         p.orbiting = false;
         p.canvas.classList.remove('cv-grabbing');
@@ -4695,7 +5713,7 @@
       if (p.panning) {
         p.panning = false;
         p.canvas.classList.remove('cv-grabbing');
-        drawAll();
+        drawPanel(p);   // only this panel's view moved
         if (!p.moved) { var panPoint = pos(e); pickCell(p, nearest(p, panPoint[0], panPoint[1])); }
         return;
       }
@@ -4704,10 +5722,7 @@
       if (!D || !p.ok) { p.lasso = null; return; }  // not projected yet
       if (p.moved && p.lasso && p.lasso.length > 2) {
         ensureScreenProjection(p);
-        var s = new Set();
-        for (var i = 0; i < D.n; i++) {
-          if (p.ok[i] && shown(i, p) && CBGeom.inPoly(p.sx[i], p.sy[i], p.lasso)) s.add(i);
-        }
+        var s = lassoHits(p, p.lasso);
         // A real lasso selection supersedes any prior single-cell pick — clear it
         // BEFORE setSelection so its drawAll() drops the stale orange pick ring
         // (that ring is not gated on `!sel`). An empty lasso keeps the pick.
@@ -4720,6 +5735,7 @@
         } else { setSelection(null); }
       } else {
         var m = pos(e), k = nearest(p, m[0], m[1]);
+        p.lasso = null;   // pickCell() draws every panel
         // A click PICKS -- it no longer opens the detail card. On a Trekker data
         // set picking a nucleus is how its niche is read, and having a card
         // covering the panels every time made that unusable. The card is opened
@@ -4729,8 +5745,9 @@
         // it is also the click that undoes it.
         pickCell(p, k);
       }
+      // Both branches drew every panel (setSelection/pickCell), after
+      // clearLassos() or the line above dropped the drag outline.
       p.lasso = null;
-      draw(p);
     });
   }
 
@@ -4830,7 +5847,7 @@
         resizeObserverFrame = requestAnimationFrame(function () {
           resizeObserverFrame = 0;
           if (!D || focusAnimating) return;
-          resizeAll();
+          resizeAll(true);
           reportWorkspaceReady();
         });
       });
@@ -5545,7 +6562,9 @@
       var order = orderedSpaces();
       ensurePanelSlots(Math.min(12, order.length)); buildPanels(); layoutPanels();
     }
-    renderLegend(); drawAll(); renderReadout(); updateMoranBadges();
+    // The new legend can change height and with it the panels: lay them out
+    // before drawing, or the resize that follows redraws everything again.
+    renderLegend(); if (!resizeAll(true)) drawAll(); renderReadout(); updateMoranBadges();
     if (!singleActive && mode !== GENE_MODE) viewOperation('linked', 'Colour mode changed');
   }
 
@@ -6038,6 +7057,7 @@
       is_roi_overview: spatialTemplate.is_roi_overview,
       x: spatialTemplate.x,
       y: spatialTemplate.y,
+      _cells: spatialTemplate._cells,
       x_range: spatialTemplate.x_range,
       y_range: spatialTemplate.y_range,
       builder_point_opacity: spatialTemplate.builder_point_opacity,
@@ -6075,6 +7095,7 @@
         image: sample.image || null,
         images: images,
         _sampleName: sample.name,
+        _cells: sample._cells || null,
         _spatialSample: true,
         _fitToData: true,
         _customImageId: custom,
@@ -6188,7 +7209,98 @@
     if (k >= total) delete groupFilter[gname];   // all levels on = no filter
     else groupFilter[gname] = chosen;
     if (groupFilter[gname]) requestDeferredGroup(gname);
+    // A group whose values are still on their way cannot filter yet: drawing
+    // now would only be drawn over when they arrive (onBinaryAttribute).
+    var group = D.groups && D.groups[gname];
+    if (groupFilter[gname] && group && group.deferred) return;
     applyActiveChange();
+  }
+
+  // ---- single-view group filters applied in the browser --------------------
+  // A single view whose frame carries every cell (a Viewer Pack) is filtered
+  // here: the server sends each filtered group's canonical codes resource and
+  // its allowed levels instead of a new frame. The groups are kept under the
+  // '__single_' prefix, which the Linked views filter chips skip.
+  var SINGLE_FILTER_PREFIX = '__single_filter_';
+  function singleFilterCodes(view, values) {
+    var data = view && view.data || {}, n = Number(data.n) || (data.x ? data.x.length : 0);
+    if (data.canonical_subset) {
+      return materializeCanonicalCodes(values, data.canonical_subset, n);
+    }
+    if (values.length === n) return values;
+    // A frame of some cells (a Spatial section) maps by its canonical rows,
+    // sent with the frame or with its auxiliary data.
+    var rows = singlePayloadRows(data.selection_rows, data.canonical_group, n);
+    if (!rows || rows === 'all') return null;
+    var out = new values.constructor(n);
+    for (var i = 0; i < n; i++) out[i] = values[rows[i]];
+    return out;
+  }
+  function applySingleClientFilters(id) {
+    var view = singleView(id);
+    if (singleActive !== id || !view || !D || !D.groups) return;
+    Object.keys(groupFilter).forEach(function (name) {
+      if (name.indexOf(SINGLE_FILTER_PREFIX) === 0) delete groupFilter[name];
+    });
+    Object.keys(D.groups).forEach(function (name) {
+      if (name.indexOf(SINGLE_FILTER_PREFIX) === 0) delete D.groups[name];
+    });
+    // The codes are canonical; map them to the cells of the frame now drawn
+    // (filters can arrive before the frame they were sent for).
+    var filters = view.clientFilters || {};
+    Object.keys(filters).forEach(function (name) {
+      var filter = filters[name];
+      if (filter.data !== view.data || filter.rows !== view.data.selection_rows) {
+        filter.data = view.data; filter.rows = view.data.selection_rows;
+        filter.values = null;
+        try { filter.values = singleFilterCodes(view, filter.canonical); } catch (error) {}
+      }
+      if (!filter.values || filter.values.length !== D.n) return;
+      D.groups[SINGLE_FILTER_PREFIX + name] = { levels: filter.levels, values: filter.values };
+      groupFilter[SINGLE_FILTER_PREFIX + name] = new Set(filter.allowed);
+    });
+  }
+  function updateSingleClientFilters(message) {
+    if (!message || !message.id || !datasetMessageFresh(message)) return;
+    var view = singleView(message.id, message.dataset_context);
+    if (!view) return;
+    var wanted = message.filters || [];
+    // The server resends unchanged filters (none, on opening a page): that
+    // changes nothing on screen.
+    var key = JSON.stringify(wanted.map(function (filter) {
+      return [filter.name, filter.allowed, filter.resource && filter.resource.url];
+    }));
+    if (key === (view.filterKey || '[]')) return;
+    view.filterKey = key;
+    var token = (view.filterToken || 0) + 1;
+    view.filterToken = token;
+    view.filterCodes = view.filterCodes || {};
+    Promise.all(wanted.map(function (filter) {
+      var cached = view.filterCodes[filter.name];
+      if (cached && cached.url === filter.resource.url) return Promise.resolve(cached);
+      return fetchValidatedMetadataCodesResource(
+        filter.resource, Number(filter.resource.cells), view.datasetIdentity
+      ).then(function (result) {
+        return { url: filter.resource.url, values: result.values };
+      });
+    })).then(function (codes) {
+      if (view.filterToken !== token) return;
+      var filters = {};
+      wanted.forEach(function (filter, index) {
+        view.filterCodes[filter.name] = codes[index];
+        filters[filter.name] = { levels: filter.levels, allowed: filter.allowed,
+          canonical: codes[index].values };
+      });
+      view.clientFilters = filters;
+      if (singleActive !== message.id) return;
+      applySingleClientFilters(message.id);
+      applyActiveChange();
+    }).catch(function () {
+      if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+        Shiny.setInputValue(message.id + '_client_filters_failed', true,
+          { priority: 'event' });
+      }
+    });
   }
 
   // Read the client-owned histology-image controls into the active section's
@@ -6496,7 +7608,9 @@
     return balanced[0];
   }
 
-  function resizeAll() {
+  // `ifChanged` (the ResizeObserver): leave canvases untouched, and do not
+  // draw, when no panel's size changes. Assigning a canvas size clears it.
+  function resizeAll(ifChanged) {
     if (!D || !panels.length) return false;
     var panes = panels[0].pane && panels[0].pane.parentElement;
     if (!panes) return false;
@@ -6517,6 +7631,7 @@
     }
     var key = layoutInputs(panes);
     var headerChrome = gridOverhead(vis);
+    var passKey = _layoutKey, pass = _layoutPass, passHeader = _layoutHeader;
     if (key === _layoutKey) {
       // The corrective pass exists for a pane header that wrapped because the
       // last pass narrowed the plot. With the header unchanged there is
@@ -6632,6 +7747,7 @@
     var primaryWidth = cols > 1
       ? Math.max(panelWidth, Math.floor(colW * 2 + gap - chromeX))
       : panelWidth;
+    var resized = false;
     vis.forEach(function (p, index) {
       var primary = !!focusPanel && p.key === focusPanel;
       var extra = !focusPanel && cols > 1 && index % cols < colExtra ? 1 : 0;
@@ -6648,8 +7764,20 @@
         p.pane.style.width = paneWidth + 'px';
         p.pane.style.height = '';
       }
+      // The pane chrome is measured around the canvas drawn before, so the
+      // check after a page is shown can differ by a pixel or two from the
+      // fit just drawn. That is no reason to draw every point again.
+      if (ifChanged && p.W === width && Math.abs(p.H - height) <= 2 &&
+          p._dpr === (window.devicePixelRatio || 1)) return;
+      resized = true;
       resizePanel(p, width, height);
     });
+    // A panel resized while drawing was deferred is blank: draw it now.
+    if (ifChanged && !resized && !vis.some(function (p) { return p._resizedUndrawn; })) {
+      // Nothing was redrawn, so this check does not use up a layout pass.
+      _layoutKey = passKey; _layoutPass = pass; _layoutHeader = passHeader;
+      return false;
+    }
     if (!psSeeded) autoPointSize(side);
     // Visibility of focus affordances depends on how many linked lenses remain.
     updateFocusButtons();
@@ -6722,17 +7850,22 @@
   function applyColorPatch(patch) {
     if (!D || !patch || !datasetMessageFresh(patch) ||
         !sameDatasetContext(patch.dataset_context, D.dataset_context)) return false;
+    // The server sends the palette again after the supplement; an unchanged
+    // palette must not draw every panel again.
+    var changed = false;
     ['groups', 'cat_extra'].forEach(function (kind) {
       var update = patch[kind] || {};
       var target = D[kind] || {};
       Object.keys(update).forEach(function (name) {
-        if (target[name] && Array.isArray(update[name])) {
-          target[name].colors = update[name];
-        }
+        if (!target[name] || !Array.isArray(update[name])) return;
+        var colors = update[name].map(cssColor), old = target[name].colors;
+        if (old && old.length === colors.length &&
+            colors.every(function (c, i) { return c === old[i]; })) return;
+        target[name].colors = colors;
+        changed = true;
       });
     });
-    sanitiseColors(D);
-    renderLegend(); drawAll();
+    if (changed) { renderLegend(); drawAll(); }
     return true;
   }
 
@@ -6987,6 +8120,24 @@
       return cells.concat((group || []).map(String));
     }, []);
   }
+  // The canonical (metadata) rows of the points, in the order of
+  // singlePayloadCells(): 'all' when the points are every cell in order, null
+  // when the payload names its cells only by key.
+  function singlePayloadRows(rows, groups, n) {
+    if (rows === 'all') return 'all';
+    if (rows == null) return null;
+    var flat = rows;
+    if (ArrayBuffer.isView(groups) && groups.length === n) {
+      flat = canonicalAuxValues(rows, groups, -1);
+    } else if (rows.length && typeof rows[0] !== 'number') {
+      flat = [];
+      for (var g = 0; g < rows.length; g++) {
+        var group = rows[g] || [];
+        for (var i = 0; i < group.length; i++) flat.push(group[i]);
+      }
+    }
+    return flat && flat.length === n ? flat : null;
+  }
   function singlePayloadBundle(id, payload) {
     var cells = singlePayloadCells(payload);
     var n = Number(payload.data && payload.data.n) || cells.length;
@@ -6997,6 +8148,9 @@
       dataset_generation: payload.dataset_context.generation,
       dataset_fingerprint: identity.cell_fingerprint || '',
       cells: cells,
+      rows: cells.length === n
+        ? singlePayloadRows(payload.data && payload.data.selection_rows, null, n)
+        : null,
       n: n,
       groups: {},
       cat_extra: {},
@@ -7104,6 +8258,116 @@
       return Object.assign({}, entry, {
         fetchMs: performance.now() - started, cacheHit: cacheHit
       });
+    });
+  }
+  // Canonical cell names (canonical-cell-names-v1): NUL-terminated UTF-8
+  // strings in canonical order, downloaded once and shared by every view of
+  // the data set. A view's aux message then carries canonical indices.
+  var cellNamesResourceCache = new Map();
+  function fetchCellNames(resource, identity) {
+    if (!resource || resource.protocol !== 'canonical-cell-names-v1' ||
+        !resource.url || !canonicalResourceIdentityMatches(resource, identity)) {
+      return Promise.reject(new Error('Cell names identity mismatch'));
+    }
+    var n = Number(resource.cells);
+    var key = resourceCacheKey(resource, '');
+    var pending = cellNamesResourceCache.get(key);
+    if (!pending) {
+      pending = window.fetch(String(resource.url), {
+        credentials: 'same-origin', cache: 'force-cache'
+      }).then(function (response) {
+        if (!response.ok) throw new Error('Cell names request failed');
+        var body = resource.encoding === 'gzip'
+          ? response.body.pipeThrough(new DecompressionStream('gzip'))
+          : response.body;
+        return new Response(body).arrayBuffer();
+      }).then(function (buffer) {
+        if (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes)) {
+          throw new Error('Cell names byte count mismatch');
+        }
+        var names = new TextDecoder('utf-8').decode(buffer).split('\0');
+        names.pop();
+        if (names.length !== n) throw new Error('Cell names length mismatch');
+        return {names: names};
+      });
+      cellNamesResourceCache.set(key, pending);
+      pending.catch(function () {
+        if (cellNamesResourceCache.get(key) === pending) cellNamesResourceCache.delete(key);
+      });
+    }
+    return pending;
+  }
+  // Contiguous canonical rows travel as {kind: 'range', start, length}.
+  function expandRowRange(rows) {
+    if (!rows || String(rows.kind) !== 'range') return rows;
+    var start = Number(rows.start), out = new Int32Array(Number(rows.length));
+    for (var i = 0; i < out.length; i++) out[i] = start + i;
+    return out;
+  }
+  // Turns canonical indices into selection keys before the message is applied.
+  // `selection_index_all` stands for the indices 0..n-1 (every cell, in order).
+  function resolveAuxCellNames(message) {
+    var resource = message && message.cell_names_resource;
+    var index = expandRowRange(message && message.selection_index);
+    var all = message && message.selection_index_all === true;
+    if (!resource || (index == null && !all) || message.selection_key != null) {
+      return Promise.resolve(message);
+    }
+    var view = singleView(message.id, message.dataset_context);
+    return fetchCellNames(resource, view && view.datasetIdentity).then(function (entry) {
+      var names = entry.names;
+      // `selection_rows` keeps the canonical rows: a selection is reported by
+      // row, so it never has to send these names back to the server.
+      if (all) {
+        var every = Object.assign({}, message, {
+          selection_key: names.slice(), selection_rows: 'all'
+        });
+        delete every.selection_index_all;
+        delete every.cell_names_resource;
+        return every;
+      }
+      var lookup = function (rows) {
+        var keys = new Array(rows.length);
+        for (var i = 0; i < rows.length; i++) {
+          var name = names[rows[i]];
+          if (name === undefined) throw new Error('Cell index out of range');
+          keys[i] = name;
+        }
+        return keys;
+      };
+      var nested = Array.isArray(index) && index.length && typeof index[0] !== 'number';
+      var resolved = Object.assign({}, message, {
+        selection_key: nested ? index.map(lookup) : lookup(index),
+        selection_rows: index
+      });
+      delete resolved.selection_index;
+      delete resolved.cell_names_resource;
+      return resolved;
+    });
+  }
+  // A frame may name its cells by canonical row (`data.selection_index`) with
+  // the cell-name resource instead of carrying every name: resolve them before
+  // the frame is used, so everything downstream sees `data.selection_key`.
+  function frameNeedsCellNames(message) {
+    var data = message && message.data;
+    return !!(data && data.selection_key == null && data.selection_index != null &&
+      data.cell_names_resource);
+  }
+  function resolveFrameCellNames(message) {
+    var data = message && message.data;
+    if (!frameNeedsCellNames(message)) return Promise.resolve(message);
+    return fetchCellNames(data.cell_names_resource, message.dataset_identity).then(function (entry) {
+      var names = entry.names, rows = data.selection_index;
+      var keys = new Array(rows.length);
+      for (var i = 0; i < rows.length; i++) {
+        var name = names[rows[i]];
+        if (name === undefined) throw new Error('Cell index out of range');
+        keys[i] = name;
+      }
+      var resolved = Object.assign({}, data, {selection_key: keys, selection_rows: rows});
+      delete resolved.selection_index;
+      delete resolved.cell_names_resource;
+      return Object.assign({}, message, {data: resolved});
     });
   }
   var projectionResourceCache = new Map();
@@ -7517,6 +8781,9 @@
   }
   function hydrateSingleProjectionResource(message) {
     var data = message && message.data || {};
+    // A section frame names its canonical rows, so group filters apply to its
+    // first draw instead of after the auxiliary data.
+    data.selection_rows = expandRowRange(data.selection_rows);
     var frameResource = data.trajectory_frame_resource;
     var frame = null;
     try {
@@ -7565,6 +8832,8 @@
         );
         coordinates = materialized.coordinates;
       }
+      // Group filters applied here map canonical codes to the frame's cells.
+      if (subsetResult) data.canonical_subset = subsetResult;
       if (coordinates) {
         data.x = coordinates.x;
         data.y = coordinates.y;
@@ -7656,9 +8925,11 @@
   var categoricalResourceCache = new Map();
   function clearStaticResourceCaches() {
     projectionResourceCache.clear();
+    metadataValuesResourceCache.clear();
     projectionSubsetResourceCache.clear();
     metadataCodesResourceCache.clear();
     categoricalResourceCache.clear();
+    cellNamesResourceCache.clear();
   }
   function fetchCategoricalResource(resource, expectedCells) {
     var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
@@ -7941,6 +9212,7 @@
     }
     return { label: label, v: q, raw: values, min: min, max: max, scale: 1000,
       paintOrder: !!data && data.paint_order === 'highest',
+      followsPaintOrder: true,
       unclipped: true,
       palette: singlePalette(panelScale || (data && data.colorscale),
         panelScale ? false : data && data.reversescale) };
@@ -8055,6 +9327,14 @@
     });
     return out;
   }
+  // Position of each of `keys` in the current view's cells (null if absent).
+  function alignedRows(keys) {
+    var index = singleIndex();
+    return (keys || []).map(function (key) {
+      var at = index.get(String(key));
+      return at == null ? null : at;
+    });
+  }
   function buildSpecialistPanels(id, payload) {
     var meta = payload.meta || {}, data = payload.data || {},
       extra = payload.extra || {};
@@ -8064,10 +9344,20 @@
     var spaces = [], modes = {}, mode;
     if (meta.color_type === 'categorical') {
       var levels = Array.isArray(meta.traces) ? meta.traces.map(String) : [];
-      var rawGroups = alignFlatValues(keys, data.group || [], null);
-      var groups = rawGroups.map(function (value) {
-        var at = levels.indexOf(String(value)); return at < 0 ? -1 : at;
-      });
+      var groups;
+      if (data.group_code != null) {
+        // Codes index the traces directly, in the frame's cell order.
+        groups = emptyVector(-1);
+        alignedRows(keys).forEach(function (at, i) {
+          var code = Number(data.group_code[i]);
+          if (at != null) groups[at] = code >= 0 && code < levels.length ? code : -1;
+        });
+      } else {
+        var rawGroups = alignFlatValues(keys, data.group || [], null);
+        groups = rawGroups.map(function (value) {
+          var at = levels.indexOf(String(value)); return at < 0 ? -1 : at;
+        });
+      }
       var groupName = '__single_group__' + id;
       var group = {
         values: groups,
@@ -8087,9 +9377,14 @@
       );
       mode = FIELD_PREFIX + fieldName;
     }
+    var frameRows = null;
     data.panels.forEach(function (panel, panelIndex) {
-      var panelKeys = Array.isArray(panel.selection_key)
-        ? panel.selection_key : keys;
+      // A slice panel draws rows [start, start + count) of the frame's x, y
+      // and keys instead of carrying its own copies.
+      var slice = panel.start != null && panel.count != null;
+      var start = slice ? Number(panel.start) : 0, count = slice ? Number(panel.count) : 0;
+      var panelKeys = slice ? keys.slice(start, start + count)
+        : Array.isArray(panel.selection_key) ? panel.selection_key : keys;
       var t = Math.max(0, Math.min(1, Number(panel.transition) || 0));
       var xs = panel.x || [];
       var ys = panel.y || [];
@@ -8101,17 +9396,44 @@
           return Number(value) + (Number(panel.to_y[i]) - Number(value)) * t;
         });
       }
+      // Typed, NaN where the slice has no cell (unitOf and every coordinate
+      // reader treat NaN as unpositioned), in the precision the frame sent.
+      var sliceValues = function (values) {
+        var Vector = values instanceof Float32Array ? Float32Array : Float64Array;
+        var out = new Vector(D.n).fill(NaN);
+        frameRows = frameRows || alignedRows(keys);
+        for (var j = 0; j < count; j++) {
+          var at = frameRows[start + j], value = values && values[start + j];
+          if (at != null && value != null) out[at] = value;
+        }
+        return out;
+      };
+      // The canonical rows the slice draws, in canonical order: unitOf and
+      // buildGpuData then visit these cells only.
+      var sliceCells = function () {
+        var marked = new Uint8Array(D.n), found = 0, j, at;
+        frameRows = frameRows || alignedRows(keys);
+        for (j = 0; j < count; j++) {
+          at = frameRows[start + j];
+          if (at != null && !marked[at]) { marked[at] = 1; found++; }
+        }
+        var cells = new Int32Array(found);
+        for (j = 0, at = 0; j < D.n; j++) if (marked[j]) cells[at++] = j;
+        return cells;
+      };
       var spaceId = 'single::' + id + '::' + (panel.id || panelIndex);
+      // No per-cell hover text or mask means default hover for every cell.
       var space = {
         id: spaceId,
         _role: panel.id || null,
         label: panel.label || panel.id || id,
-        x: alignFlatValues(panelKeys, xs, null),
-        y: alignFlatValues(panelKeys, ys, null),
-        _hover: alignFlatValues(panelKeys, panel.hover || [], ''),
+        x: slice ? sliceValues(data.x) : alignFlatValues(panelKeys, xs, null),
+        y: slice ? sliceValues(data.y) : alignFlatValues(panelKeys, ys, null),
+        _hover: slice ? null : alignFlatValues(panelKeys, panel.hover || [], ''),
         _hoverEnabled: true,
-        _hoverMask: emptyVector(true)
+        _hoverMask: null
       };
+      if (slice) space._cells = sliceCells();
       if (cellBoundaries.length) {
         var panelCells = new Set(panelKeys.map(String));
         space.cellBoundaries = cellBoundaries.filter(function (boundary) {
@@ -8188,6 +9510,11 @@
     var baseId = 'single::' + id, spaces = [], modes = {};
     var edges = singleEdges(extra);
     var hulls = singleHulls(extra);
+    // A new frame sets the factor; rebuilding the same frame keeps it.
+    if (singlePointScaleFrame[id] !== data) {
+      singlePointScaleFrame[id] = data;
+      singlePointScale[id] = Number(data.point_scale) > 0 ? Number(data.point_scale) : 1;
+    }
     var pointSizes = (Array.isArray(data.point_sizes) ||
       ArrayBuffer.isView(data.point_sizes))
       ? alignFlatValues(
@@ -8225,7 +9552,7 @@
           ))) {
         space.trajectory = true; space.edges = edges;
       }
-      if (pointSizes) space.pointSizes = pointSizes;
+      if (pointSizes) { space.pointSizes = pointSizes; space._pointScaleId = id; }
       if (hulls.length) space.hulls = hulls;
       if (cellBoundaries.length) space.cellBoundaries = cellBoundaries;
       if (molecules.length) space.molecules = molecules;
@@ -8488,6 +9815,7 @@
     });
     colorBy = singleSpaceModes[singleSpaceIds[0]] || colorBy;
     hidden = new Set(); groupFilter = {}; deferredColorRequest = null;
+    applySingleClientFilters(id);
     sel = null; selectionSource = null;
     selectionSourceSpace = null;
     pick = null; hoverCell = null; focusPanel = previousFocus;
@@ -8600,6 +9928,13 @@
     // Gene's selection core is requested by click or brush. Sending all cell
     // IDs here competes with the user's first gene operation on the R thread.
     if (id !== 'expression_projection' && id !== 'trajectory_projection') requestSingleAux();
+    else {
+      var idleView = singleView(id);
+      whenIdle(function () {
+        if (singleActive === id && singleView(id) === idleView &&
+            sameDatasetContext(idleView.dataset_context, currentDatasetContext())) requestSingleAux();
+      });
+    }
     // Canvas drawing is synchronous, but the browser does not composite it
     // until a later frame. Keep the page loader in place until that first
     // painted frame is actually visible; otherwise users see a blank gap
@@ -8634,18 +9969,25 @@
     if (!linkedBundle) return;
     var state = linkedState;
     leaveSingle();
+    // Rebuilding the panels and restoring the workspace each redraw every
+    // panel (layout, projections, sections, colour, selection): eight full
+    // redraws of a million points. Paint once, with the final state.
+    var deferred = drawAllDeferred;
+    drawAllDeferred = true;
     rebuildingBase = true;
     try {
       onData(linkedBundle);
+      rebuildingBase = false;
+      if (state) restoreWorkspace(state);
+      var focusFrom = state && state._focusFrom || {};
+      panels.forEach(function (p) { p.focusFrom = focusFrom[p.spaceId] || null; });
+      (sel ? syncFocusButtons : leaveFocus)();
+      syncSharedScatter();
+      syncPointControls();
     } finally {
       rebuildingBase = false;
+      drawAllDeferred = deferred;
     }
-    if (state) restoreWorkspace(state);
-    var focusFrom = state && state._focusFrom || {};
-    panels.forEach(function (p) { p.focusFrom = focusFrom[p.spaceId] || null; });
-    (sel ? syncFocusButtons : leaveFocus)();
-    syncSharedScatter();
-    syncPointControls();
     drawAll();
     linkedState = null;
     var pending = deferredLinkedSupplements;
@@ -8666,6 +10008,26 @@
     return singleViews[cacheKey];
   }
 
+  // The HLA network's legend is a row above its canvas, sent with the outputs
+  // of the server flush that also sends the frame. The binary frame arrives
+  // first: drawn at once, it is drawn again when the new legend resizes the
+  // canvas. While that flush is still busy, draw it once its outputs are in:
+  // Shiny sends them right after "idle", so wait two frames past it.
+  var OUTPUT_SIZED_VIEWS = ['hla_motif_network'];
+  function renderSingleAfterOutputs(message) {
+    if (OUTPUT_SIZED_VIEWS.indexOf(message.id) >= 0 && window.jQuery &&
+        document.documentElement.classList.contains('shiny-busy')) {
+      window.jQuery(document).one('shiny:idle', function () {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            if (datasetMessageFresh(message)) renderSingle(message);
+          });
+        });
+      });
+      return;
+    }
+    renderSingle(message);
+  }
   function renderSingle(message) {
     if (!message || !message.id || !datasetMessageFresh(message)) return false;
     var api = datasetContextApi();
@@ -8805,7 +10167,7 @@
     renderLegend(); renderSelbar();
     // A mode/label change can alter header and colourbar height. Refit the
     // existing panels without rebuilding their geometry or restoring state.
-    _layoutKey = null; resizeAll(); drawAll();
+    _layoutKey = null; if (!resizeAll()) drawAll();
     // A second RGB packet can land while the pointer is stationary. Re-pick
     // against the retained geometry and refresh values after the colour change.
     activePanels.forEach(refreshPanelHover);
@@ -8993,15 +10355,18 @@
       values: Object.assign({}, oldEdit && oldEdit.values || {}, values) };
     if (!panelMatch) view.backgroundState = Object.assign({}, view.backgroundState || {}, values);
     if (singleActive !== id) return true;
+    var changed = false;
     singleSpaceIds.forEach(function (spaceId) {
       var space = spaceById[spaceId]; if (!space || !space._imgState) return;
       if (panelMatch && space._backgroundIdentity !== incomingIdentity) return;
       Object.keys(names).forEach(function (name) {
-        if (values[name] != null) space._imgState[names[name]] = values[name];
+        if (values[name] == null || space._imgState[names[name]] === values[name]) return;
+        space._imgState[names[name]] = values[name]; changed = true;
       });
       stashImgState(space);
     });
-    drawAll();
+    // R's reply to a snapshot already drawn changes nothing.
+    if (changed) drawAll();
     return true;
   }
 
@@ -9097,6 +10462,68 @@
       }
       var original = spaceById[projectionId(ref.projection)];
       if (!ref.exclude.length && original) space._unit = original._unit;
+    });
+    return extra;
+  }
+
+  // Spatial scenes of a supplement may carry only their own points: `rows`
+  // (0-based canonical rows) with x/y in the same order, either in the message
+  // or fetched from the section's Pack geometry. Linked views draws arrays over
+  // every cell, NaN outside the scene.
+  function linkedSpatialScenes(extra) {
+    var scenes = [];
+    (extra.spaces || []).forEach(function (space) {
+      if (!space || space.id !== 'spatial') return;
+      scenes.push(space);
+      (space.samples || []).forEach(function (sample) { scenes.push(sample); });
+    });
+    return scenes;
+  }
+  function hydrateSpatialScenes(extra) {
+    linkedSpatialScenes(extra).forEach(function (scene) {
+      var rows = scene.rows;
+      if (rows == null) return;
+      var xs = scene.x, ys = scene.y;
+      if (scene.geometry_resource || !xs || !ys || typeof rows.length !== 'number' ||
+          xs.length !== rows.length || ys.length !== rows.length) {
+        throw new Error('Invalid spatial scene');
+      }
+      var n = D.n;
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!Number.isInteger(row) || row < 0 || row >= n) throw new Error('Invalid spatial scene row');
+      }
+      // The scene's cells in canonical order: its panel normalises and uploads
+      // only these, not every cell of the data set.
+      scene._cells = Int32Array.from(rows).sort();
+      delete scene.rows;
+      // Two arrays over every cell per scene: build them when the scene is
+      // first read (a section that is never shown never needs them).
+      var dense = null;
+      var expand = function () {
+        if (!dense) {
+          dense = {x: new Float32Array(n).fill(NaN), y: new Float32Array(n).fill(NaN)};
+          for (var j = 0; j < rows.length; j++) {
+            dense.x[rows[j]] = xs[j];
+            dense.y[rows[j]] = ys[j];
+          }
+          rows = xs = ys = null;
+        }
+        return dense;
+      };
+      ['x', 'y'].forEach(function (key) {
+        var settle = function (value) {
+          Object.defineProperty(scene, key, {
+            value: value, writable: true, enumerable: true, configurable: true
+          });
+          return value;
+        };
+        Object.defineProperty(scene, key, {
+          enumerable: true, configurable: true,
+          get: function () { return settle(expand()[key]); },
+          set: settle
+        });
+      });
     });
     return extra;
   }
@@ -9302,7 +10729,9 @@
       if (holdSupplement({ buffer: buffer })) return;
       var finish = function () {
         if (!linkedSupplementFresh(extra) || holdSupplement({ buffer: buffer })) return;
-        extra = hydrateSparseLinked(hydrateLinkedGeometry(extra));
+        extra = hydrateSparseLinked(
+          hydrateLinkedGeometry(hydrateSpatialScenes(extra))
+        );
         var metric = CBViewState.telemetry.transport(
           extra.transport_profile,
           {bytes: buffer.byteLength, decodeMs: decodedAt - started},
@@ -9322,12 +10751,27 @@
         return projection && projection.projection_resource &&
           projection.projection_resource.url;
       });
-      if (!resourced.length) {
+      var geometric = linkedSpatialScenes(extra).filter(function (scene) {
+        return scene.geometry_resource && scene.geometry_resource.url;
+      });
+      if (!resourced.length && !geometric.length) {
         finish();
         return;
       }
       var bundle = linkedBundle;
-      Promise.all(resourced.map(function (name) {
+      var sceneGeometry = geometric.map(function (scene) {
+        var resource = scene.geometry_resource;
+        return fetchValidatedSingleGeometryResource(
+          resource,
+          { dataset_identity: linkedBundleResourceIdentity(bundle) },
+          Number(resource.cells)
+        ).then(function (result) {
+          scene.x = result.coordinates.x;
+          scene.y = result.coordinates.y;
+          delete scene.geometry_resource;
+        });
+      });
+      Promise.all(sceneGeometry.concat(resourced.map(function (name) {
         var projection = extra.projections[name];
         return fetchValidatedProjectionResource(
           projection.projection_resource,
@@ -9342,7 +10786,7 @@
           if (coordinates.yRange) projection.yRange = coordinates.yRange;
           delete projection.projection_resource;
         });
-      })).then(function () {
+      }))).then(function () {
         try {
           finish();
         } catch (error) {
@@ -9382,7 +10826,11 @@
     try {
       var decoded = window.CBViewWire.unpack(buffer);
       var decodedAt = performance.now();
-      if (!decoded || !decoded.id || !datasetMessageFresh(decoded)) return;
+      if (!decoded || !decoded.id) return;
+      if (!datasetMessageFresh(decoded)) {
+        releaseEarlySingleRequest(decoded);
+        return;
+      }
       recordSpecialistPayload('primary', decoded.id, buffer.byteLength);
       var profile = decoded.transport_profile || {};
       var transportTiming = CBViewState.telemetry.transport(
@@ -9412,14 +10860,24 @@
         return;
       }
       if (!datasetMessageFresh(message)) return;
-      hydrateSingleProjectionResource(message).then(function (hydrated) {
+      var namesFailed = false;
+      (frameNeedsCellNames(message)
+        ? resolveFrameCellNames(message).then(hydrateSingleProjectionResource, function (error) {
+          namesFailed = true;
+          throw error;
+        })
+        : hydrateSingleProjectionResource(message)).then(function (hydrated) {
         if (!datasetMessageFresh(hydrated)) return;
         if (hydrated.dataset_identity) {
           window.cerebroSavedViewDataset = hydrated.dataset_identity;
         }
-        renderSingle(hydrated);
+        renderSingleAfterOutputs(hydrated);
       }).catch(function () {
         if (!datasetMessageFresh(message)) return;
+        if (namesFailed) {
+          cellNamesResourceFailed(message.id, message.data.cell_names_resource);
+          return;
+        }
         var failed = message.data && (
           message.data.projection_resource ||
           (message.data.trajectory_frame_resource &&
@@ -9448,7 +10906,23 @@
     if (message && message.id) {
       recordSpecialistPayload('aux', message.id, buffer.byteLength);
     }
-    applySingleAux(message);
+    if (!message || !message.cell_names_resource) {
+      applySingleAux(message);
+      return;
+    }
+    resolveAuxCellNames(message).then(applySingleAux, function () {
+      cellNamesResourceFailed(message.id, message.cell_names_resource);
+    });
+  }
+  // Without the cell-name file the names come in messages again: render the
+  // view once more, after telling the server not to offer the file.
+  function cellNamesResourceFailed(id, resource) {
+    if (typeof Shiny === 'undefined' || !id || !resource) return;
+    Shiny.setInputValue('cell_view_names_resource_failed',
+      String(resource.url), {priority: 'event'});
+    Shiny.setInputValue(id + '_render_request',
+      {nonce: Date.now(), dataset_context: currentDatasetContext()},
+      {priority: 'event'});
   }
 
   function applySingleAux(message) {
@@ -9459,7 +10933,10 @@
           Number(view.aux_render_token) !== Number(message.render_token)) return;
       if (!CBViewState.specialistLifecycle.acceptAux(view, message)) return;
       var hasCells = message.selection_key != null;
-      if (hasCells) view.data.selection_key = message.selection_key;
+      if (hasCells) {
+        view.data.selection_key = message.selection_key;
+        view.data.selection_rows = message.selection_rows;
+      }
       if (hasCells && !(message.hover && message.hover.pending)) {
         singleAuxCache[message.id] = Object.assign({}, message, {
           aux_origin_token: message.aux_origin_token != null
@@ -9476,8 +10953,16 @@
         }
         if (cells.length !== D.n) return;
         D.cells = cells;
+        D.rows = singlePayloadRows(view.data.selection_rows,
+          ArrayBuffer.isView(canonicalGroups) ? canonicalGroups : null, D.n);
         singleIndexCells = null; singleIndexMap = null;
         reportSelection('aux');
+        // Filters that waited for these rows (a section frame) apply now.
+        var filters = view.clientFilters || {};
+        if (Object.keys(filters).some(function (name) { return !filters[name].values; })) {
+          applySingleClientFilters(message.id);
+          applyActiveChange();
+        }
       }
       var nested = view.meta && view.meta.color_type === 'categorical' &&
         !ArrayBuffer.isView(canonicalGroups);
@@ -9739,9 +11224,12 @@
       if (t) { var sp = spaceById[p.spaceId]; t.textContent = sp ? sp.label : p.spaceId; }
     });
     renderLegend();
+    // The selection bar or workspace guide takes height above the panes: show
+    // it before the first fit, or the panes move and are drawn again.
+    renderSelbar();
     resizeAll();
     setTimeout(syncPointControls, 0);
-    renderSelbar(); renderReadout();
+    renderReadout();
     // Clear the server-side selection too: sel was reset to null above, but the
     // server input still holds the PREVIOUS dataset's barcodes until we push. The
     // "selected cells" plot/table (server-rendered) key off it, so without this
@@ -10431,6 +11919,13 @@
   });
 
   window.cerebroCellViews = Object.freeze({
+    scalePointSizes: function (id, factor) {
+      factor = Number(factor);
+      if (!id || !(factor > 0)) return false;
+      singlePointScale[id] = factor;
+      if (D && singleActive === id) drawAll();
+      return true;
+    },
     summary: singleSummary,
     captureState: captureSingleState,
     applyState: applySingleState,
@@ -10473,7 +11968,10 @@
       Object.keys(scatterControlFields).forEach(function (id) {
         setLinkedSliderValue(id, message.values[scatterControlFields[id]]);
       });
+      // The echo of an edit this page already drew changes nothing on screen.
+      var drawn = [ps, pointOpacity, pctShow];
       syncSharedScatter();
+      if (drawn[0] === ps && drawn[1] === pointOpacity && drawn[2] === pctShow) return;
       if (D && (!singleActive || singleClientPercentage())) { applyActiveChange(); }
       else if (D && singleActive !== 'spatial_projection') { drawAll(); }
     });
@@ -10483,17 +11981,56 @@
       var container = event.target && event.target.closest &&
         event.target.closest('.shiny-input-container');
       var control = container && container.querySelector('input');
-      if (control && scatterControlFields[control.id]) scatterUserEdit = {
-        id: control.id, context: currentDatasetContext(), time: Date.now()
-      };
+      if (control && (scatterControlFields[control.id] || spatialPointFields[control.id])) {
+        scatterUserEdit = { id: control.id, context: currentDatasetContext(), time: Date.now() };
+      }
     }
     document.addEventListener('pointerdown', markScatterInteraction, true);
     document.addEventListener('keydown', markScatterInteraction, true);
+    // Point size and opacity draw as the slider moves, as on Linked views. R
+    // only stores the value; its echo then matches what is drawn.
+    window.jQuery(document).on('change.cerebroScatter', 'input', function (event) {
+      var el = event.target, edit = scatterUserEdit, spatial = !!spatialPointFields[el.id];
+      var field = spatialPointFields[el.id] || scatterControlFields[el.id], value = Number(el.value);
+      if (!edit || edit.id !== el.id || el._cvSyncing || Date.now() - edit.time > 30000 ||
+          el.id.indexOf('cv-') === 0 || !D || !singleActive || !isFinite(value) ||
+          spatial !== (singleActive === 'spatial_projection') ||
+          !sharedScatterControl(el.id)) return;
+      if (field === 'point_size') {
+        ps = Math.max(1, Math.min(20, value)); pointSizeEdited = true;
+      } else if (field === 'point_opacity') {
+        pointOpacity = Math.max(0, Math.min(1, value)); pointOpacityEdited = true;
+      } else if (field === 'percentage_cells_to_show' && singleClientPercentage()) {
+        pctShow = Math.max(10, Math.min(100, value)); rebuildPctMask(); applyActiveChange();
+        return;
+      } else return;
+      drawAll();
+    });
+    // Display toggles of the single views patch the drawn view at once; R's
+    // cell_view_appearance patch then carries the values already drawn.
+    var toggleFields = {
+      group_labels: 'group_labels', point_border: 'draw_border',
+      keep_square: 'keep_square', plotting_order: 'paint_order'
+    };
+    document.addEventListener('change', function (event) {
+      var el = event.target, match = el && el.type === 'checkbox' &&
+        /^(overview_projection|expression_projection|trajectory_projection|spatial_projection|ir_clonalUMAP)_(group_labels|point_border|keep_square|plotting_order)$/.exec(el.id);
+      var id = match && (match[1] === 'ir_clonalUMAP' ? 'ir_clonalUMAP_projection' : match[1]);
+      var view = id && singleActive === id && singleView(id);
+      // Grouped clonal panels never draw group labels (R sends false).
+      if (!view || (match[2] === 'group_labels' && view.data && view.data.panels &&
+          id === 'ir_clonalUMAP_projection')) return;
+      var values = {};
+      values[toggleFields[match[2]]] = match[2] === 'plotting_order'
+        ? (el.checked ? 'highest' : 'natural') : el.checked;
+      applySingleAppearance({ id: id, dataset_context: view.dataset_context, values: values,
+        dataset_fingerprint: (view.datasetIdentity || {}).cell_fingerprint });
+    });
     window.jQuery(document).on('shiny:inputchanged.cerebroScatter', function (event) {
       var edit = scatterUserEdit, field = scatterControlFields[event.name];
       if (!edit || !field || event.name.indexOf('cv-') === 0 || edit.id !== event.name ||
           Date.now() - edit.time > 30000 || !sameDatasetContext(edit.context, currentDatasetContext()) ||
-          (event.el && event.el._cvSyncing)) return;
+          (event.el && event.el._cvSyncing) || !sharedScatterControl(event.name)) return;
       var values = sharedScatterValues();
       if (values && Number(event.value) === values[field]) return;
       publishScatterEdit(field, Number(event.value));
@@ -10590,15 +12127,56 @@
       if (!applyColorPatch(patch)) pendingColorPatch = patch;
     });
     Shiny.addCustomMessageHandler('cell_view_render', function (message) {
-      if (!message || !message.id || !datasetMessageFresh(message)) return;
+      if (!message || !message.id) return;
+      if (!datasetMessageFresh(message)) {
+        releaseEarlySingleRequest(message);
+        return;
+      }
       message = reuseSharedSingleProjection(message);
       if (!message) return;
-      renderSingle(message);
+      if (!frameNeedsCellNames(message)) { renderSingle(message); return; }
+      resolveFrameCellNames(message).then(function (resolved) {
+        if (datasetMessageFresh(resolved)) renderSingle(resolved);
+      }, function () {
+        if (datasetMessageFresh(message)) {
+          cellNamesResourceFailed(message.id, message.data.cell_names_resource);
+        }
+      });
     });
     Shiny.addCustomMessageHandler('cell_view_background', function (message) {
       updateSingleBackground(message);
     });
-    Shiny.addCustomMessageHandler('cell_view_appearance', function (message) {
+    // Spatial background controls: draw the snapshot the page sends R at once.
+    window.jQuery(document).on('shiny:inputchanged.cerebroBackground', function (event) {
+      if (event.name === 'spatial_projection_background_controls' && event.value) {
+        updateSingleBackground(Object.assign({ id: 'spatial_projection' }, event.value));
+      }
+    });
+    // Overlay data (region outlines) for the drawn frame: replaced in place,
+    // without touching the frame's cells or their GPU data.
+    Shiny.addCustomMessageHandler('cell_view_extra', function (message) {
+      if (!message || !message.id || !message.extra || !datasetMessageFresh(message)) return;
+      var view = singleView(message.id, message.dataset_context);
+      var identity = view && view.datasetIdentity || {};
+      if (!view || String(identity.cell_fingerprint || '') !==
+          String(message.dataset_fingerprint || '')) return;
+      view.extra = Object.assign({}, view.extra || {}, message.extra);
+      if (singleActive !== message.id || !('group_hulls' in message.extra)) return;
+      var hulls = singleHulls(view.extra);
+      panels.forEach(function (p) {
+        var space = p.spaceId && spaceById[p.spaceId];
+        if (!space) return;
+        if (hulls.length) space.hulls = hulls; else delete space.hulls;
+        p.cloneBase = null;
+      });
+      drawAll();
+    });
+    Shiny.addCustomMessageHandler('cell_view_filters', updateSingleClientFilters);
+    Shiny.addCustomMessageHandler('cell_view_selection_spec', receiveSelectionSpec);
+    Shiny.addCustomMessageHandler('cell_view_column', receiveClientColumn);
+    Shiny.addCustomMessageHandler('trajectory_table_resource', receiveTrajectoryTable);
+    Shiny.addCustomMessageHandler('cell_view_appearance', applySingleAppearance);
+    function applySingleAppearance(message) {
       if (!message || !message.id || !message.values || !datasetMessageFresh(message)) return;
       var view = singleView(message.id, message.dataset_context);
       var identity = view && view.datasetIdentity || {};
@@ -10618,7 +12196,23 @@
           view.pointAppearance[key] = message.values[key];
         }
       });
+      // "Highest expression on top" reorders the expression fields drawn.
+      var reordered = false;
+      if (Object.prototype.hasOwnProperty.call(message.values, 'paint_order')) {
+        view.data.paint_order = message.values.paint_order;
+        if (singleActive === message.id && D && D.fields) {
+          var highest = message.values.paint_order === 'highest';
+          Object.keys(D.fields).forEach(function (name) {
+            var field = D.fields[name];
+            if (field && field.followsPaintOrder && field.paintOrder !== highest) {
+              field.paintOrder = highest; reordered = true;
+            }
+          });
+        }
+      }
       if (singleActive !== message.id) return;
+      if (reordered) drawAll();
+      var drawn = [ps, pointOpacity, labelsOn, bordersOn, keepPlotsSquare].join('|');
       if (Number.isFinite(message.values.point_size)) {
         ps = Math.max(1, Math.min(20, message.values.point_size)); pointSizeEdited = true;
       }
@@ -10634,12 +12228,20 @@
       if (Object.prototype.hasOwnProperty.call(message.values, 'keep_square')) {
         keepPlotsSquare = !!message.values.keep_square;
       }
-      if (Object.prototype.hasOwnProperty.call(message.values, 'keep_square')) resizeAll();
-      drawAll();
+      // Controls binding with the values already drawn change nothing: lay
+      // out only if the panels' size changed meanwhile.
+      if ([ps, pointOpacity, labelsOn, bordersOn, keepPlotsSquare].join('|') === drawn) {
+        resizeAll(true);
+      } else {
+        // A layout change draws in resizeAll(); draw here only when it did not.
+        var resized = Object.prototype.hasOwnProperty.call(message.values, 'keep_square') &&
+          resizeAll();
+        if (!resized) drawAll();
+      }
       window.dispatchEvent(new CustomEvent('cerebro:view-appearance', { detail: {
         id: message.id, values: message.values, dataset_context: message.dataset_context
       } }));
-    });
+    }
 
     // Single-gene expression vector (0-255) for the current gene.
     // A reply is only for the gene still being asked about. Two things used to
@@ -10656,11 +12258,15 @@
       geneWanted = null;
       if (!m.ok) {
         // Nothing to draw. Say so rather than keep showing the last gene.
+        var hadGene = !!D.gene;
         window.CBViewState.clearExpression(D, 'gene');
         clipRange();
         if (colorBy === GENE_MODE) {
           renderColorbar(true, null, m.gene + ' — not available');
-          drawAll(); updateMoranBadges();
+          // Without a previous gene the points are already drawn without one:
+          // only the colour bar can have moved the panels.
+          if (hadGene) drawAll(); else resizeAll(true);
+          updateMoranBadges();
         }
         return;
       }
@@ -10676,7 +12282,7 @@
       if (!m.ok) {
         window.CBViewState.clearExpression(D, 'panels');
         if (colorBy === GENE_PANELS_MODE) {
-          buildPanels(); layoutPanels(); renderLegend(); resizeAll(); drawAll();
+          buildPanels(); layoutPanels(); renderLegend(); if (!resizeAll()) drawAll();
         }
         return;
       }
@@ -10713,7 +12319,7 @@
           if (title) title.textContent = space ? space.label : panel.spaceId;
         });
       }
-      renderLegend(); resizeAll(); drawAll();
+      renderLegend(); if (!resizeAll()) drawAll();
     });
     // The exact meta row behind the open detail card. Ignored if the card has
     // since moved on to another cell (or closed) — a slow reply must not
@@ -10772,7 +12378,12 @@
     });
     function requestSingleView(id) {
       var context = currentDatasetContext();
-      if (!context || !datasetContextApi() || datasetContextApi().phase() !== 'ready') return false;
+      // A pending context is the one the server is loading: requesting the view
+      // with it lets the server draw the first frame as soon as the load ends,
+      // instead of after the page controls it builds in the same pass. The
+      // frame itself is accepted only once that context is ready.
+      var phase = datasetContextApi() && datasetContextApi().phase();
+      if (!context || (phase !== 'ready' && phase !== 'pending')) return false;
       var requestKey = singleRequestKey(id, context);
       if (!id || singleView(id) || singleRequests.has(requestKey) ||
           !Shiny.setInputValue) return false;
@@ -10866,6 +12477,9 @@
         stampLinkedRequest();
         Shiny.setInputValue('coordviews_visible', true, { priority: 'event' });
       }
+      // Ahead of the tab's own `sidebar` input: the server then has the request
+      // when the tab opens and draws the view before building its controls.
+      requestSingleView(tabSingleViewId(tabLink));
       setTimeout(function () {
         requestSingleView(tabSingleViewId(tabLink));
         reportVisibility();
@@ -10992,7 +12606,7 @@
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
             pp.focusFrom = null; syncFocusButtons();
-            drawAll();
+            drawPanel(pp);
           }
         }
         return;
@@ -11078,7 +12692,8 @@
         return true;
       }
       if (id === 'cv-backgrounds') {
-        setLinkedBackgrounds(target.checked);
+        // Both `input` and `change` arrive here for one click.
+        if (linkedBackgroundsOn !== !!target.checked) setLinkedBackgrounds(target.checked);
         return true;
       }
       if (id === 'cv-labels') {
