@@ -52,7 +52,7 @@ output[["groups_expression_metrics_UI"]] <- renderUI({
   } else {
     tabs <- lapply(available, function(metric) {
       spec <- groups_metric_specs[[metric]]
-      tabPanel(spec$title, plotly::plotlyOutput(spec$output))
+      tabPanel(spec$title, cerebroChartOutput(spec$output))
     })
     do.call(
       tabBox,
@@ -65,18 +65,24 @@ output[["groups_expression_metrics_UI"]] <- renderUI({
   content
 })
 
-## One violin plot per metric; each renders only while its tab is shown.
+## One violin plot per metric; each renders only while its tab is shown, or
+## while the browser prefetches the hidden tabs (below).
+groups_metrics_prefetching <- FALSE
 for (metric in names(groups_metric_specs)) {
   local({
     metric <- metric
     spec <- groups_metric_specs[[metric]]
-    output[[spec$output]] <- plotly::renderPlotly({
+    output[[spec$output]] <- renderCerebroChart({
       req(
         input[["groups_expression_metrics_render_request"]],
-        identical(input[["groups_expression_metrics_tabs"]], spec$title),
-        input[["groups_selected_group"]] %in% getGroups()
+        groups_metrics_prefetching ||
+          identical(input[["groups_expression_metrics_tabs"]], spec$title),
+        input[["groups_selected_group"]] %in% getGroups(),
+        ## The tab input outlives a data set switch until the tabs are built
+        ## again; a data set without this metric has no plot for it.
+        metric %in% colnames(viewerProjectionFirstFrameMetadata())
       )
-      plotlyViolin(
+      cerebroViolinData(
         table = groupsMetricData(input[["groups_selected_group"]], metric),
         metric = metric,
         coloring_variable = input[["groups_selected_group"]],
@@ -93,6 +99,30 @@ for (metric in names(groups_metric_specs)) {
       )
   })
 }
+
+## After the shown metric is drawn, the browser asks while idle for the other
+## tabs of the same group. Their outputs run once while hidden and the browser
+## draws them when their tab is shown, without a server round trip.
+observeEvent(input[["groups_expression_metrics_prefetch"]], {
+  req(identical(
+    input[["groups_expression_metrics_prefetch"]],
+    input[["groups_selected_group"]]
+  ))
+  outputs <- vapply(groups_metric_specs, `[[`, "", "output")
+  groups_metrics_prefetching <<- TRUE
+  for (id in outputs) {
+    outputOptions(output, id, suspendWhenHidden = FALSE)
+  }
+  session$onFlushed(
+    function() {
+      groups_metrics_prefetching <<- FALSE
+      for (id in outputs) {
+        outputOptions(output, id, suspendWhenHidden = TRUE)
+      }
+    },
+    once = TRUE
+  )
+})
 
 ##----------------------------------------------------------------------------##
 ## Info box that gets shown when pressing the "info" button.

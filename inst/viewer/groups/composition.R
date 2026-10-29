@@ -127,61 +127,55 @@ groupsCompositionTable <- function(mode, percent) {
 ##----------------------------------------------------------------------------##
 ## Plot showing composition of groups, either as a bar chart or a Sankey plot.
 ##----------------------------------------------------------------------------##
-output[["groups_by_other_group_plot"]] <- plotly::renderPlotly({
+## The counts, the percentages and the Sankey plot of the two groups go in one
+## value; the browser shows the one the plot type and percent controls ask for,
+## so changing those controls does not come back to R.
+output[["groups_by_other_group_plot"]] <- renderCerebroChart({
   ## only proceed if the two groups are not the same (otherwise it can give an
   ## error when switching between groups)
   req(
     input[["groups_selected_group"]] %in% getGroups(),
     input[["groups_by_other_group_second_group"]] %in% getGroups(),
     input[["groups_selected_group"]] !=
-      input[["groups_by_other_group_second_group"]],
-    input[["groups_by_other_group_plot_type"]]
-  )
-  ##
-  if (input[["groups_by_other_group_plot_type"]] == "Bar chart") {
-    ## calculate table
-    composition_df <- groupsCompositionTable(
-      mode = "long",
-      percent = input[["groups_by_other_group_show_as_percent"]]
-    )
-    colors <- reactive_group_colors(
       input[["groups_by_other_group_second_group"]]
-    )
-    ## generate plot
-    plot <- plotlyBarChart(
-      table = composition_df,
-      first_grouping_variable = input[["groups_selected_group"]],
-      second_grouping_variable = input[["groups_by_other_group_second_group"]],
-      colors = colors,
-      percent = input[["groups_by_other_group_show_as_percent"]]
-    )
-    plot
-    ##
-  } else if (input[["groups_by_other_group_plot_type"]] == "Sankey plot") {
-    ## calculate table
-    composition_df <- groupsCompositionTable(
-      mode = "long",
-      percent = FALSE
-    )
-    ## get color code for all group levels (from both groups)
-    colors_for_groups <- c(
-      reactive_group_colors(input[["groups_selected_group"]]),
-      reactive_group_colors(input[["groups_by_other_group_second_group"]])
-    )
-    ## generate plot
-    plotlySankeyPlot(
-      table = composition_df,
-      first_grouping_variable = input[["groups_selected_group"]],
-      second_grouping_variable = input[["groups_by_other_group_second_group"]],
-      colors_for_groups = colors_for_groups
+  )
+  first <- input[["groups_selected_group"]]
+  second <- input[["groups_by_other_group_second_group"]]
+  colors_second <- reactive_group_colors(second)
+  bar <- function(percent) {
+    cerebroBarChartData(
+      table = groupsCompositionTable(mode = "long", percent = percent),
+      first = first,
+      second = second,
+      colors = colors_second,
+      percent = percent
     )
   }
+  sankey <- cerebroSankeyData(
+    table = groupsCompositionTable(mode = "long", percent = FALSE),
+    first = first,
+    second = second,
+    colors_first = reactive_group_colors(first),
+    colors_second = colors_second
+  )
+  list(
+    type = "switch",
+    inputs = I(c(
+      "groups_by_other_group_plot_type",
+      "groups_by_other_group_show_as_percent"
+    )),
+    views = list(
+      "Bar chart|FALSE" = bar(FALSE),
+      "Bar chart|TRUE" = bar(TRUE),
+      "Sankey plot|FALSE" = sankey,
+      "Sankey plot|TRUE" = sankey
+    ),
+    fallback = "Bar chart|FALSE"
+  )
 }) %>%
   cachePlot(
-    input[["groups_by_other_group_plot_type"]],
     input[["groups_selected_group"]],
     input[["groups_by_other_group_second_group"]],
-    input[["groups_by_other_group_show_as_percent"]],
     reactive_group_colors(input[["groups_selected_group"]]),
     reactive_group_colors(input[["groups_by_other_group_second_group"]]),
     available_crb_files$selected
