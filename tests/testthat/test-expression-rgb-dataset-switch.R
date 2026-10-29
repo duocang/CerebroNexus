@@ -59,14 +59,14 @@ test_that("RGB channels track canonical spelling across dataset switches", {
   )
 })
 
-test_that("an empty expression summary is a valid empty widget", {
+test_that("an empty expression summary is a valid empty chart", {
   source(
     viewer_test_path("gene_expression", "func_expression_summary.R"),
     local = TRUE
   )
-  expect_s3_class(
+  expect_identical(
     plotExpressionSummary(list(), character(), character()),
-    "plotly"
+    list(type = "empty")
   )
 })
 
@@ -97,7 +97,7 @@ test_that("mounted Gene selectors do not restore old input on return", {
       viewer_runtime_env(environment())
       data_set <- shiny::reactiveVal(list(genes = c("Gad1", "Slc17a7")))
       getGeneNames <- function() data_set()$genes
-      updateSelectizeInput <- function(
+      viewerUpdateGeneSelector <- function(
         session,
         inputId,
         choices,
@@ -161,7 +161,7 @@ test_that("obsolete selector retries cannot replace a new dataset's choices", {
       viewer_runtime_env(environment())
       data_set <- shiny::reactiveVal(list(genes = c("Snap25", "Gad1")))
       getGeneNames <- function() data_set()$genes
-      updateSelectizeInput <- function(
+      viewerUpdateGeneSelector <- function(
         session,
         inputId,
         choices,
@@ -205,7 +205,7 @@ test_that("obsolete selector retries cannot replace a new dataset's choices", {
 test_that("a single-shot gene selector registers even when the selection moved", {
   scope <- viewer_runtime_env()
   updates <- list()
-  scope$updateSelectizeInput <- function(
+  scope$viewerUpdateGeneSelector <- function(
     session,
     inputId,
     choices,
@@ -221,7 +221,7 @@ test_that("a single-shot gene selector registers even when the selection moved",
     function(input, output, session) {
       data_set <- shiny::reactiveVal("first")
       environment(scope$serverSideGeneSelector) <- environment()
-      updateSelectizeInput <- scope$updateSelectizeInput
+      viewerUpdateGeneSelector <- scope$viewerUpdateGeneSelector
       canonicalGeneSelection <- scope$canonicalGeneSelection
       scope$serverSideGeneSelector(
         session,

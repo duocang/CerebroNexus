@@ -129,6 +129,10 @@ test_that("RGB expression reads all channels in one backend call", {
   scope$input <- shiny::reactiveValues(
     expression_projection_genes_in_separate_panels = "rgb"
   )
+  ## Server code reads the display mode through viewerControlValue().
+  scope$expression_projection_display_mode <- function() {
+    scope$input[["expression_projection_genes_in_separate_panels"]]
+  }
 
   values <- matrix(
     c(1, 2, 3, 4, 5, 6),
@@ -192,9 +196,8 @@ test_that("RGB violin outliers use the channel color", {
     factor(rep("sample_1", 5)),
     c(sample_1 = "#f59e0b")
   )
-  trace <- plotly::plotly_build(plot)$x$data[[1]]
-
-  expect_identical(trace$marker$color, "#dc2626")
+  expect_identical(plot$type, "violin")
+  expect_identical(as.character(plot$colors), "#dc2626")
 })
 
 test_that("gene summary hosts change only when their layout changes", {
@@ -214,6 +217,7 @@ test_that("gene summary hosts change only when their layout changes", {
       boxTitle <- function(x) x
       cerebroInfoButton <- function(...) NULL
       scope <- environment()
+      sys.source(viewer_test_path("plotting_functions.R"), scope)
       sys.source(
         viewer_test_path("gene_expression", "UI_expression_by_group.R"),
         scope

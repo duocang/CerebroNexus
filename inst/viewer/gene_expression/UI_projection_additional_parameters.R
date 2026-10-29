@@ -29,10 +29,7 @@ output[["expression_projection_data_parameters_UI"]] <- renderUI({
     checkboxInput(
       "expression_projection_plotting_order",
       label = "Highest expression on top",
-      value = identical(
-        current_page_display_defaults("gene")$plotting_order,
-        "Highest expression on top"
-      )
+      value = expression_projection_default_plotting_order()
     ),
     viewerLimitedSlider(
       "expression_projection_percentage_cells_to_show",

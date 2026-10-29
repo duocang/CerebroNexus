@@ -26,3 +26,39 @@ expression_projection_selected_cells <- reactive({
 
   selection
 })
+
+##----------------------------------------------------------------------------##
+## Rows of the frame (expression_projection_cells_to_show()) that the selection
+## holds, in frame order. Identity strings are built only where a selection
+## needs them, not for every cell on each selection change.
+##----------------------------------------------------------------------------##
+expression_projection_selected_rows <- reactive({
+  selected_cells <- expression_projection_selected_cells()
+  req(selected_cells)
+  cells <- expression_projection_cells_to_show()
+  selected <- viewerSelectionRows(selected_cells)
+  if (!is.null(selected)) {
+    return(which(viewerRowMask(selected, cells)))
+  }
+  stable <- if ("selection_key" %in% colnames(selected_cells)) {
+    as.character(selected_cells[["selection_key"]])
+  } else {
+    character()
+  }
+  stable <- stable[!is.na(stable) & nzchar(stable)]
+  if (length(stable)) {
+    ## Stable selection is published only after deferred identity is
+    ## available. First-frame metadata can contain compact row numbers, not
+    ## real barcodes.
+    barcodes <- getMetaData()[["cell_barcode"]]
+    return(which(cells %in% which(barcodes %in% stable)))
+  }
+  if (!"identifier" %in% colnames(selected_cells)) {
+    return(integer())
+  }
+  coordinates <- expression_projection_coordinates()
+  which(
+    paste0(coordinates[[1]], "-", coordinates[[2]]) %in%
+      as.character(selected_cells[["identifier"]])
+  )
+})

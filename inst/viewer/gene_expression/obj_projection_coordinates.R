@@ -25,10 +25,9 @@ expression_projection_coordinates <- reactive({
       selection[1] %in% getMethodsForTrajectories(),
       selection[2] %in% getNamesOfTrajectories(selection[1])
     )
-    coordinates <- getTrajectory(selection[1], selection[2])[['meta']][
-      cells_to_show,
-      c(1, 2)
-    ]
+    coordinates <- expression_projection_trajectory_meta(
+      getTrajectory(selection[1], selection[2])[['meta']][, c(1, 2)]
+    )
   }
   return(coordinates)
 })

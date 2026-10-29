@@ -32,6 +32,15 @@ test_that("Gene summary and table resolve canonical barcodes after deferred iden
   env$expression_projection_data <- function() {
     data.frame(cell_barcode = c("4", "1", "3"))
   }
+  env$viewerProjectionFirstFrameMetadata <- function() {
+    data.frame(cell_barcode = as.character(1:4))
+  }
+  env$expression_projection_shown_rows <- function() NULL
+  rows <- viewer_r_assignment(
+    viewer_test_path("gene_expression", "obj_projection_selected_cells.R"),
+    "expression_projection_selected_rows"
+  )[[3]][[2]]
+  env$expression_projection_selected_rows <- function() eval(rows, env)
   env$expression_summary_data <- function() {
     list(kind = "mean", series = list(list(values = c(4, 0, NA_real_))))
   }
@@ -77,4 +86,59 @@ test_that("Gene summary and table resolve canonical barcodes after deferred iden
     c("not selected", "selected", "not selected")
   )
   expect_identical(eval(table, env)$cell_barcode, "cell-b")
+})
+
+test_that("Gene selected-cell summary leaves out cells the browser filters hide", {
+  env <- viewer_runtime_env()
+  env$req <- shiny::req
+  env$getMetaData <- function() {
+    data.frame(cell_barcode = c("a", "b", "c", "d"))
+  }
+  env$viewerClientSelection <- function(...) FALSE
+  env$expression_projection_summary_ready <- function() TRUE
+  env$expression_projection_cells_to_show <- function() 1:4
+  env$expression_projection_coordinates <- function() {
+    data.frame(x = c(1, 2, 3, 4), y = c(5, 6, 7, 8))
+  }
+  env$expression_projection_data <- function() data.frame(row.names = 1:4)
+  env$expression_summary_data <- function() {
+    list(kind = "mean", series = list(list(values = c(10, 20, 30, 40))))
+  }
+  env$plotExpressionSummary <- function(series, groups, colors) {
+    list(values = series[[1]]$values, groups = as.character(groups))
+  }
+  rows <- viewer_r_assignment(
+    viewer_test_path("gene_expression", "obj_projection_selected_cells.R"),
+    "expression_projection_selected_rows"
+  )[[3]][[2]]
+  env$expression_projection_selected_rows <- function() eval(rows, env)
+  summary <- gene_selection_body(
+    "UI_expression_in_selected_cells.R",
+    "expression_in_selected_cells"
+  )
+  env$expression_projection_selected_cells <- function() {
+    data.frame(selection_key = c("a", "c"))
+  }
+  ## The frame holds every cell; the browser shows rows 1, 2 and 4.
+  env$expression_projection_shown_rows <- function() c(1L, 2L, 4L)
+  expect_identical(
+    eval(summary, env),
+    list(
+      values = c(10, 20, 40),
+      groups = c("selected", "not selected", "not selected")
+    )
+  )
+  env$expression_projection_shown_rows <- function() NULL
+  expect_identical(
+    eval(summary, env)$groups,
+    c("selected", "not selected", "selected", "not selected")
+  )
+  ## Before stable identities, coordinates name the selected cells.
+  env$expression_projection_selected_cells <- function() {
+    data.frame(x = 3, y = 7, identifier = "3-7")
+  }
+  expect_identical(
+    eval(summary, env)$groups,
+    c("not selected", "not selected", "selected", "not selected")
+  )
 })

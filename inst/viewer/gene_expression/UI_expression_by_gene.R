@@ -13,7 +13,7 @@ output[["expression_by_gene_UI"]] <- renderUI({
         boxTitle("Expression levels by gene"),
         cerebroInfoButton("expression_by_gene_info")
       ),
-      plotly::plotlyOutput("expression_by_gene")
+      cerebroChartOutput("expression_by_gene")
     )
   )
 })
@@ -21,7 +21,7 @@ output[["expression_by_gene_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 ## Bar plot.
 ##----------------------------------------------------------------------------##
-output[["expression_by_gene"]] <- plotly::renderPlotly({
+output[["expression_by_gene"]] <- renderCerebroChart({
   if (!isTRUE(isolate(input[["expression_summary_viewport_request"]]))) {
     req(input[["expression_summary_viewport_request"]], cancelOutput = TRUE)
   }
@@ -37,50 +37,22 @@ output[["expression_by_gene"]] <- plotly::renderPlotly({
     dplyr::slice_max(expression, n = 50)
   color_settings <- expression_projection_parameters_color()
   color_scale <- expressionColorScale(color_settings[["color_scale"]])
-  ## prepare plot
-  plotly::plot_ly(
-    expression_levels,
-    x = ~gene,
-    y = ~expression,
-    text = ~ paste0(
-      expression_levels$gene,
-      ': ',
-      format(expression_levels$expression, digits = 3)
+  if (!is.list(color_scale)) {
+    color_scale <- expressionColorScale("viridis")
+  }
+  ## one bar per gene, coloured by its mean on the expression colour scale
+  cerebroCountBarData(
+    expression_levels$gene,
+    expression_levels$expression,
+    cerebroScaleColors(
+      expression_levels$expression,
+      color_scale,
+      reverse = expressionReverseColorScale(color_settings[["color_scale"]])
     ),
-    type = "bar",
-    marker = list(
-      color = ~expression,
-      colorscale = color_scale,
-      reversescale = expressionReverseColorScale(
-        color_settings[["color_scale"]]
-      ),
-      line = list(
-        color = "rgb(196,196,196)",
-        width = 1
-      )
-    ),
-    hoverinfo = "text",
-    showlegend = FALSE
-  ) %>%
-    plotly::layout(
-      title = "",
-      xaxis = list(
-        title = "",
-        type = "category",
-        categoryorder = "array",
-        categoryarray = expression_levels$gene,
-        mirror = TRUE,
-        showline = TRUE
-      ),
-      yaxis = list(
-        title = "Expression level",
-        mirror = TRUE,
-        showline = TRUE
-      ),
-      dragmode = "lasso",
-      hovermode = "compare"
-    ) %>%
-    cerebro_plotly_toolbar()
+    y_title = "Expression level",
+    format = "number",
+    outline = "rgb(196,196,196)"
+  )
 })
 
 ##----------------------------------------------------------------------------##

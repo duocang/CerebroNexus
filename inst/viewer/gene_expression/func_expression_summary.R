@@ -73,9 +73,11 @@ expressionSummarySpec <- function(
   )
 }
 
+## One violin panel per series (three per row, one value axis); `colors` per
+## group, or the series' own colour for every group (RGB channels).
 plotExpressionSummary <- function(series, groups, colors) {
   if (!length(series)) {
-    return(plotly::plotly_empty())
+    return(list(type = "empty"))
   }
   # Bound the total density payload across panels, rather than sending 4096
   # points for every patient/sample in a large atlas. Exact summaries below
@@ -85,76 +87,21 @@ plotExpressionSummary <- function(series, groups, colors) {
     32L,
     min(4096L, floor(65536 / (group_count * length(series))))
   )
-  plots <- lapply(series, function(item) {
-    plot_data <- data.frame(
-      group = groups,
-      level = item$values,
-      stringsAsFactors = FALSE
-    )
-    plot_data <- compactViolinData(plot_data, "level", "group", density_points)
-    if (is.null(item$color)) {
-      plot <- plotly::plot_ly(
-        plot_data,
-        x = ~group,
-        y = ~level,
-        type = "violin",
-        color = ~group,
-        colors = colors,
-        source = "subset",
-        showlegend = FALSE,
-        hoverinfo = "y",
-        marker = list(size = 5),
-        box = list(visible = FALSE),
-        meanline = list(visible = FALSE)
-      )
-    } else {
-      plot <- plotly::plot_ly(
-        plot_data,
-        x = ~group,
-        y = ~level,
-        type = "violin",
-        fillcolor = item$color,
-        line = list(color = item$color),
-        source = "subset",
-        showlegend = FALSE,
-        hoverinfo = "y",
-        marker = list(size = 5, color = item$color),
-        box = list(visible = FALSE),
-        meanline = list(visible = FALSE)
-      )
-    }
-    plot <- addExactViolinSummary(plot, plot_data)
-    plotly::layout(
-      plot,
-      title = "",
-      xaxis = cerebro_plotly_axis(
-        title = if (length(series) == 1) "" else item$label,
-        mirror = FALSE
-      ),
-      yaxis = cerebro_plotly_axis(
-        title = "Expression level",
-        mirror = FALSE,
-        hoverformat = ".2f"
-      ),
-      hoverlabel = cerebro_plotly_hoverlabel(),
-      plot_bgcolor = cerebro_plotly_theme()$transparent,
-      paper_bgcolor = cerebro_plotly_theme()$transparent,
-      dragmode = "lasso",
-      hovermode = "compare"
+  panels <- lapply(series, function(item) {
+    cerebroViolinData(
+      data.frame(group = groups, level = item$values, stringsAsFactors = FALSE),
+      "level",
+      "group",
+      colors,
+      "Expression level",
+      "number",
+      max_points = density_points,
+      title = if (length(series) > 1) item$label,
+      fill = item$color
     )
   })
-
-  plot <- if (length(plots) == 1) {
-    plots[[1]]
-  } else {
-    plotly::subplot(
-      plots,
-      nrows = ceiling(length(plots) / 3),
-      shareY = TRUE,
-      titleX = TRUE,
-      titleY = TRUE,
-      margin = 0.05
-    )
+  if (length(panels) == 1) {
+    return(panels[[1]])
   }
-  cerebro_plotly_toolbar(plot)
+  cerebroViolinPanels(panels, "Expression level", "number")
 }

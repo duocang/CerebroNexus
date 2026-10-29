@@ -9,7 +9,7 @@
 output[["expression_details_selected_cells_UI"]] <- renderUI({
   req(
     expression_projection_summary_ready(),
-    expression_projection_selected_cells()
+    expression_selection_present()
   )
   req(expression_summary_data())
   fluidRow(
@@ -43,6 +43,8 @@ output[["expression_details_selected_cells_UI"]] <- renderUI({
 ## Table with results.
 ##----------------------------------------------------------------------------##
 output[["expression_details_selected_cells"]] <- DT::renderDataTable({
+  ## The browser lists a selection it reported by row.
+  req(!viewerClientSelection("expression_projection", "table"))
   req(
     expression_projection_summary_ready(),
     expression_projection_data(),
@@ -50,15 +52,23 @@ output[["expression_details_selected_cells"]] <- DT::renderDataTable({
     expression_summary_data(),
     expression_projection_selected_cells()
   )
-  selected_cells <- expression_projection_selected_cells()
   summary <- expression_summary_data()
+  ## Columns are built for the selected rows only, not for every cell.
+  rows <- expression_projection_selected_rows()
+  if (!length(rows)) {
+    return(prepareEmptyTable(dplyr::slice(
+      viewerProjectionFirstFrameMetadata(),
+      0
+    )))
+  }
+  cells <- expression_projection_cells_to_show()[rows]
   cells_df <- bind_cols(
-    expression_projection_coordinates(),
-    expression_projection_data()
+    expression_projection_coordinates()[rows, , drop = FALSE],
+    viewerProjectionFirstFrameMetadata()[cells, , drop = FALSE]
   )
   if (identical(summary$kind, "mean")) {
     expression_columns <- "expression_level"
-    cells_df[[expression_columns]] <- summary$series[[1]]$values
+    cells_df[[expression_columns]] <- summary$series[[1]]$values[rows]
   } else {
     expression_columns <- make.unique(vapply(
       summary$series,
@@ -67,37 +77,15 @@ output[["expression_details_selected_cells"]] <- DT::renderDataTable({
       "label"
     ))
     for (i in seq_along(summary$series)) {
-      cells_df[[expression_columns[[i]]]] <- summary$series[[i]]$values
+      cells_df[[expression_columns[[i]]]] <- summary$series[[i]]$values[rows]
     }
   }
   cells_df <- cells_df %>%
     dplyr::rename(X1 = 1, X2 = 2)
   ## Read canonical identity only for a requested, nonempty selection. The
   ## compact first-frame cell_barcode column may contain numeric placeholders.
-  cells_df[["selection_key"]] <- as.character(
-    getMetaData()[["cell_barcode"]][expression_projection_cells_to_show()]
-  )
-  cells_df[["cell_barcode"]] <- cells_df[["selection_key"]]
-  stable_selection <- "selection_key" %in%
-    colnames(selected_cells) &&
-    any(
-      !is.na(selected_cells[["selection_key"]]) &
-        nzchar(as.character(selected_cells[["selection_key"]]))
-    )
-  identifier <- if (!stable_selection) {
-    paste0(cells_df[["X1"]], "-", cells_df[["X2"]])
-  } else {
-    NULL
-  }
-  cells_df <- cells_df[
-    selectedCellMask(
-      cells_df[["selection_key"]],
-      identifier,
-      selected_cells
-    ),
-    ,
-    drop = FALSE
-  ] %>%
+  cells_df[["cell_barcode"]] <- viewerCellBarcodesAt(cells)
+  cells_df <- cells_df %>%
     dplyr::select(
       -dplyr::any_of(c(
         "X1",
@@ -111,9 +99,6 @@ output[["expression_details_selected_cells"]] <- DT::renderDataTable({
       dplyr::all_of(expression_columns),
       everything()
     )
-  if (nrow(cells_df) == 0) {
-    return(prepareEmptyTable(dplyr::slice(getMetaData(), 0)))
-  }
   prettifyTable(
     cells_df,
     filter = list(position = "top", clear = TRUE),
