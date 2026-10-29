@@ -195,6 +195,30 @@ test_that("auxiliary rows refer to the cell-name resource when there is one", {
   expect_identical(auxiliary$hover$hoverinfo, "skip")
 })
 
+test_that("contiguous auxiliary rows travel as their range", {
+  scope <- viewer_runtime_env()
+  resource <- list(protocol = "canonical-cell-names-v1", cells = 9L)
+  auxiliary <- scope$cerebroCellViewDeferredAux(
+    selection_rows = 1:4,
+    cell_barcodes = NULL,
+    hover = FALSE,
+    names_resource = resource,
+    cell_rows = 3:6
+  )
+  expect_identical(
+    auxiliary$selection_index,
+    list(kind = "range", start = 2L, length = 4L)
+  )
+  grouped <- scope$cerebroCellViewDeferredAux(
+    selection_rows = list(1:2, 3:4),
+    cell_barcodes = NULL,
+    hover = FALSE,
+    names_resource = resource,
+    cell_rows = 3:6
+  )
+  expect_identical(lapply(grouped$selection_index, unclass), list(2:3, 4:5))
+})
+
 test_that("unmounted group filters preserve canonical rows without level scans", {
   scope <- new.env(parent = globalenv())
   scope$input <- list(test_percentage_cells_to_show = 100)

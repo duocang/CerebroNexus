@@ -1596,6 +1596,18 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
 
 ## With a cell-name resource, `cell_rows` (canonical rows of the points) are
 ## sent instead of `cell_barcodes`, and the browser looks the names up.
+## Contiguous 0-based rows as list(kind = "range", start, length), else NULL.
+cerebroRowRange <- function(rows) {
+  if (
+    !is.numeric(rows) ||
+      length(rows) < 2L ||
+      any(diff(as.integer(rows)) != 1L)
+  ) {
+    return(NULL)
+  }
+  list(kind = "range", start = as.integer(rows[[1L]]), length = length(rows))
+}
+
 cerebroCellViewDeferredAux <- function(
   selection_rows,
   cell_barcodes,
@@ -1625,8 +1637,11 @@ cerebroCellViewDeferredAux <- function(
   key_fields <- if (!isTRUE(keys)) {
     list()
   } else if (is.list(names_resource)) {
+    index <- reorder(as.integer(cell_rows) - 1L)
     list(
-      selection_index = reorder(as.integer(cell_rows) - 1L),
+      ## Contiguous rows (every cell of a projection or trajectory in order)
+      ## travel as their range, not as a million integers.
+      selection_index = if (!grouped) cerebroRowRange(index) %||% index else index,
       cell_names_resource = names_resource
     )
   } else {

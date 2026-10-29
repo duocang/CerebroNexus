@@ -471,7 +471,11 @@ observe({
     )
     primary <- c(primary, trajectory_client_percentage_fields())
     deferred_aux <- function() {
-      hover_cells <- trajectory_cells_reactive(c("nUMI", "nGene", getGroups()))
+      ## Without hover only the rows are needed, not a million-row table of
+      ## every group.
+      hover_cells <- trajectory_cells_reactive(
+        if (static_frame$hover) c("nUMI", "nGene", getGroups())
+      )
       if (nrow(hover_cells) != resource$cells) {
         stop("Trajectory Viewer Pack frame no longer matches trajectory rows.")
       }
@@ -598,7 +602,9 @@ observe({
   payload$data <- c(payload$data, trajectory_client_percentage_fields())
   selection_rows <- payload$data$selection_key
   deferred_aux <- function() {
-    hover_cells <- trajectory_cells_reactive(c("nUMI", "nGene", getGroups()))
+    hover_cells <- trajectory_cells_reactive(
+      if (prepared[["hover"]]) c("nUMI", "nGene", getGroups())
+    )
     hover_cells <- hover_cells[
       match(cells_df[["cell_index"]], hover_cells[["cell_index"]]),
       ,
