@@ -1219,6 +1219,33 @@ viewerH5ExpressionRows <- function(data_set, cells, genes) {
   if (is.null(cells)) values else lapply(values, `[`, as.integer(cells))
 }
 
+## Per-cell mean of several genes from the H5 rows, one gene at a time, so a
+## large gene set never holds every row and the TENxMatrix (HDF5Array plus
+## every cell name: seconds on a million cells) stays unattached. NULL when
+## that does not apply or the file lacks a gene.
+viewerH5ExpressionMean <- function(data_set, cells, genes) {
+  rows <- attr(data_set, "cerebro_h5_rows", exact = TRUE)
+  if (
+    !is.list(rows) ||
+      !(is.null(cells) || is.numeric(cells)) ||
+      !length(genes)
+  ) {
+    return(NULL)
+  }
+  total <- NULL
+  for (gene in genes) {
+    value <- rows$row(gene)
+    if (is.null(value)) {
+      return(NULL)
+    }
+    if (!is.null(cells)) {
+      value <- value[as.integer(cells)]
+    }
+    total <- if (is.null(total)) value else total + value
+  }
+  total / length(genes)
+}
+
 viewerExpressionRow <- function(data_set, cells, gene) {
   direct <- viewerH5ExpressionRows(data_set, cells, gene)
   if (!is.null(direct) && length(direct)) {
@@ -1569,6 +1596,18 @@ cv_wire_pack_message <- function(message, min_length = 4096L) {
 
 ## With a cell-name resource, `cell_rows` (canonical rows of the points) are
 ## sent instead of `cell_barcodes`, and the browser looks the names up.
+## Contiguous 0-based rows as list(kind = "range", start, length), else NULL.
+cerebroRowRange <- function(rows) {
+  if (
+    !is.numeric(rows) ||
+      length(rows) < 2L ||
+      any(diff(as.integer(rows)) != 1L)
+  ) {
+    return(NULL)
+  }
+  list(kind = "range", start = as.integer(rows[[1L]]), length = length(rows))
+}
+
 cerebroCellViewDeferredAux <- function(
   selection_rows,
   cell_barcodes,
@@ -1598,8 +1637,11 @@ cerebroCellViewDeferredAux <- function(
   key_fields <- if (!isTRUE(keys)) {
     list()
   } else if (is.list(names_resource)) {
+    index <- reorder(as.integer(cell_rows) - 1L)
     list(
-      selection_index = reorder(as.integer(cell_rows) - 1L),
+      ## Contiguous rows (every cell of a projection or trajectory in order)
+      ## travel as their range, not as a million integers.
+      selection_index = if (!grouped) cerebroRowRange(index) %||% index else index,
       cell_names_resource = names_resource
     )
   } else {

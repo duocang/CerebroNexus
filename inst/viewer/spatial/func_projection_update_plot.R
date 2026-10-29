@@ -18,18 +18,6 @@ spatial_projection_output_hulls <- function(
 }
 spatial_projection_drawn_hulls <- list()
 
-## Contiguous 0-based rows as list(kind = "range", start, length), else NULL.
-spatial_row_range <- function(rows) {
-  if (
-    !is.numeric(rows) ||
-      length(rows) < 2L ||
-      any(diff(as.integer(rows)) != 1L)
-  ) {
-    return(NULL)
-  }
-  list(kind = "range", start = as.integer(rows[[1L]]), length = length(rows))
-}
-
 ##----------------------------------------------------------------------------##
 ## Function that updates projections.
 ##----------------------------------------------------------------------------##
@@ -189,9 +177,8 @@ spatial_projection_update_plot <- function(input) {
       names_resource = names_resource,
       cell_rows = cell_index
     )
-    ## A section's rows are usually contiguous: send their range.
-    aux$selection_index <- spatial_row_range(aux$selection_index) %||%
-      aux$selection_index
+    ## A section's rows are usually contiguous: cerebroCellViewDeferredAux()
+    ## sends their range.
     aux
   }
 
@@ -519,7 +506,7 @@ spatial_projection_update_plot <- function(input) {
       is.numeric(aux_rows) &&
       identical(as.integer(aux_rows), seq_along(aux_rows))
   ) {
-    payload$data$selection_rows <- spatial_row_range(aux_cells - 1L)
+    payload$data$selection_rows <- cerebroRowRange(aux_cells - 1L)
   }
   cerebroCellViewRender(
     "spatial_projection",

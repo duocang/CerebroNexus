@@ -426,12 +426,21 @@ expression_projection_read_levels <- function(
     } else if (length(genes_present) >= 2) {
       expressionProjectionProgressUpdate(0.3, "Calculating mean expression...")
       ## Per-cell mean across the requested genes, restricted to cells_to_show.
-      expression_levels <- unname(
-        data_set()$getMeanExpressionForCells(
-          cells = viewerExpressionCells(data_set(), cells_to_show),
-          genes = genes_present
-        )
+      ## An H5 sidecar is read row by row, as for one gene.
+      cells <- viewerExpressionCells(data_set(), cells_to_show)
+      expression_levels <- viewerH5ExpressionMean(
+        data_set(),
+        cells,
+        genes_present
       )
+      if (is.null(expression_levels)) {
+        expression_levels <- unname(
+          data_set()$getMeanExpressionForCells(
+            cells = cells,
+            genes = genes_present
+          )
+        )
+      }
     }
     expressionProjectionProgressUpdate(
       0.55,

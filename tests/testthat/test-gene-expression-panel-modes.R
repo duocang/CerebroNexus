@@ -119,6 +119,31 @@ test_that("Viewer H5 reads preserve values and canonical cell order", {
   )
 })
 
+test_that("Viewer H5 gene means read rows without attaching the matrix", {
+  skip_if_not_installed("HDF5Array")
+  source <- matrix(
+    c(0, 1.25, -2, 4, 0, 5.5, 3, 6, 0.5, 7, 8, 9),
+    nrow = 3L,
+    dimnames = list(c("g1", "g2", "g3"), c("c1", "c2", "c3", "c4"))
+  )
+  fixture <- viewer_h5_fixture(withr::local_tempdir(), values = source)
+  scope <- viewer_runtime_env()
+  dataset <- scope$read_cerebro_file(fixture$crb)
+  dataset <- scope$.attachExternalExpression(dataset, fixture$crb)
+
+  genes <- c("g3", "g1", "g2")
+  for (cells in list(NULL, 1:4, c(4L, 1L, 3L), 2L)) {
+    expect_equal(
+      scope$viewerH5ExpressionMean(dataset, cells, genes),
+      unname(colMeans(source[genes, if (is.null(cells)) TRUE else cells,
+        drop = FALSE]))
+    )
+  }
+  expect_true(rlang::env_binding_are_lazy(dataset, "expression"))
+  expect_null(scope$viewerH5ExpressionMean(dataset, 1:4, c("g1", "missing")))
+  expect_null(scope$viewerH5ExpressionMean(dataset, c("c1", "c2"), genes))
+})
+
 test_that("RGB expression reads all channels in one backend call", {
   scope <- new.env(parent = globalenv())
   scope$reactive <- shiny::reactive

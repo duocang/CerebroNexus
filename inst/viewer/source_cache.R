@@ -20,6 +20,7 @@
   "viewerExpressionCells",
   "viewerExpressionCellCount",
   "viewerH5ExpressionRows",
+  "viewerH5ExpressionMean",
   "viewerExpressionRow",
   "viewerExpressionValues",
   "findColumnsInteger",
