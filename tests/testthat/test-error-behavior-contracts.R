@@ -5,7 +5,12 @@ test_that("launchers do not replace the process-wide Shiny error handler", {
     shiny.maxRequestSize = getOption("shiny.maxRequestSize")
   ))
   rlang::local_bindings(Cerebro.options = NULL, .env = .GlobalEnv)
-  withr::local_envvar(c(CEREBRO_1M_DEMO_CRB = NA, CEREBRO_REN_DEMO_CRB = NA))
+  withr::local_envvar(c(
+    CEREBRO_1M_DEMO_CRB = NA,
+    CEREBRO_REN_DEMO_CRB = NA,
+    CEREBRO_COSMX_DEMO_CRB = NA,
+    CEREBRO_TCELL_DEMO_CRB = NA
+  ))
   for (launcher in c("package", "demo")) {
     scope <- new.env(parent = environment(launchCerebro))
     scope$ui <- shiny::div("test")

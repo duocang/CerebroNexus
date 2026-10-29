@@ -1,3 +1,33 @@
+# CerebroNexus (development version)
+
+## New
+
+- Two more large demo data sets for `run-demo.R`, for the pages the existing
+  ones do not exercise at this size. `Rscript run-demo.R --data=cosmx` prepares
+  and opens the NanoString CosMx SMI non-small-cell lung cancer data set (eight
+  sections, 960 genes, one spatial entry per section; Spatial and Gene
+  expression pages). `--data=tcell` prepares and opens the Zheng et al. (2021)
+  pan-cancer T-cell atlas (397,810 cells, 316 patients, 21 cancer types, 168,901
+  cells with TCR sequences, and the published CD8 exhaustion pseudotime;
+  Immune repertoire and Trajectory pages). The Viewer reads the files named by
+  `CEREBRO_COSMX_DEMO_CRB` and `CEREBRO_TCELL_DEMO_CRB`, which must name a
+  `.crb` with an adjacent `.h5` file like the two earlier variables.
+- `run-demo.R` takes the data sets as `--data=1m,ren,cosmx,tcell` and prepares
+  only the mouse brain without it. `--ren-only` is now `--data=ren`, and
+  `--no-browser` is gone: the Viewer always opens in the browser.
+  `--prepare-only` stays. Each prepared data set also gets a compressed twin of
+  its H5 file, listed in the data set menu as "<name> [compressed]".
+- The scripts are `data-raw/large-demo/prepare_viewer_cosmx_data.R` and
+  `prepare_viewer_tcell_data.R`. Downloads are checked against the published
+  size and MD5, resumed after an interruption, and not repeated; the result is
+  built in a temporary folder and published with a `demo-version` stamp, so a
+  stopped run leaves no half-finished data set and a changed version builds
+  again. Sources, licences and changes to the data are in `cosmx.ATTRIBUTION.md`
+  and `tcell.ATTRIBUTION.md`; no data file is committed.
+- The trajectory page accepts a trajectory with the method name
+  `published_pseudotime` (shown as "Published pseudotime"), for a pseudotime
+  that comes with a data set rather than from a method run in CerebroNexus.
+
 # CerebroNexus 5.4.0
 
 ## Viewer

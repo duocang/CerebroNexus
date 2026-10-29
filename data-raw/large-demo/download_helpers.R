@@ -163,3 +163,14 @@
   }
   invisible(target)
 }
+
+## Normalises the columns of a genes x cells count matrix to `scale` counts per
+## cell and takes log1p, the Seurat LogNormalize() convention the Viewer's
+## "log-normalised expression" pages assume.
+.demoLogNormalize <- function(counts, scale = 1e4) {
+  totals <- Matrix::colSums(counts)
+  totals[totals == 0] <- 1
+  lengths <- diff(counts@p)
+  counts@x <- log1p(counts@x / rep(totals, lengths) * scale)
+  counts
+}

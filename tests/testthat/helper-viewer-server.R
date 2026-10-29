@@ -55,7 +55,12 @@ viewer_r_assignment <- function(path, name) {
 viewer_demo_options <- function() {
   scope <- new.env(parent = globalenv())
   path <- file.path(viewer_app_test_path(), "app.R")
-  withr::local_envvar(c(CEREBRO_1M_DEMO_CRB = NA, CEREBRO_REN_DEMO_CRB = NA))
+  withr::local_envvar(c(
+    CEREBRO_1M_DEMO_CRB = NA,
+    CEREBRO_REN_DEMO_CRB = NA,
+    CEREBRO_COSMX_DEMO_CRB = NA,
+    CEREBRO_TCELL_DEMO_CRB = NA
+  ))
   sys.source(viewer_test_path("million_cell_demo.R"), scope)
   eval(viewer_r_assignment(path, "custom_welcome_message"), scope)
   for (statement in parse(path)) {
