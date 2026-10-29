@@ -1,24 +1,9 @@
 ir_histogram_scope <- function() {
-  scope <- new.env(parent = asNamespace("shiny"))
-  sys.source(
-    viewer_test_path("immune_repertoire", "encode.R"),
-    envir = scope,
-    keep.source = FALSE
-  )
-  for (name in c(
+  ir_scope(c(
     "ir_row_values",
     "ir_bind_clone_histograms",
     "ir_abundance_histogram"
-  )) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "data.R"),
-        name
-      ),
-      scope
-    )
-  }
-  scope
+  ))
 }
 
 ir_histogram_fixture <- function() {
@@ -113,14 +98,7 @@ test_that("the Abundance histogram matches scRepertoire for chains and groups", 
 })
 
 test_that("isotype counts are the cells per group and isotype", {
-  scope <- ir_histogram_scope()
-  eval(
-    viewer_r_assignment(
-      viewer_test_path("immune_repertoire", "server.R"),
-      "bcr_isotype_counts"
-    ),
-    scope
-  )
+  scope <- ir_scope("bcr_isotype_counts", "server.R", ir_histogram_scope())
   data <- list(
     d1 = data.frame(
       CTgene = c(

@@ -16,9 +16,6 @@
 ## scalar and throws mid-update, leaving the previous data set on screen.
 ##----------------------------------------------------------------------------##
 
-## Null-coalescing helper (local, so we don't depend on rlang/shiny exporting it).
-`%||%` <- function(a, b) if (is.null(a)) b else a
-
 cv_cell_ids <- function(ids, context = "data set") {
   ids <- enc2utf8(as.character(ids))
   if (anyNA(ids) || any(!nzchar(ids))) {
@@ -570,10 +567,8 @@ cv_trajectory_rows <- function(
 ) {
   pack <- attr(crb, "cerebro_viewer_pack", exact = TRUE)
   index <- if (
-    is.list(pack) &&
-      isTRUE(pack$canonical_order) &&
-      identical(as.integer(pack$cell_count), as.integer(n)) &&
-      exists("viewerPackTrajectoryIndex", mode = "function")
+    viewerPackCanonical(pack) &&
+      identical(as.integer(pack$cell_count), as.integer(n))
   ) {
     tryCatch(
       viewerPackTrajectoryIndex(pack, method, name),
@@ -948,12 +943,10 @@ cv_spatial_data <- function(crb, nm) {
 ## Canonical rows of a section's cells: the Viewer's section rows (the Viewer
 ## Pack's index) when they are at hand, else the cells matched by name.
 cv_spatial_section_rows <- function(nm, coordinates, cells) {
-  rows <- if (exists("spatial_section_rows", mode = "function")) {
-    tryCatch(
-      spatial_section_rows(nm, coordinates),
-      error = function(error) NULL
-    )
-  }
+  rows <- tryCatch(
+    spatial_section_rows(nm, coordinates),
+    error = function(error) NULL
+  )
   rows %||% match(rownames(coordinates), cells)
 }
 
@@ -1032,11 +1025,7 @@ cv_spatial_one <- function(
       rows <- rows[present]
       whole <- FALSE
     }
-    if (
-      whole &&
-        !nzchar(roi_value) &&
-        exists("viewerSpatialGeometryAsset", mode = "function")
-    ) {
+    if (whole && !nzchar(roi_value)) {
       geometry <- tryCatch(
         viewerSpatialGeometryAsset(nm, section_rows, rotation),
         error = function(error) NULL
@@ -1172,25 +1161,6 @@ cv_spatial_one <- function(
       )
     }
   }
-  ## The default background, as a REFERENCE rather than a copy. A histology
-  ## image reference can point to a multi-megabyte payload; carrying the same one
-  ## under both `image` and
-  ## `images[1]` doubled it, and once more again for the space's own default --
-  ## measured at 1.6 MB per copy on the Xenium demo, in a 3.6 MB bundle. Older
-  ## readers of the singular field get the id and can look it up.
-  image <- if (length(images)) {
-    list(
-      id = images[[1]]$id,
-      label = images[[1]]$label,
-      bounds = images[[1]]$bounds,
-      viewport = images[[1]]$viewport,
-      preset = images[[1]]$preset,
-      coord_span = images[[1]]$coord_span
-    )
-  } else {
-    NULL
-  }
-
   viewport <- if (length(images)) images[[1L]]$viewport else NULL
   list(
     name = nm,
@@ -1244,9 +1214,7 @@ cv_spatial_one <- function(
     builder_point_size = section_appearance$point_size %||%
       spatial_defaults$point_size,
     builder_percentage_cells = spatial_defaults$percentage_cells_to_show,
-    ## `image` is the default one, kept so anything reading the older singular
-    ## contract still works; `images` is the list the picker is built from.
-    image = image,
+    ## The picker list; the first entry is the default background.
     images = images
   )
 }
@@ -1323,9 +1291,6 @@ cv_build_spatial <- function(crb, cells, metadata = NULL, compact = FALSE) {
   ## Labels describe FOV/ROI scope; the persisted selection key stays stable.
   space$name <- first$name
   space$is_roi_overview <- first$is_roi_overview
-  if (!is.null(first$image)) {
-    space$image <- first$image
-  }
   if (!is.null(first$x_range)) {
     space$x_range <- I(first$x_range)
     space$y_range <- I(first$y_range)
@@ -1354,7 +1319,6 @@ cv_build_spatial <- function(crb, cells, metadata = NULL, compact = FALSE) {
         builder_point_opacity = s$builder_point_opacity,
         builder_point_size = s$builder_point_size,
         builder_percentage_cells = s$builder_percentage_cells,
-        image = s$image,
         images = I(s$images)
       )
     })
@@ -1456,14 +1420,6 @@ cv_build_trekker <- function(crb, cells, md) {
       preset = preset,
       coord_span = c(diff(xr), diff(yr))
     )
-    space$image <- image_entry[c(
-      "id",
-      "label",
-      "bounds",
-      "viewport",
-      "preset",
-      "coord_span"
-    )]
     space$images <- I(list(image_entry))
     space$background_scope <- "Trekker"
   }
@@ -1702,10 +1658,9 @@ cv_build_clone <- function(crb, cells, n, sparse = FALSE) {
   ## form over all cells; anything else reads the repertoire.
   packed <- if (
     isTRUE(sparse) &&
-      isTRUE(pack$canonical_order) &&
+      viewerPackCanonical(pack) &&
       identical(cells, seq_len(n)) &&
-      length(receptors) &&
-      exists("viewerPackImmuneIndex", mode = "function")
+      length(receptors)
   ) {
     viewerPackImmuneIndex(pack, receptors[[1L]])
   }
@@ -2513,10 +2468,6 @@ cv_defer_assets <- function(value) {
     space <- spaces[[space_index]]
     scope <- safe_key(space$id %||% "space", space_index)
     space$images <- defer_images(space$images, scope)
-    if (!is.null(space$image$uri)) {
-      single <- defer_images(list(space$image), paste0(scope, ":default"))
-      space$image <- single[[1L]]
-    }
     samples <- space$samples %||% list()
     for (sample_index in seq_along(samples)) {
       sample <- samples[[sample_index]]
@@ -2527,13 +2478,6 @@ cv_defer_assets <- function(value) {
         sample$name %||% "sample"
       )
       sample$images <- defer_images(sample$images, sample_scope)
-      if (!is.null(sample$image$uri)) {
-        single <- defer_images(
-          list(sample$image),
-          paste0(sample_scope, ":default")
-        )
-        sample$image <- single[[1L]]
-      }
       samples[[sample_index]] <- sample
     }
     if (!is.null(space$samples)) {

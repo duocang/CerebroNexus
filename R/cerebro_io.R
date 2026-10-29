@@ -90,10 +90,7 @@
 
 ## A sidecar is addressed by one file name that sits next to the CRB.
 .cerebroSiblingName <- function(name) {
-  is.character(name) &&
-    length(name) == 1L &&
-    !is.na(name) &&
-    nzchar(name) &&
+  .isString(name) &&
     !name %in% c(".", "..") &&
     !grepl("[/\\\\]", name)
 }
@@ -538,19 +535,14 @@
   }
   valid <- is.list(backend) &&
     identical(backend$type, "directory") &&
-    is.character(backend$location) &&
-    length(backend$location) == 1L &&
-    !is.na(backend$location) &&
-    nzchar(backend$location) &&
+    .isString(backend$location) &&
     !backend$location %in% c(".", "..") &&
     !grepl("[/\\\\]", backend$location)
   if (!valid) {
     stop("The spatial molecule backend descriptor is invalid.", call. = FALSE)
   }
   root <- backend$root
-  if (
-    !is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)
-  ) {
+  if (!.isString(root)) {
     root <- file.path(
       dirname(normalizePath(file, mustWork = FALSE)),
       backend$location
@@ -904,9 +896,7 @@ saveCerebro <- function(
     match.arg(immune_sidecar),
     immune_sidecar_threshold
   )
-  if (
-    !is.character(file) || length(file) != 1L || is.na(file) || !nzchar(file)
-  ) {
+  if (!.isString(file)) {
     stop("`file` must be one non-empty output path.", call. = FALSE)
   }
   if (dir.exists(file)) {
@@ -1168,10 +1158,7 @@ convertCerebro <- function(input, output = input, codec = c("qs2", "rds")) {
   codec <- match.arg(codec)
   input <- normalizePath(input, mustWork = TRUE)
   valid_output <-
-    is.character(output) &&
-    length(output) == 1L &&
-    !is.na(output) &&
-    nzchar(output)
+    .isString(output)
   if (
     valid_output &&
       !identical(

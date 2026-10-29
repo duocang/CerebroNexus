@@ -6,6 +6,11 @@
 ## the Viewer.
 .runtimeBackendTypes <- c("embedded", "h5")
 
+## TRUE for one string that is neither missing nor empty.
+.runtimeIsString <- function(x) {
+  is.character(x) && length(x) == 1L && !is.na(x) && nzchar(x)
+}
+
 .runtimeWindowsPathSegmentInvalid <- function(parts) {
   grepl("[[:cntrl:]<>:\"|?*]", parts) |
     grepl("[. ]$", parts) |
@@ -21,10 +26,7 @@
   context,
   requirement = "must be a portable relative path."
 ) {
-  valid <- is.character(path) &&
-    length(path) == 1L &&
-    !is.na(path) &&
-    nzchar(path) &&
+  valid <- .runtimeIsString(path) &&
     !grepl("/$", path) &&
     !grepl("\\\\", path) &&
     !grepl("^(/|~|[A-Za-z]:)", path)
@@ -312,10 +314,7 @@
     if (identical(backend$type, "embedded")) {
       is.null(backend$location)
     } else {
-      is.character(backend$location) &&
-        length(backend$location) == 1L &&
-        !is.na(backend$location) &&
-        nzchar(backend$location)
+      .runtimeIsString(backend$location)
     }
   if (!valid_type || !valid_location) {
     unsupported()

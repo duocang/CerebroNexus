@@ -1,18 +1,5 @@
-new_embedded_cerebro <- function() {
-  object <- Cerebro$new()
-  object$setExpressionBackend(type = "embedded")
-  object
-}
-
 copy_cerebro_fixture_bindings <- function(exclude = character()) {
-  source <- new_embedded_cerebro()
-  payload <- new.env(parent = emptyenv())
-  bindings <- setdiff(ls(source, all.names = TRUE), exclude)
-  for (binding in bindings) {
-    payload[[binding]] <- source[[binding]]
-  }
-  class(payload) <- class(source)
-  payload
+  legacy_payload(drop = exclude, source = new_embedded_cerebro(), lock = FALSE)
 }
 
 legacy_cerebro_v1_3_fixture <- function() {
@@ -46,35 +33,19 @@ add_lazy_cerebro_binding <- function(payload, binding, value, sentinel) {
 write_bundle_crb <- function(
   directory,
   name = "dataset.crb",
-  backend = list(type = "embedded", location = NULL),
-  legacy = FALSE
+  backend = list(type = "embedded", location = NULL)
 ) {
   dir.create(directory, recursive = TRUE, showWarnings = FALSE)
   path <- file.path(directory, name)
-  if (legacy) {
-    payload <- copy_cerebro_fixture_bindings(
-      c("getExpressionBackend", "expression_backend")
+  payload <- Cerebro$new()
+  if (!is.null(backend)) {
+    payload$setExpressionBackend(
+      type = backend$type,
+      location = backend$location
     )
-    ## Match an R6 object: the object environment is locked against new
-    ## members, while mutable data fields such as expression remain writable.
-    lockEnvironment(payload, bindings = FALSE)
-  } else {
-    payload <- Cerebro$new()
-    if (!is.null(backend)) {
-      payload$setExpressionBackend(
-        type = backend$type,
-        location = backend$location
-      )
-    }
   }
   saveRDS(payload, path)
   path
-}
-
-## A CRB without an expression_backend descriptor is a retired format; keep the
-## builder explicit so a test never gets one by accident.
-write_retired_crb <- function(directory, name = "retired.crb") {
-  write_bundle_crb(directory, name, backend = NULL)
 }
 
 test_that("CRB preflight reads, inspects, and releases one dataset at a time", {
@@ -670,7 +641,6 @@ write_divergent_backend_crb <- function(
 }
 
 write_real_h5_matrix <- function(path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   expected <- matrix(
     c(0, 1, 4, 2, 0, 5, 3, 6, 0, 7, 8, 9),
     nrow = 3L,
@@ -679,15 +649,7 @@ write_real_h5_matrix <- function(path) {
       c("Cell1", "Cell2", "Cell3", "Cell4")
     )
   )
-  sparse <- methods::as(
-    Matrix::Matrix(expected, sparse = TRUE),
-    "CsparseMatrix"
-  )
-  HDF5Array::writeTENxMatrix(
-    methods::as(Matrix::t(sparse), "CsparseMatrix"),
-    path,
-    group = "expression"
-  )
+  viewer_h5_matrix(expected, path)
   expected
 }
 
@@ -2795,125 +2757,58 @@ test_that("old configs attach through field fallback", {
 
 ## ---- Retired formats ----------------------------------------------------- ##
 
-retired_payload <- function(modify = function(payload) payload) {
-  payload <- copy_cerebro_fixture_bindings()
-  payload <- modify(payload)
-  lockEnvironment(payload, bindings = FALSE)
-  payload
-}
-
-retired_crb_cases <- function() {
-  list(
-    no_descriptor = list(
-      payload = function() {
-        retired_payload(function(payload) {
-          payload$expression_backend <- NULL
-          payload
-        })
-      },
-      reason = "no expression-backend descriptor"
-    ),
-    bcr_data = list(
-      payload = function() {
-        retired_payload(function(payload) {
-          payload$bcr_data <- list(
-            donor = data.frame(barcode = "cell-1", CTgene = "IGHV1_IGKV1")
-          )
-          payload
-        })
-      },
-      reason = "bcr_data/tcr_data"
-    ),
-    tcr_data = list(
-      payload = function() {
-        retired_payload(function(payload) {
-          payload$tcr_data <- list(
-            donor = data.frame(barcode = "cell-1", CTgene = "TRAV1_TRBV1")
-          )
-          payload
-        })
-      },
-      reason = "bcr_data/tcr_data"
-    ),
-    pre_spatial_v1_3 = list(
-      payload = function() legacy_cerebro_v1_3_fixture(),
-      reason = "predates spatial support"
-    ),
-    schema_v2 = list(
-      payload = function() {
-        retired_payload(function(payload) {
-          payload$expression_backend <- list(
-            type = "h5",
-            location = "dataset.h5"
-          )
-          payload$crb_schema <- list(
-            version = 2L,
-            cell_names = c("cell-1", "cell-2"),
-            cell_names_md5 = strrep("a", 32L)
-          )
-          payload
-        })
-      },
-      reason = "thin-CRB schema version 2"
-    ),
-    retired_immune_file = list(
-      payload = function() {
-        retired_payload(function(payload) {
-          payload$immune_repertoire_backend <- list(
-            type = "retired-file",
-            file = "dataset.immune.qs2",
-            md5 = strrep("a", 32L)
-          )
-          payload
-        })
-      },
-      reason = "immune repertoire sidecar uses a retired layout"
-    )
-  )
-}
-
 test_that("retired CRB formats are rejected with the convertCerebro message", {
   root <- withr::local_tempdir()
-  cases <- retired_crb_cases()
+  retired <- retired_cerebros(root)
   ## A form convertCerebro() cannot repair says to re-export instead.
-  retired <- paste0(
+  pattern <- paste0(
     "retired format: .*(",
     "Convert it once with CerebroNexus::convertCerebro\\(\\)|",
     "convertCerebro\\(\\) cannot repair it; re-export it from the source",
     ")"
   )
+  cases <- retired$entries[c(
+    "no_descriptor",
+    "absent_descriptor",
+    "bcr_data",
+    "tcr_data",
+    "pre_spatial",
+    "schema_v2",
+    "retired_immune"
+  )]
 
   for (case_name in names(cases)) {
-    case <- cases[[case_name]]
-    crb <- file.path(root, paste0(case_name, ".crb"))
-    saveRDS(case$payload(), crb)
+    crb <- cases[[case_name]]$path
+    reason <- cases[[case_name]]$reason
     app <- file.path(root, paste0(case_name, "-app"))
 
-    expect_error(
+    error <- expect_error(
       build_test_app(c(Retired = crb), app),
-      retired,
+      pattern,
       info = case_name
     )
-    expect_error(
-      build_test_app(c(Retired = crb), app),
-      case$reason,
+    expect_match(
+      conditionMessage(error),
+      reason,
+      fixed = TRUE,
       info = case_name
     )
     expect_false(dir.exists(app), info = case_name)
-    expect_error(.readBundleBackend(crb), retired, info = case_name)
+    expect_error(.readBundleBackend(crb), pattern, info = case_name)
     expect_error(
       .preflightBundleData(c(Retired = crb)),
-      retired,
+      pattern,
       info = case_name
     )
-    expect_error(
+    error <- expect_error(
       .datasetCatalogFromFiles(c(Retired = crb)),
-      retired,
+      pattern,
       info = case_name
     )
-    expect_error(
-      .datasetCatalogFromFiles(c(Retired = crb)),
-      case$reason,
+    expect_match(
+      conditionMessage(error),
+      reason,
+      fixed = TRUE,
       info = case_name
     )
   }
@@ -2921,17 +2816,7 @@ test_that("retired CRB formats are rejected with the convertCerebro message", {
 
 test_that("a CRB with an unknown expression-backend type is not bundled", {
   root <- withr::local_tempdir()
-  crb <- file.path(root, "unknown-backend.crb")
-  saveRDS(
-    retired_payload(function(payload) {
-      payload$expression_backend <- list(
-        type = "retired-store",
-        location = "dataset.retired"
-      )
-      payload
-    }),
-    crb
-  )
+  crb <- retired_cerebros(root)$unknown_backend
 
   expect_error(
     build_test_app(c(Unknown = crb), file.path(root, "app")),
@@ -2944,33 +2829,15 @@ test_that("a CRB with an unknown expression-backend type is not bundled", {
   )
 })
 
-test_that("a CRB without the descriptor members is also a retired format", {
-  root <- withr::local_tempdir()
-  crb <- write_bundle_crb(root, "no-members.crb", legacy = TRUE)
-
-  expect_error(
-    build_test_app(c(Retired = crb), file.path(root, "app")),
-    "retired format: it has no expression-backend descriptor.*convertCerebro"
-  )
-  expect_error(
-    .readBundleBackend(crb),
-    "retired format: it has no expression-backend descriptor"
-  )
-  expect_error(
-    .datasetCatalogFromFiles(c(Retired = crb)),
-    "retired format: it has no expression-backend descriptor"
-  )
-})
-
 test_that("a retired CRB stops the whole build before anything is staged", {
   root <- withr::local_tempdir()
   current <- write_bundle_crb(file.path(root, "current"), "current.crb")
-  retired <- write_retired_crb(file.path(root, "retired"), "retired.crb")
+  retired <- retired_cerebros(root)$entries$no_descriptor$path
   app <- file.path(root, "app")
 
   expect_error(
     build_test_app(c(Current = current, Retired = retired), app),
-    "'retired.crb' uses a retired format"
+    "'no_descriptor.crb' uses a retired format"
   )
   expect_false(dir.exists(app))
 })

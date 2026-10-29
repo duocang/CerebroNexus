@@ -1,14 +1,7 @@
 # Tests for the Cerebro hla_typing slot + getter/setter round-trip.
 
-make_minimal_cerebro <- function() {
-  # A minimal object is enough to exercise the HLA slot: the getter/setter do
-  # not touch expression/metadata. initialize() takes no args (fields are set
-  # post-hoc), so a bare $new() is sufficient.
-  Cerebro$new()
-}
-
 test_that("addHLATyping / getHLATyping round-trips a named list", {
-  crb <- make_minimal_cerebro()
+  crb <- Cerebro$new()
   crb$addHLATyping(
     list(
       sample_1 = c("HLA-A*02:01", "HLA-B*08:01"),
@@ -23,7 +16,7 @@ test_that("addHLATyping / getHLATyping round-trips a named list", {
 })
 
 test_that("addHLATyping accepts a pre-normalized canonical table unchanged", {
-  crb <- make_minimal_cerebro()
+  crb <- Cerebro$new()
   canon <- hla_normalize_typing(
     list(s1 = "HLA-A*02:01"),
     source_type = "synthetic"
@@ -35,7 +28,7 @@ test_that("addHLATyping accepts a pre-normalized canonical table unchanged", {
 })
 
 test_that("addHLATyping validates a canonical-looking table, not stores it raw", {
-  crb <- make_minimal_cerebro()
+  crb <- Cerebro$new()
   # Has the canonical columns (so hla_is_typing_table() passes) but junk values:
   # an unrecognisable allele, a locus contradicting its allele, an out-of-range
   # copy, and an invalid provenance. None must reach downstream analysis.
@@ -64,7 +57,7 @@ test_that("addHLATyping validates a canonical-looking table, not stores it raw",
 })
 
 test_that("getHLATyping returns an empty canonical table when none is set", {
-  crb <- make_minimal_cerebro()
+  crb <- Cerebro$new()
   t <- crb$getHLATyping()
   expect_true(hla_is_typing_table(t))
   expect_equal(nrow(t), 0L)
@@ -75,7 +68,7 @@ test_that("getHLATyping returns an empty canonical table when none is set", {
 })
 
 test_that("stored typing is queryable by carrier index", {
-  crb <- make_minimal_cerebro()
+  crb <- Cerebro$new()
   crb$addHLATyping(
     list(s1 = "HLA-A*02:01", s2 = "HLA-A*02:01", s3 = "HLA-A*01:01"),
     source_type = "genotyped"

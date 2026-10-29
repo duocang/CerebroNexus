@@ -52,9 +52,6 @@ output$ir_visualizations_UI <- renderUI({
       "No immune repertoire data available."
     ))
   }
-  if (ir_pack_needs_rebuild()) {
-    return(div(class = "alert alert-warning", IR_REBUILD_PACK_MESSAGE))
-  }
 
   tabs <- list(
     tabPanel(
@@ -613,17 +610,8 @@ observe(
       grouped_view <- ir_clonal_umap_panels(df, projection)
       ## Name cells by canonical row when the browser can resolve the rows from
       ## the cell-name resource; otherwise the frame carries the barcodes.
-      names_resource <- if (
-        !is.null(grouped_view$rows) &&
-          exists("viewerCellNamesResource", mode = "function")
-      ) {
-        viewerCellNamesResource()
-      }
-      by_row <- is.list(names_resource) &&
-        !anyNA(grouped_view$rows) &&
-        all(grouped_view$rows >= 1L) &&
-        all(grouped_view$rows <= as.integer(names_resource$cells))
-      cell_names <- if (by_row) {
+      names_resource <- viewerCellNamesResourceFor(grouped_view$rows)
+      cell_names <- if (is.list(names_resource)) {
         list(
           selection_index = grouped_view$rows - 1L,
           cell_names_resource = names_resource
@@ -742,11 +730,7 @@ observe(
       hover <- list(
         hoverinfo = as.list(ifelse(traces == "Other cells", "skip", "text"))
       )
-      names_resource <- if (
-        exists("viewerCellNamesResource", mode = "function")
-      ) {
-        viewerCellNamesResource()
-      }
+      names_resource <- viewerCellNamesResource()
       if (is.list(names_resource)) {
         ## Canonical rows (0-based); the browser has the names.
         return(list(

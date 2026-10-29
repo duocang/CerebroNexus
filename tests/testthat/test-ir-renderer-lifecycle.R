@@ -1,14 +1,8 @@
 test_that("IR error handling preserves validation and renders useful failures", {
-  scope <- new.env(parent = asNamespace("shiny"))
-  for (name in c("ir_plot_cache_state", "ir_plot_failed", "safeRenderPlot")) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "server.R"),
-        name
-      ),
-      scope
-    )
-  }
+  scope <- ir_scope(
+    c("ir_plot_cache_state", "ir_plot_failed", "safeRenderPlot"),
+    "server.R"
+  )
   expect_error(
     scope$safeRenderPlot(shiny::req(FALSE)),
     class = "shiny.silent.error"
@@ -277,9 +271,7 @@ clonal_projection_server <- function(names_resource = NULL) {
     ir_tab <- function() input[["ir_tabs"]]
     viewerDatasetIdentity <- function() list(fingerprint = "A")
     builds <- barcode_reads <- 0L
-    if (!is.null(names_resource)) {
-      viewerCellNamesResource <- function() names_resource
-    }
+    viewerCellNamesResource <- function() names_resource
     ir_clonal_umap_data <- function(projection, receptor, clone_call, ...) {
       builds <<- builds + 1L
       stopifnot(projection == "umap", receptor == "TCR", clone_call == "gene")

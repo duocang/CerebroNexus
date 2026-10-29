@@ -1,33 +1,21 @@
 ir_fast_scope <- function() {
-  scope <- new.env(parent = asNamespace("shiny"))
-  sys.source(
-    viewer_test_path("immune_repertoire", "encode.R"),
-    envir = scope,
-    keep.source = FALSE
+  scope <- ir_scope(
+    c(
+      "ir_row_values",
+      "ir_samples_with_clones",
+      "ir_compare_table",
+      "ir_clone_size_profiles",
+      "ir_sharing_classes",
+      "IR_SHARING_LEVELS_3",
+      "IR_SHARING_LEVELS_2",
+      "IR_SHARING_DISPLAY_LABELS",
+      "IR_BCR_SHM_CAVEAT",
+      "IR_BCR_CHAINS",
+      "ir_is_bcr_chain",
+      "ir_build_sharing_plot"
+    ),
+    sources = "clone_contract.R"
   )
-  sys.source(viewer_test_path("clone_contract.R"), envir = scope)
-  for (name in c(
-    "ir_row_values",
-    "ir_samples_with_clones",
-    "ir_compare_table",
-    "ir_clone_size_profiles",
-    "ir_sharing_classes",
-    "IR_SHARING_LEVELS_3",
-    "IR_SHARING_LEVELS_2",
-    "IR_SHARING_DISPLAY_LABELS",
-    "IR_BCR_SHM_CAVEAT",
-    "IR_BCR_CHAINS",
-    "ir_is_bcr_chain",
-    "ir_build_sharing_plot"
-  )) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "data.R"),
-        name
-      ),
-      scope
-    )
-  }
   scope$cerebro_group_colors <- function(n) rep("#000000", n)
   scope
 }
@@ -204,21 +192,16 @@ test_that("SizeDist profiles count the strict clones of the chain", {
 })
 
 ir_scatter_scope <- function() {
-  scope <- ir_fast_scope()
-  for (name in c(
-    "IR_PALETTE",
-    "ir_scatter_table",
-    "ir_scatter_plotly",
-    "ir_diversity_plotly"
-  )) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "visualizations.R"),
-        name
-      ),
-      scope
-    )
-  }
+  scope <- ir_scope(
+    c(
+      "IR_PALETTE",
+      "ir_scatter_table",
+      "ir_scatter_plotly",
+      "ir_diversity_plotly"
+    ),
+    file = "visualizations.R",
+    scope = ir_fast_scope()
+  )
   scope$`%>%` <- dplyr::`%>%`
   scope$cerebro_plotly_axis <- function(title = "", mirror = TRUE, ...) {
     c(list(title = title), list(...))
@@ -322,20 +305,14 @@ test_that("the diversity boxes use geom_boxplot's quartiles and whiskers", {
 
 test_that("Homeostasis on one chain matches clonalHomeostasis", {
   skip_if_not_installed("scRepertoire")
-  scope <- ir_fast_scope()
-  for (name in c(
-    "ir_bind_clone_histograms",
-    "ir_homeostasis_counts",
-    "ir_homeostasis_matrix"
-  )) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "data.R"),
-        name
-      ),
-      scope
-    )
-  }
+  scope <- ir_scope(
+    c(
+      "ir_bind_clone_histograms",
+      "ir_homeostasis_counts",
+      "ir_homeostasis_matrix"
+    ),
+    scope = ir_fast_scope()
+  )
   data <- lapply(ir_fast_fixture(), function(d) d[names(d) != "patient"])
   size <- c(Rare = 1e-04, Small = 0.001, Medium = 0.01, Large = 0.1, Hyper = 1)
   for (chain in c("TRA", "TRB")) {

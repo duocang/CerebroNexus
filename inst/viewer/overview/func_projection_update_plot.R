@@ -57,44 +57,18 @@ overview_projection_update_plot <- function(input) {
   }
   core_aux <- function() {
     hover <- isTRUE(plot_parameters[["hover_info"]])
-    names_resource <- if (
-      exists("viewerCellNamesResource", mode = "function")
-    ) {
-      viewerCellNamesResource()
-    }
+    names_resource <- viewerCellNamesResourceFor(cell_indices)
+    ## Every cell in canonical order: the rows would be 0..n-1, so the browser
+    ## takes the names as they are.
     if (
       is.list(names_resource) &&
-        length(cell_indices) &&
-        max(cell_indices) <= names_resource$cells
-    ) {
-      ## Every cell in canonical order: the rows would be 0..n-1, so the
-      ## browser takes the names as they are.
-      if (
         !is.list(selection_rows) &&
-          length(cell_indices) == names_resource$cells &&
-          identical(as.integer(selection_rows), seq_along(cell_indices)) &&
-          identical(as.integer(cell_indices), seq_along(cell_indices))
-      ) {
-        return(list(
-          selection_index_all = TRUE,
-          cell_names_resource = names_resource,
-          hover = list(
-            hoverinfo = if (hover) "text" else "skip",
-            columns = list(),
-            pending = hover
-          )
-        ))
-      }
-      ## Canonical rows (0-based) of the points; the browser takes their
-      ## names from the cell-name resource, so the metadata is not read here.
-      rows <- as.integer(cell_indices) - 1L
-      select <- function(selected) I(rows[selected])
+        length(cell_indices) == names_resource$cells &&
+        identical(as.integer(selection_rows), seq_along(cell_indices)) &&
+        identical(as.integer(cell_indices), seq_along(cell_indices))
+    ) {
       return(list(
-        selection_index = if (is.list(selection_rows)) {
-          lapply(selection_rows, select)
-        } else {
-          select(selection_rows)
-        },
+        selection_index_all = TRUE,
         cell_names_resource = names_resource,
         hover = list(
           hoverinfo = if (hover) "text" else "skip",
@@ -103,17 +77,24 @@ overview_projection_update_plot <- function(input) {
         )
       ))
     }
-    metadata <- if (is.null(data_snapshot)) {
-      getMetaData()
-    } else {
-      data_snapshot$getMetaData()
+    ## With the cell-name resource the canonical rows of the points are sent
+    ## and the browser takes their names from it: the metadata is not read.
+    cell_barcodes <- if (!is.list(names_resource)) {
+      metadata <- if (is.null(data_snapshot)) {
+        getMetaData()
+      } else {
+        data_snapshot$getMetaData()
+      }
+      metadata[["cell_barcode"]][cell_indices]
     }
     core <- cerebroCellViewDeferredAux(
       selection_rows = selection_rows,
-      cell_barcodes = metadata[["cell_barcode"]][cell_indices],
-      hover = isTRUE(plot_parameters[["hover_info"]])
+      cell_barcodes = cell_barcodes,
+      hover = hover,
+      names_resource = names_resource,
+      cell_rows = cell_indices
     )
-    core$hover$pending <- isTRUE(plot_parameters[["hover_info"]])
+    core$hover$pending <- hover
     core
   }
   ## `keys = FALSE` after core_aux() named the cells: only the hover columns

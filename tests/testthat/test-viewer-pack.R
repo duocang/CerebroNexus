@@ -119,6 +119,7 @@ test_that("packed projections and first frames align shuffled cell identities", 
   )
   expect_equal(unname(actual), unname(as.matrix(expected)))
   scope <- viewer_runtime_env()
+  scope$data_set <- function() NULL
   scope$getProjection <- function(name) object$projections[[name]]
   scope$getMetaData <- function() object$getMetaData()
   expect_identical(

@@ -2,6 +2,7 @@ test_that("Gene expression leaves % of cells to the browser with a Viewer Pack",
   for (pack in list(list(canonical_order = TRUE), NULL)) {
     shiny::testServer(
       function(input, output, session) {
+        viewer_runtime_env(environment())
         viewerPackCurrent <- function() pack
         expression_projection_selected_projection <- function() "umap"
         available_trajectories <- function() character()

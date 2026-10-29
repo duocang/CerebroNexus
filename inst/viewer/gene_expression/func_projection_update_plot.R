@@ -30,9 +30,6 @@ expressionPackedColor <- function(values) {
 }
 
 expressionColorDatasetKey <- function() {
-  if (!exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
-    return(NULL)
-  }
   identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
   fingerprint <- as.character(identity$pack_fingerprint %||% "")
   if (
@@ -285,51 +282,38 @@ expression_projection_update_plot <- function(input) {
     hover <- isTRUE(plot_parameters[["hover_info"]])
     ## With the cell-name file the points are named by canonical row: no
     ## million names in the message, and a selection is reported by row.
-    names_resource <- if (
-      exists("viewerCellNamesResource", mode = "function")
-    ) {
-      viewerCellNamesResource()
-    }
+    names_resource <- viewerCellNamesResourceFor(cell_indices)
     if (
       is.list(names_resource) &&
-        length(cell_indices) &&
-        max(cell_indices) <= names_resource$cells
-    ) {
-      if (
         length(cell_indices) == names_resource$cells &&
-          identical(as.integer(cell_indices), seq_along(cell_indices))
-      ) {
-        return(list(
-          selection_index_all = TRUE,
-          cell_names_resource = names_resource,
-          hover = list(
-            hoverinfo = if (hover) "text" else "skip",
-            columns = list(),
-            pending = hover
-          )
-        ))
-      }
-      core <- cerebroCellViewDeferredAux(
-        selection_rows = seq_len(n_cells),
-        cell_barcodes = NULL,
-        hover = hover,
-        names_resource = names_resource,
-        cell_rows = cell_indices
-      )
-      core$hover$pending <- hover
-      return(core)
+        identical(as.integer(cell_indices), seq_along(cell_indices))
+    ) {
+      return(list(
+        selection_index_all = TRUE,
+        cell_names_resource = names_resource,
+        hover = list(
+          hoverinfo = if (hover) "text" else "skip",
+          columns = list(),
+          pending = hover
+        )
+      ))
     }
-    metadata <- if (is.null(data_snapshot)) {
-      getMetaData()
-    } else {
-      data_snapshot$getMetaData()
+    cell_barcodes <- if (!is.list(names_resource)) {
+      metadata <- if (is.null(data_snapshot)) {
+        getMetaData()
+      } else {
+        data_snapshot$getMetaData()
+      }
+      metadata[["cell_barcode"]][cell_indices]
     }
     core <- cerebroCellViewDeferredAux(
       selection_rows = seq_len(n_cells),
-      cell_barcodes = metadata[["cell_barcode"]][cell_indices],
-      hover = isTRUE(plot_parameters[["hover_info"]])
+      cell_barcodes = cell_barcodes,
+      hover = hover,
+      names_resource = names_resource,
+      cell_rows = cell_indices
     )
-    core$hover$pending <- isTRUE(plot_parameters[["hover_info"]])
+    core$hover$pending <- hover
     core
   }
   ## `keys = FALSE` after core_aux() named the cells: the hover columns come

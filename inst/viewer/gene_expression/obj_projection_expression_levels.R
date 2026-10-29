@@ -342,7 +342,8 @@ expression_projection_read_levels <- function(
   n_cells <- length(cells_to_show)
   ## Layout only changes the projection; it must not re-read expression rows.
   render_key <- isolate(expression_projection_render_key())
-  painted_key <- isolate(input[["expression_projection_rendered_key"]])
+  painted <- isolate(input[["expression_projection_rendered_state"]])
+  painted_key <- if (is.list(painted)) painted$render_key
   ## Visibility/request state controls the progress UI, not expression reads.
   ## Navigation and request acknowledgements must not invalidate these values.
   if (

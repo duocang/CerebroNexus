@@ -29,7 +29,7 @@ const scope = {
   dispatchEvent:event=>{ if (event.type === 'cerebro:groups-primary-ready') { events.push(event); (listeners['window:' + event.type] || (()=>{}))(event); } },
   addEventListener:(name,fn)=>listeners['window:' + name]=fn,
   requestIdleCallback:fn=>fn(),
-  cerebroSavedViewDataset:{cell_fingerprint:'A'}, __cerebroPageBenchGeneration:7
+  cerebroSavedViewDataset:{cell_fingerprint:'A'}
 };
 scope.window = scope;
 vm.createContext(scope);
@@ -50,7 +50,7 @@ binding.renderValue(plot, bar);
 assert.deepEqual(JSON.parse(JSON.stringify(events[0].detail)), {
   page:'groups', plotId:plot.id, metric:'composition', traceCount:1,
   datasetFingerprint:'A', selectedGroup:'sample', secondGroup:'cluster',
-  plotType:'Bar chart', benchmarkGeneration:7, eventKind:'primary'
+  plotType:'Bar chart', eventKind:'primary'
 });
 assert.match(plot.innerHTML, /cc-toolbar/);
 assert.match(plot.innerHTML, /data-series="0"/);
@@ -77,7 +77,6 @@ plot.clientWidth = 0;
 binding.renderValue(plot, twoSeries);
 assert.equal(events.length,before);
 elements.groups_selected_group.value = 'condition';
-scope.__cerebroPageBenchGeneration = 8;
 plot.clientWidth = 640; resize([{target:plot}]);
 assert.equal(events.at(-1).detail.eventKind,'primary');
 resize([{target:plot}]); assert.equal(events.length,before + 1, 'an unchanged size does not redraw');
@@ -85,7 +84,6 @@ resize([{target:plot}]); assert.equal(events.length,before + 1, 'an unchanged si
 // Legend clicks hide a series locally, without another report.
 assert.equal(events.at(-1).detail.datasetFingerprint,'B');
 assert.equal(events.at(-1).detail.selectedGroup,'condition');
-assert.equal(events.at(-1).detail.benchmarkGeneration,8);
 assert.equal(events.at(-1).detail.traceCount,2);
 const reported = events.length;
 const item = {getAttribute:()=> '1', closest(selector) { return selector === '[data-series]' ? item : null; }};

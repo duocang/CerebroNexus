@@ -5,8 +5,7 @@
 ## deterministic share of them, as on Overview, so the "% of cells" slider does
 ## not resample and resend the expression of a million cells from R.
 expression_projection_client_percentage <- reactive({
-  pack <- viewerPackCurrent()
-  is.list(pack) && isTRUE(pack$canonical_order)
+  viewerPackCanonical(viewerPackCurrent())
 })
 
 ## The canonical rows of the selected trajectory's cells, in its row order, or
@@ -29,75 +28,35 @@ expression_projection_trajectory_rows <- reactive({
   )
 })
 
-## The group filters that leave cells out, and, with a Viewer Pack and a
-## projection (whose frame holds the canonical cells), the same filters for the
-## browser to apply to a frame of every cell (NULL: R filters).
-expression_projection_group_filters <- reactive({
-  viewerProjectionGroupFilters(
-    "expression_projection",
-    viewerProjectionFirstFrameMetadata()
-  )
-})
-expression_projection_client_filters <- reactive({
-  if (
-    !isTRUE(expression_projection_client_percentage()) ||
-      !is.null(expression_projection_trajectory_rows()) ||
-      isTRUE(input[["expression_projection_client_filters_failed"]])
-  ) {
-    return(NULL)
-  }
-  viewerClientFilterDescriptors(expression_projection_group_filters())
-})
-
+## With a Viewer Pack and a projection (whose frame holds the canonical cells)
+## the browser applies the group filters to a frame of every cell, which they
+## then do not rebuild nor read the expression of a million cells again.
 ## Canonical rows of the cells drawn; on a trajectory, its cells in its order.
-expression_projection_cells_to_show_current <- reactive({
-  percentage <- if (isTRUE(expression_projection_client_percentage())) {
-    100
-  } else {
-    current_scatter_percentage()
-  }
-  filters <- if (is.null(expression_projection_client_filters())) {
-    expression_projection_group_filters()
-  } else {
-    list()
-  }
-  cells <- viewerProjectionCellIndices(
-    "expression_projection",
-    metadata = viewerProjectionFirstFrameMetadata(),
-    percentage = percentage,
-    filters = filters
-  )
-  trajectory_rows <- expression_projection_trajectory_rows()
-  if (is.null(trajectory_rows)) {
-    return(cells)
-  }
-  trajectory_rows[trajectory_rows %in% cells]
-})
-
-## Published on change only: a filter the browser applies leaves every cell in
-## the frame, and must not read the expression of a million cells again.
-expression_projection_cells_state <- reactiveVal(NULL)
-observe(
-  {
-    ## Off the page, keep the last cells; returning re-evaluates.
-    if (
-      "sidebar" %in%
-        isolate(names(input)) &&
-        !identical(input[["sidebar"]], "geneExpression")
-    ) {
-      return()
-    }
-    viewerPublishChanged(
-      expression_projection_cells_state,
-      expression_projection_cells_to_show_current()
-    )
+expression_projection_cells <- viewerProjectionCells(
+  "expression_projection",
+  "geneExpression",
+  client = function() {
+    isTRUE(expression_projection_client_percentage()) &&
+      is.null(expression_projection_trajectory_rows())
   },
-  priority = 950
+  rows = function(filters) {
+    client <- isTRUE(expression_projection_client_percentage())
+    cells <- viewerProjectionCellIndices(
+      "expression_projection",
+      metadata = viewerProjectionFirstFrameMetadata(),
+      percentage = if (client) 100 else current_scatter_percentage(),
+      filters = filters
+    )
+    trajectory_rows <- expression_projection_trajectory_rows()
+    if (is.null(trajectory_rows)) {
+      return(cells)
+    }
+    trajectory_rows[trajectory_rows %in% cells]
+  }
 )
-expression_projection_cells_to_show <- reactive({
-  expression_projection_cells_state() %||%
-    expression_projection_cells_to_show_current()
-})
+expression_projection_group_filters <- expression_projection_cells$group_filters
+expression_projection_client_filters <- expression_projection_cells$client_filters
+expression_projection_cells_to_show <- expression_projection_cells$cells_to_show
 
 ## The rows of the frame the group filters keep (NULL: every row), for the
 ## summaries of the cells shown when the browser applies the filters.
@@ -112,16 +71,6 @@ expression_projection_shown_rows <- reactive({
     names(filters)
   )
   which(cerebroGroupFilterMask(metadata, filters))
-})
-
-## The browser's filters follow the controls.
-observe({
-  req(identical(input[["sidebar"]], "geneExpression"))
-  viewerSendClientFilters(
-    "expression_projection",
-    expression_projection_client_filters(),
-    viewer_loaded_dataset_context()
-  )
 })
 
 ## The rows of a trajectory's per-cell data for the cells drawn.

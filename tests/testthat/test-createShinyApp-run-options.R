@@ -3,9 +3,7 @@ run_options_test_fixture <- function() {
   source_dir <- file.path(root, "source")
   dir.create(source_dir)
   crb <- file.path(source_dir, "dataset.crb")
-  embedded <- Cerebro$new()
-  embedded$setExpressionBackend(type = "embedded")
-  saveRDS(embedded, crb)
+  saveRDS(new_embedded_cerebro(), crb)
   list(root = root, crb = crb)
 }
 

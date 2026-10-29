@@ -145,7 +145,6 @@ test_that("large specialist views send their first frame before hover data", {
   skip_if_not_installed("jsonlite")
   runtime <- viewer_runtime_env()
   sent <- list()
-  runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$viewerDatasetIdentity <- function() {
     list(
       cell_count = 4096L,
@@ -229,7 +228,6 @@ test_that("deferred specialist IDs can declare trace lengths without placeholder
   skip_if_not_installed("jsonlite")
   runtime <- viewer_runtime_env()
   sent <- list()
-  runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$viewerDatasetIdentity <- function() {
     list(
       cell_count = 4096L,
@@ -352,10 +350,7 @@ test_that("specialist views can reference validated shared coordinates", {
   ))
 
   sent <- list()
-  runtime$input <- list(
-    coordviews_wire_supported = TRUE,
-    coordviews_shared_base = shared
-  )
+  runtime$input <- list(coordviews_shared_base = shared)
   runtime$viewerDatasetIdentity <- function() identity
   runtime$session <- list(sendBinaryMessage = function(type, payload) {
     sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
@@ -490,7 +485,6 @@ test_that("renders with delivered cells name the barcodes the browser holds", {
   skip_if_not_installed("jsonlite")
   runtime <- viewer_runtime_env()
   sent <- list()
-  runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$session <- list(
     sendBinaryMessage = function(type, payload) {
       sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
@@ -544,7 +538,6 @@ test_that("auxiliary data delivered at once is named by renders of the same cell
   skip_if_not_installed("jsonlite")
   runtime <- viewer_runtime_env()
   sent <- list()
-  runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$session <- list(
     sendBinaryMessage = function(type, payload) {
       sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)

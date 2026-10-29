@@ -123,9 +123,8 @@ test_that("thin CRB first frames do not force cell-barcode hydration", {
 })
 
 test_that("first-frame cache is optional outside a loaded dataset", {
-  scope <- new.env(parent = globalenv())
-  scope$data_set <- NULL
-  viewer_runtime_env(scope)
+  scope <- viewer_runtime_env()
+  scope$data_set <- function() NULL
 
   expect_null(scope$viewerProjectionFirstFrameCache())
 })
@@ -330,7 +329,7 @@ test_that("thin H5 first-frame cache includes its small gene index", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root, save = FALSE)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- new.env(parent = emptyenv())
   object$meta_data <- data.frame(group = factor(c("A", "B", "A", "B")))
   object$projections <- list(umap = data.frame(x = 1:4, y = 4:1))
@@ -522,7 +521,7 @@ test_that("thin CRBs discard duplicate metadata row names", {
   expect_identical(.row_names_info(restored$meta_data, 1L), -4L)
   expect_identical(restored$meta_data$cell_barcode, cells)
 
-  runtime <- viewer_runtime_scope()
+  runtime <- viewer_runtime_env()
   runtime_object <- runtime$read_cerebro_file(crb)
   runtime_object <- runtime$.attachExternalExpression(runtime_object, crb)
   expect_identical(.row_names_info(runtime_object$meta_data, 1L), -4L)
@@ -543,7 +542,7 @@ test_that("noncanonical thin projections cannot bypass barcode alignment", {
     ),
     save = FALSE
   )
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- new.env(parent = emptyenv())
   object$meta_data <- data.frame(group = c("A", "B", "C"))
   object$projections <- list(
@@ -569,7 +568,7 @@ test_that("thin CRB cell names come from the H5 file and stay lazy", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root, save = FALSE)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   schema <- list(
     version = 3L,
     n_cells = 4L,
@@ -636,7 +635,7 @@ test_that("attaching a thin H5 CRB reads the schema, not the matrix", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- scope$read_cerebro_file(fixture$crb)
   object <- scope$.attachExternalExpression(object, fixture$crb)
   scope$data_set <- function() object
@@ -752,7 +751,7 @@ test_that("a thin CRB without its H5 file names the recovery step", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- scope$read_cerebro_file(fixture$crb)
   unlink(fixture$h5)
 
@@ -766,7 +765,7 @@ test_that("thin CRB schemas other than version 3 are retired", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- scope$read_cerebro_file(fixture$crb)
   object$crb_schema$version <- 2L
 

@@ -111,6 +111,11 @@ viewer_browser_test <- function(scenario) {
     )
   ))
   evaluate(read_js(system.file("www/shared/jquery.js", package = "shiny")))
+  ## The Linked views page always has selectize: its pickers rely on it.
+  evaluate(read_js(system.file(
+    "www/shared/selectize/js/selectize.min.js",
+    package = "shiny"
+  )))
   evaluate(read_js(test_path("fixtures", "viewer-browser.js")))
   if (identical(scenario, "cloneCache")) {
     evaluate("delete window.CerebroPointRenderer")

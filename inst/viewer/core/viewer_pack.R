@@ -1,5 +1,10 @@
 VIEWER_PACK_SCHEMA_VERSION <- 1L
 
+## TRUE for an open Viewer Pack whose rows are the canonical cell order.
+viewerPackCanonical <- function(pack) {
+  is.list(pack) && isTRUE(pack$canonical_order)
+}
+
 viewerPackCellOrderFingerprint <- function(cells) {
   cells <- enc2utf8(as.character(cells))
   if (anyNA(cells) || any(!nzchar(cells)) || anyDuplicated(cells)) {
@@ -484,8 +489,8 @@ viewerPackImmuneIndex <- function(pack, receptor) {
   viewerPackReadAsset(pack, file.path("immune", paste0(receptor, ".qs2")))
 }
 
-## The repertoire's integer columns (immune_repertoire/encode.R); NULL for a
-## Pack built before them.
+## The repertoire's integer columns (immune_repertoire/encode.R); NULL when the
+## Pack holds another encoding version.
 viewerPackImmuneEncoded <- function(pack, version) {
   if (!identical(as.integer(pack$manifest$immune_encoding), version)) {
     return(NULL)

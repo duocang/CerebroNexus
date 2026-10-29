@@ -12,11 +12,7 @@
     var samples = sp.samples || [];
     var name = sp._sampleName || (samples[0] && samples[0].name);
     var sample = samples.filter(function (s) { return s.name === name; })[0];
-    if (sample && sample.images && sample.images.length) return sample.images;
-    if (sample && sample.image && sample.image.uri) return [sample.image];
-    // `image` is a reference to the default, without the pixels -- it names an
-    // entry of `images`. Only a bundle predating that carries a usable one.
-    return (sp.image && sp.image.uri) ? [sp.image] : [];
+    return (sample && sample.images) || [];
   }
   function currentImage(sp) {
     var list = spatialImages(sp);

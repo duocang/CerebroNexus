@@ -12,15 +12,6 @@
   sample_names = NULL,
   verbose = TRUE
 ) {
-  if (!requireNamespace("scRepertoire", quietly = TRUE)) {
-    stop(
-      "Reading Cell Ranger contig annotations needs the scRepertoire package, ",
-      "which assembles contigs into clones. Install it, or pass the output of ",
-      "scRepertoire::combineTCR() / combineBCR() directly.",
-      call. = FALSE
-    )
-  }
-
   missing_paths <- paths[!file.exists(paths)]
   if (length(missing_paths) > 0) {
     stop(

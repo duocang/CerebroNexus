@@ -7,6 +7,7 @@ function rotUnit(rot,x,y,z){return [x,y,z];}
 const calls=[];
 const ctx={save(){},restore(){},measureText(t){return {width:t.length*6};},
  fillText(t,x,y){calls.push([t,x,y]);},fillRect(){throw Error('Cluster label background rectangle');}};
+eval(source.slice(source.indexOf('  function unitToScreen('),source.indexOf('  // Map a data-space')));
 eval(source.slice(source.indexOf('  function drawGroupLabels('),source.indexOf('  // ---- minimap')));
 const p={W:600,H:400,ctx,_SX:500,_SY:300,_sox:0,_soy:0,spaceId:'test'};
 drawGroupLabels(p);assert.equal(calls.length,2);assert.equal(calls[0][0],'Cluster A');

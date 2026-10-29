@@ -132,25 +132,6 @@
       return timing;
     },
 
-    update: function (store, id, values) {
-      var timing = store[id] || (store[id] = {});
-      Object.assign(timing, values || {});
-      return timing;
-    },
-
-    activate: function (store, id, now) {
-      return this.update(store, id, { activationStartedAtMs: now });
-    },
-
-    ready: function (store, id, now) {
-      var timing = store[id] || {};
-      return Object.assign({}, timing, {
-        readyAtMs: now,
-        requestToReadyMs: isFinite(timing.requestAtMs)
-          ? now - timing.requestAtMs : null
-      });
-    },
-
     requestAux: function (view) {
       var token = view && view.data && view.data.wire_token;
       if (token == null || view._auxToken === token ||

@@ -10,3 +10,8 @@ utils::globalVariables(c("ui", "server", "group", ".", "Cerebro.options"))
 #' @importFrom rlang %||%
 #' @noRd
 NULL
+
+## TRUE for one string that is neither missing nor empty.
+.isString <- function(x) {
+  is.character(x) && length(x) == 1L && !is.na(x) && nzchar(x)
+}

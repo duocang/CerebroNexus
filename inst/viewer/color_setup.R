@@ -82,24 +82,13 @@ cell_cycle_colorset <- setNames(
 ## Assign colors to groups.
 ##----------------------------------------------------------------------------##
 color_input_id <- function(variable, level) {
-  configured_files <- if (exists("Cerebro.options")) {
-    Cerebro.options[["crb_file_to_load"]]
-  } else {
-    NULL
-  }
-  dataset <- if (
-    exists("viewer_requested_dataset_context", mode = "function")
-  ) {
-    tryCatch(
-      viewer_requested_dataset_context()$dataset_key,
-      error = function(error) NULL
-    )
-  } else {
-    NULL
-  }
+  dataset <- tryCatch(
+    viewer_requested_dataset_context()$dataset_key,
+    error = function(error) NULL
+  )
   dataset <- dataset %||%
     viewerDatasetName(
-      configured_files,
+      Cerebro.options[["crb_file_to_load"]],
       available_crb_files$selected
     ) %||%
     "__single__"
@@ -118,17 +107,9 @@ color_input_id <- function(variable, level) {
 
 configured_colors_for_current_dataset <- function() {
   resolve_configured_colors(
-    color_config = if (exists("Cerebro.options")) {
-      Cerebro.options[["colors"]]
-    } else {
-      NULL
-    },
+    color_config = Cerebro.options[["colors"]],
     selected_path = available_crb_files$selected,
-    configured_files = if (exists("Cerebro.options")) {
-      Cerebro.options[["crb_file_to_load"]]
-    } else {
-      NULL
-    }
+    configured_files = Cerebro.options[["crb_file_to_load"]]
   )
 }
 

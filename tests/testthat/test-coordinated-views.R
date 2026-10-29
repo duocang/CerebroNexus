@@ -2559,7 +2559,6 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
   )
   overview <- cv_env$cv_spatial_one(crb, cells, "fov", TRUE)
   expect_length(overview$images, 0)
-  expect_null(overview$image)
   expect_equal(overview$x, c(0, 2, 10, 12, NA))
   roi <- cv_env$cv_spatial_one(crb, cells, "fov", TRUE, "A")
   context <- cv_env$spatial_roi_transform_context(coordinates, metadata, "S")
@@ -2651,7 +2650,7 @@ test_that("Linked spatial scenes use Spatial ROI geometry and image ownership", 
     Alpha = image
   )
   multi_image <- cv_env$cv_spatial_one(crb, cells, "fov.2", TRUE)
-  expect_match(multi_image$image$id, ":Zebra$", perl = TRUE)
+  expect_match(multi_image$images[[1]]$id, ":Zebra$", perl = TRUE)
   expect_match(multi_image$images[[2]]$id, ":Alpha$", perl = TRUE)
 
   # Embedded ROI declarations follow the same scope precedence as externals.

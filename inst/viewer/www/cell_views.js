@@ -61,29 +61,6 @@
   var transportMetrics = {};
   var linkedRequestTiming = {};
   var singleTiming = Object.create(null);
-  var specialistPayloadMeter = null;
-  window.__cerebroResetSpecialistBench = function () {
-    specialistPayloadMeter = {
-      primary: { count: 0, bytes: 0, byId: {} },
-      aux: { count: 0, bytes: 0, byId: {} }
-    };
-    return true;
-  };
-  window.__cerebroSpecialistBenchSnapshot = function () {
-    return specialistPayloadMeter
-      ? JSON.parse(JSON.stringify(specialistPayloadMeter))
-      : null;
-  };
-  function recordSpecialistPayload(kind, id, bytes) {
-    if (!specialistPayloadMeter || !specialistPayloadMeter[kind]) return;
-    var metric = specialistPayloadMeter[kind];
-    var key = String(id || 'unknown');
-    metric.count += 1;
-    metric.bytes += Number(bytes) || 0;
-    metric.byId[key] = metric.byId[key] || { count: 0, bytes: 0 };
-    metric.byId[key].count += 1;
-    metric.byId[key].bytes += Number(bytes) || 0;
-  }
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var gpuAcceleration = true;   // session preference, independent of data/page
   var sel = null;               // Set of selected cell indices (null = none)
@@ -892,13 +869,8 @@
     if (mode === RGB_MODE) {
       var e = rgbAt(i);
       if (e.m <= RGB_MIN) return RGB_GREY;            // non-expressing → grey
-      if (e.r > RGB_MIN && e.g > RGB_MIN && e.b > RGB_MIN) return '#000000';
-      // Blend grey -> full-brightness hue by intensity.
-      var t = e.m / 255, ch = [e.r, e.g, e.b], o = [0, 0, 0];
-      for (var k = 0; k < 3; k++) {
-        o[k] = Math.round(RGB_GREY_RGB[k] + (ch[k] / e.m * 255 - RGB_GREY_RGB[k]) * t);
-      }
-      return 'rgb(' + o[0] + ',' + o[1] + ',' + o[2] + ')';
+      var rgb = rgbGpuColor(e.r, e.g, e.b);           // the GPU path's blend
+      return 'rgb(' + (rgb & 255) + ',' + (rgb >> 8 & 255) + ',' + (rgb >> 16 & 255) + ')';
     }
     var fld = fieldForMode(mode);
     if (fld) {
@@ -1396,9 +1368,7 @@
     var c = p.ctx, SX = p._SX, SY = p._SY;
     var x0 = p._sox, yt = p._soy, x1 = p._sox + SX, yb = p._soy + SY;
     var dataToY = function (dy) {
-      var ny = (dy - u.y0) * u.ky + u.oy;
-      var zy = p.view ? ((ny - p.view.cy) / p.view.span + 0.5) : ny;
-      return p._soy + SY - zy * SY;
+      return unitToScreen(p, 0, (dy - u.y0) * u.ky + u.oy)[1];
     };
     c.save();
     c.font = "10px -apple-system, 'Segoe UI', Roboto, sans-serif";
@@ -1560,16 +1530,11 @@
   function drawAxes3D(p) {
     var sp = spaceById[p.spaceId], u = sp && sp._unit;
     if (!u || !u.nz || p.W < 260) return;
-    var c = p.ctx, SX = p._SX, SY = p._SY, ox = p._sox, oy = p._soy,
-      v = p.view;
-    if (!SX || !SY) return;
+    var c = p.ctx;
+    if (!p._SX || !p._SY) return;
     var names = sp.axes || ['dim 1', 'dim 2', 'dim 3'];
     var arms = [[AXIS_LEN, 0, 0], [0, AXIS_LEN, 0], [0, 0, AXIS_LEN]];
-    var toScreen = function (dx, dy) {
-      var zx = v ? (dx + 0.5 - v.cx) / v.span + 0.5 : dx + 0.5;
-      var zy = v ? (dy + 0.5 - v.cy) / v.span + 0.5 : dy + 0.5;
-      return [ox + zx * SX, oy + SY - zy * SY];
-    };
+    var toScreen = function (dx, dy) { return unitToScreen(p, dx + 0.5, dy + 0.5); };
     var o0 = toScreen(0, 0);
     c.save();
     c.font = '600 10px system-ui, -apple-system, "Segoe UI", sans-serif';
@@ -1611,8 +1576,7 @@
     // Below ~260px cluster names crowd the data.
     if (!labelsOn || p.W < 260) return;
     var L = groupLabelsFor(p); if (!L || !L.length) return;
-    var c = p.ctx, v = p.view, SX = p._SX, SY = p._SY,
-      ox = p._sox, oy = p._soy;
+    var c = p.ctx, SX = p._SX, SY = p._SY, ox = p._sox, oy = p._soy;
     if (!SX || !SY) return;
     c.save();
     c.globalAlpha = 1;
@@ -1634,9 +1598,7 @@
         var rp = rotUnit(rot, ux - 0.5, uy - 0.5, o.nz);
         ux = rp[0] + 0.5; uy = rp[1] + 0.5;
       }
-      var zx = v ? (ux - v.cx) / v.span + 0.5 : ux;
-      var zy = v ? (uy - v.cy) / v.span + 0.5 : uy;
-      var x = ox + zx * SX, y = oy + SY - zy * SY;
+      var at = unitToScreen(p, ux, uy), x = at[0], y = at[1];
       if (x < ox || x > ox + SX || y < oy || y > oy + SY) return;
       var t = o.text.length > 18 ? o.text.slice(0, 17) + '…' : o.text;
       var w = c.measureText(t).width;
@@ -2103,8 +2065,10 @@
     // Linked and Trekker scenes can carry images without background_scope.
     // Keep every image below both GPU points and Canvas points, including
     // images whose pixels are still loading.
-    return !!(space && (space.background_scope || space.image ||
-      (space.images && space.images.length) || space.trajectory ||
+    return !!(space && (space.background_scope ||
+      (space.images && space.images.length) ||
+      (space.samples && space.samples.some(function (s) { return s.images && s.images.length; })) ||
+      space.trajectory ||
       (space.hulls && space.hulls.length)));
   }
 
@@ -2586,14 +2550,8 @@
     }
     // Match the specialist Projection canvas: keep the light fill and solid
     // outline after selection so the active region remains immediately legible.
-    var outline = lassoToScreen(p);
-    if (outline && outline.length > 1) {
-      c.globalAlpha = 1; c.strokeStyle = '#ff7013'; c.lineWidth = 1.6;
-      c.beginPath(); c.moveTo(outline[0][0], outline[0][1]);
-      for (var q = 1; q < outline.length; q++) c.lineTo(outline[q][0], outline[q][1]);
-      c.closePath();
-      c.fillStyle = 'rgba(255,112,19,.07)'; c.fill(); c.stroke();
-    }
+    // A lasso still being drawn lives on the interaction layer instead.
+    if (!(p.drag && p.moved)) strokeOutline(c, lassoToScreen(p));
     c.globalAlpha = 1;
     // Its own canvas — drawn last so it also settles after a view change.
     drawMinimap(p);
@@ -2605,10 +2563,22 @@
     drawHoverOverlay(p);
   }
 
+  function strokeOutline(c, outline) {
+    if (!outline || outline.length < 2) return;
+    c.globalAlpha = 1; c.strokeStyle = '#ff7013'; c.lineWidth = 1.6;
+    c.beginPath(); c.moveTo(outline[0][0], outline[0][1]);
+    for (var q = 1; q < outline.length; q++) c.lineTo(outline[q][0], outline[q][1]);
+    c.closePath();
+    c.fillStyle = 'rgba(255,112,19,.07)'; c.fill(); c.stroke();
+  }
+
+  // The interaction layer: the hover ring, and a lasso or box while it is being
+  // dragged, so a drag frame redraws neither the points nor the decorations.
   function drawHoverOverlay(p) {
     var c = p.interactionCtx;
     if (!c) return;
     c.clearRect(0, 0, p.W, p.H);
+    if (p.drag && p.moved) strokeOutline(c, p.lasso);
     if (hoverCell == null || hoverCell === pick || !p.ok || !p.ok[hoverCell]) return;
     if (!singleActive && !linkedHoverOn && p !== hoverPanel) return;
     // Thinner and cooler than the pick ring so hover and selection never read
@@ -4214,11 +4184,6 @@
           render_key: String(renderKey),
           dataset_context: activeView.dataset_context
         }, { priority: 'event' });
-        Shiny.setInputValue(
-          singleActive + '_rendered_key',
-          String(renderKey),
-          { priority: 'event' }
-        );
       }
     }
     if (clientSummary) {
@@ -4237,9 +4202,6 @@
       : '';
     if (!/^md5-cell-set-v1:[0-9a-f]{32}$/.test(datasetFingerprint)) return;
     var timing = singleTiming[singleActive] || {};
-    var specialistTiming = CBViewState.specialistLifecycle.ready(
-      singleTiming, singleActive, performance.now()
-    );
     var renderedPanel = panels.filter(function (panel) {
       return panel && panel.spaceId && panel.canvas;
     })[0];
@@ -4252,13 +4214,10 @@
       eventKind: eventKind,
       renderKey: renderKey == null ? null : String(renderKey),
       generation: Number(timing.generation) || 0,
-      benchmarkGeneration:
-        Number(window.__cerebroPageBenchGeneration) || 0,
       renderRequestSent: !!timing.renderRequestSent,
       renderedPointCount: Number(
         renderedPanel && renderedPanel.canvas.dataset.pointCount
-      ) || 0,
-      timing: specialistTiming
+      ) || 0
     } }));
   }
 
@@ -4877,15 +4836,20 @@
   // while moving the mouse and, on a data set with several grouping variables,
   // a tooltip taller than what it is pointing at.
   var HOVER_MAX_GROUPS = 6;
-  function singleNestedValue(space, values, i) {
-    if (!space || !space._hoverOffsets) return values && values[i];
-    var offsets = space._hoverOffsets, lo = 0, hi = offsets.length - 1;
+  // The group (trace) holding cell `i`, by binary search of its start offsets.
+  function hoverGroupAt(offsets, i) {
+    var lo = 0, hi = offsets.length - 1;
     while (lo + 1 < hi) {
       var mid = (lo + hi) >> 1;
       if (i < offsets[mid]) hi = mid; else lo = mid;
     }
+    return lo;
+  }
+  function singleNestedValue(space, values, i) {
+    if (!space || !space._hoverOffsets) return values && values[i];
+    var lo = hoverGroupAt(space._hoverOffsets, i);
     var group = values && values[lo];
-    return group && group[i - offsets[lo]];
+    return group && group[i - space._hoverOffsets[lo]];
   }
   function singleHoverEnabledAt(space, i) {
     var modes = space && space._hoverModes;
@@ -4893,12 +4857,7 @@
     if (!space || !space._hoverOffsets || !Array.isArray(modes)) {
       return modes !== 'skip';
     }
-    var offsets = space._hoverOffsets, lo = 0, hi = offsets.length - 1;
-    while (lo + 1 < hi) {
-      var mid = (lo + hi) >> 1;
-      if (i < offsets[mid]) hi = mid; else lo = mid;
-    }
-    return modes[lo] !== 'skip';
+    return modes[hoverGroupAt(space._hoverOffsets, i)] !== 'skip';
   }
   function singleHoverColumnValue(column, i, space) {
     var value = singleNestedValue(space, column.values, i);
@@ -5629,7 +5588,10 @@
         // A data set switch ends the drag before the frame comes.
         if (!p.panning && !p.orbiting && !p.drag) return;
         if (projects) project(p);
-        draw(p);
+        // A lasso or box only moves its outline: redraw the interaction layer,
+        // not the points. Pan and orbit move the points.
+        if (p.panning || p.orbiting || !p.interactionCtx) draw(p);
+        else drawHoverOverlay(p);
       });
     };
     var settleDragFrame = function () {
@@ -5705,7 +5667,7 @@
       }
       if (!p.drag) return;
       p.drag = false;
-      if (!D || !p.ok) { p.lasso = null; return; }  // not projected yet
+      if (!D || !p.ok) { p.lasso = null; drawHoverOverlay(p); return; }  // not projected yet
       if (p.moved && p.lasso && p.lasso.length > 2) {
         ensureScreenProjection(p);
         var s = lassoHits(p, p.lasso);
@@ -5732,8 +5694,10 @@
         pickCell(p, k);
       }
       // Both branches drew every panel (setSelection/pickCell), after
-      // clearLassos() or the line above dropped the drag outline.
+      // clearLassos() or the line above dropped the drag outline. An unchanged
+      // selection draws nothing, so clear the dragged outline here as well.
       p.lasso = null;
+      drawHoverOverlay(p);
     });
   }
 
@@ -6170,10 +6134,7 @@
   function colourByGene(gene) {
     if (!gene) return;
     var sel = $('cv-pick-color');
-    if (sel) {
-      if (sel.selectize) sel.selectize.setValue(GENE_MODE, true);
-      else sel.value = GENE_MODE;
-    }
+    if (sel && sel.selectize) sel.selectize.setValue(GENE_MODE, true);
     // Drop the previous gene BEFORE switching: the picker is about to say
     // `gene`, and until the reply arrives the old vector would be drawn under
     // that name. Cells fall back to the neutral "no gene" colour meanwhile.
@@ -6237,13 +6198,12 @@
   // repertoire tab reads the same file). They were hard-coded here as four
   // tiers topping out at "Large (>20)" while that tab used five -- so a
   // 500-cell clone was Hyperexpanded on one page and Large on the other, from
-  // the same object. The fallback is only for a bundle built before the bins
-  // travelled; it is the old four-tier scheme and is deliberately not extended.
-  var TIER_UB = [1, 5, 20];
-  var TIER_LAB = ['Single (1)', 'Small (2–5)', 'Medium (6–20)', 'Large (>20)'];
+  // the same object. Every bundle carries them, so these start empty.
+  var TIER_UB = [];
+  var TIER_LAB = [];
   function syncCloneTiers() {
     var c = D && D.clone;
-    if (!c || !c.tiers || !c.tiers.length || !c.tier_labels) return;
+    if (!c) return;
     TIER_UB = c.tiers.slice();
     TIER_LAB = c.tier_labels.slice();
   }
@@ -6476,16 +6436,12 @@
       '<option value="' + RGB_MODE + '">RGB co-expression</option>');
     destroyPicker(sel);
     sel.innerHTML = html;
-    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
-      window.jQuery(sel).selectize({
-        persist: false,
-        onChange: function (value) { setColorBy(value); }
-      });
-      sel.selectize.setValue(colorBy, true);
-    } else {
-      if (colorBy) sel.value = colorBy;
-      sel.onchange = function () { setColorBy(sel.value); };
-    }
+    // The Linked views page always loads selectize (its gene pickers use it).
+    window.jQuery(sel).selectize({
+      persist: false,
+      onChange: function (value) { setColorBy(value); }
+    });
+    sel.selectize.setValue(colorBy, true);
   }
   // The colour-range control belongs to a continuous colouring and nothing else:
   // a categorical one has no range to trim, and RGB blends three of them.
@@ -6616,29 +6572,15 @@
       return '<option value="' + esc(nm) + '">' +
         esc(projOptionLabel(nm)) + '</option>';
     }).join('');
-    Array.prototype.forEach.call(selEl.options, function (option) {
-      option.selected = selectedProjections.indexOf(option.value) >= 0;
+    window.jQuery(selEl).selectize({
+      plugins: ['remove_button'],
+      persist: false,
+      closeAfterSelect: false,
+      onChange: function (values) {
+        setSelectedProjections(values == null ? [] : [].concat(values));
+      }
     });
-    var changed = function (values) {
-      values = values == null ? [] : (Array.isArray(values) ? values : [values]);
-      setSelectedProjections(values);
-    };
-    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
-      var $sel = window.jQuery(selEl);
-      $sel.selectize({
-        plugins: ['remove_button'],
-        persist: false,
-        closeAfterSelect: false,
-        onChange: changed
-      });
-      selEl.selectize.setValue(selectedProjections, true);
-    } else {
-      selEl.onchange = function () {
-        changed(Array.prototype.filter.call(selEl.options, function (o) {
-          return o.selected;
-        }).map(function (o) { return o.value; }));
-      };
-    }
+    selEl.selectize.setValue(selectedProjections, true);
   }
   function setSelectedProjections(names) {
     var available = D && D.projections ? Object.keys(D.projections) : [];
@@ -6867,23 +6809,15 @@
       var scopeOptions = allSpaces.map(function (sp) {
         return { value: sp.id, text: (sp.label || sp._sampleName || sp.id).replace(/ \(spatial\)$/, '') };
       });
-      if (!scope.selectize && window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
+      if (!scope.selectize) {
         window.jQuery(scope).selectize({ persist: false, onChange: function (id) {
           if (id) { backgroundScopePulse = true; activateSpatial(id); }
         } });
       }
-      if (scope.selectize) {
-        scope.selectize.clear(true);
-        scope.selectize.clearOptions(true);
-        scope.selectize.addOption(scopeOptions);
-        scope.selectize.setValue(active ? active.id : '', true);
-      } else {
-        scope.innerHTML = scopeOptions.map(function (option) {
-          return '<option value="' + esc(option.value) + '">' + esc(option.text) + '</option>';
-        }).join('');
-        scope.value = active ? active.id : '';
-        scope.onchange = function () { activateSpatial(scope.value); };
-      }
+      scope.selectize.clear(true);
+      scope.selectize.clearOptions(true);
+      scope.selectize.addOption(scopeOptions);
+      scope.selectize.setValue(active ? active.id : '', true);
       if (backgroundScopePulse) {
         var settings = ctl.querySelector('.cv-bg-settings');
         if (settings) {
@@ -6905,28 +6839,19 @@
     var value = active && active._customImageId
       ? active._customImageId
       : (images[0] ? images[0].id : IMG_NONE);
-    if (!select.selectize && window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
+    if (!select.selectize) {
       window.jQuery(select).selectize({
         persist: false,
         onChange: function (id) { if (id) setSpatialImage(id, activeSpatial()); }
       });
     }
-    if (select.selectize) {
-      // Selectize retains the selected option in clearOptions(). Clear the
-      // value first so an image from the previous ROI cannot remain selectable.
-      select.selectize.clear(true);
-      select.selectize.clearOptions(true);
-      select.selectize.addOption(options);
-      select.selectize.setValue(value, true);
-      if (images.length) select.selectize.enable(); else select.selectize.disable();
-    } else {
-      select.innerHTML = images.map(function (im) {
-        return '<option value="' + esc(im.id) + '">' + esc(im.label || im.id) + '</option>';
-      }).concat(['<option value="' + IMG_NONE + '">None</option>']).join('');
-      select.disabled = !images.length;
-      select.value = value;
-      select.onchange = function () { setSpatialImage(select.value, active); };
-    }
+    // Selectize retains the selected option in clearOptions(). Clear the
+    // value first so an image from the previous ROI cannot remain selectable.
+    select.selectize.clear(true);
+    select.selectize.clearOptions(true);
+    select.selectize.addOption(options);
+    select.selectize.setValue(value, true);
+    if (images.length) select.selectize.enable(); else select.selectize.disable();
     seedImgControls();
   }
 
@@ -7047,7 +6972,6 @@
       builder_point_opacity: spatialTemplate.builder_point_opacity,
       builder_point_size: spatialTemplate.builder_point_size,
       builder_percentage_cells: spatialTemplate.builder_percentage_cells,
-      image: spatialTemplate.image,
       images: spatialTemplate.images || []
     }];
   }
@@ -7061,7 +6985,7 @@
       if (selectedSpatial.indexOf(sample.name) < 0) return;
       var id = spatialId(sample.name), old = spaceById[id];
       if (old) return;
-      var images = sample.images || (sample.image ? [sample.image] : []);
+      var images = sample.images || [];
       var sampleStateKey = 'fov:' + id;
       var custom = Object.prototype.hasOwnProperty.call(imgChoice, sampleStateKey)
         ? imgChoice[sampleStateKey]
@@ -7076,7 +7000,6 @@
         builder_point_opacity: sample.builder_point_opacity,
         builder_point_size: sample.builder_point_size,
         builder_percentage_cells: sample.builder_percentage_cells,
-        image: sample.image || null,
         images: images,
         _sampleName: sample.name,
         _cells: sample._cells || null,
@@ -7107,30 +7030,15 @@
       var label = (s.label || s.name).replace(/ \(spatial\)$/, '');
       return '<option value="' + esc(s.name) + '">' + esc(label) + '</option>';
     }).join('');
-    Array.prototype.forEach.call(selEl.options, function (option) {
-      option.selected = selectedSpatial.indexOf(option.value) >= 0;
+    window.jQuery(selEl).selectize({
+      plugins: ['remove_button'],
+      persist: false,
+      closeAfterSelect: false,
+      onChange: function (values) {
+        setSelectedSpatial(values == null ? [] : [].concat(values));
+      }
     });
-    var changed = function (values) {
-      values = values == null ? [] : (Array.isArray(values) ? values : [values]);
-      setSelectedSpatial(values);
-    };
-    var nativeChanged = function () {
-      changed(Array.prototype.filter.call(selEl.options, function (o) {
-        return o.selected;
-      }).map(function (o) { return o.value; }));
-    };
-    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.selectize) {
-      var $sel = window.jQuery(selEl);
-      $sel.selectize({
-        plugins: ['remove_button'],
-        persist: false,
-        closeAfterSelect: false,
-        onChange: changed
-      });
-      selEl.selectize.setValue(selectedSpatial, true);
-    } else {
-      selEl.onchange = nativeChanged;
-    }
+    selEl.selectize.setValue(selectedSpatial, true);
   }
   function setSelectedSpatial(names) {
     var available = spatialSamples().map(function (s) { return s.name; });
@@ -8112,7 +8020,7 @@
     if (rows == null) return null;
     var flat = rows;
     if (ArrayBuffer.isView(groups) && groups.length === n) {
-      flat = canonicalAuxValues(rows, groups, -1);
+      flat = CBViewState.canonicalAuxValues(rows, groups, -1);
     } else if (rows.length && typeof rows[0] !== 'number') {
       flat = [];
       for (var g = 0; g < rows.length; g++) {
@@ -8212,7 +8120,8 @@
     return String(resource.url) + ':' + String(resource.checksum || '') +
       (suffix ? ':' + suffix : '');
   }
-  function fetchCachedResource(resource, cache, label, suffix, decode) {
+  // `gunzip`: the file itself is gzip-compressed (not a Content-Encoding).
+  function fetchCachedResource(resource, cache, label, suffix, decode, gunzip) {
     var key = resourceCacheKey(resource, suffix);
     var pending = cache.get(key);
     var cacheHit = !!pending;
@@ -8222,7 +8131,9 @@
         credentials: 'same-origin', cache: 'force-cache'
       }).then(function (response) {
         if (!response.ok) throw new Error(label + ' request failed');
-        return response.arrayBuffer();
+        return gunzip ? new Response(
+          response.body.pipeThrough(new DecompressionStream('gzip'))
+        ).arrayBuffer() : response.arrayBuffer();
       }).then(function (buffer) {
         var downloadedAt = performance.now();
         return Object.assign(decode(buffer), {
@@ -8254,18 +8165,9 @@
       return Promise.reject(new Error('Cell names identity mismatch'));
     }
     var n = Number(resource.cells);
-    var key = resourceCacheKey(resource, '');
-    var pending = cellNamesResourceCache.get(key);
-    if (!pending) {
-      pending = window.fetch(String(resource.url), {
-        credentials: 'same-origin', cache: 'force-cache'
-      }).then(function (response) {
-        if (!response.ok) throw new Error('Cell names request failed');
-        var body = resource.encoding === 'gzip'
-          ? response.body.pipeThrough(new DecompressionStream('gzip'))
-          : response.body;
-        return new Response(body).arrayBuffer();
-      }).then(function (buffer) {
+    return fetchCachedResource(
+      resource, cellNamesResourceCache, 'Cell names', '',
+      function (buffer) {
         if (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes)) {
           throw new Error('Cell names byte count mismatch');
         }
@@ -8273,13 +8175,19 @@
         names.pop();
         if (names.length !== n) throw new Error('Cell names length mismatch');
         return {names: names};
-      });
-      cellNamesResourceCache.set(key, pending);
-      pending.catch(function () {
-        if (cellNamesResourceCache.get(key) === pending) cellNamesResourceCache.delete(key);
-      });
+      },
+      resource.encoding === 'gzip'
+    );
+  }
+  // The cell names at canonical `rows`.
+  function namesAt(names, rows) {
+    var keys = new Array(rows.length);
+    for (var i = 0; i < rows.length; i++) {
+      var name = names[rows[i]];
+      if (name === undefined) throw new Error('Cell index out of range');
+      keys[i] = name;
     }
-    return pending;
+    return keys;
   }
   // Contiguous canonical rows travel as {kind: 'range', start, length}.
   function expandRowRange(rows) {
@@ -8310,18 +8218,11 @@
         delete every.cell_names_resource;
         return every;
       }
-      var lookup = function (rows) {
-        var keys = new Array(rows.length);
-        for (var i = 0; i < rows.length; i++) {
-          var name = names[rows[i]];
-          if (name === undefined) throw new Error('Cell index out of range');
-          keys[i] = name;
-        }
-        return keys;
-      };
       var nested = Array.isArray(index) && index.length && typeof index[0] !== 'number';
       var resolved = Object.assign({}, message, {
-        selection_key: nested ? index.map(lookup) : lookup(index),
+        selection_key: nested
+          ? index.map(function (rows) { return namesAt(names, rows); })
+          : namesAt(names, index),
         selection_rows: index
       });
       delete resolved.selection_index;
@@ -8341,14 +8242,10 @@
     var data = message && message.data;
     if (!frameNeedsCellNames(message)) return Promise.resolve(message);
     return fetchCellNames(data.cell_names_resource, message.dataset_identity).then(function (entry) {
-      var names = entry.names, rows = data.selection_index;
-      var keys = new Array(rows.length);
-      for (var i = 0; i < rows.length; i++) {
-        var name = names[rows[i]];
-        if (name === undefined) throw new Error('Cell index out of range');
-        keys[i] = name;
-      }
-      var resolved = Object.assign({}, data, {selection_key: keys, selection_rows: rows});
+      var rows = data.selection_index;
+      var resolved = Object.assign({}, data, {
+        selection_key: namesAt(entry.names, rows), selection_rows: rows
+      });
       delete resolved.selection_index;
       delete resolved.cell_names_resource;
       return Object.assign({}, message, {data: resolved});
@@ -8603,8 +8500,7 @@
     var canonicalCells = mapping.canonicalCells;
     if (kind === 'identity') {
       return Promise.resolve({
-        kind: kind, indices: null, bytes: 0, fetchMs: 0,
-        downloadMs: 0, decodeMs: 0, cacheHit: true
+        kind: kind, indices: null, bytes: 0
       });
     }
     var expectedCount = mapping.expectedCount;
@@ -8625,16 +8521,12 @@
     );
   }
   function materializeProjectionSubset(coordinates, subset, expectedCells) {
-    var started = performance.now();
     var canonicalCells = coordinates.x.length;
     if (subset.kind === 'identity') {
       if (canonicalCells !== expectedCells) {
         throw new Error('Projection identity materialization mismatch');
       }
-      return {
-        coordinates: coordinates,
-        materializeMs: performance.now() - started
-      };
+      return coordinates;
     }
     var x = new Float32Array(expectedCells);
     var y = new Float32Array(expectedCells);
@@ -8670,13 +8562,10 @@
       throw new Error('Projection subset output length mismatch');
     }
     return {
-      coordinates: {
-        x: x, y: y, z: z,
-        xRange: !z && isFinite(x0) && x1 > x0 ? [x0, x1] : null,
-        yRange: !z && isFinite(y0) && y1 > y0 ? [y0, y1] : null,
-        bytes: coordinates.bytes
-      },
-      materializeMs: performance.now() - started
+      x: x, y: y, z: z,
+      xRange: !z && isFinite(x0) && x1 > x0 ? [x0, x1] : null,
+      yRange: !z && isFinite(y0) && y1 > y0 ? [y0, y1] : null,
+      bytes: coordinates.bytes
     };
   }
   function canonicalProjectionCoordinates(resource, message) {
@@ -8809,12 +8698,10 @@
       var subsetResult = results[1];
       var groupResult = results[2];
       var coordinates = result && result.coordinates;
-      var materialized = null;
       if (coordinates && subsetResult) {
-        materialized = materializeProjectionSubset(
+        coordinates = materializeProjectionSubset(
           coordinates, subsetResult, Number(data.n)
         );
-        coordinates = materialized.coordinates;
       }
       // Group filters applied here map canonical codes to the frame's cells.
       if (subsetResult) data.canonical_subset = subsetResult;
@@ -8837,29 +8724,6 @@
       delete data.categorical_resource;
       delete data.trajectory_frame_resource;
       message.data = data;
-      var timing = CBViewState.specialistLifecycle.update(
-        singleTiming, message.id, {
-          projectionFetchMs: result ? result.fetchMs : 0,
-          projectionBytes: coordinates ? coordinates.bytes : 0,
-          projectionDownloadMs: result ? result.downloadMs : 0,
-          projectionDecodeMs: result ? result.decodeMs : 0,
-          projectionCacheHit: result ? !!result.cacheHit : false,
-          projectionSubsetFetchMs: subsetResult ? subsetResult.fetchMs : 0,
-          projectionSubsetBytes: subsetResult ? subsetResult.bytes : 0,
-          projectionSubsetDownloadMs: subsetResult ? subsetResult.downloadMs : 0,
-          projectionSubsetDecodeMs: subsetResult ? subsetResult.decodeMs : 0,
-          projectionSubsetCacheHit: subsetResult ? !!subsetResult.cacheHit : false,
-          projectionSubsetMaterializeMs: materialized
-            ? materialized.materializeMs : 0,
-          categoricalFetchMs: groupResult ? groupResult.fetchMs : 0,
-          categoricalBytes: groupResult ? groupResult.bytes : 0
-        }
-      );
-      if (subsetResult) {
-        timing.geometryReused = true;
-        timing.geometryReuseProtocol = 'canonical-projection-v1';
-        timing.geometryReuseSubset = subsetResult.kind;
-      }
       return message;
     });
   }
@@ -8870,6 +8734,14 @@
       cell_order_fingerprint: bundle && bundle.canonical_order_id,
       pack_dataset_fingerprint: bundle && bundle.pack_dataset_fingerprint
     };
+  }
+  // Decoded coordinates (and their 2-D ranges) onto a bundle projection.
+  function setProjectionCoordinates(projection, coordinates) {
+    projection.x = coordinates.x;
+    projection.y = coordinates.y;
+    if (coordinates.z) projection.z = coordinates.z;
+    if (coordinates.xRange) projection.xRange = coordinates.xRange;
+    if (coordinates.yRange) projection.yRange = coordinates.yRange;
   }
   function hydrateLinkedProjectionResource(bundle) {
     var name = bundle && bundle.default_projection;
@@ -8890,11 +8762,7 @@
       bundle.n
     ).then(function (result) {
       var coordinates = result.coordinates;
-      projection.x = coordinates.x;
-      projection.y = coordinates.y;
-      if (coordinates.z) projection.z = coordinates.z;
-      if (coordinates.xRange) projection.xRange = coordinates.xRange;
-      if (coordinates.yRange) projection.yRange = coordinates.yRange;
+      setProjectionCoordinates(projection, coordinates);
       delete projection.projection_resource;
       return {
         bundle: bundle,
@@ -8915,57 +8783,50 @@
     categoricalResourceCache.clear();
     cellNamesResourceCache.clear();
   }
-  function fetchCategoricalResource(resource, expectedCells) {
+  // One integer code per cell. `decode(codes, n)` checks and converts the
+  // typed codes; the shape and byte checks are shared.
+  function fetchCodeResource(resource, expectedCells, dtypes, cache, label, suffix, decode) {
     var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
-      cells: expectedCells, dtypes: ['uint8', 'uint16', 'uint32'],
-      requireUrl: true
+      cells: expectedCells, dtypes: dtypes, requireUrl: true
     });
-    var n = descriptor && descriptor.cells;
-    var dtype = descriptor && descriptor.dtype;
-    var bytesPerCode = window.CBViewState.resourceDescriptor.codeWidth(descriptor);
-    var levels = resource.levels;
-    if (!descriptor || !bytesPerCode || !levels) {
-      return Promise.reject(new Error('Categorical resource mismatch'));
-    }
-    return fetchCachedResource(
-      resource, categoricalResourceCache, 'Categorical resource', '',
-      function (buffer) {
-        if (buffer.byteLength !== n * bytesPerCode ||
-            (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes))) {
-          throw new Error('Categorical resource byte count mismatch');
-        }
-        var values = dtype === 'uint8' ? new Uint8Array(buffer) :
-          (dtype === 'uint16' ? new Uint16Array(buffer) : new Uint32Array(buffer));
+    var width = window.CBViewState.resourceDescriptor.codeWidth(descriptor);
+    if (!width) return Promise.reject(new Error(label + ' mismatch'));
+    var n = descriptor.cells, dtype = descriptor.dtype;
+    return fetchCachedResource(resource, cache, label, suffix, function (buffer) {
+      if (buffer.byteLength !== n * width ||
+          (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes))) {
+        throw new Error(label + ' byte count mismatch');
+      }
+      var codes = dtype === 'uint8' ? new Uint8Array(buffer) :
+        (dtype === 'uint16' ? new Uint16Array(buffer) : new Uint32Array(buffer));
+      return { values: decode(codes, n), bytes: buffer.byteLength };
+    });
+  }
+  function fetchCategoricalResource(resource, expectedCells) {
+    var levels = resource && resource.levels;
+    if (!levels) return Promise.reject(new Error('Categorical resource mismatch'));
+    return fetchCodeResource(
+      resource, expectedCells, ['uint8', 'uint16', 'uint32'],
+      categoricalResourceCache, 'Categorical resource', '',
+      function (values, n) {
         for (var i = 0; i < n; i++) {
           if (values[i] >= levels.length) {
             throw new Error('Categorical code is outside its dictionary');
           }
         }
-        return { values: values, bytes: buffer.byteLength };
+        return values;
       }
     );
   }
   function fetchMetadataCodesResource(resource, expectedCells) {
-    var descriptor = window.CBViewState.resourceDescriptor.validate(resource, {
-      cells: expectedCells, dtypes: ['uint8', 'uint16'], requireUrl: true
-    });
-    var n = descriptor && descriptor.cells;
-    var dtype = descriptor && descriptor.dtype;
-    var bytesPerCode = window.CBViewState.resourceDescriptor.codeWidth(descriptor);
-    var codeMap = resource.code_map;
-    if (!descriptor || !bytesPerCode || !codeMap || !codeMap.length) {
+    var codeMap = resource && resource.code_map;
+    if (!codeMap || !codeMap.length) {
       return Promise.reject(new Error('Metadata codes resource mismatch'));
     }
-    return fetchCachedResource(
-      resource, metadataCodesResourceCache, 'Metadata codes',
-      Array.prototype.join.call(codeMap, ','),
-      function (buffer) {
-        if (buffer.byteLength !== n * bytesPerCode ||
-            (Number(resource.bytes) && buffer.byteLength !== Number(resource.bytes))) {
-          throw new Error('Metadata codes byte count mismatch');
-        }
-        var source = dtype === 'uint8'
-          ? new Uint8Array(buffer) : new Uint16Array(buffer);
+    return fetchCodeResource(
+      resource, expectedCells, ['uint8', 'uint16'], metadataCodesResourceCache,
+      'Metadata codes', Array.prototype.join.call(codeMap, ','),
+      function (source, n) {
         var maxCode = codeMap.length - 2;
         var values = maxCode <= 127
           ? new Int8Array(n)
@@ -8977,7 +8838,7 @@
           }
           values[i] = Number(codeMap[code]);
         }
-        return { values: values, bytes: buffer.byteLength };
+        return values;
       }
     );
   }
@@ -9013,12 +8874,6 @@
     ]).then(function (results) {
       return Object.assign({}, results[0], results[1]);
     });
-  }
-  function canonicalGroupedValues(grouped, groups, fallback) {
-    return window.CBViewState.canonicalGroupedValues(grouped, groups, fallback);
-  }
-  function canonicalAuxValues(values, groups, fallback) {
-    return window.CBViewState.canonicalAuxValues(values, groups, fallback);
   }
   function alignSingleCoordinates(data, nested) {
     var n = D && D.n || 0;
@@ -9094,10 +8949,10 @@
       var hoverModes = data.hover && data.hover.hoverinfo;
       var canonicalGroups = data.data.canonical_group;
       if (ArrayBuffer.isView(canonicalGroups) && canonicalGroups.length === n) {
-        var canonicalX = canonicalGroupedValues(data.data.x, canonicalGroups, NaN);
-        var canonicalY = canonicalGroupedValues(data.data.y, canonicalGroups, NaN);
+        var canonicalX = CBViewState.canonicalGroupedValues(data.data.x, canonicalGroups, NaN);
+        var canonicalY = CBViewState.canonicalGroupedValues(data.data.y, canonicalGroups, NaN);
         var canonicalZ = z
-          ? canonicalGroupedValues(data.data.z, canonicalGroups, NaN) : null;
+          ? CBViewState.canonicalGroupedValues(data.data.z, canonicalGroups, NaN) : null;
         for (var canonicalIndex = 0; canonicalIndex < n; canonicalIndex++) {
           x[canonicalIndex] = Number(canonicalX[canonicalIndex]);
           y[canonicalIndex] = Number(canonicalY[canonicalIndex]);
@@ -9651,12 +9506,33 @@
       if (panel.gpu && panel.gpu !== renderer) return singleGpuReady(panel);
     });
   }
+  // What cerebro:cell-view-ready reports for the frame just drawn.
+  function cellViewReadyDetail(id, payload) {
+    var panel = panels.filter(function (p) { return p.spaceId; })[0];
+    return {
+      id: id,
+      painted: true,
+      renderKey: payload.data && payload.data.render_key,
+      renderToken: payload.render_token,
+      pointCount: panel && panel.canvas && Number(panel.canvas.dataset.pointCount),
+      dataset_context: payload.dataset_context
+    };
+  }
+  // Canvas drawing is synchronous, but the browser composites it a frame or
+  // two later: report then, unless `current()` says the view moved on.
+  function dispatchCellViewReady(detail, current, before) {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (!current()) return;
+        if (before) before();
+        window.dispatchEvent(new CustomEvent('cerebro:cell-view-ready', { detail: detail }));
+      });
+    });
+  }
   function reportSinglePainted(id, payload, paintedData) {
     var paintedMeta = payload.meta;
-    var paintedKey = payload.data && payload.data.render_key;
-    var paintedToken = payload.render_token;
+    var detail = cellViewReadyDetail(id, payload);
     var activePanels = panels.filter(function (panel) { return panel.spaceId; });
-    var paintedCount = activePanels[0] && activePanels[0].canvas && Number(activePanels[0].canvas.dataset.pointCount);
     Promise.all(activePanels.map(singleGpuReady)).then(function () {
       if (singleActive !== id || D !== paintedData || payload.meta !== paintedMeta ||
           visibleSingleId() !== id) {
@@ -9670,23 +9546,10 @@
       }));
     }).then(function (settled) {
       if (settled === false) return;
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          if (singleActive !== id || D !== paintedData || payload.meta !== paintedMeta ||
-              visibleSingleId() !== id) return;
-          reportSelection('primary');
-          window.dispatchEvent(new CustomEvent('cerebro:cell-view-ready', {
-            detail: {
-              id: id,
-              painted: true,
-              renderKey: paintedKey,
-              pointCount: paintedCount,
-              dataset_context: payload.dataset_context,
-              renderToken: paintedToken
-            }
-          }));
-        });
-      });
+      dispatchCellViewReady(detail, function () {
+        return singleActive === id && D === paintedData &&
+          payload.meta === paintedMeta && visibleSingleId() === id;
+      }, function () { reportSelection('primary'); });
     });
   }
   function sameSingleLayout(previous, meta, data) {
@@ -9726,10 +9589,6 @@
   }
 
   function activateSingle(id, resetAxes, preserveTargetState, eventKind, reuseSurface, refreshFilters) {
-    var activationStarted = performance.now();
-    var timing = CBViewState.specialistLifecycle.activate(
-      singleTiming, id, activationStarted
-    );
     var payload = singleView(id);
     if (!payload || rebuildingBase ||
         !sameDatasetContext(payload.dataset_context, currentDatasetContext())) return false;
@@ -9755,9 +9614,7 @@
       cat_extra: Object.assign({}, base.cat_extra)
     });
     spaceById = {}; spatialTemplate = null; _clipD = null;
-    var buildStarted = performance.now();
     var built = buildSingleSpaces(id, payload);
-    timing.buildSpacesMs = performance.now() - buildStarted;
     // A per-group panel holds one group's cells; caching it as the shared
     // projection would hand those coordinates to the next ungrouped render.
     if (built.spaces.length && payload.meta && payload.meta.space_label &&
@@ -9898,14 +9755,10 @@
     // Focus state of their own: the toggle follows it either way.
     if (!reuseSurface) (sel ? syncFocusButtons : leaveFocus)();
     else syncFocusButtons();
-    var drawStarted = performance.now();
-    timing.preDrawMs = drawStarted - activationStarted;
     renderLegend();
     var drawn = resizeAll();
     renderSelbar();
     if (!drawn) drawAll();
-    timing.firstDrawMs = performance.now() - drawStarted;
-    timing.activationMs = performance.now() - activationStarted;
     reportSingleHiddenGroups(); reportSelection(eventKind || 'interaction');
     // Gene's selection core is requested by click or brush. Sending all cell
     // IDs here competes with the user's first gene operation on the R thread.
@@ -9917,27 +9770,11 @@
             sameDatasetContext(idleView.dataset_context, currentDatasetContext())) requestSingleAux();
       });
     }
-    // Canvas drawing is synchronous, but the browser does not composite it
-    // until a later frame. Keep the page loader in place until that first
-    // painted frame is actually visible; otherwise users see a blank gap
-    // between the loader and the specialist view.
+    // The page loader stays until the first painted frame is visible;
+    // otherwise users see a blank gap between it and the specialist view.
     var paintedSingleData = D;
-    var paintedSingleKey = payload.data && payload.data.render_key;
-    var paintedSingleToken = payload.render_token;
-    var paintedPanel = panels.filter(function (panel) { return panel.spaceId; })[0];
-    var paintedSingleCount = paintedPanel && paintedPanel.canvas && Number(paintedPanel.canvas.dataset.pointCount);
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        if (singleActive !== id || D !== paintedSingleData ||
-            visibleSingleId() !== id) return;
-        window.dispatchEvent(new CustomEvent('cerebro:cell-view-ready', {
-          detail: { id: id, painted: true,
-            renderKey: paintedSingleKey,
-            renderToken: paintedSingleToken,
-            pointCount: paintedSingleCount,
-            dataset_context: payload.dataset_context }
-        }));
-      });
+    dispatchCellViewReady(cellViewReadyDetail(id, payload), function () {
+      return singleActive === id && D === paintedSingleData && visibleSingleId() === id;
     });
     return true;
   }
@@ -10074,7 +9911,7 @@
     }
     return true;
   }
-  // The data fields a cell_view_recolor message may replace.
+  // The data fields a cell_view_recolor_binary message may replace.
   var SINGLE_COLOR_FIELDS = [
     'color', 'rgb', 'rgb_genes', 'colorscale', 'panel_colorscales',
     'color_range', 'reversescale', 'paint_order', 'render_key', 'sparse_color',
@@ -10396,7 +10233,6 @@
         decoded.transport_profile,
         {
         bytes: buffer.byteLength,
-        clickToRequestMs: linkedRequestTiming.clickToRequestMs,
         requestToBinaryMs: isFinite(linkedRequestTiming.requestAtMs)
           ? decodedAt - linkedRequestTiming.requestAtMs : null,
         decodeMs: decodedAt - started,
@@ -10756,12 +10592,7 @@
           { dataset_identity: linkedBundleResourceIdentity(bundle) },
           bundle.n
         ).then(function (result) {
-          var coordinates = result.coordinates;
-          projection.x = coordinates.x;
-          projection.y = coordinates.y;
-          if (coordinates.z) projection.z = coordinates.z;
-          if (coordinates.xRange) projection.xRange = coordinates.xRange;
-          if (coordinates.yRange) projection.yRange = coordinates.yRange;
+          setProjectionCoordinates(projection, result.coordinates);
           delete projection.projection_resource;
         });
       }))).then(function () {
@@ -10800,35 +10631,14 @@
   }
 
   function onSingleBinary(buffer) {
-    var receivedAt = performance.now();
     try {
       var decoded = window.CBViewWire.unpack(buffer);
-      var decodedAt = performance.now();
       if (!decoded || !decoded.id) return;
       if (!datasetMessageFresh(decoded)) {
         releaseEarlySingleRequest(decoded);
         return;
       }
-      recordSpecialistPayload('primary', decoded.id, buffer.byteLength);
-      var profile = decoded.transport_profile || {};
-      var transportTiming = CBViewState.telemetry.transport(
-        profile,
-        {
-          bytes: buffer.byteLength,
-          binaryReceivedAtMs: receivedAt,
-          decodeMs: decodedAt - receivedAt,
-          requestToBinaryMs: isFinite(Number(profile.request_at_ms))
-            ? Date.now() - Number(profile.request_at_ms) : null
-        },
-        false,
-        Date.now()
-      );
-      var timing = CBViewState.specialistLifecycle.update(
-        singleTiming, decoded.id, transportTiming
-      );
-      var requestedSharedProjection = !!decoded.shared_projection;
       var message = reuseSharedSingleProjection(decoded);
-      timing.geometryReused = requestedSharedProjection && !!message;
       if (!message) {
         singleRequests.delete(singleRequestKey(decoded.id, decoded.dataset_context));
         Shiny.setInputValue('coordviews_shared_base', {}, { priority: 'event' });
@@ -10881,9 +10691,6 @@
     } catch (error) {
       return;
     }
-    if (message && message.id) {
-      recordSpecialistPayload('aux', message.id, buffer.byteLength);
-    }
     if (!message || !message.cell_names_resource) {
       applySingleAux(message);
       return;
@@ -10927,7 +10734,7 @@
       if (hasCells) {
         var cells = singlePayloadCells(view);
         if (ArrayBuffer.isView(canonicalGroups) && canonicalGroups.length === D.n) {
-          cells = canonicalAuxValues(view.data.selection_key, canonicalGroups, '');
+          cells = CBViewState.canonicalAuxValues(view.data.selection_key, canonicalGroups, '');
         }
         if (cells.length !== D.n) return;
         D.cells = cells;
@@ -10961,13 +10768,13 @@
         var space = spaceById[spaceId];
         if (!space) return;
         space._hover = ArrayBuffer.isView(canonicalGroups)
-          ? (canonicalAuxValues(hover.text, canonicalGroups, '') || [])
+          ? (CBViewState.canonicalAuxValues(hover.text, canonicalGroups, '') || [])
           : (Array.isArray(hover.text) ? hover.text : []);
         space._hoverColumns = Array.isArray(hover.columns)
           ? hover.columns.map(function (column) {
             if (!ArrayBuffer.isView(canonicalGroups)) return column;
             return Object.assign({}, column, {
-              values: canonicalAuxValues(column.values, canonicalGroups, null)
+              values: CBViewState.canonicalAuxValues(column.values, canonicalGroups, null)
             });
           }) : [];
         space._hoverModes = modes;
@@ -11481,25 +11288,19 @@
       configError('The file contains an invalid view lens.');
     }
 
+    // Exports and the server's import answer both carry the row indices.
     var indices = Array.isArray(config.selection.indices)
       ? config.selection.indices.map(Number) : null;
-    if (indices && indices.some(function (index) {
+    if (!indices || indices.some(function (index) {
       return !Number.isInteger(index) || index < 0 || index >= D.n;
     })) configError('The file selects cells that are unavailable here.');
-    var cells = !indices && config.selection.cells.length ? singleIndex() : null;
-    if (!indices && config.selection.cells.some(function (cell) {
-      return !cells.has(String(cell));
-    })) configError('The file selects cells that are unavailable here.');
-    return { cells: cells, indices: indices };
+    return { indices: indices };
   }
 
   function restoreWorkspace(config) {
     var validated = validateWorkspace(config);
     var view = config.view || {}, selection = config.selection || {};
-    var restoredSelection = new Set(validated.indices || []);
-    if (!validated.indices) selection.cells.forEach(function (cell) {
-      restoredSelection.add(validated.cells.get(String(cell)));
-    });
+    var restoredSelection = new Set(validated.indices);
 
     setSelectedProjections(view.projections);
     setSelectedSpatial(view.spatial_sections);
@@ -11773,8 +11574,6 @@
         renderedPointCount: summary.renderedPointCount,
         projections: summary.projections.slice(),
         spatialSections: summary.spatialSections.slice(),
-        benchmarkGeneration:
-          Number(window.__cerebroPageBenchGeneration) || 0,
         eventKind: eventKind || 'primary'
       }
     }));
@@ -11992,7 +11791,6 @@
       applyDeferredAsset(message.key, message.uri);
     });
     Shiny.addCustomMessageHandler('cell_view_binary', onSingleBinary);
-    Shiny.addCustomMessageHandler('cell_view_recolor', recolorSingle);
     Shiny.addCustomMessageHandler('cell_view_recolor_binary', function(buffer) {
       recolorSingle(window.CBViewWire.unpack(buffer));
     });
@@ -12036,23 +11834,6 @@
     Shiny.addCustomMessageHandler('coordviews_colors', function (patch) {
       if (!datasetMessageFresh(patch)) return;
       if (!applyColorPatch(patch)) pendingColorPatch = patch;
-    });
-    Shiny.addCustomMessageHandler('cell_view_render', function (message) {
-      if (!message || !message.id) return;
-      if (!datasetMessageFresh(message)) {
-        releaseEarlySingleRequest(message);
-        return;
-      }
-      message = reuseSharedSingleProjection(message);
-      if (!message) return;
-      if (!frameNeedsCellNames(message)) { renderSingle(message); return; }
-      resolveFrameCellNames(message).then(function (resolved) {
-        if (datasetMessageFresh(resolved)) renderSingle(resolved);
-      }, function () {
-        if (datasetMessageFresh(message)) {
-          cellNamesResourceFailed(message.id, message.data.cell_names_resource);
-        }
-      });
     });
     Shiny.addCustomMessageHandler('cell_view_background', function (message) {
       updateSingleBackground(message);
@@ -12299,13 +12080,7 @@
       if (!id || singleView(id) || singleRequests.has(requestKey) ||
           !Shiny.setInputValue) return false;
       singleRequests.add(requestKey);
-      var requestedAt = performance.now();
-      var timing = CBViewState.specialistLifecycle.begin(
-        singleTiming, id, true
-      );
-      timing.requestAtMs = requestedAt;
-      timing.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
-        ? requestedAt - window.__cerebroPageBenchClickStart : null;
+      CBViewState.specialistLifecycle.begin(singleTiming, id, true);
       prefetchRegisteredSingleResource(id);
       prefetchRegisteredSingleCategory(id);
       Shiny.setInputValue(id + '_render_request', {nonce:Date.now(), dataset_context:context}, {
@@ -12338,13 +12113,7 @@
       lastVis = key;
       requestSingleView(singleId);
       if (singleId && singleView(singleId)) {
-        var cachedAt = performance.now();
-        var cachedTiming = CBViewState.specialistLifecycle.begin(
-          singleTiming, singleId, false
-        );
-        cachedTiming.activationRequestAtMs = cachedAt;
-        cachedTiming.clickToRequestMs = isFinite(window.__cerebroPageBenchClickStart)
-          ? cachedAt - window.__cerebroPageBenchClickStart : null;
+        CBViewState.specialistLifecycle.begin(singleTiming, singleId, false);
         activateSingle(singleId, false, false, 'cached');
       } else if (linkedVis && linkedBundle && (singleActive || D !== linkedBundle)) {
         // A non-canvas tab clears singleActive but leaves the specialist data
@@ -12369,10 +12138,6 @@
     }
     function stampLinkedRequest() {
       linkedRequestTiming.requestAtMs = performance.now();
-      linkedRequestTiming.clickToRequestMs =
-        isFinite(window.__cerebroPageBenchClickStart)
-          ? linkedRequestTiming.requestAtMs -
-            window.__cerebroPageBenchClickStart : null;
     }
     setInterval(reportVisibility, 250);
     reportVisibility();
@@ -12396,18 +12161,13 @@
         reportVisibility();
       }, 0);
     }, true);
-    // Re-advertise client capabilities after either a resumed connection or a
+    // Re-report visibility after either a resumed connection or a
     // fresh server session. Keep an already-confirmed context usable here: a
     // resumed session need not replay its ready message, while a fresh session
     // will immediately publish pending/ready with its new epoch and invalidate
     // this state through the authoritative context gate.
     var onConnected = function () {
       progressiveRequestedKey = null;
-      Shiny.setInputValue(
-        'coordviews_wire_supported',
-        !!(window.CBViewWire && window.CBViewWire.supported),
-        { priority: 'event' }
-      );
       lastVis = null;
       reportVisibility();
     };
@@ -12655,16 +12415,21 @@
         '#cv-ps, #cv-opacity, #cv-pct, #cv-dissolve, #cv-niche',
         function () { updateLinkedSlider(this); }
       );
+    // A background "-number" box mirrors its range slider. While typing only a
+    // valid value applies; on commit an invalid one snaps back to the slider.
+    function imgNumberEdited(target, commit) {
+      var id = target && target.id;
+      if (!id || id.slice(-7) !== '-number' || id.indexOf('cv-img-') !== 0) return false;
+      var range = $(id.slice(0, -7));
+      var valid = syncImgRangeValue(range, target.value);
+      if (!valid && commit) syncImgRangeValue(range, range && range.value);
+      if (range && (valid || commit)) { syncImgControls(range.id); drawAll(); }
+      return true;
+    }
     document.addEventListener('input', function (e) {
       var id = e.target && e.target.id;
       if (updateLinkedToggle(e.target)) return;
-      if (id && id.slice(-7) === '-number' && id.indexOf('cv-img-') === 0) {
-        var range = $(id.slice(0, -7));
-        if (syncImgRangeValue(range, e.target.value)) {
-          syncImgControls(range.id); drawAll();
-        }
-        return;
-      }
+      if (imgNumberEdited(e.target, false)) return;
       if (id && id.indexOf('cv-img-') === 0) {
         if (e.target.type === 'range') syncImgRangeValue(e.target, e.target.value);
         syncImgControls(id); drawAll();
@@ -12672,14 +12437,7 @@
     });
     document.addEventListener('change', function (e) {
       var id = e.target && e.target.id;
-      if (id && id.slice(-7) === '-number' && id.indexOf('cv-img-') === 0) {
-        var range = $(id.slice(0, -7));
-        if (!syncImgRangeValue(range, e.target.value)) {
-          syncImgRangeValue(range, range && range.value);
-        }
-        if (range) { syncImgControls(range.id); drawAll(); }
-        return;
-      }
+      if (imgNumberEdited(e.target, true)) return;
       if (id && id.indexOf('cv-img-') === 0) { syncImgControls(id); drawAll(); return; }
       // The gene picker is read by the server directly, so without this the
       // client would not know a request was in flight and would keep drawing the

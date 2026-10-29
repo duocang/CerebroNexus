@@ -908,7 +908,6 @@
         selectedGroup: inputValue('groups_selected_group'),
         secondGroup: inputValue('groups_by_other_group_second_group'),
         plotType: inputValue('groups_by_other_group_plot_type'),
-        benchmarkGeneration: Number(root.__cerebroPageBenchGeneration) || 0,
         eventKind: eventKind
       }
     }));

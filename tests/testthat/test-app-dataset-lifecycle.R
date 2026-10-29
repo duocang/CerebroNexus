@@ -38,37 +38,42 @@ test_that("late frames cannot cross dataset switches or the reconnect handshake"
     original_count
   )
   deliver <- function(ctx, token, count) {
-    message <- list(
-      custom = list(
-        cell_view_render = list(
-          id = "overview_projection",
-          dataset_context = ctx,
-          render_token = token,
-          meta = list(
-            color_type = "categorical",
-            color_variable = "probe",
-            traces = list("probe"),
-            group_colors = list("#ff0000")
-          ),
-          data = list(
-            selection_key = as.list(paste0("probe-", seq_len(count))),
-            x = as.list(seq_len(count)),
-            y = as.list(seq_len(count)),
-            group = as.list(rep("probe", count)),
-            point_size = 5,
-            point_opacity = 1,
-            reset_axes = TRUE
-          )
-        )
+    frame <- list(
+      id = "overview_projection",
+      dataset_context = ctx,
+      render_token = token,
+      meta = list(
+        color_type = "categorical",
+        color_variable = "probe",
+        traces = list("probe"),
+        group_colors = list("#ff0000")
+      ),
+      data = list(
+        selection_key = as.list(paste0("probe-", seq_len(count))),
+        x = as.list(seq_len(count)),
+        y = as.list(seq_len(count)),
+        group = as.list(rep("probe", count)),
+        point_size = 5,
+        point_opacity = 1,
+        reset_axes = TRUE
       )
     )
-    encoded <- jsonlite::toJSON(
-      jsonlite::toJSON(message, auto_unbox = TRUE, null = "null"),
-      auto_unbox = TRUE
-    )
+    ## A Shiny binary message: type length, type, then the wire frame (header
+    ## length, JSON header padded to 4 bytes).
     app$run_js(sprintf(
-      "window.__frameDelivered=false;(async()=>{await Shiny.shinyapp.dispatchMessage(%s);window.__frameDelivered=true;})()",
-      encoded
+      paste0(
+        "window.__frameDelivered=false;(async()=>{",
+        "const e=new TextEncoder(),type=e.encode('cell_view_binary'),",
+        "header=e.encode(JSON.stringify(%s)),",
+        "bytes=new Uint8Array(1+type.length+4+Math.ceil(header.length/4)*4);",
+        "bytes[0]=type.length;bytes.set(type,1);",
+        "new DataView(bytes.buffer).setUint32(1+type.length,header.length,true);",
+        "bytes.set(header,5+type.length);",
+        "await Shiny.shinyapp.dispatchMessage(bytes.buffer);",
+        "await new Promise(resolve=>setTimeout(resolve,250));",
+        "window.__frameDelivered=true;})()"
+      ),
+      jsonlite::toJSON(frame, auto_unbox = TRUE, null = "null")
     ))
     app$wait_for_js("window.__frameDelivered===true")
   }

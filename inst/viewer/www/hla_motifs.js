@@ -18,10 +18,6 @@
     var host = document.getElementById('hla_associations_mount');
     if (!host || host._renderObserved) return;
     host._renderObserved = true;
-    if (!window.IntersectionObserver) {
-      requestAssociations();
-      return;
-    }
     associationObserver = new IntersectionObserver(function (entries) {
       if (entries.some(function (entry) { return entry.isIntersecting; })) {
         requestAssociations();

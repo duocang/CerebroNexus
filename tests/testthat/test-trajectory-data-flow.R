@@ -6,6 +6,7 @@ test_that("trajectory static frames fall back when filters or resources change",
       sys.source(viewer_test_path("color_setup.R"), scope)
       sys.source(viewer_test_path("plotting_functions.R"), scope)
       trajectory_selection_ok <- function() TRUE
+      trajectory_projection_active <- function() FALSE
       trajectory_projection_appearance <- reactiveValues(
         percentage_cells_to_show = 100
       )
@@ -58,7 +59,6 @@ test_that("trajectory static frames fall back when filters or resources change",
     },
     {
       session$setInputs(
-        coordviews_wire_supported = TRUE,
         trajectory_point_color = "state",
         trajectory_selected_method = "m",
         trajectory_selected_name = "p"
@@ -89,12 +89,7 @@ test_that("trajectory static frames fall back when filters or resources change",
         trajectory_point_color = "group"
       )
       expect_null(trajectory_static_first_frame())
-      session$setInputs(
-        trajectory_point_color = "state",
-        coordviews_wire_supported = FALSE
-      )
-      expect_null(trajectory_static_first_frame())
-      session$setInputs(coordviews_wire_supported = TRUE)
+      session$setInputs(trajectory_point_color = "state")
       trajectory_projection_appearance$percentage_cells_to_show <- 50
       expect_null(trajectory_static_first_frame())
       trajectory_projection_appearance$percentage_cells_to_show <- 100

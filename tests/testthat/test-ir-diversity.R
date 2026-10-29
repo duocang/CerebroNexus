@@ -1,26 +1,10 @@
 ir_diversity_scope <- function() {
-  scope <- new.env(parent = asNamespace("shiny"))
-  scope$`%||%` <- function(a, b) if (is.null(a)) b else a
-  sys.source(
-    viewer_test_path("immune_repertoire", "encode.R"),
-    envir = scope,
-    keep.source = FALSE
-  )
-  for (name in c(
+  ir_scope(c(
     "ir_row_values",
     "ir_samples_with_clones",
     "ir_diversity_metrics",
     "ir_diversity_table"
-  )) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "data.R"),
-        name
-      ),
-      scope
-    )
-  }
-  scope
+  ))
 }
 
 ## Skewed clones per sample, with cells on another chain (TRG first), cells
@@ -185,15 +169,11 @@ test_that("Diversity follows the Order groups control", {
   scope <- ir_diversity_scope()
   scope$ir_clonecall_col <- function(clone_call) "CTaa"
   scope$IR_PALETTE <- "Harmonic"
-  for (name in c("ir_plot_clonal_diversity", "ir_abundance_units")) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "visualizations.R"),
-        name
-      ),
-      scope
-    )
-  }
+  ir_scope(
+    c("ir_plot_clonal_diversity", "ir_abundance_units"),
+    "visualizations.R",
+    scope
+  )
   scope$ir_diversity_plotly <- function(df, x, ...) levels(df[[x]])
   data <- ir_diversity_fixture()[c("s3", "s1", "s4", "s2")]
   names(data) <- c("s10", "s2", "s1", "s9")

@@ -172,18 +172,7 @@ spatial_projection_update_plot <- function(input) {
     )
     ## The browser takes the names from the cell-name resource when there is
     ## one, so only the canonical rows of the points are sent.
-    names_resource <- if (
-      exists("viewerCellNamesResource", mode = "function")
-    ) {
-      viewerCellNamesResource()
-    }
-    if (
-      !is.list(names_resource) ||
-        !length(cell_index) ||
-        max(cell_index) > names_resource$cells
-    ) {
-      names_resource <- NULL
-    }
+    names_resource <- viewerCellNamesResourceFor(cell_index)
     cell_barcodes <- if (is.null(names_resource)) {
       viewerPackCellBarcodes(viewerPackCurrent(), cell_index) %||%
         getMetaData()[["cell_barcode"]][cell_index]

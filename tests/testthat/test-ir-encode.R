@@ -1,15 +1,7 @@
 ## The encoded repertoire (immune_repertoire/encode.R) answers what the string
 ## parsers of the Immune repertoire tabs answered.
 
-ir_encode_scope <- function() {
-  scope <- new.env(parent = globalenv())
-  sys.source(
-    viewer_test_path("immune_repertoire", "encode.R"),
-    envir = scope,
-    keep.source = FALSE
-  )
-  scope
-}
+ir_encode_scope <- function() ir_scope()
 
 ir_encode_fixture <- function() {
   list(
@@ -332,8 +324,7 @@ test_that("the Viewer Pack stores the encoded repertoire and its clone names", {
     sort(expected$names$CTaa$both)
   )
   expect_null(runtime$viewerPackImmuneEncoded(descriptor, 2L))
-  ## A Pack built before the encoding has no answer: the page asks for a
-  ## rebuild instead of reading the repertoire.
+  ## A manifest without the encoding has no answer; the page encodes in memory.
   descriptor$manifest$immune_encoding <- NULL
   expect_null(runtime$viewerPackImmuneEncoded(descriptor, 1L))
 })

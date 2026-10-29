@@ -7,87 +7,145 @@ test_that("Viewer defaults to the exact single ROI or separate multi-ROI layout"
   expect_identical(spatial_default_roi_selection(character()), "__all__")
 })
 
-test_that("Viewer keeps split-by on the shared interactive Canvas", {
-  root <- viewer_test_path("spatial")
-  controls <- paste(
-    readLines(file.path(root, "UI_projection_main_parameters.R"), warn = FALSE),
-    collapse = "\n"
+## The Spatial main controls as the server renders them for six cells in one
+## FOV: two samples (one with `one_sample`), two ROIs with two images each and
+## a categorical cell type that the cells of a sample split into.
+spatial_scene_controls_server <- function(input, output, session) {
+  ## The helpers read the data set and metadata through this scope.
+  viewer_runtime_env(environment())
+  sys.source(
+    viewer_test_path("spatial", "func_spatial_helpers.R"),
+    envir = environment()
   )
-  layout <- paste(
-    readLines(file.path(root, "UI.R"), warn = FALSE),
-    collapse = "\n"
+  data_set <- shiny::reactiveVal("spatial-scenes-controls")
+  cells <- paste0("cell-", 1:6)
+  images <- list()
+  for (roi in c("A", "B")) {
+    for (name in c("first", "second")) {
+      images[[paste(roi, name, sep = "-")]] <- list(
+        histology_image = paste0("data:image/png;base64,", roi, name),
+        histology_image_bounds = c(xmin = 0, xmax = 1, ymin = 0, ymax = 1),
+        roi_field = "roi",
+        roi_value = roi
+      )
+    }
+  }
+  availableSpatial <- function() "fov"
+  getSpatialData <- function(name) {
+    list(
+      coordinates = data.frame(x = 1:6, y = 1:6, row.names = cells),
+      histology_images = images
+    )
+  }
+  viewerProjectionFirstFrameMetadata <- function() {
+    data.frame(
+      cell_barcode = cells,
+      sample = if (isTRUE(input$one_sample)) {
+        "s1"
+      } else {
+        rep(c("s1", "s2"), c(4, 2))
+      },
+      roi = rep(c("A", "B"), 3),
+      cell_type = rep(c("T", "B"), 3)
+    )
+  }
+  getMetaData <- viewerProjectionFirstFrameMetadata
+  getGroups <- function() "cell_type"
+  serverSideGeneSelector <- function(...) invisible(NULL)
+  viewer_current_dataset_key <- function() "atlas"
+  sys.source(
+    viewer_test_path("spatial", "UI_projection_main_parameters.R"),
+    envir = environment()
   )
-  parameters <- paste(
-    readLines(
-      file.path(root, "obj_projection_parameters_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
-  data_flow <- paste(
-    readLines(
-      file.path(root, "obj_projection_data_to_plot.R"),
-      warn = FALSE
-    ),
-    collapse = "\n"
-  )
+}
 
-  expect_match(controls, "spatial_projection_split_by", fixed = TRUE)
-  expect_match(
-    layout,
-    'cerebroCellViewOutput("spatial_projection")',
+test_that("Spatial controls offer split-by, reset choices and per-ROI images", {
+  shiny::testServer(spatial_scene_controls_server, {
+    main <- output$spatial_projection_main_parameters_UI$html
+    expect_match(main, 'id="spatial_projection_scene_UI"', fixed = TRUE)
+    expect_match(main, 'class="spatial-image-dim-controls"', fixed = TRUE)
+    expect_match(main, 'id="spatial_projection_split_by"', fixed = TRUE)
+    ## "None" resets the split; the cell type is offered because the cells of
+    ## the selected sample split into it.
+    expect_match(
+      main,
+      '<option value="__none__" selected>None</option>',
+      fixed = TRUE
+    )
+    expect_match(
+      main,
+      '<option value="cell_type">cell_type</option>',
+      fixed = TRUE
+    )
+
+    scene <- output$spatial_projection_scene_UI$html
+    expect_match(scene, 'id="spatial_projection_sample"', fixed = TRUE)
+    expect_false(grepl("All samples", scene, fixed = TRUE))
+    expect_match(scene, 'value="__separate__"', fixed = TRUE)
+
+    session$setInputs(spatial_projection_roi = "__separate__")
+    picker <- output$spatial_projection_background_selector_UI$html
+    expect_match(
+      picker,
+      'id="spatial_projection_roi_background_images"',
+      fixed = TRUE
+    )
+    expect_match(picker, '<optgroup label="A">', fixed = TRUE)
+    expect_match(picker, 'multiple="multiple"', fixed = TRUE)
+    expect_match(picker, '"remove_button"', fixed = TRUE)
+    expect_match(picker, '"onItemAdd"', fixed = TRUE)
+    expect_false(grepl("maxItems", picker, fixed = TRUE))
+
+    ## One sample needs no Sample selector.
+    session$setInputs(one_sample = TRUE)
+    data_set("spatial-scenes-controls-one-sample")
+    session$flushReact()
+    scene <- output$spatial_projection_scene_UI$html
+    expect_false(grepl("spatial_projection_sample", scene, fixed = TRUE))
+    expect_match(scene, 'id="spatial_projection_to_display"', fixed = TRUE)
+  })
+})
+
+test_that("Spatial draws split-by panels on the shared interactive Canvas", {
+  scope <- viewer_ui_test_env()
+  sys.source(viewer_test_path("spatial", "UI.R"), scope)
+  page <- htmltools::tagQuery(scope$tab_spatial)
+  expect_equal(page$find("#spatial_projection_cell_view_host")$length(), 1L)
+  expect_false(grepl(
+    "spatial_projection_split_plot",
+    as.character(scope$tab_spatial),
     fixed = TRUE
-  )
-  expect_no_match(layout, "spatial_projection_split_plot", fixed = TRUE)
+  ))
+})
+
+## The split and ROI settings reach the frame and the renderer reads them per
+## panel; no other test follows them through these files.
+test_that("split and ROI settings reach the Spatial frame and each panel", {
+  root <- viewer_test_path("spatial")
+  read <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
+  parameters <- read(file.path(root, "obj_projection_parameters_plot.R"))
   expect_match(parameters, "split_by", fixed = TRUE)
   expect_match(parameters, "roi_point_appearance", fixed = TRUE)
   expect_match(parameters, "spatialRoiSetting", fixed = TRUE)
   expect_match(
-    data_flow,
+    read(file.path(root, "obj_projection_data_to_plot.R")),
     "spatial_roi_extents\\([[:space:]]*transformed_full,[[:space:]]*scoped_roi",
     perl = TRUE
   )
 
-  engine <- paste(
-    readLines(file.path(root, "..", "www", "cell_views.js"), warn = FALSE),
-    collapse = "\n"
-  )
-  expect_match(engine, "space.xRange = panel.x_range", fixed = TRUE)
-  expect_match(engine, "space.yRange = panel.y_range", fixed = TRUE)
-  expect_match(
-    engine,
+  engine <- read(file.path(root, "..", "www", "cell_views.js"))
+  for (wiring in c(
+    "space.xRange = panel.x_range",
+    "space.yRange = panel.y_range",
     "space.builder_point_size = panel.builder_point_size",
-    fixed = TRUE
-  )
-  expect_match(
-    engine,
     "space.builder_point_opacity = panel.builder_point_opacity",
-    fixed = TRUE
-  )
-  expect_match(engine, "pointSizeEdited = !panelPointSize", fixed = TRUE)
-  expect_match(engine, "pointOpacityEdited = !panelPointOpacity", fixed = TRUE)
-  expect_match(
-    engine,
+    "pointSizeEdited = !panelPointSize",
+    "pointOpacityEdited = !panelPointOpacity",
     "panel.background_image || meta.background_image",
-    fixed = TRUE
-  )
-  expect_match(engine, "JSON.stringify(panel.image_identity)", fixed = TRUE)
-
-  expect_match(
-    controls,
-    "spatial_projection_roi_background_images",
-    fixed = TRUE
-  )
-  expect_match(controls, "grouped_choices", fixed = TRUE)
-  expect_match(controls, "multiple = TRUE", fixed = TRUE)
-  expect_match(controls, 'plugins = list("remove_button")', fixed = TRUE)
-  expect_match(controls, "onItemAdd", fixed = TRUE)
-  expect_false(grepl("maxItems", controls, fixed = TRUE))
-  expect_match(
-    controls,
-    "!length(roi_background_groups) && !length(background_choices)",
-    fixed = TRUE
-  )
+    "JSON.stringify(panel.image_identity)"
+  )) {
+    expect_match(engine, wiring, fixed = TRUE)
+  }
 })
 
 test_that("Separate ROI panels carry their saved point appearance", {
@@ -350,24 +408,6 @@ test_that("spatial categorical columns have no arbitrary level cap", {
     ),
     c("cluster", "unregistered")
   )
-})
-
-test_that("optional Spatial selectors retain their reset choices", {
-  controls <- paste(
-    readLines(viewer_test_path("spatial", "UI_projection_main_parameters.R")),
-    collapse = "\n"
-  )
-
-  expect_match(controls, "length(scene$sample_values) > 1L", fixed = TRUE)
-  expect_false(grepl('"All samples"', controls, fixed = TRUE))
-  expect_match(controls, "spatial_split_columns(", fixed = TRUE)
-  expect_match(controls, 'class = "spatial-image-dim-controls"', fixed = TRUE)
-  expect_match(
-    controls,
-    'spatial_split_none_value <- "__none__"',
-    fixed = TRUE
-  )
-  expect_match(controls, '"None" = spatial_split_none_value', fixed = TRUE)
 })
 
 test_that("unfinished molecule overlay controls are not exposed", {

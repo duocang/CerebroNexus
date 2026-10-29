@@ -205,7 +205,7 @@ test_that("four selected genes survive RGB layout and display-mode round trips",
     app$wait_for_js(
       sprintf(
         paste0(
-          "(() => {const key=Shiny.shinyapp.$inputValues.expression_projection_rendered_key||'';",
+          "(() => {const key=Shiny.shinyapp.$inputValues.expression_projection_rendered_state?.render_key||'';",
           "const panes=Array.from(document.querySelectorAll(",
           "'#expression_projection_cell_view_host .cv-pane:not(.cv-hidden)'));",
           "return key.startsWith(%s) && %s && panes.length===%d && panes.every(p=>",
@@ -376,7 +376,7 @@ test_that("the gene status does not resize the projection while a gene loads", {
     app$wait_for_js(
       sprintf(
         paste0(
-          "(() => {const key=Shiny.shinyapp.$inputValues.expression_projection_rendered_key||'';",
+          "(() => {const key=Shiny.shinyapp.$inputValues.expression_projection_rendered_state?.render_key||'';",
           "const status=document.getElementById('expression_feedback');",
           "return key.split('\u001d')[1]===%s && status && !status.classList.contains('is-pending');})()"
         ),

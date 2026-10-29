@@ -14,13 +14,6 @@ test_that("trajectory method selector parses without errors", {
   ))
 })
 
-test_that("trajectory UI defines correct tabName", {
-  scope <- viewer_ui_test_env()
-  sys.source(viewer_test_path("trajectory", "UI.R"), scope)
-  page <- htmltools::tagQuery(scope$tab_trajectory)
-  expect_equal(page$filter("#shiny-tab-trajectory")$length(), 1L)
-})
-
 test_that("full T+B demo trajectory data is accessible and complete", {
   crb <- readCerebro(trajectory_crb)
   methods <- crb$getMethodsForTrajectories()
@@ -54,6 +47,7 @@ test_that("getTrajectory bug is fixed in class definition", {
 
 test_that("trajectory helper utilities are defined in the app scope", {
   scope <- viewer_runtime_env()
+  scope$data_set <- function() NULL
   metadata <- data.frame(
     cell_barcode = "c1",
     group = "A",

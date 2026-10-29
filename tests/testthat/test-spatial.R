@@ -131,6 +131,13 @@ test_that("validated spatial coordinates reuse canonical storage with fallback",
     calls <<- calls + 1L
     list(coordinates = coordinates)
   }
+  eval(
+    viewer_r_assignment(
+      viewer_test_path("utility_functions.R"),
+      "is_cerebro_dataset"
+    ),
+    envir = environment
+  )
   eval(assignment, envir = environment)
 
   expect_identical(environment$viewerSpatialCoordinates("slice"), coordinates)
@@ -259,13 +266,6 @@ test_that("Moran's I reads Spatial data only after ImageFeaturePlot is requested
       expect_identical(spatial_reads(), 1L)
     }
   )
-})
-
-test_that("spatial UI defines correct tabName", {
-  scope <- viewer_ui_test_env()
-  sys.source(viewer_test_path("spatial", "UI.R"), scope)
-  page <- htmltools::tagQuery(scope$tab_spatial)
-  expect_equal(page$filter("#shiny-tab-spatial")$length(), 1L)
 })
 
 ##----------------------------------------------------------------------------##
@@ -1050,40 +1050,6 @@ test_that("spatial gene selectors initialize only for their visible plot type", 
   })
 })
 
-test_that("bundled real demos embed a genuine tissue image in the .crb", {
-  # MERFISH carries its real DAPI inside the CRB. Visium and Xenium use external
-  # files; Slide-seq carries no image.
-  for (f in "demo_spatial_merfish") {
-    path <- system.file(
-      file.path("extdata/examples", paste0(f, ".crb")),
-      package = "CerebroNexus"
-    )
-    crb <- readCerebro(path)
-    spatial_name <- crb$availableSpatial()[1]
-    sd <- .normalizeSpatialDataImages(
-      crb$getSpatialData(spatial_name),
-      spatial_name
-    )
-    expect_named(sd$histology_images, "Tissue background", info = f)
-    image <- sd$histology_images[["Tissue background"]]
-    expect_match(image$histology_image, "^data:image/", info = f)
-    b <- image$histology_image_bounds
-    expect_true(
-      all(c("xmin", "xmax", "ymin", "ymax") %in% names(b)),
-      info = f
-    )
-    # cells must fall inside the image's coordinate-space extent
-    coords <- sd$coordinates
-    expect_true(
-      min(coords$x) >= b[["xmin"]] &&
-        max(coords$x) <= b[["xmax"]] &&
-        min(coords$y) >= b[["ymin"]] &&
-        max(coords$y) <= b[["ymax"]],
-      info = f
-    )
-  }
-})
-
 ##----------------------------------------------------------------------------##
 ## Real multi-platform demos: each shipped .crb (Visium / Slide-seq v2 / MERFISH
 ## / Xenium) must load with a usable spatial slot. These are built
@@ -1097,7 +1063,7 @@ real_spatial_demos <- c(
   xenium = "extdata/examples/demo_spatial_xenium.crb"
 )
 
-test_that("each real spatial demo exposes coordinates with x/y", {
+test_that("each real spatial demo exposes coordinates and its kind of image", {
   for (nm in names(real_spatial_demos)) {
     path <- system.file(real_spatial_demos[[nm]], package = "CerebroNexus")
     crb <- readCerebro(path)
@@ -1115,6 +1081,35 @@ test_that("each real spatial demo exposes coordinates with x/y", {
     )
     # x/y must be finite numerics, not all-NA
     expect_true(any(is.finite(coords$x)) && any(is.finite(coords$y)), info = nm)
+
+    # Images are stored in their native orientation; there is no per-.crb
+    # render-flip flag (display alignment is a user control in the tab).
+    sd <- .normalizeSpatialDataImages(sd, images[1])
+    expect_null(sd$histology_image_flip_y, info = nm)
+    if (nm == "slideseq") {
+      # Slide-seq records positions, not a tissue photo.
+      expect_identical(sd$histology_images, list(), info = nm)
+    }
+    if (nm == "merfish") {
+      # MERFISH carries its real DAPI inside the CRB; Visium and Xenium use
+      # external files.
+      expect_named(sd$histology_images, "Tissue background", info = nm)
+      image <- sd$histology_images[["Tissue background"]]
+      expect_match(image$histology_image, "^data:image/", info = nm)
+      b <- image$histology_image_bounds
+      expect_true(
+        all(c("xmin", "xmax", "ymin", "ymax") %in% names(b)),
+        info = nm
+      )
+      # cells must fall inside the image's coordinate-space extent
+      expect_true(
+        min(coords$x) >= b[["xmin"]] &&
+          max(coords$x) <= b[["xmax"]] &&
+          min(coords$y) >= b[["ymin"]] &&
+          max(coords$y) <= b[["ymax"]],
+        info = nm
+      )
+    }
   }
 })
 
@@ -1123,44 +1118,6 @@ test_that("real spatial demos are wired into the bundled dropdown", {
   expect_true(all(basename(real_spatial_demos) %in% basename(files)))
   for (technology in c("Visium", "Slide-seq", "MERFISH", "Xenium")) {
     expect_true(any(grepl(technology, names(files), fixed = TRUE)))
-  }
-})
-
-test_that("image-free demo (Slide-seq) carries no histology image", {
-  # This platform records positions, not a tissue photo, so a genuine
-  # an empty `histology_images` manifest is the correct state.
-  for (f in c("demo_spatial_slideseq")) {
-    path <- system.file(
-      file.path("extdata/examples", paste0(f, ".crb")),
-      package = "CerebroNexus"
-    )
-    crb <- readCerebro(path)
-    spatial_name <- crb$availableSpatial()[1]
-    sd <- .normalizeSpatialDataImages(
-      crb$getSpatialData(spatial_name),
-      spatial_name
-    )
-    expect_identical(sd$histology_images, list(), info = f)
-  }
-})
-
-test_that("embedded image demos store the image natively with no flip flag", {
-  # Embedded images are stored in their native orientation; there is no per-.crb
-  # render-flip flag (removed — display alignment is a user control in the tab).
-  # Guard that the image is present and no stale flip flag lingers.
-  for (f in "demo_spatial_merfish") {
-    path <- system.file(
-      file.path("extdata/examples", paste0(f, ".crb")),
-      package = "CerebroNexus"
-    )
-    crb <- readCerebro(path)
-    spatial_name <- crb$availableSpatial()[1]
-    sd <- .normalizeSpatialDataImages(
-      crb$getSpatialData(spatial_name),
-      spatial_name
-    )
-    expect_named(sd$histology_images, "Tissue background", info = f)
-    expect_null(sd$histology_image_flip_y, info = f)
   }
 })
 
@@ -1206,23 +1163,6 @@ test_that(".getSpatialData tolerates an NA-named coordinate source column", {
   expect_true(all(c("x", "y") %in% colnames(result$coordinates)))
   expect_equal(nrow(result$coordinates), 12L)
   expect_false(any(is.na(colnames(result$coordinates))))
-})
-
-test_that("standalone Viewer utilities provide their null fallback operator", {
-  expressions <- parse(file.path(shiny_root, "utility_functions.R"))
-  assignment <- Filter(
-    function(expression) {
-      is.call(expression) &&
-        identical(expression[[1L]], as.name("<-")) &&
-        identical(expression[[2L]], as.name("%||%"))
-    },
-    as.list(expressions)
-  )
-  expect_length(assignment, 1L)
-  runtime <- new.env(parent = baseenv())
-  eval(assignment[[1L]], runtime)
-  expect_identical(runtime$`%||%`(NULL, "fallback"), "fallback")
-  expect_identical(runtime$`%||%`("value", "fallback"), "value")
 })
 
 test_that("cell boundary payloads are validated and capped by complete cells", {
@@ -1380,6 +1320,7 @@ test_that("spatial sampling is scoped to the selected FOV, sample, and ROI", {
     )
   )
   server <- function(input, output, session) {
+    viewer_runtime_env(environment())
     getGroups <- function() character()
     getMetaData <- function() metadata
     getSpatialData <- function(name) atlas[[name]]

@@ -369,15 +369,9 @@ hla_build_motif_visnet <- function(
     )
   }
 
-  # Draw coordinates, computed once by igraph when the graph was built (see
-  # hla_motif_layout) and carried on the vertices ever since. NULL only for a
-  # graph built before this existed, in which case the renderer falls back to
-  # letting the browser settle it.
-  layout <- if (all(c("layout_x", "layout_y") %in% names(va))) {
-    cbind(as.numeric(va[["layout_x"]]), as.numeric(va[["layout_y"]]))
-  } else {
-    NULL
-  }
+  # Draw coordinates, computed once by igraph when the raw graph was built (see
+  # hla_motif_layout) and carried on the vertices ever since.
+  layout <- cbind(as.numeric(va[["layout_x"]]), as.numeric(va[["layout_y"]]))
 
   list(
     nodes = nodes,
@@ -523,7 +517,7 @@ observe(
     req(hla_active_chain() %in% hla_tcr_chains())
     req(isTRUE(hla_first_frame_graph_matches()) || hla_ready_latch())
     vn <- hla_visnet()
-    if (is.null(vn) || is.null(vn$layout)) {
+    if (is.null(vn)) {
       return()
     }
 

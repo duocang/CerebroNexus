@@ -106,6 +106,7 @@ test_that("cached module loading resolves selection context in each session", {
   sys.source(viewer_test_path("source_cache.R"), cache)
   sessions <- list(new.env(parent = globalenv()), new.env(parent = globalenv()))
   for (session in sessions) {
+    sys.source(viewer_test_path("core", "crb_contract.R"), session)
     cache$viewerSource(viewer_test_path("utility_functions.R"), session)
     context <- session$viewerDatasetContext("session", "dataset", 1)
     message <- list(x = 1, y = 2, ids = "cell", dataset_context = context)

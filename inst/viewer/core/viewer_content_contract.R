@@ -85,13 +85,6 @@ builderViewerDisplayDefaults <- function(value = NULL) {
       call. = FALSE
     )
   }
-  if (identical(value$gene_plotting_order, "Random")) {
-    stop(
-      "Viewer display setting gene_plotting_order = \"Random\" no longer ",
-      "exists; it never shuffled cells. Use \"Input order\".",
-      call. = FALSE
-    )
-  }
   for (key in names(value)) {
     defaults[[key]] <- value[[key]]
   }

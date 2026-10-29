@@ -1,14 +1,6 @@
-lock_test_crb <- function(
-  root,
-  backend = list(type = "embedded", location = NULL)
-) {
+lock_test_crb <- function(root, object = new_embedded_cerebro()) {
   source <- file.path(root, "source")
   dir.create(source, recursive = TRUE, showWarnings = FALSE)
-  object <- Cerebro$new()
-  object$setExpressionBackend(
-    type = backend$type,
-    location = backend$location
-  )
   path <- file.path(source, "dataset.crb")
   saveRDS(object, path)
   path
@@ -484,10 +476,9 @@ test_that("an existing unowned lock is never removed automatically", {
 
 test_that("a failed build releases its own lock", {
   root <- withr::local_tempdir()
-  crb <- lock_test_crb(
-    root,
-    backend = list(type = "h5", location = "missing.h5")
-  )
+  object <- Cerebro$new()
+  object$setExpressionBackend(type = "h5", location = "missing.h5")
+  crb <- lock_test_crb(root, object)
   result <- file.path(root, "app")
 
   expect_error(lock_test_build(crb, result), "not found")

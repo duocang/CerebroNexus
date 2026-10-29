@@ -1099,7 +1099,7 @@ test_that("Spatial sections are normalized once per loaded dataset", {
       reads <<- reads + 1L
       list(coordinates = data.frame(x = 1, y = 2), name = name)
     }
-    class(dataset) <- c("Cerebro_v1.3", "environment")
+    class(dataset) <- c("Cerebro_v1.3", "R6")
     dataset
   }
   current <- make_dataset()

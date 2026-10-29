@@ -121,8 +121,7 @@ trajectory_active_group_filters <- function() {
 ## deterministic share of them, as on Overview, so the "% of cells" slider does
 ## not resample and resend the trajectory cells from R.
 trajectory_client_percentage <- reactive({
-  pack <- viewerPackCurrent()
-  is.list(pack) && isTRUE(pack$canonical_order)
+  viewerPackCanonical(viewerPackCurrent())
 })
 ## The share of cells R samples for the frame.
 trajectory_server_percentage <- function() {
@@ -286,7 +285,7 @@ trajectory_projection_frame_key <- function(render_request, frame) {
 
 ## The default million-cell frame is already stored in the Viewer Pack in the
 ## exact trajectory row order. Keep this gate deliberately narrow: any filter,
-## sampling, non-state colour, unsupported transport, or failed resource uses
+## sampling, non-state colour or failed resource uses
 ## the established R construction path below.
 trajectory_static_first_frame <- reactive({
   static_frame <- trajectory_static_frame()
@@ -301,33 +300,20 @@ trajectory_static_first_frame <- reactive({
 ## The group filters for the browser to apply to the Viewer Pack frame, which
 ## holds every trajectory cell and maps them to the Pack's codes (NULL: R
 ## builds and filters the frame).
-trajectory_client_filters <- reactive({
-  if (
-    is.null(trajectory_static_frame()) ||
-      isTRUE(input[["trajectory_projection_client_filters_failed"]])
-  ) {
-    return(NULL)
-  }
-  viewerClientFilterDescriptors(trajectory_active_group_filters())
-})
-## The browser's filters follow the controls.
-observe({
-  req(trajectory_projection_active())
-  viewerSendClientFilters(
-    "trajectory_projection",
-    trajectory_client_filters(),
-    viewer_loaded_dataset_context()
-  )
-})
+trajectory_client_filters <- viewerClientFilters(
+  "trajectory_projection",
+  active = function() trajectory_projection_active(),
+  client = function() !is.null(trajectory_static_frame()),
+  filters = function() trajectory_active_group_filters()
+)
 ## The Viewer Pack frame for every trajectory cell, filters aside.
 trajectory_static_frame <- reactive({
   req(trajectory_selection_ok())
   color_variable <- input[["trajectory_point_color"]]
   groups <- getGroups()
   if (
-    !isTRUE(input[["coordviews_wire_supported"]]) ||
-      !(identical(color_variable, "state") ||
-        isTRUE(color_variable %in% groups)) ||
+    !(identical(color_variable, "state") ||
+      isTRUE(color_variable %in% groups)) ||
       !isTRUE(all.equal(as.numeric(trajectory_server_percentage()), 100))
   ) {
     return(NULL)

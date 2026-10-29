@@ -85,62 +85,55 @@ output[["states_by_group_table_UI"]] <- renderUI({
 ## Plot.
 ##----------------------------------------------------------------------------##
 
+## The counts, the percentages and the Sankey plot go in one value; the browser
+## shows the one the plot type and percent controls ask for, so changing those
+## controls does not come back to R (as in Groups' composition plot).
 output[["states_by_group_plot"]] <- renderCerebroChart({
   ## wait for this input
   req(
     trajectory_selection_ok(),
-    input[["states_by_group_select_other_group"]],
-    input[["states_by_group_plot_type"]]
+    input[["states_by_group_select_other_group"]]
   )
-
-  ##
   grouping_variable <- input[["states_by_group_select_other_group"]]
-  cells_df <- trajectory_cells_reactive(grouping_variable)
-
-  ## check which plot type is chosen
-  ## ... bar chart
-  if (input[["states_by_group_plot_type"]] == "Bar chart") {
-    ##
-    composition_df <- cells_df %>%
-      calculateTableAB(
-        "state",
-        grouping_variable,
-        mode = "long",
-        percent = input[["states_by_group_show_as_percent"]]
-      )
-
-    ## get colors for groups
-    colors_for_groups <- assignColorsToGroups(composition_df, grouping_variable)
-
-    ## generate plot
+  counts <- calculateTableAB(
+    trajectory_cells_reactive(grouping_variable),
+    "state",
+    grouping_variable,
+    mode = "long",
+    percent = FALSE
+  )
+  colors_for_groups <- assignColorsToGroups(counts, grouping_variable)
+  bar <- function(percent) {
     cerebroBarChartData(
-      composition_df,
+      formatTableAB(counts, "state", grouping_variable, "long", percent),
       "state",
       grouping_variable,
       colors_for_groups,
-      input[["states_by_group_show_as_percent"]]
-    )
-
-    ## ... Sankey plot
-  } else if (input[["states_by_group_plot_type"]] == "Sankey plot") {
-    ##
-    composition_df <- cells_df %>%
-      calculateTableAB(
-        "state",
-        grouping_variable,
-        mode = "long",
-        percent = FALSE
-      )
-
-    ## generate plot, coloured by the levels of both groups
-    cerebroSankeyData(
-      composition_df,
-      "state",
-      grouping_variable,
-      assignColorsToGroups(composition_df, "state"),
-      assignColorsToGroups(composition_df, grouping_variable)
+      percent
     )
   }
+  ## coloured by the levels of both groups
+  sankey <- cerebroSankeyData(
+    counts,
+    "state",
+    grouping_variable,
+    assignColorsToGroups(counts, "state"),
+    colors_for_groups
+  )
+  list(
+    type = "switch",
+    inputs = I(c(
+      "states_by_group_plot_type",
+      "states_by_group_show_as_percent"
+    )),
+    views = list(
+      "Bar chart|FALSE" = bar(FALSE),
+      "Bar chart|TRUE" = bar(TRUE),
+      "Sankey plot|FALSE" = sankey,
+      "Sankey plot|TRUE" = sankey
+    ),
+    fallback = "Bar chart|FALSE"
+  )
 })
 
 ##----------------------------------------------------------------------------##

@@ -1130,18 +1130,12 @@ hla_finalize_motif_graph <- function(
   # Every survivor already carries a coordinate from the cached raw layout --
   # connected nodes from the force layout, isolated ones from the grid -- so
   # nothing is laid out here and the clusters that survive keep their exact
-  # positions, whatever show_isolated is. Only a graph from an older cache could
-  # be missing coordinates; fill in JUST those vertices, never the whole graph,
-  # because re-running the layout would move the clusters that did not change.
+  # positions, whatever show_isolated is. Fill in only vertices still missing a
+  # coordinate, never the whole graph, because re-running the layout would move
+  # the clusters that did not change.
   lx <- igraph::V(g)$layout_x
   ly <- igraph::V(g)$layout_y
-  if (is.null(lx) || is.null(ly)) {
-    xy <- hla_motif_layout(g)
-    if (!is.null(xy)) {
-      igraph::V(g)$layout_x <- xy[, 1]
-      igraph::V(g)$layout_y <- xy[, 2]
-    }
-  } else if (anyNA(lx) || anyNA(ly)) {
+  if (anyNA(lx) || anyNA(ly)) {
     placed <- .hla_place_isolated(lx, ly, which(is.na(lx) | is.na(ly)))
     igraph::V(g)$layout_x <- placed$x
     igraph::V(g)$layout_y <- placed$y

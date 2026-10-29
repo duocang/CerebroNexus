@@ -9,7 +9,6 @@ test_that("Linked primary paint uses the palette, gates supplements and replays 
       coordviews_build_log <- list2env(list(
         n = 0L,
         primary_n = 0L,
-        sent_n = 0L,
         sent_primary_n = 0L,
         supplemented_primary_n = 0L,
         color_observer_started = FALSE
@@ -95,7 +94,6 @@ test_that("Linked primary paint uses the palette, gates supplements and replays 
     },
     {
       session$setInputs(
-        coordviews_wire_supported = TRUE,
         dataset = "A",
         palette = "red"
       )
@@ -192,7 +190,7 @@ test_that("Linked controls defer genes and use emitted image presets", {
           list(id = "empty"),
           list(
             id = "image",
-            image = list(coord_span = c(10, 20), preset = preset)
+            images = list(list(coord_span = c(10, 20), preset = preset))
           )
         )
       )

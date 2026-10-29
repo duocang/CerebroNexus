@@ -7,29 +7,15 @@ ir_repertoire_available <- reactive({
 
 ## ---- The encoded repertoire (encode.R) -------------------------------- ##
 ## The tabs read the repertoire's integer columns: the Viewer Pack's, or for a
-## data set without a Pack the same encoding made in memory, once per process
-## for the data set's files. A Pack built before the encoding has none; the
-## page then asks for a rebuild instead of reading the repertoire.
-IR_REBUILD_PACK_MESSAGE <- paste(
-  "This data set's Viewer Pack was built before the encoded immune",
-  "repertoire. Rebuild it with buildViewerPack(file, overwrite = TRUE) to",
-  "show the Immune repertoire."
-)
-
-ir_pack_needs_rebuild <- function(pack = viewerPackCurrent()) {
-  is.list(pack) &&
-    !identical(
-      as.integer(pack$manifest$immune_encoding),
-      IR_ENCODING_VERSION
-    )
-}
-
+## data set without a Pack, or with a Pack built before the encoding, the same
+## encoding made in memory, once per process for the data set's files.
 ir_encoded <- reactive({
   req(!is.null(data_set()))
   pack <- viewerPackCurrent()
-  if (is.list(pack)) {
-    encoded <- viewerPackImmuneEncoded(pack, IR_ENCODING_VERSION)
-    shiny::validate(shiny::need(!is.null(encoded), IR_REBUILD_PACK_MESSAGE))
+  encoded <- if (is.list(pack)) {
+    viewerPackImmuneEncoded(pack, IR_ENCODING_VERSION)
+  }
+  if (!is.null(encoded)) {
     encoded
   } else {
     ir_process_memo(

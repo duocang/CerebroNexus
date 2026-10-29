@@ -3,6 +3,7 @@ test_that("a background process writes the cell-name file once per cell order", 
   scope <- new.env(parent = globalenv())
   ## .viewerMirai(), which shiny_server.R takes from crb_cache.R.
   sys.source(viewer_test_path("crb_cache.R"), scope)
+  sys.source(viewer_test_path("core", "viewer_pack.R"), scope)
   viewer_server_load(
     viewer_server_statements("shiny_server.R"),
     scope,
@@ -42,6 +43,7 @@ test_that("the cell-name resource describes the finished file", {
   scope <- new.env(parent = globalenv())
   ## .viewerMirai(), which shiny_server.R takes from crb_cache.R.
   sys.source(viewer_test_path("crb_cache.R"), scope)
+  sys.source(viewer_test_path("core", "viewer_pack.R"), scope)
   viewer_server_load(
     viewer_server_statements("shiny_server.R"),
     scope,

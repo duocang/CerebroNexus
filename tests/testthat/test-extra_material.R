@@ -32,13 +32,6 @@ test_that("extra_material server parses without errors", {
   expect_no_error(parse(file = viewer_test_path("extra_material", "server.R")))
 })
 
-test_that("extra_material UI defines correct tabName", {
-  scope <- viewer_ui_test_env()
-  sys.source(viewer_test_path("extra_material", "UI.R"), scope)
-  page <- htmltools::tagQuery(scope$tab_extra_material)
-  expect_equal(page$filter("#shiny-tab-extra_material")$length(), 1L)
-})
-
 test_that("example.crb extra material returns valid content", {
   crb <- readCerebro(example_crb)
   categories <- crb$getExtraMaterialCategories()

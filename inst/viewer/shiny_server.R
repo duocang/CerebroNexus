@@ -74,8 +74,7 @@ viewerSource(cerebro_root_path("viewer/crb_cache.R"), environment())
 viewerCellNamesFile <- function(pack) {
   fingerprint <- as.character(pack$manifest$cell_order_fingerprint %||% "")
   if (
-    !is.list(pack) ||
-      !isTRUE(pack$canonical_order) ||
+    !viewerPackCanonical(pack) ||
       length(fingerprint) != 1L ||
       !nzchar(fingerprint)
   ) {
@@ -1021,7 +1020,7 @@ server <- function(input, output, session) {
             "[{Sys.time()}] Data loaded; expression backend will attach on first use."
           ))
         } else {
-          message(data$print())
+          data$print()
           if (!is.null(data$expression)) {
             message(glue::glue(
               "[{Sys.time()}] Format of expression data: {class(data$expression)}"
@@ -1277,8 +1276,7 @@ server <- function(input, output, session) {
   viewerProjectionAsset <- function(name, cell_indices = NULL) {
     pack <- viewerPackCurrent()
     if (
-      !is.list(pack) ||
-        !isTRUE(pack$canonical_order) ||
+      !viewerPackCanonical(pack) ||
         (!is.null(cell_indices) &&
           !identical(as.integer(cell_indices), seq_len(pack$cell_count)))
     ) {
@@ -1410,7 +1408,7 @@ server <- function(input, output, session) {
   viewer_trajectory_resources <- new.env(parent = emptyenv())
   viewerTrajectoryFrameAsset <- function(method, name) {
     pack <- viewerPackCurrent()
-    if (!is.list(pack) || !isTRUE(pack$canonical_order)) {
+    if (!viewerPackCanonical(pack)) {
       return(NULL)
     }
     frame <- viewerPackTrajectoryFrame(pack, method, name)
@@ -1550,7 +1548,7 @@ server <- function(input, output, session) {
   viewer_spatial_resources <- new.env(parent = emptyenv())
   viewerSpatialGeometryAsset <- function(name, cell_indices, rotation = 0) {
     pack <- viewerPackCurrent()
-    if (!is.list(pack) || !isTRUE(pack$canonical_order)) {
+    if (!viewerPackCanonical(pack)) {
       return(NULL)
     }
     frame <- viewerPackSpatialFrame(pack, name)
@@ -1618,12 +1616,8 @@ server <- function(input, output, session) {
   viewerMetadataCodesAsset <- function(name, levels = NULL) {
     pack <- viewerPackCurrent()
     if (
-      !is.list(pack) ||
-        !isTRUE(pack$canonical_order) ||
-        !is.character(name) ||
-        length(name) != 1L ||
-        is.na(name) ||
-        !nzchar(name)
+      !viewerPackCanonical(pack) ||
+        !.runtimeIsString(name)
     ) {
       return(NULL)
     }
@@ -1715,8 +1709,7 @@ server <- function(input, output, session) {
   viewerMetadataValuesAsset <- function(name) {
     pack <- viewerPackCurrent()
     if (
-      !is.list(pack) ||
-        !isTRUE(pack$canonical_order) ||
+      !viewerPackCanonical(pack) ||
         !is.character(name) ||
         length(name) != 1L ||
         is.na(name)
@@ -2079,7 +2072,7 @@ server <- function(input, output, session) {
   ## Print message when session is closed due to inactivity.
   ##--------------------------------------------------------------------------##
   observeEvent(input$timeOut, {
-    print(paste0("Session (", session$token, ") timed out at: ", Sys.time()))
+    message(paste0("Session (", session$token, ") timed out at: ", Sys.time()))
     showModal(modalDialog(
       title = "Timeout",
       paste(

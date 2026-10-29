@@ -92,22 +92,22 @@ const scenarios={
   },
   async lifecycle() {
     const t=setup();const first=t.frame({x:[1,2,3],y:[4,5,6],projection_resource:null,wire_token:7});
-    t.send('cell_view_render',first);assert(t.summary().ready);
+    await t.deliver(first);assert(t.summary().ready);
     t.scope.cerebroCellViews.applyState(first.id,{selection:{cells:['a']}});
     assert.equal(t.scope.cerebroCellViews.captureState(first.id).cells[0],'a');
     t.dataset('B',2);assert(!t.summary().ready);assert.equal(t.scope.cerebroCellViews.captureState(first.id),null);
     for(const context of [null,first.dataset_context,{...t.context,epoch:'other'},{...t.context,dataset_key:'A'}]) {
       const stale={...first,dataset_context:context,render_token:99};
-      t.send('cell_view_render',stale);t.binary('cell_view_binary',stale);
+      t.binary('cell_view_binary',stale);
       t.binary('cell_view_aux_binary',{...stale,selection_key:['wrong']});
-      t.send('cell_view_recolor',{...stale,data:{color:[99]}});
+      t.binary('cell_view_recolor_binary',{...stale,data:{color:[99]}});
       t.send('cell_view_background',{...stale,background_identity:'old',values:{opacity:0}});
     }
     await t.settle();assert(!t.summary().ready);
     await t.deliver(t.frame());assert(t.summary().ready);assert.equal(t.summary().datasetKey,'B');
-    t.send('cell_view_render',{...t.frame({x:[99],y:[99],projection_resource:null}),render_token:1});
+    await t.deliver({...t.frame({x:[99],y:[99],projection_resource:null}),render_token:1});
     assert.equal(t.summary().xExtent.max,3,'Older render token cannot overwrite fresh geometry');
-    t.dataset('A',3);assert(!t.summary().ready);t.send('cell_view_render',first);assert(!t.summary().ready);
+    t.dataset('A',3);assert(!t.summary().ready);await t.deliver(first);assert(!t.summary().ready);
   },
   async caches() {
     const t=setup();

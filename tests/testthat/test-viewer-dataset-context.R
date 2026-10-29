@@ -130,12 +130,12 @@ test_that("dataset context tokens are unambiguous", {
   expect_identical(anyDuplicated(tokens), 0L)
 })
 
-test_that("JSON renders keep the captured context after the selector changes", {
+test_that("renders keep the captured context after the selector changes", {
   runtime <- viewer_runtime_env()
   sent <- new.env(parent = emptyenv())
   sent$messages <- list()
-  runtime$input <- list(coordviews_wire_supported = FALSE)
-  runtime$session <- list(sendCustomMessage = function(type, message) {
+  runtime$cv_wire_pack_message <- identity
+  runtime$session <- list(sendBinaryMessage = function(type, message) {
     sent$messages[[length(sent$messages) + 1L]] <- list(
       type = type,
       message = message
@@ -165,7 +165,7 @@ test_that("JSON renders keep the captured context after the selector changes", {
   )
 
   expect_length(sent$messages, 1L)
-  expect_identical(sent$messages[[1L]]$type, "cell_view_render")
+  expect_identical(sent$messages[[1L]]$type, "cell_view_binary")
   message <- sent$messages[[1L]]$message
   expect_identical(message$dataset_context, captured_a1)
   expect_identical(message$meta$dataset_id, "dataset-a")
@@ -184,7 +184,6 @@ test_that("binary and progressive auxiliary renders carry one exact context", {
   runtime <- viewer_runtime_env()
   sent <- new.env(parent = emptyenv())
   sent$messages <- list()
-  runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$cv_wire_pack_message <- identity
   runtime$session <- list(sendBinaryMessage = function(type, payload) {
     sent$messages[[length(sent$messages) + 1L]] <- list(
@@ -236,7 +235,6 @@ test_that("background messages carry context and missing context fails closed", 
   runtime <- viewer_runtime_env()
   sent <- new.env(parent = emptyenv())
   sent$messages <- list()
-  runtime$input <- list(coordviews_wire_supported = FALSE)
   runtime$session <- list(sendCustomMessage = function(type, message) {
     sent$messages[[length(sent$messages) + 1L]] <- list(
       type = type,

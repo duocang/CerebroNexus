@@ -2,17 +2,7 @@
 ## by the sessions of a process; everything else stays per session.
 
 ir_shared_scope <- function() {
-  scope <- new.env(parent = asNamespace("shiny"))
-  scope$`%||%` <- function(a, b) if (is.null(a)) b else a
-  for (name in c("ir_dataset_process_key", "ir_process_memo")) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "data.R"),
-        name
-      ),
-      scope
-    )
-  }
+  scope <- ir_scope(c("ir_dataset_process_key", "ir_process_memo"))
   scope$ir_process_cache <- new.env(parent = emptyenv())
   scope
 }
@@ -53,17 +43,7 @@ test_that("process memo computes once per key and never without one", {
 })
 
 test_that("sharing units read the metadata at the encoded cells", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("immune_repertoire", "encode.R"), scope)
-  for (name in c("ir_row_values", "ir_discover_sharing_units")) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "data.R"),
-        name
-      ),
-      scope
-    )
-  }
+  scope <- ir_scope(c("ir_row_values", "ir_discover_sharing_units"))
   data <- list(
     a = data.frame(barcode = c("c3", "c1"), CTgene = "TRB-a"),
     empty = data.frame(barcode = character(), CTgene = character()),
@@ -82,17 +62,7 @@ test_that("sharing units read the metadata at the encoded cells", {
 })
 
 test_that("an immune repertoire without heavy chains draws no isotype plot", {
-  scope <- new.env(parent = globalenv())
-  sys.source(viewer_test_path("immune_repertoire", "encode.R"), scope)
-  for (name in c("bcr_isotype_counts", "bcr_isotype_plot")) {
-    eval(
-      viewer_r_assignment(
-        viewer_test_path("immune_repertoire", "server.R"),
-        name
-      ),
-      scope
-    )
-  }
+  scope <- ir_scope(c("bcr_isotype_counts", "bcr_isotype_plot"), "server.R")
   scope$cerebro_group_colors <- function(n) rep("#000000", n)
   tcr <- scope$ir_encode_repertoire(list(
     a = data.frame(barcode = "c1", CTgene = "TRAV1.TRAJ2_TRBV3.TRBJ4"),
@@ -106,20 +76,9 @@ test_that("an immune repertoire without heavy chains draws no isotype plot", {
 })
 
 test_that("Abundance lines match plot_ly's split and colour mapping", {
-  scope <- new.env(parent = globalenv())
-  eval(
-    viewer_r_assignment(
-      viewer_test_path("immune_repertoire", "visualizations.R"),
-      "ir_clonal_abundance_plotly"
-    ),
-    scope
-  )
-  eval(
-    viewer_r_assignment(
-      viewer_test_path("immune_repertoire", "visualizations.R"),
-      "ir_abundance_units"
-    ),
-    scope
+  scope <- ir_scope(
+    c("ir_clonal_abundance_plotly", "ir_abundance_units"),
+    "visualizations.R"
   )
   scope$`%>%` <- dplyr::`%>%`
   scope$cerebro_plotly_axis <- function(...) list()
@@ -362,14 +321,7 @@ test_that("IR plots that show an error are not shared with other sessions", {
 })
 
 test_that("grouping values come from the Pack's first-frame metadata", {
-  scope <- new.env(parent = globalenv())
-  eval(
-    viewer_r_assignment(
-      viewer_test_path("immune_repertoire", "data.R"),
-      "ir_cell_metadata"
-    ),
-    scope
-  )
+  scope <- ir_scope("ir_cell_metadata")
   first_frame <- data.frame(patient = c("p1", "p2", "p1"))
   pack <- list(canonical_order = TRUE)
   scope$viewerProjectionFirstFrameCache <- function() {

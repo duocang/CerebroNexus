@@ -2,8 +2,8 @@ window.viewerScenarios = {
   async colors() {
     const t=viewerTest;t.dataset();const exact=1+2**-40;
     for(const sparse of [false,true]) {
-      const packet=sparse?{protocol:'sparse-f64-v1',length:4,index:[0,1,3],color:[exact,null,-0]}:
-        {protocol:'dense-f64-v1',length:4,color:[exact,null,0,-0]};
+      const packet=sparse?{protocol:'sparse-f64-v1',length:4,index:[0,1,3],color:new Float64Array([exact,NaN,-0])}:
+        {protocol:'dense-f64-v1',length:4,color:new Float64Array([exact,NaN,0,-0])};
       const frame=await t.render({n:4,selection_key:['a','b','c','d'],x:[0,1,2,3],y:[0,1,0,1],
         sparse_color:packet,color_cache_key:sparse?'sparse':'dense'});
       t.check(frame.data.color instanceof Float64Array,'Hydrated f64 output');
@@ -40,7 +40,7 @@ window.viewerScenarios = {
     t.equal(cerebroCellViews.summary('expression_projection').xExtent.min,-5);
     t.resetPaint();
     const a=t.message('expression_projection',{color:[1,2,3]}),b=t.message('expression_projection',{color:[3,2,1]});
-    t.send('cell_view_recolor',a);t.send('cell_view_recolor',b);await t.settle();
+    t.sendWire('cell_view_recolor_binary',a);t.sendWire('cell_view_recolor_binary',b);await t.settle();
     const paints=t.events.filter(e=>e.name==='cerebro:cell-view-ready'&&e.painted);
     t.check(paints.length>0&&paints.every(e=>e.renderToken===b.render_token),'Stale paint cannot announce readiness');
     return true;
@@ -52,33 +52,31 @@ window.viewerScenarios = {
     window.addEventListener('unhandledrejection', onError);
     t.dataset();
     try {
-      for (const binary of [false, true]) {
-        for (const packed of [false, true]) {
-          // Every transition receives exactly one frame: a later update must
-          // not be needed to recover from a failed first paint.
-          for (const genes of [[], ['A', 'B'], ['B', 'C', 'D'], ['C'], []]) {
-            const values = Object.fromEntries(genes.map((gene, i) =>
-              [gene, [i, i + 1, i + 2]]));
-            const data = genes.length ? packed ? {
-              color: null,
-              packed_colors: Object.fromEntries(Object.entries(values).map(([gene, color]) =>
-                [gene, {protocol: 'dense-f64-v1', length: 3, color}]))
-            } : {color: values} : {color: [0, 1, 2]};
-            t.resetPaint();
-            const frame = await t.render(data, {space_label: 'UMAP'},
-              'expression_projection', {}, binary);
-            const panes = Array.from(document.querySelectorAll(
-              '#expression_projection_cell_view_host .cv-pane:not(.cv-hidden)'));
-            t.equal(panes.map(p => p.querySelector('.cv-ptitle').textContent),
-              genes.length ? genes : ['GENE'], 'Visible gene panels');
-            for (const pane of panes) {
-              const canvas = pane.querySelector('.cv-canvas-wrap > canvas:not(.cv-mini)');
-              t.check(t.arcs(canvas.id).length >= 3, 'Each panel paints its cells');
-            }
-            t.check(t.events.some(e => e.name === 'cerebro:cell-view-ready' &&
-              e.painted && e.renderToken === frame.render_token), 'First frame completes');
-            t.equal(errors, [], 'No errors while changing panel count');
+      for (const packed of [false, true]) {
+        // Every transition receives exactly one frame: a later update must
+        // not be needed to recover from a failed first paint.
+        for (const genes of [[], ['A', 'B'], ['B', 'C', 'D'], ['C'], []]) {
+          const values = Object.fromEntries(genes.map((gene, i) =>
+            [gene, [i, i + 1, i + 2]]));
+          const data = genes.length ? packed ? {
+            color: null,
+            packed_colors: Object.fromEntries(Object.entries(values).map(([gene, color]) =>
+              [gene, {protocol: 'dense-f64-v1', length: 3, color}]))
+          } : {color: values} : {color: [0, 1, 2]};
+          t.resetPaint();
+          const frame = await t.render(data, {space_label: 'UMAP'},
+            'expression_projection');
+          const panes = Array.from(document.querySelectorAll(
+            '#expression_projection_cell_view_host .cv-pane:not(.cv-hidden)'));
+          t.equal(panes.map(p => p.querySelector('.cv-ptitle').textContent),
+            genes.length ? genes : ['GENE'], 'Visible gene panels');
+          for (const pane of panes) {
+            const canvas = pane.querySelector('.cv-canvas-wrap > canvas:not(.cv-mini)');
+            t.check(t.arcs(canvas.id).length >= 3, 'Each panel paints its cells');
           }
+          t.check(t.events.some(e => e.name === 'cerebro:cell-view-ready' &&
+            e.painted && e.renderToken === frame.render_token), 'First frame completes');
+          t.equal(errors, [], 'No errors while changing panel count');
         }
       }
     } finally {
@@ -100,31 +98,29 @@ window.viewerScenarios = {
         {color_type: 'rgb', rgb_layout: 'composite'});
       reference[channel] = pixels('cv-cv-a');
     }
-    for (const binary of [false, true]) {
-      const packed_rgb = Object.fromEntries(channels.map(channel => [channel,
-        {protocol: 'dense-f64-v1', length: 3, color: values[channel]}]));
-      for (const layout of ['composite', 'separate', 'composite', 'separate']) {
-        t.resetPaint();
-        const frame = await t.render({packed_rgb, rgb_genes: genes},
-          {color_type: 'rgb', rgb_layout: layout}, 'expression_projection', {}, binary);
-        const panes = Array.from(document.querySelectorAll(
-          '#expression_projection_cell_view_host .cv-pane:not(.cv-hidden)'));
-        t.equal(panes.length, layout === 'separate' ? 3 : 1);
-        t.check(t.events.some(e => e.painted && e.renderToken === frame.render_token), 'Layout paint completes');
-        if (layout === 'separate') {
-          t.equal(panes.map(p => p.querySelector('.cv-ptitle').textContent), ['R · A', 'G · B', 'B · A']);
-          channels.forEach((channel, i) => t.equal(pixels('cv-cv-' + String.fromCharCode(97 + i)),
-            reference[channel], 'Split channel uses composite intensities and colours'));
-          t.check(document.getElementById('cv-legend').textContent.includes('G · B: 0–20.0'),
-            'Separate channels publish their own numeric ranges');
-        }
+    const packed_rgb = Object.fromEntries(channels.map(channel => [channel,
+      {protocol: 'dense-f64-v1', length: 3, color: values[channel]}]));
+    for (const layout of ['composite', 'separate', 'composite', 'separate']) {
+      t.resetPaint();
+      const frame = await t.render({packed_rgb, rgb_genes: genes},
+        {color_type: 'rgb', rgb_layout: layout}, 'expression_projection');
+      const panes = Array.from(document.querySelectorAll(
+        '#expression_projection_cell_view_host .cv-pane:not(.cv-hidden)'));
+      t.equal(panes.length, layout === 'separate' ? 3 : 1);
+      t.check(t.events.some(e => e.painted && e.renderToken === frame.render_token), 'Layout paint completes');
+      if (layout === 'separate') {
+        t.equal(panes.map(p => p.querySelector('.cv-ptitle').textContent), ['R · A', 'G · B', 'B · A']);
+        channels.forEach((channel, i) => t.equal(pixels('cv-cv-' + String.fromCharCode(97 + i)),
+          reference[channel], 'Split channel uses composite intensities and colours'));
+        t.check(document.getElementById('cv-legend').textContent.includes('G · B: 0–20.0'),
+          'Separate channels publish their own numeric ranges');
       }
-      await t.render({packed_rgb, rgb_genes: {r: 'A', g: '', b: 'A'}},
-        {color_type: 'rgb', rgb_layout: 'separate'}, 'expression_projection', {}, binary);
-      t.equal(Array.from(document.querySelectorAll(
-        '#expression_projection_cell_view_host .cv-pane:not(.cv-hidden) .cv-ptitle')).map(p => p.textContent),
-        ['R · A', 'B · A'], 'Empty channels omitted, repeated genes retain channel identity');
     }
+    await t.render({packed_rgb, rgb_genes: {r: 'A', g: '', b: 'A'}},
+      {color_type: 'rgb', rgb_layout: 'separate'}, 'expression_projection');
+    t.equal(Array.from(document.querySelectorAll(
+      '#expression_projection_cell_view_host .cv-pane:not(.cv-hidden) .cv-ptitle')).map(p => p.textContent),
+      ['R · A', 'B · A'], 'Empty channels omitted, repeated genes retain channel identity');
     return true;
   },
   async geometry() {
@@ -148,10 +144,10 @@ window.viewerScenarios = {
   },
   async missing() {
     const t=viewerTest;t.dataset();
-    for(const grouped of [false,true])for(const binary of [false,true]) {
+    for(const grouped of [false,true]) {
       const data=grouped?{selection_key:[['a','b'],['c']],x:[[0,null],[3]],y:[[2,4],[null]],color:['#ff0000','#0000ff']}:
-        {selection_key:['a','b','c'],x:binary?new Float64Array([0,NaN,3]):[0,null,3],y:binary?new Float64Array([2,4,NaN]):[2,4,null]};
-      t.resetPaint();await t.render(data,grouped?{color_type:'categorical',traces:['A','B']}: {},'spatial_projection',{},binary);
+        {selection_key:['a','b','c'],x:new Float64Array([0,NaN,3]),y:new Float64Array([2,4,NaN])};
+      t.resetPaint();await t.render(data,grouped?{color_type:'categorical',traces:['A','B']}: {},'spatial_projection');
       const points=t.arcs();t.check(points.length>0,'Genuine zero remains a point');
       const positions=new Set(points.map(p=>p.args.slice(0,2).join(',')));
       t.equal(positions.size,1,'Missing coordinates never become selectable points at zero');
@@ -160,17 +156,15 @@ window.viewerScenarios = {
   },
   async panels() {
     const t=viewerTest;t.dataset();
-    for(const binary of [false,true]) {
-      t.resetPaint();await t.render({color:binary?new Float32Array([4,0,2]):[4,0,2],selection_key:['b','a','c'],
-        colorscale:[[0,'#aeb5bb'],[1,'#9f251f']],panels:[
-          {id:'one',label:'R1',selection_key:['b','c'],x:[1,3],y:[4,6]},
-          {id:'two',label:'R2',selection_key:['a'],x:[2],y:[5]}]}, {},'spatial_projection',{},binary);
-      t.equal(new Set(t.arcs('cv-cv-a').map(p=>p.args.slice(0,2).join(','))).size,2);
-      t.equal(new Set(t.arcs('cv-cv-b').map(p=>p.args.slice(0,2).join(','))).size,1);
-      t.check(document.getElementById('cv-title-a').textContent.includes('R1'));
-      t.check(document.getElementById('cv-title-b').textContent.includes('R2'));
-      t.check(document.getElementById('cv-cbar').textContent.includes('4'),'Exact maximum in legend');
-    }
+    t.resetPaint();await t.render({color:new Float32Array([4,0,2]),selection_key:['b','a','c'],
+      colorscale:[[0,'#aeb5bb'],[1,'#9f251f']],panels:[
+        {id:'one',label:'R1',selection_key:['b','c'],x:[1,3],y:[4,6]},
+        {id:'two',label:'R2',selection_key:['a'],x:[2],y:[5]}]}, {},'spatial_projection');
+    t.equal(new Set(t.arcs('cv-cv-a').map(p=>p.args.slice(0,2).join(','))).size,2);
+    t.equal(new Set(t.arcs('cv-cv-b').map(p=>p.args.slice(0,2).join(','))).size,1);
+    t.check(document.getElementById('cv-title-a').textContent.includes('R1'));
+    t.check(document.getElementById('cv-title-b').textContent.includes('R2'));
+    t.check(document.getElementById('cv-cbar').textContent.includes('4'),'Exact maximum in legend');
     return true;
   },
   async hover() {
@@ -213,12 +207,12 @@ window.viewerScenarios = {
       sample:{levels:['sample-one'],values:null,deferred:true},clone_expansion:{levels:['singleton','expanded'],values:[1,0,1]}}});await t.settle();
     const ordinary=await t.hover();t.check(ordinary.includes('<b>A</b>'));t.check(!ordinary.includes('cv-tip-details'));
     const pinned=await t.hover(0,true);t.check(pinned.includes('expanded'));t.check(!pinned.includes('sample-one'));
-    const config=cerebroLinkedViewsState.capture();config.selection={cells:['b']};
+    const config=cerebroLinkedViewsState.capture();config.selection={cells:['b'],indices:[1]};
     cerebroLinkedViewsState.apply(config);await t.settle();
     t.change('cv-hover',false);await t.settle();
     t.equal(cerebroLinkedViewsState.summary().selectedCellBarcodes,['b'],'Disabling hover preserves selection');
     t.change('cv-hover',true);await t.settle();
-    const noSelection=cerebroLinkedViewsState.capture();noSelection.selection={cells:[]};
+    const noSelection=cerebroLinkedViewsState.capture();noSelection.selection={cells:[],indices:[]};
     t.equal(cerebroLinkedViewsState.apply(noSelection).selectedCells,0);
     t.dataset('B',2);t.resetPaint();t.linked({groups:{cluster:{levels:['NEW'],values:[0,0,0],colors:['#00ff00']}}});await t.settle();
     t.check((await t.hover()).includes('NEW'),'New dataset retires old tooltip labels');
@@ -257,18 +251,16 @@ window.viewerScenarios = {
     await deliver(32,new Int32Array([0,1,2]),{cell_order_fingerprint:'md5-cell-order-v1:'+'d'.repeat(32)});
     t.equal(failures(),1,'A resource of another cell order is refused and reported');
     t.check(t.requests.some(r=>r.name===id+'_render_request'),'The view asks for a frame with names');
-    // A frame naming its cells by row: on either transport a refused resource
-    // is reported and the view asks for a frame with names, not left blank.
+    // A frame naming its cells by row: a refused resource is reported and the
+    // view asks for a frame with names, not left blank.
     const renders=()=>t.requests.filter(r=>r.name===id+'_render_request').length;
-    for(const binary of [false,true]) {
-      const reported=failures(),asked=renders();
-      await t.render({n:3,selection_key:null,selection_index:[0,1,2],
-        cell_names_resource:{...resource,cell_order_fingerprint:'md5-cell-order-v1:'+'e'.repeat(32)}},
-        {},id,{dataset_identity:identity},binary);
-      for(let i=0;i<5;i++)await t.settle();
-      t.equal(failures(),reported+1,'A frame resource that cannot be used is reported');
-      t.equal(renders(),asked+1,'A frame without names asks for one with names');
-    }
+    const reported=failures(),asked=renders();
+    await t.render({n:3,selection_key:null,selection_index:[0,1,2],
+      cell_names_resource:{...resource,cell_order_fingerprint:'md5-cell-order-v1:'+'e'.repeat(32)}},
+      {},id,{dataset_identity:identity});
+    for(let i=0;i<5;i++)await t.settle();
+    t.equal(failures(),reported+1,'A frame resource that cannot be used is reported');
+    t.equal(renders(),asked+1,'A frame without names asks for one with names');
     // Another data set does not keep the decoded names: the same URL is read
     // again, and here it no longer exists.
     URL.revokeObjectURL(resource.url);
@@ -307,11 +299,11 @@ window.viewerScenarios = {
     t.linked({spaces:[space()]});await t.settle();
     t.equal(requests().length,1,'One deferred request');
     const picker=document.getElementById('cv-bg-image-select');
-    const none=Array.from(picker.options).find(o=>o.text==='None').value;
+    const none=t.choices('cv-bg-image-select').find(o=>o.text==='None').value;
     t.change('cv-bg-image-select',none);t.change('cv-bg-image-select','one');await t.settle();
     t.equal(requests().length,1,'Pending request deduplicated');
     const a={...t.context};sendAsset(a,uri);await t.settle();
-    t.equal(Array.from(document.getElementById('cv-bg-image-select').options,o=>o.text),['First','Second','None']);
+    t.equal(t.choices('cv-bg-image-select').map(o=>o.text),['First','Second','None']);
     t.equal(picker.value,'one','Background choice retained after download');
     t.resetPaint();t.change('cv-bg-image-select',none);await t.settle();
     t.check(!t.paints.some(p=>p.method==='drawImage'&&p.args[0] instanceof HTMLImageElement),'None removes background');
@@ -329,7 +321,7 @@ window.viewerScenarios = {
       t.check(t.paints.some(p=>p.method==='drawImage'&&p.args[0] instanceof HTMLImageElement),'Fresh image paints');
     }
     const config=cerebroLinkedViewsState.capture();
-    const rgbMode=Array.from(document.getElementById('cv-pick-color').options).find(o=>o.text.includes('RGB')).value;
+    const rgbMode=t.choices('cv-pick-color').find(o=>o.text.includes('RGB')).value;
     config.view.colour.mode=rgbMode;
     cerebroLinkedViewsState.apply(config,{mode:rgbMode,r:[255,0,0],g:[0,255,0],b:[0,0,255],genes:['CD3D','MS4A1','LYZ']});
     const legend=document.getElementById('cv-legend').textContent;
@@ -355,7 +347,7 @@ window.viewerScenarios = {
   async supplement() {
     const t=viewerTest;t.dataset();
     t.linked({progressive:true,progressive_token:4});await t.settle();
-    const config=cerebroLinkedViewsState.capture();config.selection={cells:['b']};cerebroLinkedViewsState.apply(config);
+    const config=cerebroLinkedViewsState.capture();config.selection={cells:['b'],indices:[1]};cerebroLinkedViewsState.apply(config);
     await t.settle();t.resetPaint();
     const extra={dataset_id:'A',dataset_context:{...t.context},dataset_fingerprint:'fp-A',progressive_token:4,
       spaces:[{id:'other',label:'Other',geometry_ref:{projection:'UMAP',exclude:[1]}}],
@@ -673,7 +665,7 @@ window.viewerScenarios = {
     t.linked({n,cells:Array.from({length:n},(_,i)=>'c'+i),
       groups:{cluster:{levels:['A'],values:Array(n).fill(0),colors:['#123456']}},
       projections:{},spaces:[{id:'clone',label:'Clonal'}],
-      clone:{id:Array.from({length:n},(_,i)=>i%2),size:[n/2,n/2],n_clones:2,n_receptor:n,label:['one','two']}});
+      clone:{id:Array.from({length:n},(_,i)=>i%2),size:[n/2,n/2],n_clones:2,n_receptor:n,label:['one','two'],tiers:[1,5,20],tier_labels:['Single (1)','Small (2-5)','Medium (6-20)','Large (>20)']}});
     await t.settle();t.resetPaint();
     const same=cerebroLinkedViewsState.capture();cerebroLinkedViewsState.apply(same);await t.settle();
     const copied=()=>t.paints.some(p=>p.method==='drawImage'&&p.canvas.id==='cv-cv-a'&&p.args[0] instanceof HTMLCanvasElement);
@@ -683,7 +675,7 @@ window.viewerScenarios = {
       t.check(t.paints.some(p=>p.canvas.id==='cv-cv-a'&&p.method==='arc'),'Changed viewport redraws clonal points');
     }
     t.resetPaint();t.change('cv-borders',true);await t.settle();t.check(t.paints.some(p=>p.canvas.id==='cv-cv-a'&&p.method==='arc'),'Border change invalidates bitmap');
-    const config=cerebroLinkedViewsState.capture();config.selection={cells:['c1','c2']};
+    const config=cerebroLinkedViewsState.capture();config.selection={cells:['c1','c2'],indices:[1,2]};
     t.resetPaint();cerebroLinkedViewsState.apply(config);await t.settle();
     t.equal(cerebroLinkedViewsState.summary().selectedCellBarcodes,['c1','c2']);
     t.check(t.paints.some(p=>p.canvas.id==='cv-cv-a'&&p.method==='arc'),'Selection change invalidates bitmap');
@@ -739,7 +731,7 @@ window.viewerScenarios = {
     t.resetPaint();await t.render({n,selection_key:Array.from({length:n},(_,i)=>'c'+i),x,y,color,paint_order:'highest'});
     const ordered=t.uploads.at(-1),indices=[];
     for(let i=0;i<ordered.count;i++){const index=Math.round(ordered.positions[i*2]*(n-1));if(index<7)indices.push(index);}
-    t.equal(indices,[4,1,5,2,6,0,3],'Missing values first, followed by stable ascending values');
+    t.equal(indices,[1,4,5,2,6,0,3],'Missing values first, followed by stable ascending values');
     t.failGpu=true;t.resetPaint();await t.render({n,selection_key:null,x:Float32Array.from(x,(v,i)=>i===13?NaN:v),y,color});
     t.equal(t.arcs().length,n-1,'GPU failure falls back to valid CPU points');
     return true;

@@ -1,5 +1,6 @@
 test_that('Linked references only validated canonical two-dimensional trajectory frames', {
   scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path('core', 'viewer_pack.R'), scope)
   sys.source(viewer_test_path('coordinated_views', 'bundle.R'), scope)
   scope$viewerPackTrajectoryFrame <- function(pack, method, name) pack$frame
   primary <- list(

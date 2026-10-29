@@ -13,6 +13,7 @@ gene_selection_body <- function(file, output) {
 
 test_that("Gene summary and table resolve canonical barcodes after deferred identity", {
   env <- viewer_runtime_env()
+  env$data_set <- function() NULL
   env$`%>%` <- dplyr::`%>%`
   env$bind_cols <- dplyr::bind_cols
   env$everything <- dplyr::everything

@@ -1,10 +1,6 @@
 ##----------------------------------------------------------------------------##
 ## Upload policy.
 ##----------------------------------------------------------------------------##
-`%||%` <- function(value, fallback) {
-  if (is.null(value)) fallback else value
-}
-
 viewerUploadsEnabled <- function(options) {
   is.list(options) && identical(options[["mode"]], "open")
 }
@@ -13,10 +9,7 @@ viewerUploadPath <- function(input_file, options) {
   datapath <- if (is.list(input_file)) input_file[["datapath"]] else NULL
   if (
     !viewerUploadsEnabled(options) ||
-      !is.character(datapath) ||
-      length(datapath) != 1L ||
-      is.na(datapath) ||
-      !nzchar(datapath) ||
+      !.runtimeIsString(datapath) ||
       !file.exists(datapath)
   ) {
     return("")
@@ -126,13 +119,10 @@ viewerDatasetName <- function(files, selected) {
 ## configured id (or an opaque runtime id for single/upload mode), `generation`
 ## advances before every real load/switch, and `epoch` separates reconnects.
 viewerDatasetContext <- function(epoch, dataset_key, generation) {
-  valid_text <- function(value) {
-    is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
-  }
   generation <- suppressWarnings(as.numeric(generation))
   if (
-    !valid_text(epoch) ||
-      !valid_text(dataset_key) ||
+    !.runtimeIsString(epoch) ||
+      !.runtimeIsString(dataset_key) ||
       length(generation) != 1L ||
       is.na(generation) ||
       !is.finite(generation) ||
@@ -239,16 +229,12 @@ viewerDatasetLabel <- function(files, selected, display_labels = NULL) {
 }
 
 viewerSelectedDatasetName <- function() {
-  if (
-    exists("viewer_current_dataset_key", mode = "function", inherits = TRUE)
-  ) {
-    current <- tryCatch(
-      viewer_current_dataset_key(),
-      error = function(error) NULL
-    )
-    if (is.character(current) && length(current) == 1L && nzchar(current)) {
-      return(current)
-    }
+  current <- tryCatch(
+    viewer_current_dataset_key(),
+    error = function(error) NULL
+  )
+  if (is.character(current) && length(current) == 1L && nzchar(current)) {
+    return(current)
   }
   if (!exists("available_crb_files", inherits = TRUE)) {
     return(NULL)
@@ -260,10 +246,7 @@ viewerSelectedDatasetName <- function() {
 viewerDatasetInfo <- function(catalog, selected) {
   if (
     !is.list(catalog) ||
-      !is.character(selected) ||
-      length(selected) != 1L ||
-      is.na(selected) ||
-      !nzchar(selected) ||
+      !.runtimeIsString(selected) ||
       is.null(names(catalog)) ||
       !selected %in% names(catalog)
   ) {
@@ -305,10 +288,7 @@ viewer_dataset_free_tabs <- c("loadData", "about", "geneIdConversion")
 
 viewerDatasetLoadOnTab <- function(current, tab) {
   isTRUE(current) ||
-    (is.character(tab) &&
-      length(tab) == 1L &&
-      !is.na(tab) &&
-      nzchar(tab) &&
+    (.runtimeIsString(tab) &&
       !tab %in% viewer_dataset_free_tabs)
 }
 
@@ -520,14 +500,8 @@ spatialPlotRotation <- function(options, dataset, spatial_name) {
 spatialPointAppearance <- function(options, dataset, spatial_name) {
   setting <- if (
     is.list(options) &&
-      is.character(dataset) &&
-      length(dataset) == 1L &&
-      !is.na(dataset) &&
-      nzchar(dataset) &&
-      is.character(spatial_name) &&
-      length(spatial_name) == 1L &&
-      !is.na(spatial_name) &&
-      nzchar(spatial_name)
+      .runtimeIsString(dataset) &&
+      .runtimeIsString(spatial_name)
   ) {
     options[["viewer_content"]][[dataset]][["spatial_point_appearance"]][[
       spatial_name
@@ -541,14 +515,8 @@ spatialPointAppearance <- function(options, dataset, spatial_name) {
 spatialRoiSettings <- function(options, dataset, spatial_name) {
   settings <- if (
     is.list(options) &&
-      is.character(dataset) &&
-      length(dataset) == 1L &&
-      !is.na(dataset) &&
-      nzchar(dataset) &&
-      is.character(spatial_name) &&
-      length(spatial_name) == 1L &&
-      !is.na(spatial_name) &&
-      nzchar(spatial_name)
+      .runtimeIsString(dataset) &&
+      .runtimeIsString(spatial_name)
   ) {
     options[["viewer_content"]][[dataset]][["spatial_roi_settings"]][[
       spatial_name
@@ -560,12 +528,7 @@ spatialRoiSettings <- function(options, dataset, spatial_name) {
 }
 
 spatialRoiSetting <- function(options, dataset, spatial_name, roi) {
-  if (
-    !is.character(roi) ||
-      length(roi) != 1L ||
-      is.na(roi) ||
-      !nzchar(roi)
-  ) {
+  if (!.runtimeIsString(roi)) {
     return(NULL)
   }
   setting <- spatialRoiSettings(options, dataset, spatial_name)[[roi]]
@@ -813,9 +776,6 @@ viewerOutputTab <- function(ids) {
 
 viewerProjectionFirstFrameCache <- function(object = NULL) {
   if (is.null(object)) {
-    if (!exists("data_set", mode = "function", inherits = TRUE)) {
-      return(NULL)
-    }
     object <- data_set()
   }
   cache <- attr(object, "cerebro_projection_first_frame", exact = TRUE)
@@ -884,19 +844,13 @@ viewerSharedProjectionName <- function(
     shared <- shiny::isolate(input[["coordviews_shared_base"]])
   }
   if (is.null(identity)) {
-    if (!exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
-      return(NULL)
-    }
     identity <- viewerDatasetIdentity()
   }
   if (
     !is.list(shared) ||
       !viewerDatasetContextEqual(shared$dataset_context, dataset_context) ||
       !is.list(identity) ||
-      !is.character(projection) ||
-      length(projection) != 1L ||
-      is.na(projection) ||
-      !nzchar(projection) ||
+      !.runtimeIsString(projection) ||
       !identical(as.character(shared$projection %||% ""), projection) ||
       !identical(
         as.character(shared$dataset_fingerprint %||% ""),
@@ -1088,6 +1042,90 @@ viewerSendClientFilters <- function(id, descriptors, dataset_context) {
       dataset_context = dataset_context,
       filters = unname(descriptors %||% list())
     )
+  )
+}
+
+## The group `filters()` of projection `id` for the browser to apply to a frame
+## of every cell, sent to it while `active()`. NULL, R filters the frame, unless
+## `client()` and the browser has not failed to apply them.
+viewerClientFilters <- function(id, active, client, filters) {
+  client_filters <- shiny::reactive({
+    if (
+      !isTRUE(client()) ||
+        isTRUE(input[[paste0(id, "_client_filters_failed")]])
+    ) {
+      return(NULL)
+    }
+    viewerClientFilterDescriptors(filters())
+  })
+  shiny::observe({
+    shiny::req(active())
+    viewerSendClientFilters(
+      id,
+      client_filters(),
+      viewer_loaded_dataset_context()
+    )
+  })
+  client_filters
+}
+
+## The group filters of projection `id` on sidebar `page`, and the canonical
+## rows it draws: `rows(filters)`, given the group filters left to R (none when
+## `client()` lets the browser apply them). The rows are published on change
+## only, so a filter control binding with the value it had does not rebuild a
+## million-cell frame; off the page the last rows are kept. With `wait`, rows
+## that fail publish NULL and nothing is drawn until rows are published.
+viewerProjectionCells <- function(
+  id,
+  page,
+  client,
+  rows,
+  priority = 950,
+  wait = FALSE
+) {
+  group_filters <- shiny::reactive({
+    viewerProjectionGroupFilters(id, viewerProjectionFirstFrameMetadata())
+  })
+  client_filters <- viewerClientFilters(
+    id,
+    function() identical(input[["sidebar"]], page),
+    client,
+    group_filters
+  )
+  current <- shiny::reactive({
+    rows(if (is.null(client_filters())) group_filters() else list())
+  })
+  state <- shiny::reactiveVal(NULL)
+  shiny::observe(
+    {
+      if (
+        "sidebar" %in%
+          shiny::isolate(names(input)) &&
+          !identical(input[["sidebar"]], page)
+      ) {
+        return()
+      }
+      value <- if (wait) {
+        tryCatch(current(), error = function(error) NULL)
+      } else {
+        current()
+      }
+      viewerPublishChanged(state, value)
+    },
+    priority = priority
+  )
+  list(
+    group_filters = group_filters,
+    client_filters = client_filters,
+    cells_to_show = shiny::reactive({
+      if (wait) {
+        value <- state()
+        shiny::req(!is.null(value))
+        value
+      } else {
+        state() %||% current()
+      }
+    })
   )
 }
 
@@ -1636,14 +1674,10 @@ cerebroCellViewRecolor <- function(
     "zero_color"
   )
   message$data <- message$data[intersect(fields, names(message$data))]
-  if (isTRUE(input[["coordviews_wire_supported"]])) {
-    session$sendBinaryMessage(
-      "cell_view_recolor_binary",
-      cv_wire_pack_message(message)
-    )
-  } else {
-    session$sendCustomMessage("cell_view_recolor", message)
-  }
+  session$sendBinaryMessage(
+    "cell_view_recolor_binary",
+    cv_wire_pack_message(message)
+  )
 }
 
 cerebroCellViewAuxRequest <- function(request) {
@@ -1834,78 +1868,67 @@ cerebroCellViewRender <- function(
     message$data$deferred_selection_lengths
   ))
   message$data$deferred_selection_lengths <- NULL
-  if (exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
-    identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
-    if (
-      is.list(identity) &&
-        length(identity$fingerprint) == 1L &&
-        !is.na(identity$fingerprint) &&
-        nzchar(identity$fingerprint)
-    ) {
-      message$dataset_identity <- list(
-        cell_count = as.integer(identity$cell_count),
-        cell_fingerprint = as.character(identity$fingerprint),
-        cell_order_fingerprint = as.character(
-          identity$order_fingerprint %||% ""
-        ),
-        pack_dataset_fingerprint = as.character(
-          identity$pack_fingerprint %||% ""
-        )
+  identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
+  if (
+    is.list(identity) &&
+      length(identity$fingerprint) == 1L &&
+      !is.na(identity$fingerprint) &&
+      nzchar(identity$fingerprint)
+  ) {
+    message$dataset_identity <- list(
+      cell_count = as.integer(identity$cell_count),
+      cell_fingerprint = as.character(identity$fingerprint),
+      cell_order_fingerprint = as.character(
+        identity$order_fingerprint %||% ""
+      ),
+      pack_dataset_fingerprint = as.character(
+        identity$pack_fingerprint %||% ""
       )
-    }
+    )
   }
-  wire <- isTRUE(input[["coordviews_wire_supported"]])
-  progressive <- FALSE
-  if (wire) {
-    selection_keys <- message$data$selection_key
-    key_groups <- if (is.list(selection_keys)) {
-      selection_keys
-    } else {
-      list(selection_keys)
-    }
-    n_cells <- if (
-      length(deferred_selection_lengths) &&
-        all(!is.na(deferred_selection_lengths)) &&
-        all(deferred_selection_lengths >= 0L)
-    ) {
-      sum(deferred_selection_lengths)
-    } else {
-      sum(vapply(key_groups, length, integer(1)))
-    }
-    ## Per-group panels hold only their own cells, so they neither reuse nor
-    ## stand in for the dataset-wide coordinates of a projection.
-    shared_projection <- if (is.null(message$data$panels)) {
-      viewerSharedProjectionName(
-        meta$space_label,
-        n_cells,
-        dataset_context = dataset_context
-      )
-    }
-    shared_zero_color <- isTRUE(message$data$shared_zero_color)
-    message$data$shared_zero_color <- NULL
-    if (isTRUE(shared_zero_color)) {
-      message$data$color <- NULL
-      message$data$zero_color <- TRUE
-      message$data$n <- n_cells
-    }
-    if (
-      is.character(shared_projection) &&
-        length(shared_projection) == 1L &&
-        !is.na(shared_projection) &&
-        nzchar(shared_projection)
-    ) {
-      message$shared_projection <- shared_projection
-      message$data$x <- NULL
-      message$data$y <- NULL
-      message$data$z <- NULL
-      message$data$n <- n_cells
-    }
-    progressive <- (!is.null(selection_keys) ||
-      (length(deferred_selection_lengths) &&
-        is.function(deferred_aux))) &&
-      is.null(message$data$panels) &&
-      n_cells >= 4096L
+  selection_keys <- message$data$selection_key
+  key_groups <- if (is.list(selection_keys)) {
+    selection_keys
+  } else {
+    list(selection_keys)
   }
+  n_cells <- if (
+    length(deferred_selection_lengths) &&
+      all(!is.na(deferred_selection_lengths)) &&
+      all(deferred_selection_lengths >= 0L)
+  ) {
+    sum(deferred_selection_lengths)
+  } else {
+    sum(vapply(key_groups, length, integer(1)))
+  }
+  ## Per-group panels hold only their own cells, so they neither reuse nor
+  ## stand in for the dataset-wide coordinates of a projection.
+  shared_projection <- if (is.null(message$data$panels)) {
+    viewerSharedProjectionName(
+      meta$space_label,
+      n_cells,
+      dataset_context = dataset_context
+    )
+  }
+  shared_zero_color <- isTRUE(message$data$shared_zero_color)
+  message$data$shared_zero_color <- NULL
+  if (isTRUE(shared_zero_color)) {
+    message$data$color <- NULL
+    message$data$zero_color <- TRUE
+    message$data$n <- n_cells
+  }
+  if (.runtimeIsString(shared_projection)) {
+    message$shared_projection <- shared_projection
+    message$data$x <- NULL
+    message$data$y <- NULL
+    message$data$z <- NULL
+    message$data$n <- n_cells
+  }
+  progressive <- (!is.null(selection_keys) ||
+    (length(deferred_selection_lengths) &&
+      is.function(deferred_aux))) &&
+    is.null(message$data$panels) &&
+    n_cells >= 4096L
   if (progressive) {
     .cerebro_cell_view_wire_serial <<-
       .cerebro_cell_view_wire_serial + 1L
@@ -1931,30 +1954,7 @@ cerebroCellViewRender <- function(
     message$hover <- auxiliary$hover
   }
 
-  request_at_ms <- tryCatch(
-    suppressWarnings(as.numeric(
-      input[[paste0(id, "_render_request")]]$nonce
-    )),
-    error = function(error) NA_real_
-  )
-  if (length(request_at_ms) != 1L || !is.finite(request_at_ms)) {
-    request_at_ms <- NA_real_
-  }
-  sent_at_ms <- as.numeric(Sys.time()) * 1000
-  message$transport_profile <- list(
-    request_at_ms = request_at_ms,
-    server_prepare_ms = if (is.finite(request_at_ms)) {
-      max(0, sent_at_ms - request_at_ms)
-    } else {
-      NA_real_
-    },
-    sent_at_ms = sent_at_ms
-  )
-  if (wire) {
-    session$sendBinaryMessage("cell_view_binary", cv_wire_pack_message(message))
-  } else {
-    session$sendCustomMessage("cell_view_render", message)
-  }
+  session$sendBinaryMessage("cell_view_binary", cv_wire_pack_message(message))
 
   if (progressive) {
     stale <- ls(envir = .cerebro_cell_view_aux_pending, all.names = TRUE)
@@ -3411,10 +3411,7 @@ viewerDatasetIdsValid <- function(ids) {
 match_dataset_id_by_url <- function(url_dataset, files) {
   ids <- names(files)
   if (
-    !is.character(url_dataset) ||
-      length(url_dataset) != 1L ||
-      is.na(url_dataset) ||
-      !nzchar(url_dataset) ||
+    !.runtimeIsString(url_dataset) ||
       is.null(ids) ||
       !url_dataset %in% ids
   ) {
@@ -3882,10 +3879,7 @@ get_or_load_crb <- function(
   }
   valid <- is.list(backend) &&
     identical(backend$type, "file") &&
-    is.character(backend$file) &&
-    length(backend$file) == 1L &&
-    !is.na(backend$file) &&
-    nzchar(backend$file) &&
+    .runtimeIsString(backend$file) &&
     !backend$file %in% c(".", "..") &&
     !grepl("[/\\\\]", backend$file) &&
     is.character(backend$md5) &&
@@ -3924,10 +3918,7 @@ get_or_load_crb <- function(
   }
   valid <- is.list(backend) &&
     identical(backend$type, "directory") &&
-    is.character(backend$location) &&
-    length(backend$location) == 1L &&
-    !is.na(backend$location) &&
-    nzchar(backend$location) &&
+    .runtimeIsString(backend$location) &&
     !backend$location %in% c(".", "..") &&
     !grepl("[/\\\\]", backend$location)
   if (!valid) {
@@ -4631,7 +4622,7 @@ checkForExtraTables <- function() {
 ## Wrapper for immune repertoire module.
 getImmuneRepertoire <- function() {
   ds <- data_set()
-  if (!any(grepl("Cerebro", class(ds)))) {
+  if (!is_cerebro_dataset(ds)) {
     return(list())
   }
   tryCatch(ds$getImmuneRepertoire(), error = function(e) list())
@@ -4717,7 +4708,7 @@ getObservationUnit <- function() {
 ## canonical one when the data set carries none.
 getHLATyping <- function() {
   ds <- data_set()
-  if (!any(grepl("Cerebro", class(ds)))) {
+  if (!is_cerebro_dataset(ds)) {
     return(hla_normalize_typing(list(), source_type = "unknown"))
   }
   ds$getHLATyping()
@@ -4726,7 +4717,7 @@ getHLATyping <- function() {
 ## Wrappers for spatial module.
 availableSpatial <- function() {
   ds <- data_set()
-  if (!any(grepl("Cerebro", class(ds)))) {
+  if (!is_cerebro_dataset(ds)) {
     return(character(0))
   }
   tryCatch(ds$availableSpatial(), error = function(e) character(0))
@@ -4737,7 +4728,7 @@ availableSpatial <- function() {
 .viewer_spatial_data_cache <- new.env(parent = emptyenv())
 getSpatialData <- function(name) {
   ds <- data_set()
-  if (!any(grepl("Cerebro", class(ds)))) {
+  if (!is_cerebro_dataset(ds)) {
     return(NULL)
   }
   cache <- .viewer_spatial_data_cache
@@ -4771,7 +4762,7 @@ viewerReadSpatialData <- function(ds, name) {
 ## Malformed storage keeps the fully validated fallback path.
 viewerSpatialCoordinates <- function(name) {
   ds <- data_set()
-  if (!any(grepl("Cerebro", class(ds)))) {
+  if (!is_cerebro_dataset(ds)) {
     return(NULL)
   }
   coordinates <- tryCatch(
@@ -5029,9 +5020,7 @@ filterSelectionByHiddenGroups <- function(
 ## The rows (1-based) of a base64 bit set from the browser: bit r of byte
 ## r %/% 8 stands for row r + 1 (selectionRowBits() in cell_views.js).
 viewerDecodeRowBits <- function(bits) {
-  if (
-    !is.character(bits) || length(bits) != 1L || is.na(bits) || !nzchar(bits)
-  ) {
+  if (!.runtimeIsString(bits)) {
     return(NULL)
   }
   raw <- tryCatch(jsonlite::base64_dec(bits), error = function(e) NULL)
@@ -5143,9 +5132,7 @@ viewerRowMask <- function(selected, rows) {
 ## The cell-name resource when it names every one of `rows` (canonical rows),
 ## else NULL.
 viewerCellNamesResourceFor <- function(rows) {
-  resource <- if (exists("viewerCellNamesResource", mode = "function")) {
-    viewerCellNamesResource()
-  }
+  resource <- viewerCellNamesResource()
   if (
     is.list(resource) &&
       length(rows) &&
@@ -5162,9 +5149,7 @@ viewerCellNamesResourceFor <- function(rows) {
 .viewer_pack_cell_names <- new.env(parent = emptyenv())
 ## Every cell name in canonical order from the Viewer Pack, or NULL.
 viewerPackCellNames <- function() {
-  pack <- if (exists("viewerPackCellBarcodes", mode = "function")) {
-    viewerPackCurrent()
-  }
+  pack <- viewerPackCurrent()
   if (!is.list(pack)) {
     return(NULL)
   }

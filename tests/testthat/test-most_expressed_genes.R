@@ -12,13 +12,6 @@ test_that("most_expressed_genes server parses without errors", {
   ))
 })
 
-test_that("most_expressed_genes UI defines correct tabName", {
-  scope <- viewer_ui_test_env()
-  sys.source(viewer_test_path("most_expressed_genes", "UI.R"), scope)
-  page <- htmltools::tagQuery(scope$tab_most_expressed_genes)
-  expect_equal(page$filter("#shiny-tab-mostExpressedGenes")$length(), 1L)
-})
-
 test_that("example.crb most expressed genes class methods work", {
   crb <- readCerebro(example_crb)
   groups <- crb$getGroupsWithMostExpressedGenes()

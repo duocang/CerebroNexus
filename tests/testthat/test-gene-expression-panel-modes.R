@@ -85,7 +85,7 @@ test_that("Viewer H5 reads preserve values and canonical cell order", {
     dimnames = list(c("g1", "g2", "g3"), c("c1", "c2", "c3", "c4"))
   )
   fixture <- viewer_h5_fixture(withr::local_tempdir(), values = source)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   dataset <- scope$read_cerebro_file(fixture$crb)
   dataset <- scope$.attachExternalExpression(dataset, fixture$crb)
 
@@ -326,7 +326,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   app$wait_for_js(
     paste0(
       "String(window.Shiny?.shinyapp?.$inputValues?",
-      ".expression_projection_rendered_key || '').includes('MS4A1')"
+      ".expression_projection_rendered_state?.render_key || '').includes('MS4A1')"
     ),
     timeout = 60000
   )
@@ -406,7 +406,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
       "return panes.length === 2 && panes.every(p => ",
       "Number(p.querySelector('.cv-canvas-wrap > canvas:not(.cv-mini)')",
       "?.dataset.pointCount) > 0) && ",
-      "String(Shiny.shinyapp.$inputValues.expression_projection_rendered_key)",
+      "String(Shiny.shinyapp.$inputValues.expression_projection_rendered_state?.render_key)",
       ".startsWith('separate');})()"
     ),
     timeout = 20000

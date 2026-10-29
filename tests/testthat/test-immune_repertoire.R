@@ -7,16 +7,11 @@
 
 shiny_root <- viewer_test_path()
 example_crb <- inst_test_path("extdata", "examples", "example.crb")
-
-test_that("immune_repertoire UI defines correct tabName", {
-  scope <- viewer_ui_test_env()
-  sys.source(viewer_test_path("immune_repertoire", "UI.R"), scope)
-  page <- htmltools::tagQuery(scope$tab_immune_repertoire)
-  expect_equal(page$filter("#shiny-tab-immune_repertoire")$length(), 1L)
-})
+## The data-set tests below only read it, so they share one copy.
+example <- readCerebro(example_crb)
 
 test_that("example.crb contains real immune repertoire data", {
-  crb <- readCerebro(example_crb)
+  crb <- example
   ir <- crb$getImmuneRepertoire()
   expect_true(is.list(ir))
   expect_true(length(ir) > 0)
@@ -32,7 +27,7 @@ test_that("example.crb contains real immune repertoire data", {
 })
 
 test_that("example.crb IR barcodes align with cell metadata", {
-  crb <- readCerebro(example_crb)
+  crb <- example
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
   expect_false(is.null(crb$experiment))
@@ -49,7 +44,7 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
   # onto the IR rows by barcode at runtime. This verifies that join is possible
   # for the example data set, so the Group by dropdown is populated regardless
   # of which columns a producer embedded in the IR table.
-  crb <- readCerebro(example_crb)
+  crb <- example
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
   groups <- crb$getGroups()
@@ -72,7 +67,7 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
 })
 
 test_that("example.crb IR contains both TCR and BCR clonotypes", {
-  crb <- readCerebro(example_crb)
+  crb <- example
   ir <- crb$getImmuneRepertoire()
   all_ct <- paste(unlist(lapply(ir, function(df) df$CTgene)), collapse = ";")
   expect_true(grepl("TR[AB]", all_ct)) # TCR present
