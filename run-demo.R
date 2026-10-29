@@ -34,6 +34,10 @@ source(
   local = TRUE
 )
 source(
+  file.path(repo_root, "data-raw", "large-demo", "download_helpers.R"),
+  local = TRUE
+)
+source(
   file.path(repo_root, "data-raw", "large-demo", "prepare_viewer_ren_data.R"),
   local = TRUE
 )
