@@ -209,9 +209,15 @@ test_that("the Viewer filters methods at trajectory selection boundaries", {
   utility <- viewer_runtime_env()
   expect_identical(
     utility$viewerSupportedTrajectoryMethods(
-      c("unsupported", "marker_guided", "monocle2", "illustrative")
+      c(
+        "unsupported",
+        "marker_guided",
+        "monocle2",
+        "illustrative",
+        "published_pseudotime"
+      )
     ),
-    c("marker_guided", "monocle2", "illustrative")
+    c("marker_guided", "monocle2", "illustrative", "published_pseudotime")
   )
 })
 
