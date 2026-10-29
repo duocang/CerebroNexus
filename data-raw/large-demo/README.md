@@ -52,4 +52,4 @@ crb <- prepareViewerRenDemoData()   # returns the path of the prepared .crb
 
 Downloads and prepared files are written to the user cache directory (`tools::R_user_dir("CerebroNexus", "cache")`, under `large-examples/`), shared by all checkouts and worktrees. Set `CEREBRO_LARGE_CACHE` to use another folder, for example on a cluster. The Ren data set alone needs about 105 GB. The conversion of the counts to H5 runs on 2 R processes by default; set `CEREBRO_DEMO_WORKERS` to use more (each process needs about 3 to 5 GB of memory, an estimate, not a measurement). On a 24-core workstation, reading the 1.46M Ren cells took about 80 seconds on 8 processes.
 
-Benchmarks and smoke checks live in [CerebroNexus_paper_code](https://github.com/duocang/CerebroNexus_paper_code) (`viewer/` and `benchmark/`).
+Benchmarks and smoke checks live in [CerebroNexus_paper_code](https://github.com/duocang/CerebroNexus_paper_code) (`topics/viewer_performance/` and `topics/expression_backends/`).
