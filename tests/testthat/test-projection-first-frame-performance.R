@@ -180,6 +180,22 @@ test_that("projection auxiliary rows preserve plotted group order", {
   )
 })
 
+test_that("auxiliary rows refer to the cell-name resource when there is one", {
+  scope <- viewer_runtime_env()
+  resource <- list(protocol = "canonical-cell-names-v1", cells = 9L)
+  auxiliary <- scope$cerebroCellViewDeferredAux(
+    selection_rows = c(2L, 1L),
+    cell_barcodes = NULL,
+    hover = FALSE,
+    names_resource = resource,
+    cell_rows = c(7L, 3L)
+  )
+  expect_null(auxiliary$selection_key)
+  expect_identical(unclass(auxiliary$selection_index), c(2L, 6L))
+  expect_identical(auxiliary$cell_names_resource, resource)
+  expect_identical(auxiliary$hover$hoverinfo, "skip")
+})
+
 test_that("unmounted group filters preserve canonical rows without level scans", {
   scope <- new.env(parent = globalenv())
   scope$input <- list(test_percentage_cells_to_show = 100)
@@ -235,7 +251,8 @@ test_that("gene-expression deferred hover selects rows and columns first", {
     selection_rows,
     cell_barcodes,
     hover_columns,
-    hover
+    hover,
+    keys = TRUE
   ) {
     list(selection_rows = selection_rows, cell_barcodes = cell_barcodes)
   }
@@ -371,9 +388,20 @@ test_that("a new projection mount redraws unchanged data", {
     viewerDatasetContextEqual <- function(a, b) identical(a, b)
     overview_projection_data_to_plot <- reactive({
       input[["late_bound_control"]]
-      list(value = 1L, dataset_context = context)
+      ## As in the page code: the flag is read without a dependency and is
+      ## cleared after the first frame, so a late binding sees FALSE.
+      list(
+        value = 1L,
+        dataset_context = context,
+        reset_axes = isolate(overview_projection_parameters_other[[
+          "reset_axes"
+        ]])
+      )
     })
     overview_projection_data_to_plot_raw <- overview_projection_data_to_plot
+    overview_projection_group_filters <- function() list()
+    cerebroFeedbackControls <- function(...) list()
+    cerebroSendViewFeedback <- function(...) invisible(NULL)
     overview_projection_update_plot <- function(data) {
       renders <<- renders + 1L
     }
@@ -417,6 +445,27 @@ test_that("a new projection mount redraws unchanged data", {
       )
     )
     expect_identical(session$userData$render_count(), 2L)
+  })
+})
+
+test_that("only another projection resets the Projection axes", {
+  server <- function(input, output, session) {
+    cerebroObserveLocalAppearance <- function(...) invisible(NULL)
+    sys.source(
+      viewer_test_path("overview", "obj_projection_parameters_plot.R"),
+      envir = environment()
+    )
+    session$userData$flags <- overview_projection_parameters_other
+  }
+
+  shiny::testServer(server, {
+    flags <- session$userData$flags
+    flags[["reset_axes"]] <- FALSE
+    ## The selector binding with its first value: the view stays as it is.
+    session$setInputs(overview_projection_to_display = "umap")
+    expect_false(isolate(flags[["reset_axes"]]))
+    session$setInputs(overview_projection_to_display = "tsne")
+    expect_true(isolate(flags[["reset_axes"]]))
   })
 })
 
@@ -646,6 +695,57 @@ test_that("attaching a thin H5 CRB does not load HDF5Array", {
   expect_false(state$after_metadata)
   expect_identical(state$dim, c(3L, 4L))
   expect_true(state$after_expression)
+})
+
+test_that("H5 expression rows are read without loading HDF5Array", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("callr")
+  root <- withr::local_tempdir()
+  fixture <- viewer_h5_fixture(root)
+
+  state <- callr::r(
+    function(utility, crb) {
+      scope <- new.env(parent = globalenv())
+      sys.source(
+        file.path(dirname(utility), "core", "crb_contract.R"),
+        envir = scope
+      )
+      sys.source(utility, envir = scope)
+      object <- scope$.attachExternalExpression(
+        scope$read_cerebro_file(crb),
+        crb
+      )
+      state <- list(
+        count = scope$viewerExpressionCellCount(object),
+        row = scope$viewerExpressionRow(object, NULL, "g2"),
+        subset = scope$viewerExpressionRow(object, c(4L, 2L), "g3"),
+        values = scope$viewerExpressionValues(object, 2:3, c("g3", "g1")),
+        loaded = "HDF5Array" %in% loadedNamespaces(),
+        lazy = rlang::env_binding_are_lazy(object, "expression")
+      )
+      state$missing <- tryCatch(
+        scope$viewerExpressionRow(object, NULL, "absent"),
+        error = function(error) "error"
+      )
+      state
+    },
+    list(viewer_test_path("utility_functions.R"), fixture$crb)
+  )
+
+  expect_identical(state$count, 4L)
+  expect_identical(state$row, unname(fixture$values["g2", ]))
+  expect_identical(state$subset, unname(fixture$values["g3", c(4L, 2L)]))
+  expect_identical(
+    state$values,
+    list(
+      g3 = unname(fixture$values["g3", 2:3]),
+      g1 = unname(fixture$values["g1", 2:3])
+    )
+  )
+  expect_false(state$loaded)
+  expect_true(state$lazy)
+  ## A gene the file does not have still fails through the R6 accessor.
+  expect_identical(state$missing, "error")
 })
 
 test_that("a thin CRB without its H5 file names the recovery step", {

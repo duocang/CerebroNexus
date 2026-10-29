@@ -21,17 +21,24 @@ observe({
     data <- overview_projection_data_to_plot_raw()
   }
   req(data, viewerDatasetContextEqual(data$dataset_context, current_context))
+  ## reset_axes is cleared after each frame; a later evaluation of the same
+  ## data (a control binding with its current value) must not resend it.
   render <- list(
     request = render_request,
     projection_resource_failed = projection_resource_failed,
-    data = data[setdiff(names(data), "feedback")]
+    data = data[setdiff(names(data), c("feedback", "reset_axes"))]
   )
+  ## "% of cells" and the group filters the browser applies change no frame;
+  ## their values reach R after the frame was drawn. Re-run on them, so the
+  ## drawn frame acknowledges them.
+  input[["overview_projection_percentage_cells_to_show"]]
+  overview_projection_group_filters()
   if (identical(render, overview_projection_last_render)) {
     cerebroSendViewFeedback(
       "overview_projection",
       overview_projection_last_feedback_token,
       current_context,
-      data$feedback
+      cerebroFeedbackControls("overview_projection", input)
     )
     return()
   }

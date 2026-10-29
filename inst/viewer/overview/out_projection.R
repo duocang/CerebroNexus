@@ -1,18 +1,22 @@
 overview_projection_info <- cerebroProjectionInfo()
 cerebroRegisterInfo(input, "overview_projection_info", overview_projection_info)
 
-output[["overview_details_selected_cells_plot"]] <- plotly::renderPlotly({
+output[["overview_details_selected_cells_plot"]] <- renderCerebroChart({
+  ## The browser summarises a selection it reported by row.
+  if (viewerClientSelection("overview_projection")) {
+    return(NULL)
+  }
   req(
     input[["overview_projection_to_display"]],
     input[["overview_projection_to_display"]] %in% availableProjections(),
     input[["overview_selected_cells_plot_select_variable"]]
   )
-  cells_df <- cbind(
-    getProjection(input[["overview_projection_to_display"]]),
-    getMetaData()
-  )
+  ## An argument, not a variable: a selection by row never evaluates it.
   cerebroSelectedCellsPlot(
-    cells_df,
+    cbind(
+      getProjection(input[["overview_projection_to_display"]]),
+      getMetaData()
+    ),
     overview_projection_selected_cells(),
     input[["overview_selected_cells_plot_select_variable"]],
     fallback_key = "row"
@@ -20,6 +24,8 @@ output[["overview_details_selected_cells_plot"]] <- plotly::renderPlotly({
 })
 
 output[["overview_details_selected_cells_table"]] <- DT::renderDataTable({
+  ## The browser lists a selection it reported by row.
+  req(!viewerClientSelection("overview_projection", "table"))
   req(
     input[["overview_projection_to_display"]],
     input[["overview_projection_to_display"]] %in% availableProjections()
