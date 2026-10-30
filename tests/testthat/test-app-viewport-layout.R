@@ -14,30 +14,61 @@ test_that("shared selection actions and layouts survive navigation and resize", 
   # Observe the actual JSON blob after the server has validated the export.
   # Keep the real adapter, Shiny request, download handler and click behavior.
   download_view_config <- function(share_selector) {
-    app$run_js(paste0(
-      "(() => {const original=URL.createObjectURL;window.__testViewJSON=null;",
-      "window.__restoreViewDownload=()=>{URL.createObjectURL=original;",
-      "delete window.__restoreViewDownload;delete window.__testViewJSON;};",
-      "URL.createObjectURL=function(blob){",
-      "if(blob.type.startsWith('application/json'))",
-      "blob.text().then(text=>{window.__testViewJSON=text;});",
-      "return original.call(URL,blob);};})()"
-    ))
-    on.exit(app$run_js("window.__restoreViewDownload()"), add = TRUE)
-    app$click(selector = share_selector)
+    json <- viewer_share_json(app, share_selector)
+    app$click(selector = "#cv-config-close")
+    jsonlite::fromJSON(json, simplifyVector = FALSE)
+  }
+
+  # Box most of the Projection canvas, as the brush reads a drag.
+  select_projection <- function() {
     app$wait_for_js(
-      "document.getElementById('cv-config-dialog').open && !document.getElementById('cv-config-download').disabled",
+      paste0(
+        "document.querySelector('#shiny-tab-overview ",
+        ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
+        "?.getBoundingClientRect().width > 100"
+      ),
+      timeout = 30000
+    )
+    app$click(
+      selector = paste0(
+        "#shiny-tab-overview .cv-pane:not(.cv-hidden) ",
+        ".cv-tbtn[data-act='box']"
+      )
+    )
+    app$run_js(paste0(
+      "(() => {const pane=document.querySelector('#shiny-tab-overview ",
+      ".cv-pane:not(.cv-hidden)');const r=pane.querySelector('canvas:not(.cv-mini)')",
+      ".getBoundingClientRect();const at=(f,b)=>({bubbles:true,button:0,buttons:b,",
+      "clientX:r.left+r.width*f,clientY:r.top+r.height*f});",
+      "pane.dispatchEvent(new MouseEvent('mousedown',at(.08,0)));",
+      "window.dispatchEvent(new MouseEvent('mousemove',at(.92,1)));",
+      "window.dispatchEvent(new MouseEvent('mouseup',at(.92,0)));})()"
+    ))
+    app$wait_for_js(
+      paste0(
+        "document.querySelector('#shiny-tab-overview ",
+        ".cerebro-selection-composition-drag')?.getClientRects().length > 0"
+      ),
       timeout = 10000
     )
-    app$click(selector = "#cv-config-download")
-    app$wait_for_js("window.__testViewJSON !== null", timeout = 15000)
-    config <- jsonlite::fromJSON(
-      app$get_js("window.__testViewJSON"),
-      simplifyVector = FALSE
-    )
-    app$click(selector = "#cv-config-close")
-    config
   }
+  projection <- "window.cerebroSpecialistViews.get('overview_projection')"
+  projection_cells <- function() {
+    app$get_js(paste0(projection, ".capture().selection.cells.length"))
+  }
+  projection_focus <- function() {
+    app$get_js(
+      "document.getElementById('overview_projection_focus_selection').getAttribute('aria-pressed')"
+    )
+  }
+
+  ## A single page keeps its selection when Linked views loads for the first
+  ## time; that load used to reset every single page.
+  app$click(selector = 'a[href="#shiny-tab-overview"]')
+  app$wait_for_js(paste0(projection, "?.ready()"), timeout = 30000)
+  select_projection()
+  kept_projection <- projection_cells()
+  expect_gt(kept_projection, 0L)
 
   app$wait_for_js(
     'document.querySelector(\'a[href="#shiny-tab-coordinated_views"]\') !== null',
@@ -234,7 +265,30 @@ test_that("shared selection actions and layouts survive navigation and resize", 
     "document.querySelectorAll('.cv-mini.is-on').length === 0",
     timeout = 10000
   )
+  ## Focus survives leaving Linked views; Clear then leaves it too.
+  linked_focus <- "document.getElementById('cv-zsel').getAttribute('aria-pressed') === 'true'"
+  app$run_js(paste0(
+    "Array.from(document.querySelectorAll('.cv-ptitle'))",
+    ".find(el => el.textContent.includes('B cell maturation'))",
+    ".closest('.cv-pane').querySelector('.cv-zsel-btn').click()"
+  ))
+  app$wait_for_js(linked_focus)
+  app$click(selector = 'a[href="#shiny-tab-overview"]')
+  app$wait_for_js(paste0(projection, "?.ready()"), timeout = 30000)
+  expect_identical(projection_focus(), "false")
+  app$click(selector = 'a[href="#shiny-tab-coordinated_views"]')
+  app$wait_for_js(
+    paste0(
+      linked_focus,
+      " && document.querySelectorAll('.cv-mini.is-on').length === 1"
+    ),
+    timeout = 30000
+  )
   app$run_js("document.querySelector('#cv-clear span').click()")
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-mini.is-on').length === 0",
+    timeout = 10000
+  )
   app$wait_for_js(
     "document.getElementById('cv-selbar').classList.contains('cv-collapse')",
     timeout = 10000
@@ -244,7 +298,13 @@ test_that("shared selection actions and layouts survive navigation and resize", 
   expect_null(cleared_linked$selection$geometry)
   expect_identical(cleared_linked$dataset, selected_linked$dataset)
   ## Touch users cannot reveal a hover-only toolbar. Coarse-pointer media must
-  ## keep the controls visible and provide practical tap targets.
+  ## keep the controls visible and provide practical tap targets. A short canvas
+  ## must still contain the 44px buttons.
+  app$get_chromote_session()$set_viewport_size(width = 1200, height = 500)
+  app$wait_for_js(
+    "window.innerWidth === 1200 && window.innerHeight === 500",
+    timeout = 10000
+  )
   app$get_chromote_session()$Emulation$setTouchEmulationEnabled(
     enabled = TRUE,
     maxTouchPoints = 1
@@ -256,17 +316,170 @@ test_that("shared selection actions and layouts survive navigation and resize", 
   touch_toolbar <- app$get_js(paste0(
     "(() => {",
     "const bar=document.querySelector('.cv-pane:not(.cv-hidden) .cv-panebar');",
+    "const wrap=bar.parentElement;",
     "const button=bar.querySelector('.cv-tbtn');",
     "const bs=getComputedStyle(bar), ts=getComputedStyle(button);",
+    "const br=bar.getBoundingClientRect(), wr=wrap.getBoundingClientRect();",
+    "const buttons=Array.from(bar.querySelectorAll('.cv-tbtn'))",
+    ".filter(b=>b.getClientRects().length);",
+    "const bottoms=buttons.map(b=>b.getBoundingClientRect().bottom);",
+    "const lefts=buttons.map(b=>b.getBoundingClientRect().left);",
+    "const reset=bar.querySelector('.cv-tbtn[data-act=\"reset\"]');",
     "return {opacity:bs.opacity,pointerEvents:bs.pointerEvents,",
+    "buttonPointerEvents:ts.pointerEvents,bottom:br.bottom,wrapBottom:wr.bottom,",
+    "wrapLeft:wr.left,resetDisabled:reset.disabled,",
+    "resetPointerEvents:getComputedStyle(reset).pointerEvents,",
+    "buttonsBottom:Math.max(...bottoms),buttonsLeft:Math.min(...lefts),",
     "width:parseFloat(ts.width),height:parseFloat(ts.height)};",
     "})()"
   ))
   expect_identical(touch_toolbar$opacity, "1")
-  expect_identical(touch_toolbar$pointerEvents, "auto")
+  ## The bar is click-through; only its buttons take pointer events, so a short
+  ## canvas can wrap the column without an invisible block over the plot.
+  expect_identical(touch_toolbar$pointerEvents, "none")
+  expect_identical(touch_toolbar$buttonPointerEvents, "auto")
+  expect_lte(touch_toolbar$bottom, touch_toolbar$wrapBottom + 1)
+  ## The bar stops above the 84px minimap corner (bottom: 100px).
+  expect_lte(touch_toolbar$buttonsBottom, touch_toolbar$wrapBottom - 90)
+  expect_gte(touch_toolbar$buttonsLeft, touch_toolbar$wrapLeft - 1)
+  ## A disabled button stays click-through whatever the hover or touch rules say.
+  expect_true(touch_toolbar$resetDisabled)
+  expect_identical(touch_toolbar$resetPointerEvents, "none")
   expect_gte(touch_toolbar$width, 36)
   expect_gte(touch_toolbar$height, 36)
   app$get_chromote_session()$Emulation$setTouchEmulationEnabled(enabled = FALSE)
+  app$get_chromote_session()$set_viewport_size(width = 1619, height = 950)
+  app$wait_for_js(
+    "window.innerWidth === 1619 && window.innerHeight === 950",
+    timeout = 10000
+  )
+
+  ## A classic scrollbar (Windows, 100-175% zoom) takes width after the panes
+  ## are sized. Panes filled to the last pixel then wrap the final one onto a
+  ## second row, centred under the first. Headless Chrome has overlay
+  ## scrollbars, so force a classic one at a width where three panes just fit.
+  app$run_js(paste0(
+    "(() => {const s=document.createElement('style');s.id='test-classic-scrollbar';",
+    "s.textContent='.content-wrapper::-webkit-scrollbar{width:17px}';",
+    "document.head.appendChild(s);})()"
+  ))
+  app$get_chromote_session()$set_viewport_size(width = 1143, height = 733)
+  app$wait_for_js(
+    "window.innerWidth === 1143 && window.innerHeight === 733",
+    timeout = 10000
+  )
+  linked_rows <- paste0(
+    "(() => {const panes=Array.from(document.querySelectorAll(",
+    "'#shiny-tab-coordinated_views .cv-panes > .cv-pane:not(.cv-hidden)'));",
+    "const box=document.querySelector('#shiny-tab-coordinated_views .cv-panes')",
+    ".getBoundingClientRect();",
+    "const rects=panes.map(p=>p.getBoundingClientRect());",
+    "return {count:rects.length,",
+    "rows:new Set(rects.map(r=>Math.round(r.top))).size,",
+    "left:Math.min(...rects.map(r=>r.left))-box.left,",
+    "right:box.right-Math.max(...rects.map(r=>r.right))};})()"
+  )
+  app$wait_for_js(
+    paste0("(", linked_rows, ").rows === 1"),
+    timeout = 15000
+  )
+  one_row <- app$get_js(linked_rows)
+  expect_gte(one_row$count, 3L)
+  expect_identical(one_row$rows, 1L)
+  expect_lt(one_row$left, 2)
+  expect_lt(one_row$right, 2)
+  ## Dragging the window edge must not wrap the last pane: the grid used to
+  ## keep its old pixel size until the width crossed a 24px step, so for part
+  ## of every drag the panes no longer fitted and the third dropped a row.
+  for (width in c(1290, 1263, 1241, 1218, 1197, 1175, 1156)) {
+    app$get_chromote_session()$set_viewport_size(width = width, height = 733)
+    app$wait_for_js(
+      sprintf("window.innerWidth === %d", width),
+      timeout = 10000
+    )
+    app$wait_for_js(
+      paste0("(", linked_rows, ").rows === 1"),
+      timeout = 10000
+    )
+  }
+  ## Dragging the window's bottom edge must resize the panes continuously. The
+  ## grid used to quantise the height to 24px, so the panes lagged the window
+  ## and then jumped a whole step.
+  pane_height <- function() {
+    app$get_js(paste0(
+      "Math.round(document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-panes > .cv-pane:not(.cv-hidden)').getBoundingClientRect().height)"
+    ))
+  }
+  settled_pane_height <- function() {
+    previous <- -1
+    for (attempt in 1:30) {
+      current <- pane_height()
+      if (current == previous) {
+        return(current)
+      }
+      previous <- current
+      Sys.sleep(0.1)
+    }
+    current
+  }
+  app$get_chromote_session()$set_viewport_size(width = 1290, height = 800)
+  app$wait_for_js("window.innerHeight === 800", timeout = 10000)
+  pane_heights <- vapply(
+    seq(800, 704, by = -12),
+    function(height) {
+      app$get_chromote_session()$set_viewport_size(
+        width = 1290,
+        height = height
+      )
+      app$wait_for_js(
+        sprintf("window.innerHeight === %d", height),
+        timeout = 10000
+      )
+      settled_pane_height()
+    },
+    numeric(1)
+  )
+  expect_lt(pane_heights[length(pane_heights)], pane_heights[1])
+  expect_true(all(diff(pane_heights) <= 0))
+  expect_lte(max(abs(diff(pane_heights))), 14)
+  ## The panes are sized from where they sit in the page, not on screen: a
+  ## resize at the bottom of a scrolled page used to grow them by the scroll
+  ## offset each time, which let the page scroll further.
+  app$get_chromote_session()$set_viewport_size(width = 1290, height = 700)
+  app$wait_for_js("window.innerHeight === 700", timeout = 10000)
+  unscrolled_height <- settled_pane_height()
+  for (width in c(1285, 1280, 1275)) {
+    app$run_js(paste0(
+      "(() => {const page=document.querySelector('.content-wrapper');",
+      "page.scrollTop=page.scrollHeight;})()"
+    ))
+    app$get_chromote_session()$set_viewport_size(width = width, height = 700)
+    app$wait_for_js(sprintf("window.innerWidth === %d", width), timeout = 10000)
+    expect_equal(settled_pane_height(), unscrolled_height, tolerance = 0.01)
+  }
+  ## Where the panes need a second row, the last one starts at the left edge
+  ## like the row above it instead of floating in the middle.
+  app$get_chromote_session()$set_viewport_size(width = 1024, height = 733)
+  app$wait_for_js("window.innerWidth === 1024", timeout = 10000)
+  app$wait_for_js(
+    paste0("(", linked_rows, ").rows === 2"),
+    timeout = 10000
+  )
+  last_pane_left <- app$get_js(paste0(
+    "(() => {const box=document.querySelector(",
+    "'#shiny-tab-coordinated_views .cv-panes').getBoundingClientRect();",
+    "const panes=Array.from(document.querySelectorAll(",
+    "'#shiny-tab-coordinated_views .cv-panes > .cv-pane:not(.cv-hidden)'));",
+    "return panes[panes.length-1].getBoundingClientRect().left-box.left;})()"
+  ))
+  expect_lt(last_pane_left, 2)
+  app$run_js("document.getElementById('test-classic-scrollbar').remove()")
+  app$get_chromote_session()$set_viewport_size(width = 1619, height = 950)
+  app$wait_for_js(
+    "window.innerWidth === 1619 && window.innerHeight === 950",
+    timeout = 10000
+  )
 
   ## Legend counts are data, not disabled decoration, so they use the readable
   ## secondary text colour instead of the low-contrast tertiary token.
@@ -588,6 +801,9 @@ test_that("shared selection actions and layouts survive navigation and resize", 
     "document.getElementById('overview_projection_point_color')?.value === 'seurat_clusters'",
     timeout = 30000
   )
+  expect_identical(projection_cells(), kept_projection)
+  app$click(selector = "#overview_projection_clear_selection")
+  app$wait_for_js(paste0(projection, ".capture().selection.cells.length === 0"))
   expect_true(isTRUE(app$get_js(
     "document.getElementById('overview_projection_keep_square') !== null"
   )))
@@ -784,51 +1000,7 @@ test_that("shared selection actions and layouts survive navigation and resize", 
     "window.innerWidth === 1200 && window.innerHeight === 800",
     timeout = 10000
   )
-  app$wait_for_js(
-    paste0(
-      "document.querySelector('#shiny-tab-overview ",
-      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
-      "?.getBoundingClientRect().width > 100"
-    ),
-    timeout = 30000
-  )
-  app$click(
-    selector = paste0(
-      "#shiny-tab-overview .cv-pane:not(.cv-hidden) ",
-      ".cv-tbtn[data-act='box']"
-    )
-  )
-  projection_box <- app$get_js(paste0(
-    "(() => {const r=document.querySelector('#shiny-tab-overview ",
-    ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)').getBoundingClientRect();",
-    "return {x1:r.left+r.width*.08,y1:r.top+r.height*.08,",
-    "x2:r.right-r.width*.08,y2:r.bottom-r.height*.08};})()"
-  ))
-  app$run_js(sprintf(
-    paste0(
-      "(() => {const pane=document.querySelector('#shiny-tab-overview ",
-      ".cv-pane:not(.cv-hidden)');",
-      "pane.dispatchEvent(new MouseEvent('mousedown',",
-      "{bubbles:true,button:0,clientX:%f,clientY:%f}));",
-      "window.dispatchEvent(new MouseEvent('mousemove',",
-      "{bubbles:true,buttons:1,clientX:%f,clientY:%f}));",
-      "window.dispatchEvent(new MouseEvent('mouseup',",
-      "{bubbles:true,button:0,clientX:%f,clientY:%f}));})()"
-    ),
-    projection_box$x1,
-    projection_box$y1,
-    projection_box$x2,
-    projection_box$y2,
-    projection_box$x2,
-    projection_box$y2
-  ))
-  app$wait_for_js(
-    paste0(
-      "document.querySelector('#shiny-tab-overview ",
-      ".cerebro-selection-composition-drag')?.getClientRects().length > 0"
-    ),
-    timeout = 10000
-  )
+  select_projection()
   app$wait_for_idle(timeout = 10000)
   card_before <- app$get_js(paste0(
     "(() => {const r=document.querySelector('#shiny-tab-overview ",
@@ -943,16 +1115,42 @@ test_that("shared selection actions and layouts survive navigation and resize", 
 
   app$get_chromote_session()$set_viewport_size(width = 1200, height = 800)
   projection_share <- '#shiny-tab-overview .cerebro-toolbar-share'
+  # A click picks a cell; it must keep the brushed outline.
+  app$run_js(paste0(
+    "(() => {const pane=document.querySelector('#shiny-tab-overview ",
+    ".cv-pane:not(.cv-hidden)');const r=pane.querySelector('canvas:not(.cv-mini)')",
+    ".getBoundingClientRect();const at={bubbles:true,button:0,",
+    "clientX:r.left+r.width/2,clientY:r.top+r.height/2};",
+    "pane.dispatchEvent(new MouseEvent('mousedown',at));",
+    "window.dispatchEvent(new MouseEvent('mouseup',at));})()"
+  ))
   selected_projection <- download_view_config(projection_share)
   expect_identical(selected_projection$schema, "cerebronexus-specialist-view")
   expect_identical(selected_projection$page$id, "overview_projection")
   expect_gt(length(selected_projection$selection$cells), 0L)
+  expect_false(is.null(selected_projection$selection$geometry))
+  app$click(selector = "#overview_projection_focus_selection")
+  app$wait_for_js(paste0(projection, ".capture().view.viewport !== null"))
+  zoomed <- app$get_js(paste0(projection, ".capture().view.viewport"))
+  app$click(selector = 'a[href="#shiny-tab-groups"]')
+  app$wait_for_js(
+    "document.getElementById('shiny-tab-groups').classList.contains('active')"
+  )
+  app$click(selector = 'a[href="#shiny-tab-overview"]')
+  app$wait_for_js(paste0(projection, "?.ready()"), timeout = 30000)
+  expect_identical(
+    app$get_js(paste0(projection, ".capture().view.viewport")),
+    zoomed
+  )
+  expect_identical(projection_focus(), "true")
   app$click(selector = "#overview_projection_clear_selection")
   app$wait_for_js(paste0(
     "document.getElementById('overview_projection_selection_guide')",
     ".getClientRects().length > 0 && ",
     "!document.querySelector('#shiny-tab-overview .cerebro-selection-composition-drag')"
   ))
+  expect_null(app$get_js(paste0(projection, ".capture().view.viewport")))
+  expect_identical(projection_focus(), "false")
   cleared_projection <- download_view_config(projection_share)
   expect_length(cleared_projection$selection$cells, 0L)
   expect_null(cleared_projection$selection$geometry)

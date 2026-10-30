@@ -2,13 +2,31 @@ viewerOverviewNumber <- function(value) {
   formatC(value, format = "f", digits = 0, big.mark = ",")
 }
 
-viewerOverviewBars <- function(summary) {
+# The fill of each bar is the colour its category has on the other pages.
+# `colors` is a vector named by category; a category without a usable entry
+# keeps the stylesheet's accent colour. Only a hex colour, an R colour name or
+# rgb[a]()/hsl[a]() of plain numbers is accepted, because the value is written
+# into a style attribute: url() and expression() never get through.
+viewerOverviewFills <- function(labels, colors) {
+  if (is.null(colors) || is.null(names(colors))) {
+    return(rep("", length(labels)))
+  }
+  picked <- unname(as.character(colors[labels]))
+  usable <- !is.na(picked) &
+    (grepl("^#([0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", picked) |
+      grepl("^(rgb|hsl)a?\\([0-9., %]+\\)$", picked) |
+      picked %in% grDevices::colors())
+  ifelse(usable, paste0(";background:", picked), "")
+}
+
+viewerOverviewBars <- function(summary, colors = NULL) {
   if (is.null(summary) || !length(summary$counts)) {
     return(NULL)
   }
   counts <- unname(summary$counts)
   labels <- names(summary$counts)
   percent <- 100 * counts / summary$total
+  fills <- viewerOverviewFills(labels, colors)
   # A sample column can have hundreds of categories. One vectorised string per
   # row renders them several times faster than one tag tree per row.
   rows <- paste0(
@@ -21,7 +39,9 @@ viewerOverviewBars <- function(summary) {
     '  <span class="dataset-bar-track" aria-hidden="true">\n',
     '    <span style="width:',
     vapply(percent, format, character(1), scientific = FALSE, trim = TRUE),
-    '%"></span>\n',
+    '%',
+    fills,
+    '"></span>\n',
     '  </span>\n',
     '  <span class="dataset-bar-value">\n',
     '    ',
@@ -167,7 +187,10 @@ viewerOverviewUI <- function(info) {
               class = "dataset-panel",
               tags$h3("Sample composition"),
               tags$p(class = "dataset-note", "Cells per sample"),
-              viewerOverviewBars(overview$sample)
+              htmltools::tagAppendChild(
+                shiny::uiOutput("load_data_sample_plot"),
+                viewerOverviewBars(overview$sample)
+              )
             )
           },
           if (length(annotations)) {

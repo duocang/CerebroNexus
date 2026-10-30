@@ -1191,4 +1191,17 @@
     });
     install();
   });
+  // While the window is dragged, widgets that resize themselves late (plotly,
+  // DataTables) keep their old width for a few frames and push the page into a
+  // horizontal scrollbar that flashes in and out. custom.css clips the page
+  // sideways only while this class is on, so a table that really is wider than
+  // its box stays reachable once the drag ends.
+  var resizingTimer = null;
+  window.addEventListener("resize", function () {
+    document.documentElement.classList.add("cerebro-resizing");
+    window.clearTimeout(resizingTimer);
+    resizingTimer = window.setTimeout(function () {
+      document.documentElement.classList.remove("cerebro-resizing");
+    }, 300);
+  });
 }());

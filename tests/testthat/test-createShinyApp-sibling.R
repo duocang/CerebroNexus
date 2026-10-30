@@ -509,7 +509,13 @@ render_bundle_spatial_background <- function(
   config,
   background_image,
   background_image_allowlist,
-  session = NULL
+  session = NULL,
+  background_descriptor = list(
+    source = "external",
+    label = basename(background_image),
+    path = background_image,
+    bounds = NULL
+  )
 ) {
   renderer <- new.env(parent = globalenv())
   renderer$Cerebro.options <- config
@@ -549,6 +555,7 @@ render_bundle_spatial_background <- function(
       plot_parameters = list(
         color_variable = "score",
         background_image = background_image,
+        background_descriptor = background_descriptor,
         background_image_allowlist = background_image_allowlist,
         n_dimensions = 2,
         x_range = NULL,
@@ -2561,6 +2568,20 @@ test_that("external spatial images render from disk without an HTTP mapping", {
   )
   expect_identical(registered$data$mime, "image/png")
   expect_gt(registered$data$bytes, 0)
+
+  ## The same configured, allowlisted path draws nothing when no descriptor
+  ## was resolved for the current dataset / spatial / image selection.
+  session <- fake_private_session()
+  unresolved <- render_bundle_spatial_background(
+    app,
+    config,
+    stored,
+    stored,
+    session = session,
+    background_descriptor = NULL
+  )
+  expect_null(unresolved$background_image)
+  expect_null(attr(session, "registered")$name)
 })
 
 test_that("forged spatial backgrounds cannot read unconfigured files", {

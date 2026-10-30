@@ -87,7 +87,6 @@
   var panels = [];              // [{key, canvas, ctx, spaceId, W, H, sx, sy, lasso, drag, moved}]
   var gpuAcceleration = true;   // session preference, independent of data/page
   var sel = null;               // Set of selected cell indices (null = none)
-  var selectionZoomed = false;
   var selectionSource = null;   // label of the lens that created the active cohort
   var selectionSourceSpace = null; // space id of the lens that created it
   var pick = null;              // hovered/clicked cell index
@@ -212,7 +211,7 @@
   var groupFilter = {};         // groupName -> Set(allowed level idx); absent = all
   var spaceById = {};
   var resizeObserver = null;    // fires when the tab becomes visible / resizes
-  var resizeTimer = null;
+  var resizeObserverFrame = 0;
   var focusResizeTimer = null;
   var focusAnimating = false;
   // Each spatial instance owns `_imgEl`, `_imgReady`, `_imgState` and its image
@@ -953,7 +952,7 @@
     if (sel) {
       var s = new Set();
       sel.forEach(function (i) { if (panels.some(function (p) { return p.spaceId && shown(i, p); })) s.add(i); });
-      setSelection(s.size ? s : null);
+      setSelection(s.size ? s : null, null, { keepPending: true });
     } else {
       drawAll();
     }
@@ -1102,10 +1101,9 @@
     return CBGeom.screenToUnit(p.view, panelRect(p), lasso);
   }
   function lassoToScreen(p) {
-    var lasso = p.lassoData || p.lasso;
-    if (!lasso || !p._SX || !p._SY) return lasso;
-    if (!p.lassoData) return lasso;
-    return CBGeom.unitToScreen(p.view, panelRect(p), lasso);
+    if ((p.drag && p.moved) || !p.lassoData) return p.lasso;
+    if (!p._SX || !p._SY) return p.lassoData;
+    return CBGeom.unitToScreen(p.view, panelRect(p), p.lassoData);
   }
 
   // The rotation project() applies, as a function. Anything that has to land
@@ -1173,8 +1171,8 @@
     }
     syncCursors();
   }
-  // Size one panel to the rectangle assigned by resizeAll. Below 420px the
-  // header cannot hold title + toolbar, so the toolbar floats vertically.
+  // Size one panel to the rectangle assigned by resizeAll. Below 420px it is
+  // narrow, which shrinks the minimap.
   function resizePanel(p, width, height) {
     var dpr = window.devicePixelRatio || 1;
     p.W = width; p.H = height;
@@ -2581,11 +2579,20 @@
     var sp = source.spaceId && spaceById[source.spaceId];
     return (sp && sp.label) || source.spaceId || '';
   }
-  function setSelection(s, source) {
+  // `options.keepPending`: a change the data or the controls make (a filter, a
+  // subsample) is not the user's selection, so a restored view keeps waiting.
+  function setSelection(s, source, options) {
+    // A selection made while a restored view waits for its render wins over
+    // the restored one.
+    if (!(options && options.keepPending)) dropPendingSingleState(singleActive);
     sel = (s && s.size) ? s : null;
     if (!sel) {
       selectionSource = null;
       selectionSourceSpace = null;
+      // No selection, no outline: nothing is left for it to outline.
+      clearLassos();
+      // No selection, no Focus: every way of losing it is a Clear.
+      leaveFocus();
     } else if (source) {
       selectionSource = selectionSourceLabel(source);
       if (typeof source === 'string') selectionSourceSpace = null;
@@ -2633,14 +2640,14 @@
       panels.forEach(function (p) { if (p.key === focusPanel) focused = p; });
       var sp = focused && spaceById[focused.spaceId];
       if (text) {
-        text.textContent = 'Focused view: ' + ((sp && sp.label) || 'linked lens') +
+        text.textContent = 'Enlarged view: ' + ((sp && sp.label) || 'linked lens') +
           ' · other views remain visible and linked.';
       }
       if (overview) overview.style.display = '';
     } else {
       if (text) {
         text.textContent = 'Drag in any view to create an active cohort. ' +
-          'Use Focus to enlarge one lens while keeping the others linked.';
+          'Use Enlarge to make one view bigger while the others stay linked.';
       }
       if (overview) overview.style.display = 'none';
     }
@@ -2653,18 +2660,31 @@
     var hasNiche = !hasSel && pick != null && !!nicheSet;
     revealEl($('cv-selactions'), hasSel || hasNiche);
   }
-  // Zoom one requested panel to the bounding box of its selected cells.
-  function setSelectionZoomed(on) {
-    selectionZoomed = !!on;
+  // Focus zooms panels to the selection. Each focused panel keeps the view it
+  // had before (p.focusFrom), so Focus is on exactly while one does, and leaving
+  // it -- Focus again, Clear, or losing the selection -- puts every panel back.
+  // Zooming or panning inside Focus stays inside it.
+  function syncFocusButtons() {
+    var on = panels.some(function (p) { return p.spaceId && p.focusFrom; });
     document.querySelectorAll(
       '[data-cell-view-action="focus"], #cv-zsel'
     ).forEach(function (button) {
-      button.classList.toggle('is-on', selectionZoomed);
-      button.setAttribute('aria-pressed', selectionZoomed ? 'true' : 'false');
+      button.classList.toggle('is-on', on);
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+    return on;
   }
+  function leaveFocus() {
+    panels.forEach(function (p) {
+      if (!p.focusFrom) return;
+      p.view = p.focusFrom.view; p.focusFrom = null; project(p);
+    });
+    syncFocusButtons();
+  }
+  // Zoom one requested panel to the bounding box of its selected cells.
   function zoomToSelection(p) {
     if (!canZoomPanel(p)) return false;
+    if (!p.focusFrom) p.focusFrom = { view: p.view };
     var u = spaceById[p.spaceId]._unit;
     var nx0 = Infinity, nx1 = -Infinity, ny0 = Infinity, ny1 = -Infinity;
     sel.forEach(function (i) {
@@ -2676,10 +2696,46 @@
     p.view = clampView(p, CBGeom.fitView(
       nx0, nx1, ny0, ny1, 1.25, 0.02
     ));
-    setSelectionZoomed(true);
+    syncFocusButtons();
     project(p);
     drawAll();
     return true;
+  }
+  // Draws focusPanel: the enlarged pane first, the others as its context, and
+  // every Enlarge button and role badge to match.
+  function paintEnlarged() {
+    panels.forEach(function (p) {
+      if (!p.pane) return;
+      var primary = !!focusPanel && p.key === focusPanel;
+      var context = !!focusPanel && p.key !== focusPanel && !!p.spaceId;
+      p.pane.classList.toggle('cv-focus-primary', primary);
+      p.pane.classList.toggle('cv-focus-context', context);
+      p.pane.style.order = primary ? '0' : (context ? '1' : '');
+      var btn = p.pane.querySelector('.cv-focus-btn');
+      if (btn) {
+        btn.classList.toggle('is-on', primary);
+        btn.setAttribute('aria-pressed', primary ? 'true' : 'false');
+        var tip = primary ? 'Restore the overview' : 'Enlarge this view';
+        btn.setAttribute('data-tip', tip);
+        btn.setAttribute('aria-label', tip);
+        var label = btn.querySelector('.cv-focus-label');
+        if (label) label.textContent = primary ? 'Restore' : 'Enlarge';
+      }
+      var role = p.pane.querySelector('.cv-role-badge');
+      if (role) {
+        role.classList.remove('is-focus', 'is-context');
+        if (focusPanel && p.spaceId) {
+          role.style.display = '';
+          role.textContent = primary ? 'ENLARGED' : 'CONTEXT';
+          role.classList.add(primary ? 'is-focus' : 'is-context');
+        } else {
+          role.style.display = 'none';
+          role.textContent = '';
+        }
+      }
+    });
+    var host = panels[0] && panels[0].pane && panels[0].pane.parentElement;
+    if (host) host.classList.toggle('cv-has-focus', !!focusPanel);
   }
   // Promote one lens without leaving the linked workspace. The focused pane
   // grows; every other pane remains visible as context and keeps its viewport.
@@ -2703,38 +2759,7 @@
     focusAnimating = true;
     if (host) host.classList.add('cv-focus-transitioning');
     focusPanel = (focusPanel === key) ? null : key;
-    panels.forEach(function (p) {
-      if (!p.pane) return;
-      var primary = !!focusPanel && p.key === focusPanel;
-      var context = !!focusPanel && p.key !== focusPanel && !!p.spaceId;
-      p.pane.classList.toggle('cv-focus-primary', primary);
-      p.pane.classList.toggle('cv-focus-context', context);
-      p.pane.style.order = primary ? '0' : (context ? '1' : '');
-      var btn = p.pane.querySelector('.cv-focus-btn');
-      if (btn) {
-        var on = primary;
-        btn.classList.toggle('is-on', on);
-        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-        var tip = on ? 'Exit focus and return to overview' : 'Make this the focus';
-        btn.setAttribute('data-tip', tip);
-        btn.setAttribute('aria-label', tip);
-        var label = btn.querySelector('.cv-focus-label');
-        if (label) label.textContent = on ? 'Exit focus' : 'Focus';
-      }
-      var role = p.pane.querySelector('.cv-role-badge');
-      if (role) {
-        role.classList.remove('is-focus', 'is-context');
-        if (focusPanel && p.spaceId) {
-          role.style.display = '';
-          role.textContent = primary ? 'FOCUS' : 'CONTEXT';
-          role.classList.add(primary ? 'is-focus' : 'is-context');
-        } else {
-          role.style.display = 'none';
-          role.textContent = '';
-        }
-      }
-    });
-    if (host) host.classList.toggle('cv-has-focus', !!focusPanel);
+    paintEnlarged();
     updateFocusButtons();
     renderWorkspaceGuide();
     resizeAll();
@@ -2818,21 +2843,9 @@
     sel.forEach(function (i) { if (u.ok[i]) any = true; });
     return any;
   }
-  function resetZoom(only) {
-    var any = false;
-    panels.forEach(function (p) {
-      if (only && p !== only) return;
-      if (p.view) { p.view = null; project(p); any = true; }
-    });
-    setSelectionZoomed(false);
-    if (any) drawAll();
-  }
   function toggleSelectionFocus(id) {
     if (id && singleActive !== id) return;
-    if (selectionZoomed) {
-      resetZoom();
-      return;
-    }
+    if (syncFocusButtons()) { leaveFocus(); drawAll(); return; }
     panels.forEach(function (panel) {
       if (canZoomPanel(panel)) zoomToSelection(panel);
     });
@@ -2911,7 +2924,7 @@
   // space on a data-set switch -- and a field cleared in only one of them
   // survives into a data set it was never computed for.
   function clearPanelView(p) {
-    p.view = null; p.lasso = null; p.lassoData = null;
+    p.view = null; p.lasso = null; p.lassoData = null; p.focusFrom = null;
     p.rot = null; p.depth = null; p.miniBg = null;
   }
   function resetSpaceViews(spaceId) {
@@ -2919,6 +2932,7 @@
       if (p.spaceId !== spaceId) return;
       clearPanelView(p);
     });
+    syncFocusButtons();
   }
 
   // Zoom about a screen point, keeping whatever is under it fixed — the gesture
@@ -2926,7 +2940,6 @@
   // panel centre gives the plain in/out of the toolbar buttons.
   function zoomAt(p, mx, my, factor) {
     if (!p._SX || !p._SY) return;
-    setSelectionZoomed(false);
     var zx = (mx - p._sox) / p._SX;
     var zy = (p._soy + p._SY - my) / p._SY;
     var next = CBGeom.zoomView(p.view, factor, [zx, zy], 0.04);
@@ -4621,12 +4634,9 @@
         p.canvas.classList.add('cv-grabbing');
         return;
       }
-      // a fresh brush supersedes any committed lasso (this panel's is replaced,
-      // the other panel's is dropped)
-      panels.forEach(function (o) {
-        if (o !== p) { o.lasso = null; o.lassoData = null; }
-      });
-      p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start]; p.lassoData = null;
+      // The committed outline stays until this brush selects (it replaces every
+      // panel's) or comes up empty (the selection goes); a click keeps it.
+      p.drag = true; p.moved = false; p.start = pos(e); p.lasso = [p.start];
     });
     window.addEventListener('mousemove', function (e) {
       if (p.orbiting) {
@@ -4695,8 +4705,7 @@
       }
       if (!p.drag) return;
       p.drag = false;
-      if (!D || !p.ok) { p.lasso = null; p.lassoData = null; return; }  // not projected yet
-      var keep = false;
+      if (!D || !p.ok) { p.lasso = null; return; }  // not projected yet
       if (p.moved && p.lasso && p.lasso.length > 2) {
         ensureScreenProjection(p);
         var s = new Set();
@@ -4707,9 +4716,11 @@
         // BEFORE setSelection so its drawAll() drops the stale orange pick ring
         // (that ring is not gated on `!sel`). An empty lasso keeps the pick.
         // a lasso is a different question from "tell me about this one cell"
+        var brushed = s.size ? lassoToUnit(p, p.lasso) : null;
+        clearLassos();
         if (s.size) {
-          pick = null; unpinTip(); closeCard(); setSelection(s, p);
-          p.lassoData = lassoToUnit(p, p.lasso); keep = true;
+          pick = null; unpinTip(); closeCard();
+          p.lassoData = brushed; setSelection(s, p);
         } else { setSelection(null); }
       } else {
         var m = pos(e), k = nearest(p, m[0], m[1]);
@@ -4722,7 +4733,7 @@
         // it is also the click that undoes it.
         pickCell(p, k);
       }
-      if (!keep) { p.lasso = null; p.lassoData = null; }
+      p.lasso = null;
       draw(p);
     });
   }
@@ -4768,7 +4779,9 @@
       }
     });
     p.pane.addEventListener('dblclick', function (e) {
-      if (!e.target.closest('.cv-canvas-wrap') || !canFocusPanel() || !p.spaceId) return;
+      // The plot, not the toolbar and badges floating on it.
+      if (!e.target.closest('.cv-canvas-wrap') || e.target.closest('button') ||
+          !canFocusPanel() || !p.spaceId) return;
       e.preventDefault();
       setFocusPanel(p.key);
     });
@@ -4813,13 +4826,17 @@
     // Re-project + redraw whenever the panes gain/lose size — critically, when
     // the tab flips from display:none to visible (0 -> real width).
     if (!resizeObserver) {
+      // Next frame, not after a 30ms debounce: the observer fires before paint,
+      // so a container that changed size (a collapsing sidebar) waits one frame
+      // for its panes instead of three. Bursts still coalesce into one pass.
       resizeObserver = new ResizeObserver(function () {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(function () {
+        if (resizeObserverFrame) return;
+        resizeObserverFrame = requestAnimationFrame(function () {
+          resizeObserverFrame = 0;
           if (!D || focusAnimating) return;
           resizeAll();
           reportWorkspaceReady();
-        }, 30);
+        });
       });
       panels.forEach(function (p) {
         if (p.pane) resizeObserver.observe(p.pane);
@@ -6298,29 +6315,7 @@
     // A new data set is a new set of spaces; the previous focus may no longer
     // exist in the new layout.
     focusPanel = null;
-    panels.forEach(function (p) {
-      if (p.pane) {
-        p.pane.classList.remove('cv-focus-primary', 'cv-focus-context');
-        p.pane.style.order = '';
-      }
-      var fb = p.pane && p.pane.querySelector('.cv-focus-btn');
-      if (fb) {
-        fb.classList.remove('is-on');
-        fb.setAttribute('aria-pressed', 'false');
-        fb.setAttribute('data-tip', 'Make this the focus');
-        fb.setAttribute('aria-label', 'Make this the focus');
-        var fl = fb.querySelector('.cv-focus-label');
-        if (fl) fl.textContent = 'Focus';
-      }
-      var rb = p.pane && p.pane.querySelector('.cv-role-badge');
-      if (rb) {
-        rb.style.display = 'none';
-        rb.textContent = '';
-        rb.classList.remove('is-focus', 'is-context');
-      }
-    });
-    var host0 = panels[0] && panels[0].pane && panels[0].pane.parentElement;
-    if (host0) host0.classList.remove('cv-has-focus');
+    paintEnlarged();
     panels.forEach(function (p, i) {
       if (i < order.length) {
         var reappearing = p.pane && p.pane.classList.contains('cv-hidden');
@@ -6351,6 +6346,10 @@
       if (btn) btn.style.display = (showTk && panelIsTrekker(p)) ? '' : 'none';
     });
     updateFocusButtons();
+    // layoutPanels() is also reached when a projection, spatial section or
+    // clone layout replaces the view under the panels; that clears focusFrom,
+    // so the Focus toggle must follow in the same pass.
+    syncFocusButtons();
     syncOrbitButtons();
     // A panel may now point at a different section while its box dimensions are
     // unchanged. Force the next resize pass to project the new coordinates.
@@ -6359,7 +6358,39 @@
   // Size visible panels from the available width. Each canvas remains at least
   // 300px wide when possible and extra spaces flow onto later rows.
   var MIN_SIDE = 300;
+  var MIN_SIDE_HARD = 240;
+  // Width a classic scrollbar will take from `host` once it shows. Overlay
+  // scrollbars (and one already showing, which clientWidth excludes) reserve 0.
+  // The probe forces a layout, and the width only changes with the zoom level
+  // (devicePixelRatio), so measure it once per zoom instead of once per pass.
+  var _scrollbarProbe = { ratio: 0, width: 0 };
+  function scrollbarReserve(host) {
+    if (!host || !document.body) return 0;
+    var ratio = window.devicePixelRatio || 1;
+    if (_scrollbarProbe.ratio !== ratio) {
+      var probe = document.createElement('div');
+      probe.style.cssText = 'position:absolute;visibility:hidden;width:100px;' +
+        'height:100px;overflow:scroll;';
+      document.body.appendChild(probe);
+      _scrollbarProbe = { ratio: ratio, width: probe.offsetWidth - probe.clientWidth };
+      document.body.removeChild(probe);
+    }
+    return Math.max(0, _scrollbarProbe.width - (host.offsetWidth - host.clientWidth));
+  }
   var VIEWPORT_GUTTER = 7;
+  // Where the panes start inside the scrolling page, not on screen. The screen
+  // position moves with the scroll, and sizing from it made every resize of a
+  // scrolled page grow the panes by the scroll offset (13px per resize at the
+  // bottom of a page that overflows by 13px), which let the page scroll further.
+  function contentTop(panes, scrollHost) {
+    var top = panes.getBoundingClientRect().top;
+    return scrollHost
+      ? top - scrollHost.getBoundingClientRect().top + scrollHost.scrollTop
+      : top;
+  }
+  function visibleHeight(scrollHost) {
+    return scrollHost ? scrollHost.getBoundingClientRect().height : window.innerHeight;
+  }
   // Prefer a balanced packing whenever it keeps at least this much of the
   // largest available panel size. This prevents sparse final rows without
   // forcing plots into a materially smaller layout.
@@ -6380,7 +6411,13 @@
   // So: one corrective pass per genuine change of those inputs, and no more.
   // The first pass sizes from the header as it was; the second takes account of
   // a wrap that pass caused; anything after that is the loop feeding itself.
-  var _layoutKey = null, _layoutPass = 0;
+  var _layoutKey = null, _layoutPass = 0, _layoutHeader = -1;
+  // Height of everything in the first pane that is not its canvas.
+  function gridOverhead(vis) {
+    var pane = vis[0] && vis[0].pane, canvas = vis[0] && vis[0].canvas;
+    return pane && canvas
+      ? Math.max(0, pane.offsetHeight - canvas.clientHeight) : 58;
+  }
   //
   // The width and height are QUANTISED to 24px. A classic (space-taking)
   // scrollbar is the other way this feeds back on itself: sizing the grid to
@@ -6391,15 +6428,25 @@
   // be reproduced in a headless browser, whose scrollbars are overlays and take
   // no width at all. Ignoring sub-24px changes costs nothing on a grid of
   // hundreds of pixels and leaves no way for that cycle to continue.
+  //
+  // The width is the exception: the grid reserves the scrollbar's width up
+  // front (scrollbarReserve), so a scrollbar appearing no longer changes the
+  // width it is fitted to and cannot restart the cycle. Quantising the width
+  // anyway left the panes at their old pixel size while the container shrank
+  // by up to 24px, so the last pane wrapped onto a second row for part of every
+  // drag. Fit it to the pixel instead.
+  //
+  // The same goes for the heights. Quantised to 24px they made a vertical drag
+  // move in steps (the panes lagged the window by up to 24px, then jumped), and
+  // the one-corrective-pass rule below already stops the header-wrap cycle.
   function layoutInputs(host) {
-    var q = function (v) { return Math.round(v / 24); };
     return [
-      q(host ? host.clientWidth : 0),
-      q(host ? host.getBoundingClientRect().top : 0),
+      Math.round(host ? host.getBoundingClientRect().width : 0),
+      Math.round(host ? contentTop(host, host.closest('.content-wrapper')) : 0),
       ($('cv-legend') || {}).offsetHeight || 0,
       ($('cv-cbar') && $('cv-cbar').style.display !== 'none')
         ? $('cv-cbar').offsetHeight : 0,
-      q(window.innerHeight),
+      Math.round(window.innerHeight),
       panels.filter(function (p) { return p.spaceId; }).length,
       focusPanel || '',
       keepPlotsSquare ? 'square' : 'fluid'
@@ -6462,14 +6509,29 @@
     if (!k) return false;
     var availW = panes.clientWidth;
     if (availW < 20) return false;           // tab still hidden; observer re-runs
+    // Controls above the panes can render after the first pass (a selector row,
+    // a wrapped legend) and push the panes down without resizing any element
+    // the observer watches, which left them sized for a window taller than the
+    // one they sit in. The page itself grows then, so watch it as well; the
+    // layout key makes a pass that finds nothing new cost almost nothing.
+    var page = panes.closest('.tab-pane');
+    if (resizeObserver && page && !page._cvResizeObserved) {
+      page._cvResizeObserved = true;
+      resizeObserver.observe(page);
+    }
     var key = layoutInputs(panes);
+    var headerChrome = gridOverhead(vis);
     if (key === _layoutKey) {
-      if (_layoutPass >= 2) return false;
+      // The corrective pass exists for a pane header that wrapped because the
+      // last pass narrowed the plot. With the header unchanged there is
+      // nothing to correct, and repeating the pass only redraws every canvas.
+      if (_layoutPass >= 2 || headerChrome === _layoutHeader) return false;
       _layoutPass++;
     } else {
       _layoutKey = key;
       _layoutPass = 1;
     }
+    _layoutHeader = headerChrome;
     // CSS owns the flex layout. Read its actual gap so the width calculation
     // cannot drift from the browser and push the last pane onto a new row.
     var gap = parseFloat(getComputedStyle(panes).columnGap) || 0;
@@ -6477,20 +6539,20 @@
     // 18px narrower than its column track. The canvas takes that full width;
     // height is still fitted to the viewport by the existing overview logic.
     var chromeX = 18;
-    var firstCanvas = vis[0] && vis[0].canvas;
     var firstPane = vis[0] && vis[0].pane;
-    var overhead = firstPane && firstCanvas
-      ? Math.max(0, firstPane.offsetHeight - firstCanvas.clientHeight) : 58;
+    var overhead = headerChrome;
     var scrollHost = panes.closest('.content-wrapper');
-    var visibleBottom = scrollHost
-      ? scrollHost.getBoundingClientRect().bottom : window.innerHeight;
     var bottomPad = scrollHost
       ? (parseFloat(getComputedStyle(scrollHost).paddingBottom) || 0) : 0;
     var availH = Math.floor(
-      visibleBottom - panes.getBoundingClientRect().top - bottomPad -
+      visibleHeight(scrollHost) - contentTop(panes, scrollHost) - bottomPad -
       2 * VIEWPORT_GUTTER
     );
-    var usableW = availW;
+    // Panes are sized to fill the row exactly, so a classic scrollbar that
+    // appears after this pass (the grid itself makes the page taller) would
+    // push the last pane onto a new row. Keep its width free up front.
+    var usableW = (panes.getBoundingClientRect().width || availW) -
+      scrollbarReserve(scrollHost);
 
     // Overview is a genuine two-dimensional fit: try every possible column
     // count and choose the one that maximises a balanced cell. If there are so
@@ -6499,14 +6561,25 @@
     var overview = !focusPanel
       ? bestOverviewGrid(k, usableW, Math.max(1, availH), chromeX, overhead, gap)
       : null;
-    var columnFloor = focusPanel ? FOCUS_CONTEXT_SIDE : MIN_SIDE;
+    // When even the best grid is below the usual floor, take its columns down
+    // to a hard floor instead of splitting the panels over rows the page has
+    // no height for: a third plot below the fold is worse than a narrow one.
+    var columnFloor = focusPanel ? FOCUS_CONTEXT_SIDE
+      : (overview && overview.side < MIN_SIDE
+        ? Math.max(MIN_SIDE_HARD, overview.side) : MIN_SIDE);
     var availableCols = Math.max(1,
       Math.floor((usableW + gap) / (columnFloor + chromeX + gap)));
     var cols = focusPanel
       ? Math.max(1, Math.min(k + 1, availableCols))
       : Math.max(1, Math.min(overview ? overview.cols : 1, availableCols));
     var single = cols === 1;
-    var colW = (usableW - (cols - 1) * gap) / cols;
+    // Whole pixels that never add up to more than the container: a row filled
+    // to the last fraction of a pixel wraps its final pane when the container
+    // is a fraction narrower. The pixels left over go one each to the first
+    // panes of a row, so the row still ends at the container's edge.
+    var rowW = Math.floor(usableW - (cols - 1) * gap);
+    var colW = Math.floor(rowW / cols);
+    var colExtra = rowW - colW * cols;
     var side = focusPanel
       ? Math.max(FOCUS_CONTEXT_SIDE, Math.floor(colW - chromeX))
       : Math.max(MIN_SIDE, overview ? overview.side : 0);
@@ -6530,12 +6603,10 @@
       overhead = firstPane && canvas
         ? Math.max(0, firstPane.offsetHeight - canvas.clientHeight) : 58;
       scrollHost = panes.closest('.content-wrapper');
-      visibleBottom = scrollHost
-        ? scrollHost.getBoundingClientRect().bottom : window.innerHeight;
       bottomPad = scrollHost
         ? (parseFloat(getComputedStyle(scrollHost).paddingBottom) || 0) : 0;
       availH = Math.floor(
-        visibleBottom - panes.getBoundingClientRect().top - bottomPad - 8
+        visibleHeight(scrollHost) - contentTop(panes, scrollHost) - bottomPad - 8
       );
       if (availH > 0) {
         if (focusPanel) {
@@ -6565,11 +6636,12 @@
     var primaryWidth = cols > 1
       ? Math.max(panelWidth, Math.floor(colW * 2 + gap - chromeX))
       : panelWidth;
-    vis.forEach(function (p) {
+    vis.forEach(function (p, index) {
       var primary = !!focusPanel && p.key === focusPanel;
-      var width = primary ? primaryWidth : panelWidth;
+      var extra = !focusPanel && cols > 1 && index % cols < colExtra ? 1 : 0;
+      var width = primary ? primaryWidth : panelWidth + extra;
       var height = primary ? focusSide : (focusPanel ? side : panelHeight);
-      var paneWidth = primary ? primaryWidth + chromeX : colW;
+      var paneWidth = primary ? primaryWidth + chromeX : colW + extra;
       if (keepPlotsSquare) {
         var squareSide = Math.min(width, height);
         width = squareSide;
@@ -8262,7 +8334,7 @@
     }).filter(function (name) { return name != null; }) : [];
     view.mode = selectMode;
     view.lenses = panels.filter(function (p) { return p.spaceId; }).map(function (p) {
-      return { spaceId: p.spaceId,
+      return { spaceId: p.spaceId, focusFrom: p.focusFrom,
         view: p.view && Object.assign({}, p.view), rot: p.rot && Object.assign({}, p.rot),
         lassoData: p.lassoData && p.lassoData.map(function (q) { return q.slice(); }) };
     });
@@ -8371,7 +8443,6 @@
     var previousFocus = reuseSurface ? focusPanel : null;
     if (!reuseSurface) restoreLinkedSurface();
     singleActive = id; singleSpaceIds = []; singleSpaceModes = {};
-    if (!reuseSurface) setSelectionZoomed(false);
     if (!reuseSurface && !mountSingleSurface(id)) { singleActive = null; return false; }
     var base = singlePayloadBundle(id, payload);
     D = Object.assign({}, base, {
@@ -8507,7 +8578,8 @@
       var lens = window.CBViewState.lensForSpace(saved, p.spaceId, index);
       if (!lens) return;
       p.view = lens.view || null; p.rot = lens.rot || null;
-      p.lassoData = lens.lassoData || null; project(p);
+      p.lassoData = lens.lassoData || null; p.focusFrom = lens.focusFrom || null;
+      project(p);
     });
     if (Array.isArray(payload.selection) && payload.selection.length) {
       var cells = singleIndex(), restored = new Set();
@@ -8516,6 +8588,10 @@
       });
       sel = restored.size ? restored : null;
     }
+    // A reused surface keeps its panels, but the restored lenses may carry a
+    // Focus state of their own: the toggle follows it either way.
+    if (!reuseSurface) (sel ? syncFocusButtons : leaveFocus)();
+    else syncFocusButtons();
     var drawStarted = performance.now();
     timing.preDrawMs = drawStarted - activationStarted;
     renderLegend();
@@ -8569,6 +8645,9 @@
       rebuildingBase = false;
     }
     if (state) restoreWorkspace(state);
+    var focusFrom = state && state._focusFrom || {};
+    panels.forEach(function (p) { p.focusFrom = focusFrom[p.spaceId] || null; });
+    (sel ? syncFocusButtons : leaveFocus)();
     syncSharedScatter();
     syncPointControls();
     drawAll();
@@ -8697,8 +8776,8 @@
       })) return false;
     } else if (!(Array.isArray(data.color) || ArrayBuffer.isView(data.color)) ||
         data.color.length !== D.n) return false;
-    // Legacy payloads may contain duplicate stringified IDs. Their Map-based
-    // alignment must keep its existing semantics rather than assuming an order.
+    // Writing values by position equals the Map-based alignment of the render
+    // only when every key is unique; the index is cached from that render.
     if (!pendingIds && singleIndex().size !== D.n) return false;
     var fieldName = 'single:' + id + ':0', mode;
     if (rgb) {
@@ -8772,22 +8851,25 @@
     view.selection = []; view.lenses = (view.lenses || []).map(function (lens) {
       return Object.assign({}, lens, { lassoData: null });
     });
-    if (singleActive === id) {
-      if (selectionZoomed) resetZoom();
-      clearSelection();
-    }
+    if (singleActive === id) clearSelection();
   }
 
   function captureSingleState(id) {
     var view = singleView(id);
     if (!view || !view.data) return null;
     if (singleActive === id) stashSingleState();
-    var lens = view.lenses && view.lenses[0] || {};
+    // A grouped view has one lens per panel. Save the panel that holds the
+    // brush, so the outline and its view return to that panel.
+    var lenses = view.lenses || [];
+    var panel = Math.max(0, lenses.findIndex(function (candidate) {
+      return candidate && candidate.lassoData && candidate.lassoData.length > 2;
+    }));
+    var lens = lenses[panel] || {};
     var rotation = lens.rot || {};
     return {
       cells: (view.selection || []).slice(),
       geometry: lens.lassoData && lens.lassoData.length > 2 ? {
-        mode: view.mode === 'box' ? 'box' : 'lasso', panel: 0,
+        mode: view.mode === 'box' ? 'box' : 'lasso', panel: panel,
         polygon: lens.lassoData.map(function (point) { return point.slice(); })
       } : null,
       view: {
@@ -8851,19 +8933,28 @@
     return downloadVisiblePanelsPNG(pngFilename(id));
   }
 
-  function applySingleState(id, saved) {
+  // `afterRender` keeps the state for the next render of the view: restored
+  // controls (a grouping column) re-render it, and that render resets the
+  // panels and the brush applied before it. Views are kept per dataset, so a
+  // render of another dataset never receives it.
+  function applySingleState(id, saved, options) {
     var target = registerSingle(id); if (!target) return { selectedCells: 0 };
-    if (!target.data) {
+    if (!target.data || (options && options.afterRender)) {
       target.pendingSavedState = saved;
       return { selectedCells: saved && saved.selection ? saved.selection.cells.length : 0 };
     }
+    // A newer restore replaces a state still waiting for its render.
+    if (target.pendingSavedState !== saved) target.pendingSavedState = null;
     var selection = saved && saved.selection || {};
     var view = saved && saved.view || {};
     var viewport = view.zoomed === false ? null : view.viewport;
+    var panel = selection.geometry && Number(selection.geometry.panel) || 0;
     target.selection = (selection.cells || []).map(String);
     target.hiddenGroups = (view.hidden_groups || []).map(String);
     target.mode = view.mode || 'lasso';
-    target.lenses = [{
+    target.lenses = [];
+    for (var index = 0; index < panel; index++) target.lenses.push({});
+    target.lenses.push({
       view: viewport ? Object.assign({}, viewport) : null,
       rot: view.rotation ? {
         rx: Number(view.rotation.x) || 0, ry: Number(view.rotation.y) || 0
@@ -8872,9 +8963,17 @@
         ? selection.geometry.polygon.map(function (point) {
           return [Number(point[0]), Number(point[1])];
         }) : null
-    }];
+    });
     if (visibleSingleId() === id) activateSingle(id, false, true);
     return { selectedCells: target.selection.length };
+  }
+
+  // A restored view waits for the render its controls trigger. Any trusted
+  // user interaction supersedes that wait, so a later, unrelated render cannot
+  // reapply the saved view over what the user is looking at now.
+  function dropPendingSingleState(id) {
+    var view = id && singleView(id);
+    if (view) view.pendingSavedState = null;
   }
 
   function updateSingleBackground(message) {
@@ -9477,7 +9576,9 @@
     var previousProjections = selectedProjections.slice();
     var previousActiveName = activeSpatial() && activeSpatial()._sampleName;
     if (dataChanged) {
-      resetSingleViews();
+      // Not the single pages: dataShown is also unset on the first Linked
+      // bundle of a data set, and their selections, Focus and lenses must
+      // survive that. A real switch resets them (invalidateDatasetViewState).
       imgStates = {};
       imgChoice = {};
       pendingCloneDetails.clear();
@@ -9795,6 +9896,11 @@
     Object.defineProperty(config, '_pointOverrides', {
       value: { size: pointSizeEdited, opacity: pointOpacityEdited }
     });
+    var focusFrom = {};
+    panels.forEach(function (p) {
+      if (p.spaceId && p.focusFrom) focusFrom[p.spaceId] = p.focusFrom;
+    });
+    Object.defineProperty(config, '_focusFrom', { value: focusFrom });
     return config;
   }
   function workspacePointOverrides(config) {
@@ -10345,6 +10451,18 @@
     if (booted) return true;
     if (typeof Shiny === 'undefined' || !Shiny.addCustomMessageHandler) return false;
     booted = true;
+    // Restored controls programmatically fire input/change; those events are
+    // not trusted, so they must not cancel the one render they are waiting for.
+    // A dialog opened from elsewhere (the share dialog) is not inside the page
+    // and must not cancel it either.
+    ['pointerdown', 'click', 'wheel', 'keydown', 'input', 'change'].forEach(function (type) {
+      document.addEventListener(type, function (event) {
+        if (!event.isTrusted || !singleActive) return;
+        var host = singleHost(singleActive);
+        var pane = host && host.closest && host.closest('.tab-pane');
+        if (pane && pane.contains(event.target)) dropPendingSingleState(singleActive);
+      }, true);
+    });
     var tooltipControl = $('hover_info_in_projections_checkbox');
     if (tooltipControl) cellTooltipsOn = tooltipControl.checked;
     Shiny.addCustomMessageHandler('cerebro_cell_tooltips', function (message) {
@@ -10877,7 +10995,7 @@
             // rotation is part of "where you are looking" too
             if (pp.rot) { pp.rot = null; pp.miniBg = null; project(pp); }
             if (pp.view) { pp.view = null; project(pp); }
-            setSelectionZoomed(false);
+            pp.focusFrom = null; syncFocusButtons();
             drawAll();
           }
         }
@@ -10888,7 +11006,6 @@
         return;
       }
       if (t.closest('#cv-clear')) {
-        if (selectionZoomed) resetZoom();
         clearSelection();
         return;
       }
@@ -11072,10 +11189,17 @@
       if (cardOpen()) closeCard();
       else if (pinnedTip.panel) unpinTip();
     });
+    // One layout per frame, however many resize events a drag delivers. The
+    // rAF callback still runs before that frame is painted.
+    var resizeFrame = 0;
     window.addEventListener('resize', function () {
-      if (D) resizeAll();
-      // the grid just changed shape; an open card has to be re-centred on it
-      if (cardOpen()) centreCard();
+      if (resizeFrame) return;
+      resizeFrame = requestAnimationFrame(function () {
+        resizeFrame = 0;
+        if (D) resizeAll();
+        // the grid just changed shape; an open card has to be re-centred on it
+        if (cardOpen()) centreCard();
+      });
     });
     return true;
   }

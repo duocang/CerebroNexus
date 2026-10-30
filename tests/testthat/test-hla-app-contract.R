@@ -367,20 +367,31 @@ test_that("the shipped demo ships its CC-BY attribution beside the data", {
   expect_match(txt, "abf5835", fixed = TRUE) # the source paper
 })
 
-test_that("the network caption states area encoding and the cap", {
+test_that("a drawn network states area encoding; an undrawn one says why", {
   shiny::testServer(
     function(input, output, session) {
       hla_require_active_page <- function() invisible(NULL)
       hla_has_deps <- function() TRUE
       hla_segments <- function() data.frame(cdr3 = c("AAA", "AAB"))
-      hla_motif_graph <- function() igraph::make_ring(2)
+      graph <- reactiveVal(igraph::make_ring(2))
+      hla_motif_graph <- function() graph()
       hla_unit_noun <- function() "cell"
       hla_param <- function(name, default) default
       hla_motif_n_clusters <- function() 1L
+      viewer_loaded_dataset_context <- function() list(generation = 1L)
+      sent <- new.env()
+      session$sendCustomMessage <- function(type, message) {
+        if (identical(type, "cerebro_view_terminal")) sent$terminal <- message
+      }
       viewer_server_load(
         viewer_server_statements("hla_tcr_motifs", "visualizations.R"),
         environment(),
-        names = c("HLA_MOTIF_MAX_LEGEND_CLUSTERS", "output$hla_motif_note")
+        names = c(
+          "HLA_MOTIF_MAX_LEGEND_CLUSTERS",
+          "hla_motif_blocked",
+          "output$hla_motif_note"
+        ),
+        events = "hla_motif_blocked"
       )
     },
     {
@@ -388,6 +399,14 @@ test_that("the network caption states area encoding and the cap", {
       expect_match(text, "Node AREA", fixed = TRUE)
       expect_match(text, as.character(HLA_NODE_MAX_EXACT), fixed = TRUE)
       expect_match(text, "same size", fixed = TRUE)
+      expect_null(sent$terminal)
+
+      graph(NA)
+      session$flushReact()
+      expect_identical(sent$terminal$id, "hla_motif_network")
+      expect_identical(sent$terminal$kind, "empty")
+      expect_match(sent$terminal$text, "No CDR3 motif clusters", fixed = TRUE)
+      expect_error(output$hla_motif_note)
     }
   )
 })

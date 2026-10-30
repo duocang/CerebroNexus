@@ -1,4 +1,4 @@
-test_that("Linked primary paint gates supplements and replays hidden palette changes", {
+test_that("Linked primary paint uses the palette, gates supplements and replays hidden palette changes", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
@@ -36,7 +36,9 @@ test_that("Linked primary paint gates supplements and replays hidden palette cha
           default_projection = "umap",
           canonical_order_id = "order",
           projections = list(umap = list(x = c(1, 2), y = c(3, 4))),
-          groups = list(),
+          groups = list(
+            cluster = list(levels = c("a", "b"), colors = I(c("#111", "#222")))
+          ),
           spaces = list()
         )
       })
@@ -48,7 +50,7 @@ test_that("Linked primary paint gates supplements and replays hidden palette cha
       viewerProjectionAsset <- function(...) NULL
       reactive_colors <- function() NULL
       coordviews_color_patch <- reactive(list(
-        groups = list(),
+        groups = list(cluster = I(c(input$palette, "#222"))),
         marker = input$palette
       ))
       cv_prepare_progressive_supplement <- function(
@@ -108,6 +110,8 @@ test_that("Linked primary paint gates supplements and replays hidden palette cha
       frame <- jsonlite::fromJSON(rawToChar(raw[4 + seq_len(n)]))
       expect_true(frame$progressive)
       expect_null(frame$cells)
+      ## The first frame already carries the configured palette.
+      expect_identical(frame$groups$cluster$colors, c("red", "#222"))
       expect_equal(scope$prepared, 0)
       ready <- list(
         dataset_id = "A",

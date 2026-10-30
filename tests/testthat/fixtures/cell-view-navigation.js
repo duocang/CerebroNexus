@@ -31,6 +31,9 @@ function session() {
     singleView: id => c.missing === id ? null : {id},
     requestSingleView: () => {}, reportRendererStatus: () => {}, syncSharedScatter: () => {},
     syncPointControls: () => {}, drawAll: () => {},
+    // Linked views restores its Focus with its lenses; the browser tests cover
+    // the real zoom state.
+    panels: [], sel: null, syncFocusButtons: () => {}, leaveFocus: () => {},
     activateSingle: id => {c.stashSingleState(); c.singleActive = id; c.D = {id, n: 7};},
     stashSingleState: () => {if (c.singleActive) c.saved[c.singleActive] = c.D;},
     restoreLinkedSurface: () => {}, showUnavailable: () => {c.D = null;},
@@ -176,16 +179,67 @@ for (const via of ['direct', 'groups', 'loadData']) {
 // Internal restores keep ROI point defaults active; importing portable JSON
 // applies its display settings without leaking runtime-only fields to disk.
 {
-  const c = {exportWorkspace: () => ({view: {}}), pointSizeEdited: false, pointOpacityEdited: false};
+  const c = {exportWorkspace: () => ({view: {}}), pointSizeEdited: false, pointOpacityEdited: false,
+    panels: []};
   vm.createContext(c);
   vm.runInContext(fn('exportRuntimeWorkspace') + fn('workspacePointOverrides'), c);
   let saved = c.exportRuntimeWorkspace();
   assert.strictEqual(c.workspacePointOverrides(saved).size, false);
   assert.strictEqual(c.workspacePointOverrides(saved).opacity, false);
   assert.strictEqual(JSON.stringify(saved), '{"view":{}}');
+  // Focus travels with an internal restore, never into the JSON.
+  assert.strictEqual(JSON.stringify(saved._focusFrom), '{}');
+  c.panels = [{spaceId: 'umap', focusFrom: {view: null}}, {spaceId: null, focusFrom: {view: null}}];
+  assert.strictEqual(JSON.stringify(c.exportRuntimeWorkspace()._focusFrom), '{"umap":{"view":null}}');
+  assert.strictEqual(JSON.stringify(c.exportRuntimeWorkspace()), '{"view":{}}');
   assert.strictEqual(c.workspacePointOverrides(JSON.parse(JSON.stringify(saved))).size, true);
   c.pointSizeEdited = true;
   saved = c.exportRuntimeWorkspace();
   assert.strictEqual(c.workspacePointOverrides(saved).size, true);
   assert.strictEqual(c.workspacePointOverrides(saved).opacity, false);
+}
+
+// A restored view waits for the render its controls trigger. The first trusted
+// user interaction drops that wait, so a later, unrelated render cannot restore
+// the old view over what the user is looking at.
+{
+  const c = {pendingSavedState: {selection: {cells: ['c1']}}};
+  c.singleView = () => c;
+  vm.createContext(c);
+  vm.runInContext(fn('dropPendingSingleState'), c);
+  c.dropPendingSingleState(null);
+  assert.strictEqual(c.pendingSavedState !== null, true);
+  c.dropPendingSingleState('overview_projection');
+  assert.strictEqual(c.pendingSavedState, null);
+}
+
+// An emptied selection takes its outline with it, and a filter or subsample
+// change (applyActiveChange) is not the user's selection: it leaves a restored
+// view waiting for its render.
+{
+  const lasso = [[0.1, 0.1], [0.2, 0.2], [0.1, 0.3]];
+  const c = {
+    sel: new Set([1]), pending: {selection: {cells: ['c1']}}, singleActive: 'overview_projection',
+    panels: [{spaceId: 'umap', lasso: null, lassoData: lasso}], visibleCells: new Set(),
+    selectionSource: 'x', selectionSourceSpace: 'umap', draws: 0,
+    singleView: () => ({set pendingSavedState(v) { c.pending = v; }, get pendingSavedState() { return c.pending; }}),
+    shown: i => c.visibleCells.has(i), leaveFocus: () => {}, rebuildNiche: () => {},
+    updateSelActions: () => {}, updateZselButtons: () => {}, renderSelbar: () => {},
+    renderReadout: () => {}, reportSelection: () => {}, drawAll: () => { c.draws++; },
+    selectionSourceLabel: x => x
+  };
+  vm.createContext(c);
+  ['dropPendingSingleState', 'clearLassos', 'setSelection', 'applyActiveChange']
+    .forEach(name => vm.runInContext(fn(name), c));
+  // Every selected cell is filtered out: no selection, no outline, and the
+  // restored view still waits.
+  c.applyActiveChange();
+  assert.strictEqual(vm.runInContext('sel', c), null);
+  assert.strictEqual(c.panels[0].lassoData, null);
+  assert.notStrictEqual(c.pending, null);
+  // A brushed selection keeps its outline; the user's own selection drops the wait.
+  c.panels[0].lassoData = lasso;
+  vm.runInContext('setSelection(new Set([2]), {spaceId: "umap"})', c);
+  assert.deepStrictEqual(c.panels[0].lassoData, lasso);
+  assert.strictEqual(c.pending, null);
 }

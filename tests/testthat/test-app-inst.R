@@ -7,7 +7,7 @@ inst_dir <- viewer_app_test_path()
 ## they share one driver. Tests that switch data sets, assert a pristine startup
 ## or build their own bundle boot their own app.
 shared_app <- viewer_shared_app("app_inst", inst_dir)
-## The three dataset-switching tests below each need a new session that starts
+## The dataset-switching tests below each need a new session that starts
 ## on the default data set. They share one app process; each after the first
 ## starts a new Shiny session in it rather than booting another app.
 switching_app <- viewer_shared_app("dataset_switching", inst_dir)
@@ -85,6 +85,16 @@ test_that("retry_get_value reports the last error after timing out", {
 ## Wait until an input element exists in the DOM (its Shiny binding is registered)
 ## before set_inputs — a renderUI-created selectize is not present the instant
 ## wait_for_idle returns.
+## The dataset selector is rendered by the server, so a new session may not have
+## bound it yet ("Unable to find input binding"). Switch only once it has a value.
+select_dataset <- function(app, dataset, timeout = 30000) {
+  app$wait_for_js(
+    "Shiny.shinyapp.$inputValues.crb_file_selector !== undefined",
+    timeout = timeout
+  )
+  app$set_inputs(crb_file_selector = dataset, wait_ = FALSE)
+}
+
 wait_for_input <- function(app, id, timeout = 20000) {
   app$wait_for_js(
     sprintf("document.getElementById('%s') !== null", id),
@@ -120,10 +130,7 @@ test_that("{shinytest2} recording: overview", {
 test_that("Projection switches categorical spatial datasets coherently", {
   app <- viewer_new_session(switching_app())
 
-  app$set_inputs(
-    crb_file_selector = "Mouse ileum (MERFISH)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse ileum (MERFISH)")
   app$wait_for_idle(timeout = 30000)
   activate_tab(app, "overview", timeout = 30000)
   app$wait_for_js(
@@ -134,10 +141,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
     timeout = 30000
   )
 
-  app$set_inputs(
-    crb_file_selector = "Mouse brain (Xenium)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse brain (Xenium)")
   app$wait_for_js(
     paste0(
       "document.getElementById('overview_projection_point_color')?.value ",
@@ -163,10 +167,7 @@ test_that("Projection switches categorical spatial datasets coherently", {
 test_that("Spatial backgrounds reset when the spatial dataset changes", {
   app <- viewer_new_session(switching_app())
 
-  app$set_inputs(
-    crb_file_selector = "Mouse brain (Visium)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse brain (Visium)")
   app$wait_for_idle(timeout = 30000)
   activate_tab(app, "spatial", timeout = 30000)
   wait_for_input(app, "spatial_projection_more_button", timeout = 30000)
@@ -251,10 +252,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     ),
     timeout = 30000
   )
-  app$set_inputs(
-    crb_file_selector = "Mouse brain (Xenium)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse brain (Xenium)")
   app$wait_for_idle(timeout = 30000)
   wait_for_input(app, "spatial_projection_background_image", timeout = 30000)
   app$wait_for_js(
@@ -300,10 +298,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
     ),
     timeout = 30000
   )
-  app$set_inputs(
-    crb_file_selector = "Mouse hippocampus (Slide-seq v2)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse hippocampus (Slide-seq v2)")
   app$wait_for_idle(timeout = 30000)
   ## Slide-seq ships no background image, and a data set without images renders
   ## no picker at all: the previous selection cannot survive into one.
@@ -331,10 +326,7 @@ test_that("Spatial backgrounds reset when the spatial dataset changes", {
 
 test_that("Linked views resets the active background to its preset", {
   app <- viewer_new_session(switching_app())
-  app$set_inputs(
-    crb_file_selector = "Mouse brain (Xenium)",
-    wait_ = FALSE
-  )
+  select_dataset(app, "Mouse brain (Xenium)")
   activate_tab(app, "coordinated_views", timeout = 30000)
   app$wait_for_js(
     paste0(
@@ -414,6 +406,153 @@ test_that("Linked views resets the active background to its preset", {
   expect_true(state$flipY)
 })
 
+test_that("Linked views Focus turns off when its view is replaced", {
+  app <- viewer_new_session(switching_app())
+  activate_tab(app, "coordinated_views", timeout = 30000)
+  app$wait_for_js(
+    paste0(
+      "document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
+      "?.getBoundingClientRect().width > 100 && ",
+      "Number(document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)').dataset.pointCount) > 0"
+    ),
+    timeout = 30000
+  )
+  ## The first frame can arrive before the supplement adds the other lenses.
+  ## Brush only once the final three-pane layout has a normal pane width.
+  app$wait_for_js(
+    paste0(
+      "document.querySelectorAll('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden)').length >= 3 && ",
+      "document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)')",
+      ".getBoundingClientRect().width < 600"
+    ),
+    timeout = 30000
+  )
+  ## Box mode builds a polygon from one dispatchMouseEvent move; the default
+  ## lasso needs two moves before mouseup treats it as a brush.
+  app$run_js(paste0(
+    "document.querySelector('#shiny-tab-coordinated_views ",
+    ".cv-pane:not(.cv-hidden) .cv-tbtn[data-act=\"box\"]').click()"
+  ))
+  ## A slow runner can finish laying the panes out, or projecting their points,
+  ## after the pane looked ready: a brush over unprojected points selects
+  ## nothing. Brush again, from the canvas as it is now, before giving up.
+  zsel_shown <- "document.getElementById('cv-zsel')?.getClientRects().length > 0"
+  for (attempt in 1:3) {
+    canvas <- app$get_js(paste0(
+      "(() => {const r=document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)').getBoundingClientRect();",
+      "return {x1:r.left+r.width*.08,y1:r.top+r.height*.08,",
+      "x2:r.right-r.width*.08,y2:r.bottom-r.height*.08};})()"
+    ))
+    viewer_drag_mouse(app, canvas$x1, canvas$y1, canvas$x2, canvas$y2)
+    brushed <- tryCatch(
+      {
+        app$wait_for_js(zsel_shown, timeout = 8000)
+        TRUE
+      },
+      error = function(error) FALSE
+    )
+    if (brushed) break
+  }
+  app$wait_for_js(zsel_shown, timeout = 20000)
+  app$run_js("document.getElementById('cv-zsel').click()")
+  app$wait_for_js(
+    "document.getElementById('cv-zsel').getAttribute('aria-pressed') === 'true'",
+    timeout = 10000
+  )
+  expect_identical(
+    app$get_js(
+      "document.getElementById('cv-zsel').getAttribute('aria-pressed')"
+    ),
+    "true"
+  )
+  ## Replacing the data set clears every panel's saved pre-focus view. The
+  ## toggle must not stay on after that reset.
+  select_dataset(app, "Mouse brain (Xenium)")
+  app$wait_for_idle(timeout = 30000)
+  app$wait_for_js(
+    "document.getElementById('cv-zsel').getAttribute('aria-pressed') === 'false'",
+    timeout = 30000
+  )
+  app$wait_for_js(
+    "document.querySelectorAll('.cv-mini.is-on').length === 0",
+    timeout = 10000
+  )
+  expect_identical(
+    app$get_js(
+      "document.getElementById('cv-zsel').getAttribute('aria-pressed')"
+    ),
+    "false"
+  )
+  expect_identical(
+    app$get_js("document.querySelectorAll('.cv-mini.is-on').length"),
+    0L
+  )
+})
+
+
+test_that("Spatial panels refit when the page above them grows", {
+  app <- viewer_new_session(switching_app())
+  app$get_chromote_session()$set_viewport_size(width = 1143, height = 727)
+  app$wait_for_js("window.innerHeight === 727", timeout = 10000)
+  select_dataset(app, "Mouse ileum (MERFISH)")
+  app$wait_for_idle(timeout = 30000)
+  activate_tab(app, "spatial", timeout = 30000)
+  pane <- paste0(
+    "document.querySelector('#shiny-tab-spatial ",
+    ".cv-pane:not(.cv-hidden)')"
+  )
+  app$wait_for_js(
+    paste0(
+      "(",
+      pane,
+      "?.querySelector('canvas:not(.cv-mini)')?.getBoundingClientRect().width > 100)"
+    ),
+    timeout = 30000
+  )
+  app$wait_for_js(
+    paste0(pane, ".getBoundingClientRect().bottom <= window.innerHeight"),
+    timeout = 15000
+  )
+  before <- app$get_js(paste0(pane, ".getBoundingClientRect().height"))
+  ## Controls above the plot can render after its first layout (the selector
+  ## row does, on a first visit). They push the plot down without resizing any
+  ## element the grid watched, which left it sized for a taller window and
+  ## ending below the bottom edge. Grow the page above it the same way.
+  app$run_js(paste0(
+    "(() => {const spacer=document.createElement('div');",
+    "spacer.id='test-late-controls';spacer.style.height='24px';",
+    "document.querySelector('#shiny-tab-spatial').prepend(spacer);})()"
+  ))
+  app$wait_for_js(
+    paste0(pane, ".getBoundingClientRect().height < ", before - 5),
+    timeout = 10000
+  )
+  expect_lt(app$get_js(paste0(pane, ".getBoundingClientRect().height")), before)
+})
+
+test_that("Data info bars carry the colour of their category", {
+  app <- shared_app()
+  wait_for_input(app, "load_data_annotation", timeout = 30000)
+  ## The bars start in the accent colour and take their category colours once
+  ## the data set is loaded, the same ones the other pages draw.
+  bar_colours <- paste0(
+    "Array.from(document.querySelectorAll(",
+    "'#load_data_annotation_plot .dataset-bar-track > span'))",
+    ".map(el => el.style.background)"
+  )
+  app$wait_for_js(
+    paste0("new Set(", bar_colours, ").size > 1"),
+    timeout = 30000
+  )
+  colours <- app$get_js(bar_colours)
+  expect_gt(length(unique(unlist(colours))), 1L)
+  expect_false(any(grepl("239, 148, 78", unlist(colours), fixed = TRUE)))
+})
 
 test_that("{shinytest2} recording: main", {
   app <- shared_app()

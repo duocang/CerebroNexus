@@ -89,7 +89,7 @@ coordviews_clone_task <- shiny::ExtendedTask$new(function(
   clone_contract_file,
   viewer_pack_file
 ) {
-  mirai::mirai(
+  .viewerMirai(
     {
       started <- proc.time()[["elapsed"]]
       scope <- new.env(parent = globalenv())
@@ -929,6 +929,11 @@ observe(
       coordviews_build_log$sent_palette <- list(
         context = viewer_loaded_dataset_context(),
         patch = isolate(coordviews_color_patch())
+      )
+      ## The first frame paints with the configured palette, not the defaults.
+      primary <- cv_apply_color_patch(
+        primary,
+        coordviews_build_log$sent_palette$patch
       )
       primary$progressive <- TRUE
       primary$progressive_token <- primary_n
