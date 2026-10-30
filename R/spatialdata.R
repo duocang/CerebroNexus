@@ -137,6 +137,36 @@
   )
 }
 
+#' The x and y of every geometry when all of them are little-endian 2-d WKB
+#' points (21 bytes: byte order, type 1, two doubles), read in one pass; NULL
+#' for anything else (polygons and the like go through .sdWkbCentre()).
+#' @keywords internal
+#' @noRd
+.sdPointCentres <- function(geometry) {
+  if (!length(geometry) || !all(lengths(geometry) == 21L)) {
+    return(NULL)
+  }
+  bytes <- matrix(unlist(geometry, use.names = FALSE), nrow = 21L)
+  header <- c(1L, 1L, 0L, 0L, 0L)
+  if (!all(bytes[1:5, , drop = FALSE] == as.raw(header))) {
+    return(NULL)
+  }
+  rbind(
+    readBin(
+      as.vector(bytes[6:13, ]),
+      "double",
+      n = ncol(bytes),
+      endian = "little"
+    ),
+    readBin(
+      as.vector(bytes[14:21, ]),
+      "double",
+      n = ncol(bytes),
+      endian = "little"
+    )
+  )
+}
+
 #' Coordinates of a shapes element: a data frame of x, y and the element's index
 #' column (when it has one).
 #' @keywords internal
@@ -153,7 +183,10 @@
     )
   }
   table <- as.data.frame(arrow::read_parquet(file))
-  centres <- vapply(table$geometry, .sdWkbCentre, numeric(2))
+  centres <- .sdPointCentres(table$geometry)
+  if (is.null(centres)) {
+    centres <- vapply(table$geometry, .sdWkbCentre, numeric(2))
+  }
   result <- data.frame(x = centres[1L, ], y = centres[2L, ])
   extra <- setdiff(names(table), c("geometry", "radius"))
   for (name in extra) {
@@ -453,7 +486,7 @@ readSpatialDataAsSCE <- function(
   ) {
     as.character(cell_data[[region_key]])
   } else {
-    rep(regions[[1L]] %||% NA_character_, ncol(sce))
+    rep(if (length(regions)) regions[[1L]] else NA_character_, ncol(sce))
   }
   if (!length(regions)) {
     regions <- unique(cell_region)
@@ -541,13 +574,6 @@ readSpatialDataAsSCE <- function(
   )
   if (length(images)) {
     sce@metadata$spatial_images <- images
-    if (
-      !"library_id" %in% colnames(SummarizedExperiment::colData(sce)) &&
-        length(images) == 1L
-    ) {
-      ## one section: the picture belongs to all of it
-      names(sce@metadata$spatial_images) <- names(images)
-    }
   }
   sce
 }

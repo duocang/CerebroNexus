@@ -168,7 +168,6 @@
   if (!code %in% names(names)) {
     stop("Unsupported Zarr data type `", dtype, "`.", call. = FALSE)
   }
-  attr(code, "big") <- big
   result <- unname(names[[code]])
   attr(result, "big") <- big
   result
@@ -429,7 +428,10 @@
       flat[[1L]] <- values[[1L]]
       next
     }
-    flat <- .zarrPlace(flat, values, shape, index * chunk_shape, chunk_shape)
+    ## Assigned in place: passing `flat` to a function copied the whole array
+    ## once per chunk (27 s for one 28 M-value array of a Visium store).
+    place <- .zarrPlacement(shape, index * chunk_shape, chunk_shape)
+    flat[place$target] <- values[place$source]
   }
   if (length(shape) <= 1L) {
     return(flat)
@@ -444,16 +446,24 @@
   if (!length(dims)) integer() else rev(cumprod(c(1, rev(dims)[-length(dims)])))
 }
 
-#' Put the values of one chunk (flat, C order, full chunk shape) into the flat
-#' C-order array `flat` of shape `shape`, at `start`; edge chunks are clipped.
+#' Where the values of one chunk (flat, C order, full chunk shape) go in the flat
+#' C-order array of shape `shape` when the chunk starts at `start`: 1-based
+#' positions in the array (`target`) and in the chunk (`source`); edge chunks
+#' are clipped.
 #' @keywords internal
 #' @noRd
-.zarrPlace <- function(flat, values, shape, start, chunk_shape) {
+.zarrPlacement <- function(shape, start, chunk_shape) {
   k <- length(shape)
   array_strides <- .zarrStrides(shape)
   chunk_strides <- .zarrStrides(chunk_shape)
   extent <- pmin(chunk_shape, shape - start)
   inside <- lapply(seq_len(k), function(d) seq_len(extent[[d]]) - 1L)
+  if (k == 1L) {
+    return(list(
+      target = start[[1L]] + inside[[1L]] + 1L,
+      source = inside[[1L]] + 1L
+    ))
+  }
   walk <- function(offsets) {
     Reduce(
       function(acc, d) as.vector(outer(acc, offsets[[d]], "+")),
@@ -461,15 +471,25 @@
       init = offsets[[k]]
     )
   }
-  target <- walk(lapply(seq_len(k), function(d) {
-    (start[[d]] + inside[[d]]) * array_strides[[d]]
-  }))
-  source <- if (all(extent == chunk_shape)) {
-    seq_len(prod(chunk_shape))
-  } else {
-    walk(lapply(seq_len(k), function(d) inside[[d]] * chunk_strides[[d]])) + 1L
-  }
-  flat[target + 1L] <- values[source]
+  list(
+    target = walk(lapply(seq_len(k), function(d) {
+      (start[[d]] + inside[[d]]) * array_strides[[d]]
+    })) +
+      1L,
+    source = if (all(extent == chunk_shape)) {
+      seq_len(prod(chunk_shape))
+    } else {
+      walk(lapply(seq_len(k), function(d) inside[[d]] * chunk_strides[[d]])) +
+        1L
+    }
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.zarrPlace <- function(flat, values, shape, start, chunk_shape) {
+  place <- .zarrPlacement(shape, start, chunk_shape)
+  flat[place$target] <- values[place$source]
   flat
 }
 
