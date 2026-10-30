@@ -45,6 +45,17 @@ test_that("the Abundance figure is what plotly_build() would make of it", {
     for (scale in c(FALSE, TRUE)) {
       for (order_by in list(NULL, "alphanumeric")) {
         args <- list(counts, scale = scale, order_by = order_by)
+        expect_false(
+          grepl(
+            "markers",
+            ir_abundance_payload(do.call(
+              scope$ir_clonal_abundance_plotly,
+              args
+            )),
+            fixed = TRUE
+          ),
+          info = "lines only"
+        )
         expect_identical(
           as.character(ir_abundance_payload(do.call(
             scope$ir_clonal_abundance_plotly,

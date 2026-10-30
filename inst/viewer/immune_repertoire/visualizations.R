@@ -1487,7 +1487,9 @@ ir_clonal_abundance_plotly <- function(
   }
   ## One line per unit, coloured as plot_ly(split = ~sample, color = ~sample)
   ## would: Set2 (RColorBrewer::brewer.pal(max(n, 3), "Set2")) interpolated
-  ## over the units. Building the traces directly takes 0.2 s for 187 samples
+  ## over the units. Lines only, as clonalAbundance() draws them: a marker
+  ## attribute makes plotly add markers to the mode (19,000 more SVG points
+  ## on 187 samples, 0.2 s in the browser). Building the traces directly takes 0.2 s for 187 samples
   ## instead of 1.4 s in plotly_build's attribute mapping.
   samples <- ir_abundance_units(counts$sample, order_by)
   set2 <- c(
@@ -1559,8 +1561,7 @@ ir_clonal_abundance_plotly <- function(
           text = hover[index],
           hoverinfo = "text",
           name = sample,
-          line = list(color = colour),
-          marker = list(color = colour, line = list(color = colour))
+          line = list(color = colour)
         )
       },
       rows,
