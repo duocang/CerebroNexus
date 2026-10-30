@@ -285,6 +285,79 @@
   }
 }
 
+## Immune repertoire, HLA typing and the legacy TCR/BCR slots of `extras` (the
+## misc list of a Seurat object, the metadata of an SCE). `where` names it in
+## error messages, e.g. "@misc". The legacy slots are checked like the unified
+## one and merged into the one repertoire the .crb stores.
+.addExportImmune <- function(export, extras, cells, where, verbose) {
+  ## `is.list()` was the whole guard, and a data.frame passes it -- its columns
+  ## became the sample names and the wrong shape reached the .crb intact.
+  unified <- .dropEmptyRepertoireSamples(extras$immune_repertoire)
+  has_unified <- !is.null(unified) && length(unified) > 0
+  if (has_unified) {
+    unified <- .normalizeImmuneRepertoire(
+      unified,
+      cell_barcodes = cells,
+      source_label = paste0('`', where, '$immune_repertoire`')
+    )
+    if (verbose) {
+      .logStep(
+        'Extracting immune repertoire data (',
+        length(unified),
+        ' samples)...'
+      )
+    }
+    export$addImmuneRepertoire(unified)
+  }
+
+  ## HLA typing: a canonical long data.frame, a wide sample x locus table, or a
+  ## named list (sample -> allele vector). The source type is read from an
+  ## optional `hla_typing_source_type` (default "unknown"), so an uploaded or
+  ## imputed genotype is never silently treated as directly typed.
+  hla <- extras$hla_typing
+  if (
+    !is.null(hla) &&
+      (is.data.frame(hla) || (is.list(hla) && length(hla) > 0))
+  ) {
+    if (verbose) {
+      .logStep('Extracting HLA typing...')
+    }
+    source_type <- extras$hla_typing_source_type
+    if (is.null(source_type) || !nzchar(source_type)) {
+      source_type <- 'unknown'
+    }
+    export$addHLATyping(hla, source_type = source_type)
+  }
+
+  if (!has_unified) {
+    receptor_slots <- list(tcr_data = 'TCR', bcr_data = 'BCR')
+    receptors <- lapply(names(receptor_slots), function(slot) {
+      data <- .dropEmptyRepertoireSamples(extras[[slot]])
+      if (is.null(data)) {
+        return(NULL)
+      }
+      if (verbose) {
+        .logStep('Extracting tables of ', receptor_slots[[slot]], ' data...')
+      }
+      .normalizeImmuneRepertoire(
+        data,
+        cell_barcodes = cells,
+        source_label = paste0('`', where, '$', slot, '`')
+      )
+    })
+    merged <- .dropEmptyRepertoireSamples(
+      do.call(.mergeRepertoiresBySample, receptors)
+    )
+    if (!is.null(merged) && length(merged) > 0) {
+      export$addImmuneRepertoire(.normalizeImmuneRepertoire(
+        merged,
+        cell_barcodes = cells,
+        source_label = 'the merged TCR and BCR repertoire'
+      ))
+    }
+  }
+}
+
 ## Trajectory methods that are exported: Monocle 2, and what readH5adAsSCE()
 ## makes from scanpy/scVelo results. Other methods are skipped with a warning.
 .exportTrajectoryMethods <- c('monocle2', 'paga', 'scvelo', 'pseudotime')
