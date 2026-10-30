@@ -210,7 +210,11 @@ build_stage_status_projection <- reactive({
   ## reactively so the card updates when registration ends instead of
   ## staying on "Build in progress".
   project_phase <- if (
-    exists("builder_project_operation_phase", mode = "function", inherits = TRUE)
+    exists(
+      "builder_project_operation_phase",
+      mode = "function",
+      inherits = TRUE
+    )
   ) {
     builder_project_operation_phase()
   } else {
@@ -371,11 +375,14 @@ observe({
   sent <- builder_build_progress_sent$message
   if (
     is.list(sent) &&
-      identical(sent[c("active", "phase", "text")], message[c(
-        "active",
-        "phase",
-        "text"
-      )])
+      identical(
+        sent[c("active", "phase", "text")],
+        message[c(
+          "active",
+          "phase",
+          "text"
+        )]
+      )
   ) {
     return()
   }
@@ -878,7 +885,11 @@ observeEvent(input$build_same_folder, {
   if (
     !builder_has_text(parent %||% "") ||
       builder_build_controls_locked(isolate(build_flow())) ||
-      (exists("builder_operation_allowed", mode = "function", inherits = TRUE) &&
+      (exists(
+        "builder_operation_allowed",
+        mode = "function",
+        inherits = TRUE
+      ) &&
         !isTRUE(builder_operation_allowed("build")))
   ) {
     return()

@@ -441,7 +441,9 @@ builder_viewer_display_ui <- function(id, entry, epoch) {
       div(
         class = "builder-viewer-card-body builder-advanced-grid",
         flags(
-          if (labels) flag(paste0(prefix, "_group_labels"), "Show group labels"),
+          if (labels) {
+            flag(paste0(prefix, "_group_labels"), "Show group labels")
+          },
           flag(paste0(prefix, "_draw_border"), "Draw cell borders"),
           flag(paste0(prefix, "_keep_square"), "Keep plots square")
         ),
@@ -590,7 +592,10 @@ builder_viewer_display_ui <- function(id, entry, epoch) {
     ),
     tags$details(
       class = "builder-viewer-card",
-      tags$summary(span(class = "builder-viewer-card-title", "HLA & TCR Motifs")),
+      tags$summary(span(
+        class = "builder-viewer-card-title",
+        "HLA & TCR Motifs"
+      )),
       div(
         class = "builder-viewer-card-body builder-advanced-grid",
         select(

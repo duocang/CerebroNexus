@@ -695,7 +695,10 @@ builder_browser_pipeline_fake_dom <- c(
 
 test_that("waiting browser imports keep numbering after the rows above change", {
   js <- builder_browser_pipeline_text("www", "builder.js")
-  renumber <- builder_browser_pipeline_js_function(js, "renumberClientImportQueue")
+  renumber <- builder_browser_pipeline_js_function(
+    js,
+    "renumberClientImportQueue"
+  )
   out <- builder_browser_pipeline_run_node(
     c(builder_browser_pipeline_fake_dom, renumber),
     c(
@@ -725,7 +728,11 @@ test_that("waiting browser imports keep numbering after the rows above change", 
 
   expect_equal(attr(out, "status"), NULL)
   expect_identical(out, "ok")
-  for (caller in c("reconcileDatasetRail", "reconcileImportRail", "renderClientImportQueue")) {
+  for (caller in c(
+    "reconcileDatasetRail",
+    "reconcileImportRail",
+    "renderClientImportQueue"
+  )) {
     expect_match(
       builder_browser_pipeline_js_function(js, caller),
       "renumberClientImportQueue();",
@@ -772,7 +779,11 @@ test_that("Build actions say why they wait for a Project write", {
   expect_equal(attr(out, "status"), NULL)
   expect_identical(out, "ok")
   apply <- builder_browser_pipeline_js_function(js, "applyBuilderActivityState")
-  expect_match(apply, 'build_same_folder: activityCapability("build")', fixed = TRUE)
+  expect_match(
+    apply,
+    'build_same_folder: activityCapability("build")',
+    fixed = TRUE
+  )
   expect_match(apply, "applyBuildBlockedReason();", fixed = TRUE)
   expect_match(js, "build_reason: typeof message.build_reason", fixed = TRUE)
 })
@@ -840,7 +851,10 @@ test_that("Build actions stay disabled while the workspace stays editable", {
 
 test_that("the Build card hides the previous step's dataset line", {
   js <- builder_browser_pipeline_text("www", "builder.js")
-  render <- builder_browser_pipeline_js_function(js, "renderBuildProgressDetail")
+  render <- builder_browser_pipeline_js_function(
+    js,
+    "renderBuildProgressDetail"
+  )
   out <- builder_browser_pipeline_run_node(
     c(builder_browser_pipeline_fake_dom, render),
     c(
@@ -871,5 +885,9 @@ test_that("the Build card hides the previous step's dataset line", {
   expect_equal(attr(out, "status"), NULL)
   expect_identical(out, "ok")
   handler <- builder_browser_pipeline_js_function(js, "handleBuildProgress")
-  expect_match(handler, "buildProgressState.phase = typeof message.phase", fixed = TRUE)
+  expect_match(
+    handler,
+    "buildProgressState.phase = typeof message.phase",
+    fixed = TRUE
+  )
 })

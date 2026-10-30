@@ -32,8 +32,12 @@ builder_rail_js_block <- function(js, marker, suffix = "") {
   open <- regexpr("{", candidate, fixed = TRUE)[[1L]]
   depth <- 0L
   for (index in seq.int(open, length(chars))) {
-    if (identical(chars[[index]], "{")) depth <- depth + 1L
-    if (identical(chars[[index]], "}")) depth <- depth - 1L
+    if (identical(chars[[index]], "{")) {
+      depth <- depth + 1L
+    }
+    if (identical(chars[[index]], "}")) {
+      depth <- depth - 1L
+    }
     if (depth == 0L) {
       return(paste0(paste0(chars[seq_len(index)], collapse = ""), suffix))
     }
@@ -41,11 +45,17 @@ builder_rail_js_block <- function(js, marker, suffix = "") {
   stop("JavaScript definition is incomplete: ", marker, call. = FALSE)
 }
 
-builder_rail_js_functions <- function(js, functions = character(), vars = character()) {
+builder_rail_js_functions <- function(
+  js,
+  functions = character(),
+  vars = character()
+) {
   c(
     vapply(
       vars,
-      function(name) builder_rail_js_block(js, paste0("var ", name, " = "), ";"),
+      function(name) {
+        builder_rail_js_block(js, paste0("var ", name, " = "), ";")
+      },
       character(1)
     ),
     vapply(
@@ -104,15 +114,17 @@ builder_rail_import_model <- function(...) {
 
 builder_rail_import_message <- function(runtime, models) {
   as.character(jsonlite::toJSON(
-    list(rows = lapply(models, function(model) {
-      list(
-        id = model$id,
-        fingerprint = runtime$builder_import_rail_row_fingerprint(model),
-        html = htmltools::renderTags(
-          runtime$builder_import_rail_row_ui(model)
-        )$html
-      )
-    })),
+    list(
+      rows = lapply(models, function(model) {
+        list(
+          id = model$id,
+          fingerprint = runtime$builder_import_rail_row_fingerprint(model),
+          html = htmltools::renderTags(
+            runtime$builder_import_rail_row_ui(model)
+          )$html
+        )
+      })
+    ),
     auto_unbox = TRUE
   ))
 }
@@ -169,30 +181,42 @@ test_that("import progress ticks update the row in place", {
   second <- builder_rail_import_model(id = "import-b", index = 2L, label = "B")
   messages <- c(
     start = builder_rail_import_message(runtime, list(first, second)),
-    tick = builder_rail_import_message(runtime, list(
-      builder_rail_import_model(progress_percent = 42L),
-      second
-    )),
-    phase = builder_rail_import_message(runtime, list(
-      builder_rail_import_model(
-        load_state = "inspecting",
-        progress_label = "Checking cells, genes and metadata…",
-        progress_percent = NULL
-      ),
-      second
-    )),
-    cancelling = builder_rail_import_message(runtime, list(
-      builder_rail_import_model(
-        load_state = "inspecting",
-        cancelling = TRUE,
-        progress_label = "Cancelling…",
-        progress_percent = NULL
-      ),
-      second
-    )),
-    finished = builder_rail_import_message(runtime, list(
-      utils::modifyList(second, list(index = 1L))
-    ))
+    tick = builder_rail_import_message(
+      runtime,
+      list(
+        builder_rail_import_model(progress_percent = 42L),
+        second
+      )
+    ),
+    phase = builder_rail_import_message(
+      runtime,
+      list(
+        builder_rail_import_model(
+          load_state = "inspecting",
+          progress_label = "Checking cells, genes and metadata…",
+          progress_percent = NULL
+        ),
+        second
+      )
+    ),
+    cancelling = builder_rail_import_message(
+      runtime,
+      list(
+        builder_rail_import_model(
+          load_state = "inspecting",
+          cancelling = TRUE,
+          progress_label = "Cancelling…",
+          progress_percent = NULL
+        ),
+        second
+      )
+    ),
+    finished = builder_rail_import_message(
+      runtime,
+      list(
+        utils::modifyList(second, list(index = 1L))
+      )
+    )
   )
   out <- builder_rail_dom_run(
     c(

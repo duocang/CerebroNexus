@@ -41,7 +41,10 @@ convertSCEToSeurat <- function(
   verbose = FALSE
 ) {
   if (!requireNamespace("SeuratObject", quietly = TRUE)) {
-    stop("The 'SeuratObject' package is needed for this conversion.", call. = FALSE)
+    stop(
+      "The 'SeuratObject' package is needed for this conversion.",
+      call. = FALSE
+    )
   }
   if (!methods::is(object, "SingleCellExperiment")) {
     stop("`object` must be a SingleCellExperiment.", call. = FALSE)
@@ -53,7 +56,10 @@ convertSCEToSeurat <- function(
 
   as_sparse <- function(x) {
     if (!methods::is(x, "dgCMatrix")) {
-      x <- methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+      x <- methods::as(
+        methods::as(methods::as(x, "dMatrix"), "generalMatrix"),
+        "CsparseMatrix"
+      )
     }
     x
   }
@@ -61,7 +67,10 @@ convertSCEToSeurat <- function(
   extra_names <- if (isTRUE(extra_features)) {
     SingleCellExperiment::altExpNames(object)
   } else {
-    intersect(as.character(extra_features), SingleCellExperiment::altExpNames(object))
+    intersect(
+      as.character(extra_features),
+      SingleCellExperiment::altExpNames(object)
+    )
   }
   fetch <- function(name) {
     m <- as_sparse(SummarizedExperiment::assay(object, name))
@@ -99,7 +108,10 @@ convertSCEToSeurat <- function(
     }
   }
   if (anyNA(feature_names) || anyDuplicated(feature_names)) {
-    stop("Gene names must be present and unique to convert to Seurat.", call. = FALSE)
+    stop(
+      "Gene names must be present and unique to convert to Seurat.",
+      call. = FALSE
+    )
   }
 
   assay_object <- if (is.null(counts)) {
@@ -139,14 +151,22 @@ convertSCEToSeurat <- function(
   ## derives them from the counts layer, which a normalised-only file lacks, so
   ## use what the file recorded (scanpy: total_counts / n_genes_by_counts), or
   ## sum the matrix that is there.
-  reference <- if (!is.null(counts)) counts[seq_len(n_genes), , drop = FALSE] else data[seq_len(n_genes), , drop = FALSE]
+  reference <- if (!is.null(counts)) {
+    counts[seq_len(n_genes), , drop = FALSE]
+  } else {
+    data[seq_len(n_genes), , drop = FALSE]
+  }
   fill <- function(target, candidates, from_matrix) {
     present <- result@meta.data[[target]]
     if (!is.null(present) && any(present > 0, na.rm = TRUE)) {
       return(invisible(NULL))
     }
     found <- intersect(candidates, colnames(cell_data))
-    found <- found[vapply(found, function(n) is.numeric(cell_data[[n]]), logical(1))]
+    found <- found[vapply(
+      found,
+      function(n) is.numeric(cell_data[[n]]),
+      logical(1)
+    )]
     values <- if (length(found)) cell_data[[found[[1L]]]] else from_matrix()
     result[[target]] <<- as.numeric(values)
   }
@@ -164,7 +184,9 @@ convertSCEToSeurat <- function(
   used_keys <- character()
   for (name in SingleCellExperiment::reducedDimNames(object)) {
     embedding <- SingleCellExperiment::reducedDim(object, name)
-    if (!is.matrix(embedding) || !is.numeric(embedding) || ncol(embedding) < 1L) {
+    if (
+      !is.matrix(embedding) || !is.numeric(embedding) || ncol(embedding) < 1L
+    ) {
       next
     }
     key <- tolower(gsub("[^A-Za-z0-9]", "", name))
@@ -240,10 +262,17 @@ convertSCEToSeurat <- function(
 
   if (verbose) {
     message(
-      "[INFO] Converted ", ncol(object), " cells x ", nrow(object),
+      "[INFO] Converted ",
+      ncol(object),
+      " cells x ",
+      nrow(object),
       " genes; layers: ",
-      paste(c(if (!is.null(counts)) "counts", if (!is.null(data)) "data"), collapse = ", "),
-      "; reductions: ", paste(names(result@reductions), collapse = ", ")
+      paste(
+        c(if (!is.null(counts)) "counts", if (!is.null(data)) "data"),
+        collapse = ", "
+      ),
+      "; reductions: ",
+      paste(names(result@reductions), collapse = ", ")
     )
   }
   result
@@ -259,7 +288,8 @@ convertSCEToSeurat <- function(
     needed <- c("DR_1", "DR_2", "pseudotime")
     if (is.data.frame(meta) && all(needed %in% colnames(meta))) {
       keep <- stats::complete.cases(meta[, needed, drop = FALSE]) &
-        is.finite(meta[["DR_1"]]) & is.finite(meta[["DR_2"]]) &
+        is.finite(meta[["DR_1"]]) &
+        is.finite(meta[["DR_2"]]) &
         is.finite(meta[["pseudotime"]])
       payload[["meta"]] <- meta[keep, , drop = FALSE]
     }
@@ -267,9 +297,13 @@ convertSCEToSeurat <- function(
   }
   result <- lapply(trajectories, function(method) {
     kept <- lapply(method, trim)
-    kept[vapply(kept, function(p) {
-      !is.data.frame(p[["meta"]]) || nrow(p[["meta"]]) > 0L
-    }, logical(1))]
+    kept[vapply(
+      kept,
+      function(p) {
+        !is.data.frame(p[["meta"]]) || nrow(p[["meta"]]) > 0L
+      },
+      logical(1)
+    )]
   })
   result[lengths(result) > 0L]
 }
@@ -298,11 +332,20 @@ convertSCEToSeurat <- function(
   } else {
     NULL
   }
-  if (!is.null(library_of) && !anyNA(library_of) && length(unique(library_of)) > 1L) {
-    cells <- split(colnames(object), factor(library_of, levels = unique(library_of)))
+  if (
+    !is.null(library_of) &&
+      !anyNA(library_of) &&
+      length(unique(library_of)) > 1L
+  ) {
+    cells <- split(
+      colnames(object),
+      factor(library_of, levels = unique(library_of))
+    )
   } else if (length(images) > 1L) {
     message(
-      "[INFO] The tissue images of ", length(images), " libraries cannot be assigned ",
+      "[INFO] The tissue images of ",
+      length(images),
+      " libraries cannot be assigned ",
       "to cells without a `library_id` column; the images were left out."
     )
     cells <- list(spatial = colnames(object))
@@ -314,5 +357,10 @@ convertSCEToSeurat <- function(
   if (any(!nzchar(names(cells)))) {
     return(NULL)
   }
-  list(cells = cells, coordinates = coordinates, images = images, reduction = reduction)
+  list(
+    cells = cells,
+    coordinates = coordinates,
+    images = images,
+    reduction = reduction
+  )
 }

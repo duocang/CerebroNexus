@@ -92,7 +92,9 @@ test_that("a published Build records its CRBs for the next Build", {
     failed_plan <- plan
     failed_plan$items[[1L]]$reused_artifact <- list(path = record$path)
     builder_build_remember_plan(failed_plan)
-    result(app_env$builder_result_failure("The reusable CRB could not be staged."))
+    result(app_env$builder_result_failure(
+      "The reusable CRB could not be staged."
+    ))
     session$flushReact()
     remaining <- ls(builder_session_reuse_cache)
     expect_length(remaining, 1L)
@@ -108,11 +110,13 @@ test_that("a published Build records its CRBs for the next Build", {
       "Dataset B: analysis `marker_genes` failed.",
       list(
         failed_dataset_id = "b",
-        retained_artifacts = list(a = list(
-          path = kept,
-          fingerprint = list(md5 = unname(tools::md5sum(kept))),
-          members = list()
-        ))
+        retained_artifacts = list(
+          a = list(
+            path = kept,
+            fingerprint = list(md5 = unname(tools::md5sum(kept))),
+            members = list()
+          )
+        )
       )
     ))
     session$flushReact()
@@ -264,7 +268,11 @@ test_that("a prewarmed coordinator runs the release preparation", {
       viewer_bundle_assets = character(),
       private_assets = "dataset.crb",
       app_options = list(enabled = FALSE),
-      app_auth = list(enabled = FALSE, account_count = 0L, timeout_minutes = 15L)
+      app_auth = list(
+        enabled = FALSE,
+        account_count = 0L,
+        timeout_minutes = 15L
+      )
     ),
     class = c("builder_build_plan", "list")
   )
@@ -333,9 +341,12 @@ test_that("a coordinator refuses a job if its runtime changed after loading", {
 
   expect_error(main(identity), "runtime changed while its coordinator")
   saveRDS(
-    list(run = function(runtime, identity, args) {
-      list(ran = isTRUE(runtime$loaded_marker))
-    }, args = list()),
+    list(
+      run = function(runtime, identity, args) {
+        list(ran = isTRUE(runtime$loaded_marker))
+      },
+      args = list()
+    ),
     inbox
   )
   stable <- function(paths, .previous = NULL, .stats = NULL) {
@@ -383,9 +394,16 @@ test_that("an idle coordinator compiles the release functions ahead", {
   expect_identical(compile_ahead(runtime, character()), character())
 
   ## The process compiles only while no job is waiting, one function at a time.
-  main <- paste(deparse(process_main), collapse = "
-")
-  expect_match(main, "pending_compile <- compile_ahead(runtime, pending_compile)", fixed = TRUE)
+  main <- paste(
+    deparse(process_main),
+    collapse = "
+"
+  )
+  expect_match(
+    main,
+    "pending_compile <- compile_ahead(runtime, pending_compile)",
+    fixed = TRUE
+  )
 })
 
 builder_build_session_source <- function(...) {
@@ -424,7 +442,9 @@ test_that("a successful App build offers Open App and the same folder", {
   app_env <- builder_build_session_app()
   value <- app_env$builder_result_success(
     published = TRUE,
-    built = c(a = "C:/out/CerebroNexus_viewer_abc123/cerebro_app/private-data/a.crb"),
+    built = c(
+      a = "C:/out/CerebroNexus_viewer_abc123/cerebro_app/private-data/a.crb"
+    ),
     app_dir = "C:/out/CerebroNexus_viewer_abc123/cerebro_app",
     app_verified = TRUE,
     release = list(target = "C:/out/CerebroNexus_viewer_abc123")
@@ -481,12 +501,22 @@ test_that("mode and starting dataset do not re-render the options form", {
   expect_match(settings, "Welcome message", fixed = TRUE)
   expect_match(settings, 'id="build_initial_dataset"', fixed = TRUE)
 
-  lines <- strsplit(builder_build_session_source("server", "build.R"), "\n")[[1L]]
-  first <- grep("output$build_output_options <- renderUI({", lines, fixed = TRUE)
+  lines <- strsplit(builder_build_session_source("server", "build.R"), "\n")[[
+    1L
+  ]]
+  first <- grep(
+    "output$build_output_options <- renderUI({",
+    lines,
+    fixed = TRUE
+  )
   last <- grep("output$build_app_settings <- renderUI({", lines, fixed = TRUE)
   form_block <- paste(lines[first:(last - 1L)], collapse = "\n")
   expect_match(form_block, "isolate(build_mode())", fixed = TRUE)
-  expect_false(grepl("build_mode()", gsub("isolate(build_mode())", "", form_block, fixed = TRUE), fixed = TRUE))
+  expect_false(grepl(
+    "build_mode()",
+    gsub("isolate(build_mode())", "", form_block, fixed = TRUE),
+    fixed = TRUE
+  ))
   expect_false(grepl("[^(]build_initial_dataset()", form_block))
   expect_match(
     builder_build_session_source("server", "build.R"),
@@ -511,7 +541,11 @@ test_that("missing login accounts are requested in place before a Build", {
 
     accounts <- app_env$builder_auth_validate_payload(
       TRUE,
-      list(list(id = "auth-account-1", username = "ana", password = "long-enough-1"))
+      list(list(
+        id = "auth-account-1",
+        username = "ana",
+        password = "long-enough-1"
+      ))
     )$accounts
     auth_accounts(accounts)
     expect_false(builder_build_accounts_missing())

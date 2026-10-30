@@ -333,10 +333,15 @@ test_that("extra material profiles tables, plots, and duplicate names", {
   expect_true(extra$normalized$plots$overview$recognized)
 
   object@misc$extra_material <- c(
-    list(table_index = list(summary = list(workbook_name = "Renamed workbook"))),
+    list(
+      table_index = list(summary = list(workbook_name = "Renamed workbook"))
+    ),
     object@misc$extra_material
   )
-  renamed <- builder_profile_table_content(object, builder_table_context())$extra_material
+  renamed <- builder_profile_table_content(
+    object,
+    builder_table_context()
+  )$extra_material
   expect_identical(renamed, extra)
 
   duplicated <- list(

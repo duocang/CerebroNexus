@@ -124,7 +124,10 @@ test_that("a controlled slow importer runs outside the caller", {
       break
     }
     if (Sys.time() >= deadline) {
-      stop("The slow importer did not publish its reading stage.", call. = FALSE)
+      stop(
+        "The slow importer did not publish its reading stage.",
+        call. = FALSE
+      )
     }
     Sys.sleep(0.01)
   }
@@ -139,7 +142,10 @@ test_that("a controlled slow importer runs outside the caller", {
       break
     }
     if (Sys.time() >= deadline) {
-      stop("The controlled importer did not finish after its gate opened.", call. = FALSE)
+      stop(
+        "The controlled importer did not finish after its gate opened.",
+        call. = FALSE
+      )
     }
     Sys.sleep(0.01)
   }

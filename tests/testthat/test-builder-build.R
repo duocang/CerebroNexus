@@ -261,7 +261,11 @@ test_that("Stop interrupts the analysis loop and is not reported as a failure", 
   progress <- file.path(stage, "progress.rds")
   steps <- character()
   hooks <- builder_build_test_hooks()
-  hooks$run_analyses <- function(object, item, on_progress = function(...) NULL) {
+  hooks$run_analyses <- function(
+    object,
+    item,
+    on_progress = function(...) NULL
+  ) {
     for (step in item$analyses) {
       on_progress(step)
       steps <<- c(steps, step)
@@ -1710,7 +1714,10 @@ test_that("published and retained CRBs become session reuse records", {
     state = "success",
     published = TRUE,
     built = c(
-      `dataset-a` = file.path(release, "cerebro_app/private-data/dataset-a.crb"),
+      `dataset-a` = file.path(
+        release,
+        "cerebro_app/private-data/dataset-a.crb"
+      ),
       `dataset-b` = file.path(release, "cerebro_app/private-data/dataset-b.crb")
     ),
     verifications = list(
@@ -1719,13 +1726,18 @@ test_that("published and retained CRBs become session reuse records", {
     ),
     release = list(
       target = release,
-      identity = list(entries = list(
-        list(path = "cerebro_app", type = "directory", size = 0, md5 = NA),
-        file_entry("cerebro_app/app.R", strrep("0", 32L)),
-        file_entry("cerebro_app/private-data/dataset-a.crb", strrep("A", 32L)),
-        file_entry("cerebro_app/private-data/dataset-a.h5", strrep("b", 32L)),
-        file_entry("cerebro_app/private-data/dataset-b.crb", strrep("c", 32L))
-      ))
+      identity = list(
+        entries = list(
+          list(path = "cerebro_app", type = "directory", size = 0, md5 = NA),
+          file_entry("cerebro_app/app.R", strrep("0", 32L)),
+          file_entry(
+            "cerebro_app/private-data/dataset-a.crb",
+            strrep("A", 32L)
+          ),
+          file_entry("cerebro_app/private-data/dataset-a.h5", strrep("b", 32L)),
+          file_entry("cerebro_app/private-data/dataset-b.crb", strrep("c", 32L))
+        )
+      )
     )
   )
 
@@ -1880,16 +1892,18 @@ test_that("the worker seeds copied App data from request identities", {
       md5 = md5_value
     )
   }
-  request <- list(content_identities = list(
-    `private-data/ds1.crb` = list(
-      crb = portable("ds1.crb"),
-      backend = list(
-        type = "h5",
-        entries = list(`private-data/ds1.h5` = portable("ds1.h5"))
-      ),
-      spatial_molecules = list(type = "none", entries = list())
+  request <- list(
+    content_identities = list(
+      `private-data/ds1.crb` = list(
+        crb = portable("ds1.crb"),
+        backend = list(
+          type = "h5",
+          entries = list(`private-data/ds1.h5` = portable("ds1.h5"))
+        ),
+        spatial_molecules = list(type = "none", entries = list())
+      )
     )
-  ))
+  )
   hashed <- character()
   counting <- function(path) {
     hashed <<- c(hashed, basename(path))

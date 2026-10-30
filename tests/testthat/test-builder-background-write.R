@@ -358,7 +358,10 @@ test_that("Project workers source the artifact runtime only when asked", {
   dir <- withr::local_tempdir()
   base <- file.path(dir, "base.R")
   full_file <- file.path(dir, "full.R")
-  writeLines("base_loads <- (if (exists('base_loads')) base_loads else 0) + 1", base)
+  writeLines(
+    "base_loads <- (if (exists('base_loads')) base_loads else 0) + 1",
+    base
+  )
   writeLines(
     c(
       "base_loads <- -1",

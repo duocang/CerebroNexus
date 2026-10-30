@@ -2,8 +2,12 @@
   labels <- request$selector_order
   viewer_content <- request$viewer_content[labels]
   list(
-    spatial_percentage_cells_to_show = vapply(viewer_content, `[[`, numeric(1),
-      "spatial_percentage_cells_to_show"),
+    spatial_percentage_cells_to_show = vapply(
+      viewer_content,
+      `[[`,
+      numeric(1),
+      "spatial_percentage_cells_to_show"
+    ),
     point_size = vapply(
       viewer_content,
       `[[`,

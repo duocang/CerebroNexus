@@ -3338,7 +3338,10 @@ test_that("the Configure title follows a dataset rename", {
   })
 
   review <- paste(
-    readLines(builder_profile_inst_path("builder", "server", "review.R"), warn = FALSE),
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_match(review, 'id = "configure_dataset_name"', fixed = TRUE)
@@ -3364,7 +3367,10 @@ test_that("the Configure footer counts datasets that are still loading", {
     "0 of 4 datasets checked · 1 still loading"
   )
   review <- paste(
-    readLines(builder_profile_inst_path("builder", "server", "review.R"), warn = FALSE),
+    readLines(
+      builder_profile_inst_path("builder", "server", "review.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_match(

@@ -58,7 +58,9 @@ test_that("a Build that needs a decision names the failed analysis and why", {
   log <- c(
     paste("pbmc3k:", intToUtf8(0x2713L), "Most expressed genes (0.4 s)"),
     paste0(
-      "pbmc3k: ", intToUtf8(0x2717L), " Mitochondrial / ribosomal percentages: Layer `counts` ",
+      "pbmc3k: ",
+      intToUtf8(0x2717L),
+      " Mitochondrial / ribosomal percentages: Layer `counts` ",
       "could not be found in `RNA` assay.\nAvailable layers: data"
     )
   )
@@ -128,7 +130,11 @@ test_that("raw-count analyses are blocked on an assay without counts", {
   )
   with_counts <- app_env$builder_enhance_analysis_profile(profile, "hg", "SCT")
   expect_null(
-    app_env$builder_step_blocked(steps$percent_mt_ribo, with_counts, character())
+    app_env$builder_step_blocked(
+      steps$percent_mt_ribo,
+      with_counts,
+      character()
+    )
   )
   ## The default assay is used when none is chosen yet.
   expect_identical(

@@ -91,7 +91,11 @@ test_that("the live app exposes imports before their worker result", {
     expect_identical(output$ds_count, "1")
     expect_match(workbench_html, "builder-import-loading-note", fixed = TRUE)
     expect_match(workbench_html, "Loading in the background", fixed = TRUE)
-    expect_false(grepl("Preparing your workspace", workbench_html, fixed = TRUE))
+    expect_false(grepl(
+      "Preparing your workspace",
+      workbench_html,
+      fixed = TRUE
+    ))
     expect_false(grepl("Add files", workbench_html, fixed = TRUE))
     expect_false(grepl('id="build"', workbench_html, fixed = TRUE))
     expect_false(grepl('id="make_app"', workbench_html, fixed = TRUE))

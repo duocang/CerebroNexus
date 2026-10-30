@@ -235,7 +235,11 @@ test_that("on-disk backend flags are probed once without loading packages", {
   expect_identical(
     lengths(regmatches(
       session,
-      gregexpr("backends <- builder_backend_capabilities()", session, fixed = TRUE)
+      gregexpr(
+        "backends <- builder_backend_capabilities()",
+        session,
+        fixed = TRUE
+      )
     )),
     2L
   )
@@ -266,7 +270,10 @@ test_that("the dataset picker reports its busy state to the page", {
   )
 
   js <- paste(
-    readLines(builder_profile_inst_path("builder", "www", "builder.js"), warn = FALSE),
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_match(js, '"builder_dataset_picker_state"', fixed = TRUE)

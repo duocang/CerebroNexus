@@ -88,10 +88,8 @@ builder_runtime_file_identity <- function(
     stat_index <- match(paths, previous_stats$paths)
     unchanged <- !is.na(file_index) &
       !is.na(stat_index) &
-      as.double(before$size) ==
-        as.double(previous_stats$size)[stat_index] &
-      as.double(before$mtime) ==
-        as.double(previous_stats$mtime)[stat_index]
+      as.double(before$size) == as.double(previous_stats$size)[stat_index] &
+      as.double(before$mtime) == as.double(previous_stats$mtime)[stat_index]
     unchanged[is.na(unchanged)] <- FALSE
     for (index in which(unchanged)) {
       previous <- previous_files[[file_index[[index]]]]

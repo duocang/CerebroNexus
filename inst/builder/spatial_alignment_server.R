@@ -1936,7 +1936,8 @@ builder_spatial_alignment_server <- function(
       entry$settings$images %||% list()
     )
     changed <- FALSE
-    stored_percentage <- entry$settings$spatial_percentage_cells_to_show %||% 100
+    stored_percentage <- entry$settings$spatial_percentage_cells_to_show %||%
+      100
     if (
       !isTRUE(all.equal(
         cell_percentage,
@@ -2860,7 +2861,8 @@ builder_spatial_alignment_server <- function(
       identity = identity,
       generation = generation,
       reset_token = canvas_reset_token(),
-      cell_percentage = entry$settings$spatial_percentage_cells_to_show %||% 100,
+      cell_percentage = entry$settings$spatial_percentage_cells_to_show %||%
+        100,
       dataset = contract$id,
       snapshot_identity = contract$snapshot_identity,
       section = section

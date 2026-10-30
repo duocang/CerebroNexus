@@ -143,7 +143,10 @@ test_that("only files under the session temp folder count as owned uploads", {
 
   expect_true(builder_upload_transport_owned(upload, temp_root = temp_root))
   expect_false(builder_upload_transport_owned(outside, temp_root = temp_root))
-  expect_false(builder_upload_transport_owned(upload_dir, temp_root = temp_root))
+  expect_false(builder_upload_transport_owned(
+    upload_dir,
+    temp_root = temp_root
+  ))
   expect_false(builder_upload_transport_owned(
     file.path(upload_dir, "missing.qs2"),
     temp_root = temp_root

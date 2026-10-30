@@ -63,5 +63,9 @@ test_that("dataset switching resumes Data info outputs from a conditional page",
     as.character(fixture$expected$n_cells),
     fixed = TRUE
   )
-  expect_match(summary$organism, generated_app_e2e_organism_label(fixture$expected$organism), fixed = TRUE)
+  expect_match(
+    summary$organism,
+    generated_app_e2e_organism_label(fixture$expected$organism),
+    fixed = TRUE
+  )
 })

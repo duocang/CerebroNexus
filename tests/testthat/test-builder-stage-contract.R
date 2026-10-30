@@ -111,7 +111,11 @@ test_that("the organism selector starts on a detected guess, marked as detected"
   )
 
   html <- builder_stage_html(builder_core_stage_ui("core", model))
-  expect_match(html, '<option value="hg" selected>Human (hg)</option>', fixed = TRUE)
+  expect_match(
+    html,
+    '<option value="hg" selected>Human (hg)</option>',
+    fixed = TRUE
+  )
   expect_match(html, 'data-builder-detected-organism="hg"', fixed = TRUE)
   expect_match(html, "Detected from gene names", fixed = TRUE)
 

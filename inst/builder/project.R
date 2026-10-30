@@ -139,7 +139,14 @@ builder_activity_capabilities <- function(activity) {
     !importing &&
     !isTRUE(activity$source_syncing) &&
     !activity$project_phase %in%
-      c("choosing", "saving", "autosaving", "opening", "restoring", "registering")
+      c(
+        "choosing",
+        "saving",
+        "autosaving",
+        "opening",
+        "restoring",
+        "registering"
+      )
   list(
     select_dataset = connected &&
       !identical(activity$project_phase, "choosing"),
@@ -1702,9 +1709,13 @@ builder_project_relocate_moved_sources <- function(entries, results) {
   if (!length(moved)) {
     return(entries)
   }
-  from <- vapply(moved, function(result) {
-    normalizePath(result$moved_from, winslash = "/", mustWork = FALSE)
-  }, character(1))
+  from <- vapply(
+    moved,
+    function(result) {
+      normalizePath(result$moved_from, winslash = "/", mustWork = FALSE)
+    },
+    character(1)
+  )
   lapply(entries, function(entry) {
     path <- entry$path %||% NULL
     if (!.builder_project_text(path)) {
@@ -1712,7 +1723,11 @@ builder_project_relocate_moved_sources <- function(entries, results) {
     }
     index <- match(normalizePath(path, winslash = "/", mustWork = FALSE), from)
     if (!is.na(index) && !file.exists(path)) {
-      entry$path <- normalizePath(moved[[index]]$path, winslash = "/", mustWork = TRUE)
+      entry$path <- normalizePath(
+        moved[[index]]$path,
+        winslash = "/",
+        mustWork = TRUE
+      )
     }
     entry
   })
@@ -1914,7 +1929,11 @@ builder_project_copy_source_job <- function(job, progress = NULL) {
     .builder_project_source_verification_cache
   )
   if (.builder_project_text(cache_key)) {
-    assign(cache_key, fingerprint, envir = .builder_project_source_verification_cache)
+    assign(
+      cache_key,
+      fingerprint,
+      envir = .builder_project_source_verification_cache
+    )
   }
   list(
     id = job$id,
@@ -2001,7 +2020,9 @@ builder_project_copy_source_jobs <- function(
   sizes <- vapply(
     jobs,
     function(job) {
-      size <- suppressWarnings(as.double(file.info(job$source %||% "")$size[[1L]]))
+      size <- suppressWarnings(as.double(file.info(job$source %||% "")$size[[
+        1L
+      ]]))
       if (is.finite(size)) size else 0
     },
     numeric(1)
@@ -2009,7 +2030,12 @@ builder_project_copy_source_jobs <- function(
   bytes_total <- sum(sizes)
   bytes_finished <- 0
   last_written <- -Inf
-  write_progress <- function(completed, bytes_done, current = NULL, last = NULL) {
+  write_progress <- function(
+    completed,
+    bytes_done,
+    current = NULL,
+    last = NULL
+  ) {
     if (!.builder_project_text(progress_path)) {
       return(invisible(FALSE))
     }
@@ -2043,7 +2069,10 @@ builder_project_copy_source_jobs <- function(
         write_progress(index - 1L, bytes_finished + bytes, current)
       }
     }
-    results[[index]] <- builder_project_copy_source_job(job, progress = progress)
+    results[[index]] <- builder_project_copy_source_job(
+      job,
+      progress = progress
+    )
     failed <- failed + as.integer(identical(results[[index]]$status, "failed"))
     bytes_finished <- bytes_finished + sizes[[index]]
     write_progress(
@@ -4921,7 +4950,11 @@ builder_project_configuration_digest <- function(
   } else {
     NULL
   }
-  cached <- if (is.null(key)) NULL else get0(key, envir = memo, inherits = FALSE)
+  cached <- if (is.null(key)) {
+    NULL
+  } else {
+    get0(key, envir = memo, inherits = FALSE)
+  }
   if (.builder_project_text(cached %||% NULL)) {
     return(cached)
   }
@@ -4970,7 +5003,7 @@ builder_project_artifact_configuration_digest <- function(
     "overview_point_size",
     "overview_point_opacity",
     "overview_percentage_cells_to_show",
-      "spatial_percentage_cells_to_show",
+    "spatial_percentage_cells_to_show",
     "spatial_point_appearance",
     "spatial_roi_settings"
   )
@@ -7824,12 +7857,20 @@ builder_project_writer_warmup_task <- function(runtime_for, args) {
   # now (about two seconds, all of the write path) instead.
   # Once per loaded runtime: a Project opened after the pre-Save warm-up only
   # needs the integrity pass.
-  if (!isTRUE(get0(".builder_project_compiled", envir = runtime, inherits = FALSE))) {
+  if (
+    !isTRUE(get0(
+      ".builder_project_compiled",
+      envir = runtime,
+      inherits = FALSE
+    ))
+  ) {
     names <- ls(runtime, pattern = "^[.]?builder_project", all.names = TRUE)
     for (name in names) {
       value <- get(name, envir = runtime, inherits = FALSE)
       if (is.function(value) && !is.primitive(value)) {
-        compiled <- tryCatch(compiler::cmpfun(value), error = function(error) NULL)
+        compiled <- tryCatch(compiler::cmpfun(value), error = function(error) {
+          NULL
+        })
         if (is.function(compiled)) {
           assign(name, compiled, envir = runtime)
         }
@@ -8003,7 +8044,11 @@ builder_project_worker_new <- function(
     isTRUE(tryCatch(session$is_alive(), error = function(error) FALSE))
 }
 
-.builder_project_worker_finish <- function(handle, result = NULL, error = NULL) {
+.builder_project_worker_finish <- function(
+  handle,
+  result = NULL,
+  error = NULL
+) {
   handle$state <- if (is.null(error)) "completed" else "failed"
   handle$result <- result
   handle$error <- error
@@ -8166,7 +8211,10 @@ builder_project_worker_pump <- function(worker) {
 
 builder_project_worker_call <- function(worker, func, args = list()) {
   if (!is.environment(worker) || !is.function(func)) {
-    stop("A Project worker call requires a worker and a function.", call. = FALSE)
+    stop(
+      "A Project worker call requires a worker and a function.",
+      call. = FALSE
+    )
   }
   # Calls are self-contained: never serialize the caller's environment.
   func <- builder_project_portable_function(func)

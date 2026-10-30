@@ -315,7 +315,11 @@ generated_app_e2e_select_dataset <- function(name, timeout = 60000) {
     timeout = timeout,
     validate = function(current) {
       html <- if (is.list(current)) current$html else as.character(current)
-      any(grepl(generated_app_e2e_organism_label(fixture$expected$organism), html, fixed = TRUE))
+      any(grepl(
+        generated_app_e2e_organism_label(fixture$expected$organism),
+        html,
+        fixed = TRUE
+      ))
     }
   )
   .generated_app_e2e_wait_pages(

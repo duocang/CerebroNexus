@@ -698,8 +698,10 @@
         identical(item$display, builderViewerDisplayDefaults(item$display)),
         error = function(e) FALSE
       )) &&
-        identical(item$extra_material_table_index,
-                  viewerExtraMaterialTableIndex(item$extra_material_table_index)) &&
+        identical(
+          item$extra_material_table_index,
+          viewerExtraMaterialTableIndex(item$extra_material_table_index)
+        ) &&
         identical(
           item$gene_expression,
           list(
@@ -744,29 +746,54 @@
 }
 
 .builder_app_spatial_point_appearance_valid <- function(value) {
-  viewerNamedSettings(value) && all(vapply(value, function(leaf) {
-    !is.null(viewerSpatialPointSetting(leaf))
-  }, logical(1)))
+  viewerNamedSettings(value) &&
+    all(vapply(
+      value,
+      function(leaf) {
+        !is.null(viewerSpatialPointSetting(leaf))
+      },
+      logical(1)
+    ))
 }
 
 .builder_app_spatial_roi_settings_valid <- function(value) {
-  viewerNamedSettings(value) && all(vapply(value, function(rois) {
-    viewerNamedSettings(rois) && all(vapply(rois, function(leaf) {
-      !is.null(viewerSpatialPointSetting(leaf, roi = TRUE))
-    }, logical(1)))
-  }, logical(1)))
+  viewerNamedSettings(value) &&
+    all(vapply(
+      value,
+      function(rois) {
+        viewerNamedSettings(rois) &&
+          all(vapply(
+            rois,
+            function(leaf) {
+              !is.null(viewerSpatialPointSetting(leaf, roi = TRUE))
+            },
+            logical(1)
+          ))
+      },
+      logical(1)
+    ))
 }
 
 .builder_app_table_index <- function(tables) {
-  if (!is.list(tables) || is.object(tables)) return(list())
+  if (!is.list(tables) || is.object(tables)) {
+    return(list())
+  }
   index <- list()
   for (table in tables) {
-    if (!is.list(table) || is.object(table)) next
+    if (!is.list(table) || is.object(table)) {
+      next
+    }
     key <- table$name
-    if (!is.character(key) || length(key) != 1L || is.na(key) || !nzchar(key)) next
+    if (!is.character(key) || length(key) != 1L || is.na(key) || !nzchar(key)) {
+      next
+    }
     index[[key]] <- list(
-      workbook_name = table$workbook_name %||% basename(table$file_name %||% ""),
-      display_name = table$display_name %||% table$sheet_name %||% table$sheet %||% key
+      workbook_name = table$workbook_name %||%
+        basename(table$file_name %||% ""),
+      display_name = table$display_name %||%
+        table$sheet_name %||%
+        table$sheet %||%
+        key
     )
   }
   viewerExtraMaterialTableIndex(index)
@@ -864,7 +891,9 @@
       overview_percentage_cells_to_show = as.double(
         percentage_cells_to_show
       ),
-      spatial_percentage_cells_to_show = as.double(item$spatial_percentage_cells_to_show %||% 100),
+      spatial_percentage_cells_to_show = as.double(
+        item$spatial_percentage_cells_to_show %||% 100
+      ),
       spatial_point_appearance = item$spatial_point_appearance %||% list(),
       spatial_roi_settings = item$spatial_roi_settings %||% list(),
       display = builderViewerDisplayDefaults(item$viewer_display),
@@ -876,7 +905,9 @@
           panel_palette = d$gene_panel_palette
         )
       }),
-      extra_material_table_index = viewerExtraMaterialTableIndex(item$extra_material_table_index)
+      extra_material_table_index = viewerExtraMaterialTableIndex(
+        item$extra_material_table_index
+      )
     )
   })
   names(values) <- labels

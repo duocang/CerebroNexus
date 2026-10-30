@@ -107,15 +107,17 @@ builder_project_update_entries <- function(entries) {
   previous <- current_state$datasets %||% list()
   previous_ids <- entry_ids(previous)
   next_ids <- entry_ids(updated$datasets)
-  changed <- next_ids[!vapply(
-    seq_along(updated$datasets),
-    function(index) {
-      position <- match(next_ids[[index]], previous_ids)
-      !is.na(position) &&
-        identical(updated$datasets[[index]], previous[[position]])
-    },
-    logical(1)
-  )]
+  changed <- next_ids[
+    !vapply(
+      seq_along(updated$datasets),
+      function(index) {
+        position <- match(next_ids[[index]], previous_ids)
+        !is.na(position) &&
+          identical(updated$datasets[[index]], previous[[position]])
+      },
+      logical(1)
+    )
+  ]
   if (!length(changed) && identical(next_ids, previous_ids)) {
     return(invisible(FALSE))
   }
@@ -438,7 +440,10 @@ builder_activity_message <- function(
     switch(
       phase,
       choosing = if (creating) {
-        paste("The folder picker is open.", builder_project_save_location_note())
+        paste(
+          "The folder picker is open.",
+          builder_project_save_location_note()
+        )
       } else {
         "The project picker is open."
       },
@@ -696,7 +701,11 @@ builder_project_worker_runtime_files <- function(full = FALSE) {
       file.path(builder_dir, "core", "bundle_path_contract.R"),
       file.path(builder_dir, "io.R"),
       project,
-      file.path(builder_dir, "app_bundle", c("contract.R", "backend.R", "topology.R")),
+      file.path(
+        builder_dir,
+        "app_bundle",
+        c("contract.R", "backend.R", "topology.R")
+      ),
       file.path(builder_dir, "extras.R")
     )
   } else {
@@ -708,7 +717,10 @@ builder_project_worker_runtime_files <- function(full = FALSE) {
     )
   }
   if (any(!file.exists(files))) {
-    stop("The Builder Project worker runtime could not be found.", call. = FALSE)
+    stop(
+      "The Builder Project worker runtime could not be found.",
+      call. = FALSE
+    )
   }
   normalizePath(files, winslash = "/", mustWork = TRUE)
 }
@@ -1320,7 +1332,11 @@ queue_builder_project_crbs <- function(ids = checked_dataset_ids()) {
     )
   }
   builder_project_crb_batch(
-    if (length(jobs)) as.integer(isolate(builder_project_crb_batch())) + added else 0L
+    if (length(jobs)) {
+      as.integer(isolate(builder_project_crb_batch())) + added
+    } else {
+      0L
+    }
   )
   builder_project_crb_jobs(jobs)
   start_next_builder_project_crb_job()
@@ -1349,8 +1365,10 @@ builder_project_crb_queue_status <- reactive({
 })
 
 observe({
-  if (!length(builder_project_crb_jobs()) &&
-      !identical(isolate(builder_project_crb_batch()), 0L)) {
+  if (
+    !length(builder_project_crb_jobs()) &&
+      !identical(isolate(builder_project_crb_batch()), 0L)
+  ) {
     builder_project_crb_batch(0L)
   }
 })
@@ -2965,14 +2983,19 @@ request_builder_project_save <- function(
   # Decide the lock now, not when the request runs after this flush: a Save
   # that stages new attachments starts locked, so an edit made in between is
   # not accepted by the browser and then refused by the locked server.
-  stages_attachments <- isTRUE(background) && isTRUE(tryCatch(
-    {
-      project <- isolate(builder_project())
-      is.list(project) &&
-        length(builder_project_attachment_jobs(isolate(sets()), project$root)) > 0L
-    },
-    error = function(error) TRUE
-  ))
+  stages_attachments <- isTRUE(background) &&
+    isTRUE(tryCatch(
+      {
+        project <- isolate(builder_project())
+        is.list(project) &&
+          length(builder_project_attachment_jobs(
+            isolate(sets()),
+            project$root
+          )) >
+            0L
+      },
+      error = function(error) TRUE
+    ))
   builder_project_operation_phase(
     if (isTRUE(background) && !stages_attachments) "autosaving" else "saving"
   )
@@ -3058,7 +3081,10 @@ show_builder_project_folder_error <- function(message, type = "error") {
     type,
     message,
     target = list(
-      field = c("builder_project_server_folder", "builder_project_server_manifest")
+      field = c(
+        "builder_project_server_folder",
+        "builder_project_server_manifest"
+      )
     )
   )
   invisible(FALSE)
@@ -3753,31 +3779,34 @@ wait_for_builder_project_open_worker <- function(actions, ready) {
     if (builder_session_closed()) {
       return(invisible(FALSE))
     }
-    shiny::withReactiveDomain(session, shiny::isolate({
-      wait <- builder_project_open_wait()
-      if (!is.list(wait) || !identical(wait$token, token)) {
-        return(invisible(FALSE))
-      }
-      if (is.null(builder_project_restore())) {
+    shiny::withReactiveDomain(
+      session,
+      shiny::isolate({
+        wait <- builder_project_open_wait()
+        if (!is.list(wait) || !identical(wait$token, token)) {
+          return(invisible(FALSE))
+        }
+        if (is.null(builder_project_restore())) {
+          builder_project_open_wait(NULL)
+          return(invisible(FALSE))
+        }
+        state <- builder_project_open_worker_ready()
+        if (!isTRUE(state$protocol) || !isTRUE(state$worker)) {
+          later::later(check, delay = 0.25)
+          return(invisible(TRUE))
+        }
         builder_project_open_wait(NULL)
-        return(invisible(FALSE))
-      }
-      state <- builder_project_open_worker_ready()
-      if (!isTRUE(state$protocol) || !isTRUE(state$worker)) {
-        later::later(check, delay = 0.25)
-        return(invisible(TRUE))
-      }
-      builder_project_open_wait(NULL)
-      completed <- complete_builder_project_open(wait$actions)
-      if (
-        identical(completed, FALSE) &&
-          !is.null(builder_project_restore()) &&
-          is.null(builder_project_open_wait())
-      ) {
-        show_builder_project_restore_choices(wait$actions)
-      }
-      invisible(TRUE)
-    }))
+        completed <- complete_builder_project_open(wait$actions)
+        if (
+          identical(completed, FALSE) &&
+            !is.null(builder_project_restore()) &&
+            is.null(builder_project_open_wait())
+        ) {
+          show_builder_project_restore_choices(wait$actions)
+        }
+        invisible(TRUE)
+      })
+    )
   }
   later::later(check, delay = 0.25)
   invisible("waiting")
@@ -4329,7 +4358,8 @@ observe({
         source_status <- isolate(builder_project_source_sync())$status %||%
           "idle"
         if (
-          source_status %in% c("syncing", "cancelling") ||
+          source_status %in%
+            c("syncing", "cancelling") ||
             !is.null(isolate(builder_project_source_process()))
         ) {
           later::later(

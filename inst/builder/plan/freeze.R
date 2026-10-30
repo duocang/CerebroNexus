@@ -685,7 +685,8 @@ builder_freeze_plan <- function(
           "overview_percentage_cells_to_show"
         ]] %||%
           100
-        saved$spatial_percentage_cells_to_show <- settings$spatial_percentage_cells_to_show %||% 100
+        saved$spatial_percentage_cells_to_show <- settings$spatial_percentage_cells_to_show %||%
+          100
         saved$spatial_point_appearance <-
           .builder_plan_spatial_point_appearance(
             settings$spatial_point_appearance,
@@ -863,7 +864,8 @@ builder_freeze_plan <- function(
           settings$reductions[[1L]],
         default_trajectory = settings$default_trajectory %||% NULL,
         viewer_display = builderViewerDisplayDefaults(settings$viewer_display),
-        spatial_percentage_cells_to_show = settings$spatial_percentage_cells_to_show %||% 100,
+        spatial_percentage_cells_to_show = settings$spatial_percentage_cells_to_show %||%
+          100,
         overview_point_size = settings$overview_point_size %||% 5,
         overview_point_opacity = settings$overview_point_opacity %||% 1,
         overview_percentage_cells_to_show = settings[[

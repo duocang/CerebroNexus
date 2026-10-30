@@ -415,7 +415,10 @@ test_that("a needs-decision result keeps finished CRBs for the retry", {
     expect_identical(names(retained), "dataset-1")
     record <- retained[["dataset-1"]]
     expect_true(file.exists(record$path))
-    expect_true(startsWith(record$path, normalizePath(retention, winslash = "/")))
+    expect_true(startsWith(
+      record$path,
+      normalizePath(retention, winslash = "/")
+    ))
     expect_identical(record$fingerprint$md5, crb_md5)
     expect_identical(
       sort(vapply(record$members, `[[`, character(1), "target")),
@@ -1336,9 +1339,11 @@ test_that("only one process can coordinate one release", {
     }
     first <- callr::r_bg(runner, list("one", builder_root, target, barrier))
     second <- callr::r_bg(runner, list("two", builder_root, target, barrier))
-    withr::defer(for (process in list(first, second)) {
-      if (process$is_alive()) try(process$kill(), silent = TRUE)
-    })
+    withr::defer(
+      for (process in list(first, second)) {
+        if (process$is_alive()) try(process$kill(), silent = TRUE)
+      }
+    )
     writeLines("go", barrier)
     ## Each process sources the Builder before the race; on a busy machine
     ## that alone can take more than ten seconds.
@@ -2277,8 +2282,15 @@ test_that("App verification reports its sub-steps to the Build card", {
     expect_identical(indexes[[length(indexes)]], 2L)
     expect_true(all(vapply(datasets, `[[`, integer(1), "step_count") == 2L))
     # Every file pass ends on its last file, even when throttled.
-    for (label in c("Checking files", "Checking final files", "Recording release")) {
-      pass <- Filter(function(value) identical(value$step_label, label), reported)
+    for (label in c(
+      "Checking files",
+      "Checking final files",
+      "Recording release"
+    )) {
+      pass <- Filter(
+        function(value) identical(value$step_label, label),
+        reported
+      )
       last <- pass[[length(pass)]]
       expect_gt(last$step_count, 0L)
       expect_identical(last$step_index, last$step_count, info = label)
@@ -2304,9 +2316,13 @@ test_that("verification sub-steps are throttled and need a detail callback", {
     step("Checking files", 3L, 3L)
     step("Writing build report")
     expect_identical(
-      vapply(seen, function(value) {
-        paste(value$step_label, value$step_index %||% "-", sep = "|")
-      }, character(1)),
+      vapply(
+        seen,
+        function(value) {
+          paste(value$step_label, value$step_index %||% "-", sep = "|")
+        },
+        character(1)
+      ),
       c(
         "Checking files|0",
         "Checking files|2",

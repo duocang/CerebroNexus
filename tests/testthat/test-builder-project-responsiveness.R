@@ -83,10 +83,24 @@ test_that("a source job skips copying when its blob already verifies", {
 test_that("finished copies merge only into records still waiting for them", {
   runtime <- builder_responsiveness_runtime()
   root <- withr::local_tempdir()
-  target <- file.path(root, "sources", "ds1", "blobs", strrep("a", 32), "source.rds")
+  target <- file.path(
+    root,
+    "sources",
+    "ds1",
+    "blobs",
+    strrep("a", 32),
+    "source.rds"
+  )
   dir.create(dirname(target), recursive = TRUE)
   writeBin(charToRaw("ready"), target)
-  planned <- paste("sources", "ds1", "blobs", strrep("a", 32), "source.rds", sep = "/")
+  planned <- paste(
+    "sources",
+    "ds1",
+    "blobs",
+    strrep("a", 32),
+    "source.rds",
+    sep = "/"
+  )
   record <- function(id, status, path) {
     list(
       id = id,
@@ -171,7 +185,10 @@ test_that("queued manifest writes start from the latest Project revision", {
       list(
         is_alive = function() FALSE,
         get_result = function() {
-          list(manifest = manifest, path = file.path(root, "builder-project.json"))
+          list(
+            manifest = manifest,
+            path = file.path(root, "builder-project.json")
+          )
         }
       )
     }
@@ -191,7 +208,11 @@ test_that("queued manifest writes start from the latest Project revision", {
       builder_project(current)
     }
 
-    start_builder_project_manifest_write(project$manifest, project, apply_written)
+    start_builder_project_manifest_write(
+      project$manifest,
+      project,
+      apply_written
+    )
     start_builder_project_manifest_write(
       function(current) {
         manifest <- current$manifest
@@ -235,7 +256,11 @@ test_that("an unchanged Save is recognised without a manifest transaction", {
   record <- list(
     id = "ds1",
     configuration = list(path = "datasets/ds1/config.json", checked = TRUE),
-    source = list(kind = "managed", status = "ready", path = "sources/ds1/source.rds")
+    source = list(
+      kind = "managed",
+      status = "ready",
+      path = "sources/ds1/source.rds"
+    )
   )
   manifest <- list(
     schema_version = 3L,
@@ -381,7 +406,10 @@ test_that("CRB builds run in their own pool and never starve short tasks", {
 test_that("the Project status shows CRB progress with a Cancel action", {
   runtime <- new.env(parent = globalenv())
   runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
-  sys.source(builder_test_inst_path("builder", "ui", "project.R"), envir = runtime)
+  sys.source(
+    builder_test_inst_path("builder", "ui", "project.R"),
+    envir = runtime
+  )
   attach_shiny <- function(env) {
     for (name in c("tags", "tagList", "actionButton", "span", "uiOutput")) {
       assign(name, getExportedValue("shiny", name), envir = env)
@@ -394,12 +422,20 @@ test_that("the Project status shows CRB progress with a Cancel action", {
     phase = "clean",
     crb = crb
   ))
-  expect_match(html, "Building dataset cache · 2 of 3 · Kidney atlas", fixed = TRUE)
+  expect_match(
+    html,
+    "Building dataset cache · 2 of 3 · Kidney atlas",
+    fixed = TRUE
+  )
   expect_match(html, "cancel_builder_project_crbs", fixed = TRUE)
   expect_match(html, "is-busy", fixed = TRUE)
   # The Cancel action is styled by the status stylesheet, not as a
   # Bootstrap link with inline overrides.
-  expect_match(html, "action-button builder-project-status-cancel", fixed = TRUE)
+  expect_match(
+    html,
+    "action-button builder-project-status-cancel",
+    fixed = TRUE
+  )
   expect_match(html, "builder-project-status-label", fixed = TRUE)
   expect_false(grepl("btn-link", html, fixed = TRUE))
   expect_false(grepl("style=", html, fixed = TRUE))
@@ -448,13 +484,20 @@ test_that("CRB queue progress and Cancel keep only the record being written", {
   })
 
   source <- paste(
-    readLines(builder_test_inst_path("builder", "server", "project.R"), warn = FALSE),
+    readLines(
+      builder_test_inst_path("builder", "server", "project.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   open_block <- substr(
     source,
     regexpr("complete_builder_project_open <- function", source, fixed = TRUE),
-    regexpr("observeEvent(input$confirm_builder_project_open", source, fixed = TRUE)
+    regexpr(
+      "observeEvent(input$confirm_builder_project_open",
+      source,
+      fixed = TRUE
+    )
   )
   expect_match(open_block, "cancel_builder_project_crb_queue()", fixed = TRUE)
   expect_match(source, '.pool = "crb"', fixed = TRUE)
@@ -489,7 +532,11 @@ test_that("a promoted CRB is not hashed again after its rename", {
     root = project,
     promote = TRUE
   )
-  expect_false(any(grepl("/.artifact-", gsub("\\\\", "/", hashed), fixed = TRUE)))
+  expect_false(any(grepl(
+    "/.artifact-",
+    gsub("\\\\", "/", hashed),
+    fixed = TRUE
+  )))
   expect_length(hashed, 2L)
   stored_path <- file.path(project, stored$path)
   expect_identical(
@@ -506,7 +553,11 @@ test_that("a promoted CRB is not hashed again after its rename", {
     root = project,
     promote = FALSE
   )
-  expect_true(any(grepl("/.artifact-", gsub("\\\\", "/", hashed), fixed = TRUE)))
+  expect_true(any(grepl(
+    "/.artifact-",
+    gsub("\\\\", "/", hashed),
+    fixed = TRUE
+  )))
 })
 
 test_that("Project writes replace only the datasets they changed", {
@@ -557,7 +608,9 @@ test_that("Project writes replace only the datasets they changed", {
     ))
 
     ## A removed dataset is dropped from the caches too.
-    expect_true(builder_project_update_entries(list(isolate(store())$datasets[[2L]])))
+    expect_true(builder_project_update_entries(list(isolate(store())$datasets[[
+      2L
+    ]])))
     expect_false(exists("ds1::1::loaded", envir = builder_dataset_state_cache))
   })
 })
@@ -579,7 +632,9 @@ test_that("CRB availability checks reuse verified content by stat identity", {
     path = "artifacts/ds1/dataset.crb",
     fingerprint = fingerprint,
     members = list(),
-    built_from_configuration = runtime$builder_project_artifact_configuration_digest(entry),
+    built_from_configuration = runtime$builder_project_artifact_configuration_digest(
+      entry
+    ),
     plan_item = list(artifact_identity = list(spatial_sections = character()))
   )
   hashed <- 0L
@@ -719,7 +774,11 @@ test_that("other sources are streamed with byte progress and one hash pass", {
     expect_identical(results[[1L]]$status, "ready", info = streaming)
     expect_null(results[[1L]]$moved_from, info = streaming)
     expect_true(file.exists(session$source), info = streaming)
-    expect_identical(results[[1L]]$fingerprint$md5, session$md5, info = streaming)
+    expect_identical(
+      results[[1L]]$fingerprint$md5,
+      session$md5,
+      info = streaming
+    )
     progress <- readRDS(progress_path)
     expect_identical(progress$bytes_total, 250000, info = streaming)
     expect_identical(progress$bytes_done, 250000, info = streaming)
@@ -751,7 +810,10 @@ test_that("other sources are streamed with byte progress and one hash pass", {
 test_that("the source copy reports bytes instead of file counts", {
   runtime <- new.env(parent = globalenv())
   runtime$`%||%` <- function(left, right) if (is.null(left)) right else left
-  sys.source(builder_test_inst_path("builder", "ui", "project.R"), envir = runtime)
+  sys.source(
+    builder_test_inst_path("builder", "ui", "project.R"),
+    envir = runtime
+  )
   for (name in c("tags", "tagList", "actionButton")) {
     assign(name, getExportedValue("shiny", name), envir = runtime)
   }
@@ -769,7 +831,10 @@ test_that("the source copy reports bytes instead of file counts", {
   ))
   expect_match(html, "Saving source files · 1.5 GB of 4", fixed = TRUE)
   browser <- paste(
-    readLines(builder_test_inst_path("builder", "www", "builder.js"), warn = FALSE),
+    readLines(
+      builder_test_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_match(browser, "message.bytes_total", fixed = TRUE)
@@ -783,11 +848,13 @@ test_that("reopening the dataset choices keeps the user's selections", {
       runtime_restore_status = list(default_action = default, actions = actions)
     )
   }
-  manifest <- list(datasets = list(
-    record("ds1", "reuse", c("reuse", "reload", "skip")),
-    record("ds2", "resume", c("resume", "skip")),
-    record("ds3", "skip", "skip")
-  ))
+  manifest <- list(
+    datasets = list(
+      record("ds1", "reuse", c("reuse", "reload", "skip")),
+      record("ds2", "resume", c("resume", "skip")),
+      record("ds3", "skip", "skip")
+    )
+  )
   updated <- runtime$builder_project_manifest_with_restore_actions(
     manifest,
     list(ds1 = "skip", ds2 = "reload", ds3 = "skip")
@@ -920,7 +987,10 @@ test_that("Open waits for a busy worker instead of asking to confirm again", {
   })
 
   source <- paste(
-    readLines(builder_test_inst_path("builder", "server", "project.R"), warn = FALSE),
+    readLines(
+      builder_test_inst_path("builder", "server", "project.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_false(grepl("confirm the dataset choices again", source, fixed = TRUE))
@@ -931,7 +1001,11 @@ test_that("Open waits for a busy worker instead of asking to confirm again", {
   )
 })
 
-builder_responsiveness_project <- function(runtime, root, ids = c("ds1", "ds2")) {
+builder_responsiveness_project <- function(
+  runtime,
+  root,
+  ids = c("ds1", "ds2")
+) {
   manifest <- runtime$builder_project_new_manifest(root, "Warm writes")
   manifest$datasets <- lapply(ids, function(id) {
     runtime$builder_project_dataset_record(
@@ -1047,7 +1121,10 @@ test_that("a warm writer verifies unchanged sidecars once across Saves", {
 test_that("the writer warm-up compiles the write path and fills the cache", {
   runtime <- builder_responsiveness_runtime()
   root <- withr::local_tempdir()
-  runtime$builder_project_write(builder_responsiveness_project(runtime, root), root)
+  runtime$builder_project_write(
+    builder_responsiveness_project(runtime, root),
+    root
+  )
   cache <- runtime$builder_project_write_verification_cache()
   rm(list = ls(cache, all.names = TRUE), envir = cache)
   compiled <- function(name) {
@@ -1069,7 +1146,10 @@ test_that("the writer warm-up compiles the write path and fills the cache", {
 
   ## Compiled once per loaded runtime.
   runtime$builder_project_write <- function(...) NULL
-  runtime$builder_project_writer_warmup_task(function(full) runtime, list(root = root))
+  runtime$builder_project_writer_warmup_task(
+    function(full) runtime,
+    list(root = root)
+  )
   expect_false(compiled("builder_project_write"))
   ## Before the Project exists the warm-up only loads and compiles.
   fresh <- builder_responsiveness_runtime()
@@ -1094,7 +1174,11 @@ test_that("the writer is readied before the first Save and per Project", {
     server_env <- environment(builder_project_prewarm_workers)
     calls <- new.env(parent = emptyenv())
     calls$warmups <- list()
-    server_env$builder_project_worker_task_call <- function(worker, task, args) {
+    server_env$builder_project_worker_task_call <- function(
+      worker,
+      task,
+      args
+    ) {
       if ("root" %in% names(args)) {
         calls$warmups[[length(calls$warmups) + 1L]] <- args$root %||% "<none>"
       }
@@ -1129,7 +1213,10 @@ test_that("the writer is readied before the first Save and per Project", {
 
 test_that("a manual Save queues CRBs only after its result is shown", {
   source <- paste(
-    readLines(builder_test_inst_path("builder", "server", "project.R"), warn = FALSE),
+    readLines(
+      builder_test_inst_path("builder", "server", "project.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   start <- regexpr(
@@ -1179,9 +1266,15 @@ test_that("a new configuration is verified once, not again after its rename", {
   expect_identical(reads$n, 2L)
 
   reads$n <- 0L
-  written <- runtime$builder_project_write(manifest, root, verification_cache = cache)
+  written <- runtime$builder_project_write(
+    manifest,
+    root,
+    verification_cache = cache
+  )
   expect_identical(reads$n, 0L)
-  expect_true(runtime$builder_project_manifest_integrity(written$manifest, root)$valid)
+  expect_true(
+    runtime$builder_project_manifest_integrity(written$manifest, root)$valid
+  )
 
   ## A sidecar changed after it was written is read again and rejected.
   config <- file.path(root, written$manifest$datasets[[1L]]$configuration$path)
@@ -1197,7 +1290,12 @@ test_that("a new configuration is verified once, not again after its rename", {
   expect_gt(reads$n, 0L)
 
   ## No carry when the target is not the verified file.
-  staged <- list(md5 = strrep("a", 32L), file_id = "elsewhere", bytes = 1, modified_at = "x")
+  staged <- list(
+    md5 = strrep("a", 32L),
+    file_id = "elsewhere",
+    bytes = 1,
+    modified_at = "x"
+  )
   expect_false(runtime$builder_project_carry_configuration_verification(
     config,
     list(config = list(), digest = "d", contract_version = 3L),
@@ -1222,14 +1320,19 @@ test_that("a manual Save keeps the workspace editable unless it stages attachmen
     jobs <- new.env(parent = emptyenv())
     jobs$value <- list()
     server_env$builder_project_attachment_jobs <- function(entries, root) {
-      if (inherits(jobs$value, "condition")) stop(jobs$value)
+      if (inherits(jobs$value, "condition")) {
+        stop(jobs$value)
+      }
       jobs$value
     }
     builder_project(list(
       root = "project-root",
       path = "project-root/builder-project.json",
       name = "P",
-      manifest = list(project = list(id = "p1", revision = 1L), datasets = list())
+      manifest = list(
+        project = list(id = "p1", revision = 1L),
+        datasets = list()
+      )
     ))
     phase_after <- function(...) {
       builder_project_operation_phase("idle")
@@ -1249,7 +1352,10 @@ test_that("a manual Save keeps the workspace editable unless it stages attachmen
     jobs$value <- simpleError("source missing")
     expect_identical(phase_after(show_actions = TRUE), "saving")
     jobs$value <- list()
-    expect_identical(phase_after(show_actions = TRUE, background = FALSE), "saving")
+    expect_identical(
+      phase_after(show_actions = TRUE, background = FALSE),
+      "saving"
+    )
   })
 })
 
@@ -1263,9 +1369,21 @@ test_that("staging attachments unlocks the workspace again for the manifest writ
     server_env$builder_project_worker_task_call <- function(...) {
       list(is_alive = function() FALSE, get_result = function() list("staged"))
     }
-    server_env$builder_project_attachment_results_match <- function(jobs, results) TRUE
-    server_env$builder_project_table_save_signature <- function(project, entries) "sig"
-    server_env$builder_project_attachment_jobs <- function(entries, root) list("job")
+    server_env$builder_project_attachment_results_match <- function(
+      jobs,
+      results
+    ) {
+      TRUE
+    }
+    server_env$builder_project_table_save_signature <- function(
+      project,
+      entries
+    ) {
+      "sig"
+    }
+    server_env$builder_project_attachment_jobs <- function(entries, root) {
+      list("job")
+    }
     server_env$complete_builder_project_save_request <- function(...) {
       calls$phase <- isolate(builder_project_operation_phase())
       invisible(TRUE)
@@ -1284,7 +1402,9 @@ test_that("staging attachments unlocks the workspace again for the manifest writ
         after = NULL,
         background = background
       )
-      expect_true(builder_responsiveness_run_later(function() !is.null(calls$phase)))
+      expect_true(builder_responsiveness_run_later(function() {
+        !is.null(calls$phase)
+      }))
       expect_identical(
         calls$phase,
         if (background) "autosaving" else "saving",
@@ -1324,15 +1444,27 @@ test_that("a Save adopts the staged attachment copies into the workspace", {
       root = "project-root",
       path = "project-root/builder-project.json",
       name = "P",
-      manifest = list(project = list(id = "p1", name = "P", revision = 1L), datasets = list())
+      manifest = list(
+        project = list(id = "p1", name = "P", revision = 1L),
+        datasets = list()
+      )
     )
     builder_project(project)
     pending <- new.env(parent = emptyenv())
-    server_env$builder_project_apply_attachment_results <- function(entries, results, root) {
+    server_env$builder_project_apply_attachment_results <- function(
+      entries,
+      results,
+      root
+    ) {
       list(staged)
     }
     server_env$builder_project_manifest_context <- function(...) list()
-    server_env$start_builder_project_manifest_write <- function(manifest, project, complete, ...) {
+    server_env$start_builder_project_manifest_write <- function(
+      manifest,
+      project,
+      complete,
+      ...
+    ) {
       pending$complete <- complete
       invisible(TRUE)
     }

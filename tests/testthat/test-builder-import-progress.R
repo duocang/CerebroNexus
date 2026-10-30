@@ -94,9 +94,14 @@ test_that("byte progress callbacks are throttled to whole-percent changes", {
   root <- withr::local_tempdir()
   path <- runtime$builder_import_progress_path(root, "ds1", 1L)
   writes <- list()
-  runtime$builder_import_progress_write <- function(path, stage, generation,
-                                                    elapsed_ms, bytes_done = NULL,
-                                                    bytes_total = NULL) {
+  runtime$builder_import_progress_write <- function(
+    path,
+    stage,
+    generation,
+    elapsed_ms,
+    bytes_done = NULL,
+    bytes_total = NULL
+  ) {
     writes[[length(writes) + 1L]] <<- list(
       stage = stage,
       bytes_done = bytes_done
@@ -155,9 +160,21 @@ test_that("queue entries keep the percent of the current stage only", {
   )
   expect_identical(updated$entries$ds1$progress_percent, 42L)
   expect_identical(updated$revision, queue$revision + 1L)
-  same <- runtime$builder_import_set_progress_bytes(updated, "ds1", 1L, 429, 1000)
+  same <- runtime$builder_import_set_progress_bytes(
+    updated,
+    "ds1",
+    1L,
+    429,
+    1000
+  )
   expect_identical(same, updated)
-  stale <- runtime$builder_import_set_progress_bytes(updated, "ds1", 2L, 900, 1000)
+  stale <- runtime$builder_import_set_progress_bytes(
+    updated,
+    "ds1",
+    2L,
+    900,
+    1000
+  )
   expect_identical(stale, updated)
   cleared <- runtime$builder_import_set_progress_bytes(updated, "ds1", 1L)
   expect_null(cleared$entries$ds1$progress_percent)
@@ -224,7 +241,11 @@ test_that("snapshot copies report bytes through the import progress", {
     }
   )
   assign(".builder_objects", new.env(parent = emptyenv()), envir = globalenv())
-  assign(".builder_snapshots", new.env(parent = emptyenv()), envir = globalenv())
+  assign(
+    ".builder_snapshots",
+    new.env(parent = emptyenv()),
+    envir = globalenv()
+  )
   assign(".builder_snapshot_root", root, envir = globalenv())
 
   events <- list()
@@ -277,7 +298,10 @@ test_that("Shiny upload progress is mirrored into the client queue row", {
   )
 
   js <- paste(
-    readLines(builder_profile_inst_path("builder", "www", "builder.js"), warn = FALSE),
+    readLines(
+      builder_profile_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_match(js, "observeClientUploadProgress();", fixed = TRUE)

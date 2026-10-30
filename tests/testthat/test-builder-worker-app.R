@@ -441,7 +441,9 @@ test_that("a missing align-all fails once and later FIFO work proceeds", {
     if (!is.null(polled$result)) {
       break
     }
-    if (Sys.time() >= deadline) stop("Timed out waiting for align-all failure.", call. = FALSE)
+    if (Sys.time() >= deadline) {
+      stop("Timed out waiting for align-all failure.", call. = FALSE)
+    }
   }
 
   expect_null(polled$result$error)
@@ -1850,7 +1852,10 @@ test_that("direct and request-bearing Builds reject a replaced same-id snapshot"
         return(list(worker = worker, result = polled$result))
       }
       if (Sys.time() >= deadline) {
-        stop("Timed out waiting for the frozen-snapshot rejection.", call. = FALSE)
+        stop(
+          "Timed out waiting for the frozen-snapshot rejection.",
+          call. = FALSE
+        )
       }
     }
   }

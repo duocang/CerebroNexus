@@ -991,7 +991,9 @@ builder_build_stage_status_model <- function(
       flow_valid &&
       identical(flow_stage, "idle") &&
       protocol_ready,
-    last_output_parent = if (builder_stage_has_text(last_output_parent %||% "")) {
+    last_output_parent = if (
+      builder_stage_has_text(last_output_parent %||% "")
+    ) {
       last_output_parent
     } else {
       NULL

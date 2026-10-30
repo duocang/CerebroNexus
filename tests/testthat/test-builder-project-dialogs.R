@@ -263,7 +263,10 @@ test_that("the Open project dialog speaks of the dataset cache, not CRBs", {
   )
 
   browser <- paste(
-    readLines(builder_test_inst_path("builder", "www", "builder.js"), warn = FALSE),
+    readLines(
+      builder_test_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_false(grepl("saved CRB", browser, fixed = TRUE))

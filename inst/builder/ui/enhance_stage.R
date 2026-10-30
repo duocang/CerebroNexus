@@ -236,7 +236,9 @@ builder_enhance_analysis_profile <- function(profile, organism, assay = NULL) {
   }
   if (is.list(assay_profile)) {
     profile$analysis_assay <- assay
-    profile$analysis_layers <- as.character(assay_profile$layers %||% character())
+    profile$analysis_layers <- as.character(
+      assay_profile$layers %||% character()
+    )
   }
   profile
 }

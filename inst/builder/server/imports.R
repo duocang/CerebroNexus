@@ -2756,29 +2756,32 @@ schedule_builder_build_stop_fallback <- function(request_id) {
       if (builder_session_closed()) {
         return(invisible(FALSE))
       }
-      shiny::withReactiveDomain(session, shiny::isolate({
-        current_protocol <- protocol()
-        pending <- current_protocol$pending
-        current_worker <- worker()
-        if (
-          !is.list(pending) ||
-            !identical(pending$kind, "build") ||
-            !identical(pending$request_id, request_id) ||
-            is.null(current_worker)
-        ) {
-          return(invisible(FALSE))
-        }
-        busy_note("Stopping the background worker…")
-        restart_worker_protocol(
-          current_worker,
-          current_protocol,
-          "Build stopped by the user. The staged output was not published.",
-          grace_ms = 0L,
-          async = TRUE,
-          notify = FALSE
-        )
-        invisible(TRUE)
-      }))
+      shiny::withReactiveDomain(
+        session,
+        shiny::isolate({
+          current_protocol <- protocol()
+          pending <- current_protocol$pending
+          current_worker <- worker()
+          if (
+            !is.list(pending) ||
+              !identical(pending$kind, "build") ||
+              !identical(pending$request_id, request_id) ||
+              is.null(current_worker)
+          ) {
+            return(invisible(FALSE))
+          }
+          busy_note("Stopping the background worker…")
+          restart_worker_protocol(
+            current_worker,
+            current_protocol,
+            "Build stopped by the user. The staged output was not published.",
+            grace_ms = 0L,
+            async = TRUE,
+            notify = FALSE
+          )
+          invisible(TRUE)
+        })
+      )
     },
     delay = builder_build_stop_grace_ms() / 1000
   )
@@ -3277,7 +3280,10 @@ observe({
         error = function(error) list()
       )
       if (length(seeded)) {
-        settings$images <- utils::modifyList(settings$images %||% list(), seeded)
+        settings$images <- utils::modifyList(
+          settings$images %||% list(),
+          seeded
+        )
       }
     }
     loaded_path <- value$retained_path %||% p$retained_path %||% p$path
@@ -3622,7 +3628,11 @@ source_image_dir <- function() {
   if (is.null(source_image_state$path)) {
     path <- tempfile("cerebro-builder-source-images-")
     dir.create(path, recursive = TRUE, mode = "0700", showWarnings = FALSE)
-    source_image_state$path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+    source_image_state$path <- normalizePath(
+      path,
+      winslash = "/",
+      mustWork = TRUE
+    )
     session$onSessionEnded(function() {
       unlink(source_image_state$path, recursive = TRUE, force = TRUE)
     })

@@ -30,11 +30,20 @@ test_that("builder_notify sends a targeted message with severity defaults", {
     target = list(field = "builder_project_server_folder"),
     session = mock$session
   )
-  env$builder_notify("success", "Project saved.", target = "status",
-    session = mock$session)
+  env$builder_notify(
+    "success",
+    "Project saved.",
+    target = "status",
+    session = mock$session
+  )
   env$builder_notify("info", "Removed A.", session = mock$session)
-  env$builder_notify("info", "Reading sheets", duration = Inf, id = "sheets",
-    session = mock$session)
+  env$builder_notify(
+    "info",
+    "Reading sheets",
+    duration = Inf,
+    id = "sheets",
+    session = mock$session
+  )
   env$builder_notify_clear("sheets", session = mock$session)
 
   messages <- lapply(mock$sent$messages, `[[`, "message")
@@ -83,11 +92,17 @@ test_that("the Builder no longer calls showNotification directly", {
   expect_identical(hits, character())
 
   browser <- paste(
-    readLines(builder_test_inst_path("builder", "www", "builder.js"),
-      warn = FALSE),
+    readLines(
+      builder_test_inst_path("builder", "www", "builder.js"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
-  expect_match(browser, 'addCustomMessageHandler("builder_notify"', fixed = TRUE)
+  expect_match(
+    browser,
+    'addCustomMessageHandler("builder_notify"',
+    fixed = TRUE
+  )
   # The save confirmation no longer builds its own corner toast panel.
   expect_false(grepl('.id = "shiny-notification-panel"', browser, fixed = TRUE))
 })

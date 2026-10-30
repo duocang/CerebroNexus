@@ -41,7 +41,10 @@ builder_project_status_ui <- function(
     "Stopping file copy…"
   } else if (syncing) {
     bytes_total <- suppressWarnings(as.double(source_sync$bytes_total %||% 0))
-    if (isTRUE(bytes_total > 0) && exists("builder_file_human_size", mode = "function")) {
+    if (
+      isTRUE(bytes_total > 0) &&
+        exists("builder_file_human_size", mode = "function")
+    ) {
       paste0(
         "Saving source files · ",
         builder_file_human_size(source_sync$bytes_done %||% 0),
@@ -411,7 +414,10 @@ builder_project_existing_folder_dialog <- function(path) {
 
 builder_project_nonempty_folder_dialog <- function(path) {
   modalDialog(
-    title = builder_dialog_title("Folder already contains files", "Save project"),
+    title = builder_dialog_title(
+      "Folder already contains files",
+      "Save project"
+    ),
     builder_project_dialog_content(
       "Create the Builder project in this folder?",
       paste(

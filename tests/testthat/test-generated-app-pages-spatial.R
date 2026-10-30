@@ -25,7 +25,9 @@ test_that("Linked views renders both retained spatial sections and images", {
   )
 
   expect_setequal(
-    unlist(driver$get_js("document.getElementById('cv-pick-spatial').selectize.getValue()")),
+    unlist(driver$get_js(
+      "document.getElementById('cv-pick-spatial').selectize.getValue()"
+    )),
     fixture$expected$spatial_sections
   )
   driver$wait_for_js(
@@ -49,10 +51,17 @@ test_that("Linked views renders both retained spatial sections and images", {
   backgrounds <- driver$get_js(
     "window.cerebroLinkedViewsState.capture().view.spatial_backgrounds"
   )
-  expect_setequal(vapply(backgrounds, `[[`, character(1), "section"),
-    fixture$expected$spatial_sections)
-  expect_true(all(vapply(backgrounds, function(x)
-    identical(x$mode, "image") && nzchar(x$image_id), logical(1))))
+  expect_setequal(
+    vapply(backgrounds, `[[`, character(1), "section"),
+    fixture$expected$spatial_sections
+  )
+  expect_true(all(vapply(
+    backgrounds,
+    function(x) {
+      identical(x$mode, "image") && nzchar(x$image_id)
+    },
+    logical(1)
+  )))
 
   expect_identical(
     driver$get_js(

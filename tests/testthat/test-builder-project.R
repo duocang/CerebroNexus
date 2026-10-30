@@ -264,7 +264,10 @@ test_that("a source that is not Builder-owned is copied, never moved", {
       }
     )
     expect_true(file.exists(source))
-    expect_identical(readBin(retained, "raw", n = 100L), charToRaw("user-bytes"))
+    expect_identical(
+      readBin(retained, "raw", n = 100L),
+      charToRaw("user-bytes")
+    )
   }
   expect_identical(copies, 3L)
 })
@@ -3335,7 +3338,11 @@ test_that("project restore rows keep long labels inside their grid tracks", {
   expect_match(css, ".builder-project-restore-row:focus-within", fixed = TRUE)
   expect_match(css, 'data-current-action="skip"', fixed = TRUE)
   # One select style for every open mode; reuse no longer paints the select.
-  expect_match(css, "#shiny-modal .builder-project-restore-row select {", fixed = TRUE)
+  expect_match(
+    css,
+    "#shiny-modal .builder-project-restore-row select {",
+    fixed = TRUE
+  )
   expect_false(grepl('data-current-action="reuse"] select', css, fixed = TRUE))
   expect_match(css, "select:focus-visible", fixed = TRUE)
   expect_match(css, 'crb-tag[data-tone="ready"]', fixed = TRUE)
@@ -3427,7 +3434,10 @@ test_that("Build says it waits for the dataset cache after a Build", {
   ## The browser shows the reason beside "Build again to same folder", which
   ## is gated on the same capability as Build.
   server <- paste(
-    readLines(builder_test_inst_path("builder", "server", "project.R"), warn = FALSE),
+    readLines(
+      builder_test_inst_path("builder", "server", "project.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_match(
@@ -3454,7 +3464,11 @@ test_that("background saves merge edits made while the manifest was written", {
     saved
   )
 
-  live <- list(entry("ds2", "Renamed"), entry("ds1", "One"), entry("ds3", "New"))
+  live <- list(
+    entry("ds2", "Renamed"),
+    entry("ds1", "One"),
+    entry("ds3", "New")
+  )
   merged <- runtime$builder_project_merge_saved_entries(base, saved, live)
 
   expect_identical(
@@ -5455,7 +5469,10 @@ test_that("browser lifecycle code includes queue sync and close protection", {
 ## The background expression a Project cache job evaluates, taken from
 ## project.R without sourcing the rest of the file.
 builder_project_crb_job_expression_source <- function() {
-  exprs <- parse(builder_test_inst_path("builder", "project.R"), keep.source = FALSE)
+  exprs <- parse(
+    builder_test_inst_path("builder", "project.R"),
+    keep.source = FALSE
+  )
   for (expr in exprs) {
     if (
       is.call(expr) &&
@@ -5665,8 +5682,11 @@ test_that("only the saved-project background CRB queue remains", {
     fixed = TRUE
   )
   expect_match(
-    paste(deparse(builder_project_crb_job_expression_source()), collapse = "
-"),
+    paste(
+      deparse(builder_project_crb_job_expression_source()),
+      collapse = "
+"
+    ),
     "promote = TRUE",
     fixed = TRUE
   )
@@ -6588,13 +6608,15 @@ test_that("a CRB built from a saved example dataset is registered", {
   primary <- file.path(build, "01-complete-viewer-demo-ds1.crb")
   writeBin(charToRaw("example-build"), primary)
   prepared <- runtime$builder_project_prepare_build_artifacts(
-    plan = list(items = list(list(
-      id = "ds1",
-      name = example$label,
-      filename = basename(primary),
-      sidecars = character(),
-      private_assets = basename(primary)
-    ))),
+    plan = list(
+      items = list(list(
+        id = "ds1",
+        name = example$label,
+        filename = basename(primary),
+        sidecars = character(),
+        private_assets = basename(primary)
+      ))
+    ),
     value = list(
       state = "success",
       built = stats::setNames(list(primary), "ds1"),

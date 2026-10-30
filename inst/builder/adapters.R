@@ -442,7 +442,9 @@ builder_source_image_payload <- function(object) {
   if (!methods::is(object, "Seurat")) {
     return(list())
   }
-  sections <- tryCatch(object@misc$cerebro_source_images, error = function(e) NULL)
+  sections <- tryCatch(object@misc$cerebro_source_images, error = function(e) {
+    NULL
+  })
   if (!is.list(sections) || !length(sections) || is.null(names(sections))) {
     return(list())
   }
@@ -453,7 +455,8 @@ builder_source_image_payload <- function(object) {
       uri <- entry$histology_image
       bounds <- as.list(entry$histology_image_bounds)
       if (
-        !is.character(uri) || length(uri) != 1L ||
+        !is.character(uri) ||
+          length(uri) != 1L ||
           !startsWith(uri, "data:image/png;base64,") ||
           !all(c("xmin", "xmax", "ymin", "ymax") %in% names(bounds))
       ) {
@@ -1964,7 +1967,11 @@ builder_open_snapshot <- function(snapshot) {
 ## A budget of 0 keeps only the dataset in use. The object in use is always
 ## kept, even when it alone exceeds the budget.
 .builder_worker_object_budget <- function() {
-  budget <- get0(".builder_object_budget", envir = globalenv(), inherits = FALSE)
+  budget <- get0(
+    ".builder_object_budget",
+    envir = globalenv(),
+    inherits = FALSE
+  )
   if (
     !is.numeric(budget) ||
       length(budget) != 1L ||
@@ -1977,7 +1984,11 @@ builder_open_snapshot <- function(snapshot) {
 }
 
 .builder_worker_object_ledger <- function() {
-  ledger <- get0(".builder_object_ledger", envir = globalenv(), inherits = FALSE)
+  ledger <- get0(
+    ".builder_object_ledger",
+    envir = globalenv(),
+    inherits = FALSE
+  )
   if (!is.environment(ledger)) {
     ledger <- new.env(parent = emptyenv())
     ledger$bytes <- numeric()

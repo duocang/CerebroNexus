@@ -157,7 +157,9 @@ builder_plan_requires_app <- function(entries) {
       !is.na(md5) &&
       identical(.builder_plan_file_stat_key(path), key)
   ) {
-    if (length(ls(cache, all.names = TRUE)) >= .builder_plan_image_cache_limit) {
+    if (
+      length(ls(cache, all.names = TRUE)) >= .builder_plan_image_cache_limit
+    ) {
       rm(list = ls(cache, all.names = TRUE), envir = cache)
     }
     assign(key, md5, envir = cache)
