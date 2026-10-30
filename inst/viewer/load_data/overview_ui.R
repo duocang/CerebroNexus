@@ -4,14 +4,18 @@ viewerOverviewNumber <- function(value) {
 
 # The fill of each bar is the colour its category has on the other pages.
 # `colors` is a vector named by category; a category without a usable entry
-# keeps the stylesheet's accent colour. Only plain colour syntax is accepted,
-# because the value is written into a style attribute.
+# keeps the stylesheet's accent colour. Only a hex colour, an R colour name or
+# rgb[a]()/hsl[a]() of plain numbers is accepted, because the value is written
+# into a style attribute: url() and expression() never get through.
 viewerOverviewFills <- function(labels, colors) {
   if (is.null(colors) || is.null(names(colors))) {
     return(rep("", length(labels)))
   }
   picked <- unname(as.character(colors[labels]))
-  usable <- !is.na(picked) & grepl("^[#A-Za-z0-9(),.% ]+$", picked)
+  usable <- !is.na(picked) &
+    (grepl("^#([0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$", picked) |
+      grepl("^(rgb|hsl)a?\\([0-9., %]+\\)$", picked) |
+      picked %in% grDevices::colors())
   ifelse(usable, paste0(";background:", picked), "")
 }
 
