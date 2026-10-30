@@ -56,8 +56,8 @@ run_core_export <- function(fx, file, mode = "embedded", misc = list()) {
     final_file = file,
     verbose = FALSE
   )
-  .exportAddExperimentMisc(export, misc)
-  .exportAddMetaData(
+  .addExportExperiment(export, misc)
+  .addExportMetaData(
     export,
     fx$meta,
     fx$cells,
@@ -66,14 +66,12 @@ run_core_export <- function(fx, file, mode = "embedded", misc = list()) {
     nGene = "nFeature",
     cell_cycle = NULL,
     add_all_meta_data = TRUE,
-    main_group = NULL,
     verbose = FALSE
   )
-  .exportAddProjections(
+  .addExportProjections(
     export,
-    projection_names = names(fx$embeddings),
-    get_embedding = function(name) fx$embeddings[[name]],
-    explicit_projections = FALSE,
+    names(fx$embeddings),
+    function(name) fx$embeddings[[name]],
     verbose = FALSE
   )
   .exportAddMiscResults(
@@ -156,16 +154,15 @@ test_that("core projections keep the PCA-only fallback and the empty-input error
   fx <- core_fixture()
   export <- Cerebro$new()
   expect_error(
-    .exportAddProjections(export, character(), identity, FALSE, FALSE),
+    .addExportProjections(export, character(), identity, verbose = FALSE),
     "No dimensional reductions"
   )
   expect_warning(
-    .exportAddProjections(
+    .addExportProjections(
       export,
       "pca",
       function(name) fx$embeddings[[name]],
-      FALSE,
-      FALSE
+      verbose = FALSE
     ),
     "Only PCA"
   )

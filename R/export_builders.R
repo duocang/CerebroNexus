@@ -142,7 +142,8 @@
   nGene,
   cell_cycle,
   add_all_meta_data,
-  verbose
+  verbose,
+  main_group = NULL
 ) {
   if (verbose) {
     .logStep('Collecting available meta data...')
@@ -174,22 +175,38 @@
   for (group in groups) {
     export$addGroup(group, levels(meta_data[[group]]))
   }
+  if (!is.null(main_group)) {
+    export$addParameters('main_group', main_group)
+  }
   if (length(cell_cycle) > 0) {
     export$setCellCycle(cell_cycle)
   }
 }
 
-## Non-PCA reductions; PCA only when it is the only one. `embedding(name)`
-## returns the cell embeddings of one reduction.
-.addExportProjections <- function(export, available, embedding, verbose) {
+## Non-PCA reductions; PCA only when it is the only one, or every requested
+## reduction in the requested order when `explicit`. `embedding(name)` returns
+## the cell embeddings of one reduction.
+.addExportProjections <- function(
+  export,
+  available,
+  embedding,
+  verbose,
+  explicit = FALSE
+) {
   if (verbose) {
     .logStep('Extracting dimensional reductions...')
   }
-  is_pca <- grepl('pca', available, ignore.case = TRUE)
   if (length(available) == 0) {
-    stop('No dimensional reductions available.', call. = FALSE)
+    stop(
+      'No dimensional reductions available. Add at least one first, e.g. ',
+      'scater::runPCA() / scater::runUMAP() on a SingleCellExperiment, ',
+      'scanpy.tl.umap() on an AnnData, or RunUMAP() on a Seurat object.',
+      call. = FALSE
+    )
   }
-  if (length(available) == 1 && is_pca) {
+  is_pca <- grepl('pca', available, ignore.case = TRUE)
+  chosen <- if (explicit) available else available[!is_pca]
+  if (!explicit && length(available) == 1 && is_pca) {
     export$addProjection(available, as.data.frame(embedding(available)))
     warning(
       'Warning: Only PCA as dimensional reduction found, will export ',
@@ -197,14 +214,14 @@
       'UMAP instead.',
       call. = FALSE
     )
-  } else if (any(!is_pca)) {
+  } else if (length(chosen) > 0) {
     if (verbose) {
       .logStep(
         'Will export the following dimensional reductions: ',
-        paste(available[!is_pca], collapse = ', ')
+        paste(chosen, collapse = ', ')
       )
     }
-    for (projection in available[!is_pca]) {
+    for (projection in chosen) {
       export$addProjection(projection, as.data.frame(embedding(projection)))
     }
   }
@@ -268,61 +285,76 @@
   }
 }
 
-## Monocle 2 trajectories; other methods are skipped with a warning.
-.addExportTrajectories <- function(export, trajectories, verbose) {
+## Trajectory methods that are exported: Monocle 2, and what readH5adAsSCE()
+## makes from scanpy/scVelo results. Other methods are skipped with a warning.
+.exportTrajectoryMethods <- c('monocle2', 'paga', 'scvelo', 'pseudotime')
+
+.addExportTrajectories <- function(
+  export,
+  trajectories,
+  verbose,
+  supported_note = paste0(
+    'only trajectories of the methods ',
+    paste0('`', .exportTrajectoryMethods, '`', collapse = ', '),
+    ' are supported.'
+  )
+) {
   if (length(trajectories) == 0) {
     if (verbose) {
       .logStep('No trajectories to extract...')
     }
     return(invisible())
   }
+  supported <- intersect(names(trajectories), .exportTrajectoryMethods)
   if (verbose) {
     .logStep(
       'Will export the following trajectories: ',
-      paste(names(trajectories$monocle2), collapse = ', ')
+      paste(unlist(lapply(trajectories[supported], names)), collapse = ', ')
     )
   }
-  for (i in seq_along(trajectories)) {
-    method <- names(trajectories)[i]
-    if (method == 'monocle2') {
-      for (j in seq_along(trajectories[[i]])) {
-        export$addTrajectory(
-          method,
-          names(trajectories[[i]])[j],
-          trajectories[[i]][[j]]
-        )
+  for (method in names(trajectories)) {
+    if (method %in% .exportTrajectoryMethods) {
+      for (name in names(trajectories[[method]])) {
+        export$addTrajectory(method, name, trajectories[[method]][[name]])
       }
     } else {
       warning(
         'Warning: Skipping trajectories of method `',
         method,
-        '`. At the moment, only trajectories generated with Monocle 2 ',
-        '(`monocle2`) are supported.',
+        '`. At the moment, ',
+        supported_note,
         call. = FALSE
       )
     }
   }
 }
 
-## Extra tables and plots.
+## Extra tables and plots, and the workbook/sheet display names of the tables
+## (kept as technical info, not as a content category).
 .addExportExtraMaterial <- function(export, extra_material, verbose) {
-  if (!is.list(extra_material) || length(extra_material) == 0) {
-    return(invisible())
-  }
-  if (verbose) {
-    .logStep('Found extra material to export...')
-  }
-  for (category in names(extra_material)) {
-    if (category %in% c('tables', 'plots')) {
-      content <- extra_material[[category]]
-      for (i in seq_along(content)) {
-        export$addExtraMaterial(
-          category = category,
-          name = names(content)[i],
-          content = content[[i]]
-        )
+  if (is.list(extra_material) && length(extra_material) > 0) {
+    if (verbose) {
+      .logStep('Found extra material to export...')
+    }
+    for (category in names(extra_material)) {
+      if (category %in% c('tables', 'plots')) {
+        content <- extra_material[[category]]
+        for (i in seq_along(content)) {
+          export$addExtraMaterial(
+            category = category,
+            name = names(content)[i],
+            content = content[[i]]
+          )
+        }
       }
     }
+  }
+  table_index <- viewerExtraMaterialTableIndex(
+    extra_material$table_index,
+    as.character(names(export$getExtraMaterial()$tables))
+  )
+  if (length(table_index)) {
+    export$addTechnicalInfo("extra_material_table_index", table_index)
   }
 }
 

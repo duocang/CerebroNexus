@@ -248,9 +248,9 @@ exportFromSCE <- function(
     verbose = verbose
   )
 
-  .exportAddExperimentMisc(export, object@metadata)
+  .addExportExperiment(export, object@metadata)
 
-  .exportAddMetaData(
+  .addExportMetaData(
     export = export,
     meta = meta,
     cells = cells,
@@ -263,19 +263,12 @@ exportFromSCE <- function(
     verbose = verbose
   )
 
-  explicit_projections <- !is.null(projections)
-  .exportAddProjections(
-    export = export,
-    projection_names = if (explicit_projections) {
-      projections
-    } else {
-      available_reductions
-    },
-    get_embedding = function(name) {
-      as.data.frame(SingleCellExperiment::reducedDims(object)[[name]])
-    },
-    explicit_projections = explicit_projections,
-    verbose = verbose
+  .addExportProjections(
+    export,
+    if (is.null(projections)) available_reductions else projections,
+    function(name) SingleCellExperiment::reducedDims(object)[[name]],
+    verbose,
+    explicit = !is.null(projections)
   )
 
   .exportAddMiscResults(

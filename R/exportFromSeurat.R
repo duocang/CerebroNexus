@@ -1130,28 +1130,13 @@ exportFromSeurat <- function(
   if (!is.null(main_group)) {
     export$addParameters('main_group', main_group)
   }
-  if (is.null(projections)) {
-    .addExportProjections(
-      export,
-      names(object@reductions),
-      function(name) object@reductions[[name]]@cell.embeddings,
-      verbose
-    )
-  } else {
-    ## Every requested reduction, PCA included, in the requested order.
-    if (verbose) {
-      .logStep(
-        'Will export the following dimensional reductions: ',
-        paste(projections, collapse = ', ')
-      )
-    }
-    for (projection in projections) {
-      export$addProjection(
-        projection,
-        as.data.frame(object@reductions[[projection]]@cell.embeddings)
-      )
-    }
-  }
+  .addExportProjections(
+    export,
+    if (is.null(projections)) names(object@reductions) else projections,
+    function(name) object@reductions[[name]]@cell.embeddings,
+    verbose,
+    explicit = !is.null(projections)
+  )
   .addExportGroupTables(
     extras$trees,
     'object@misc$trees',
@@ -1277,38 +1262,16 @@ exportFromSeurat <- function(
     verbose,
     groups
   )
-  ## Monocle 2 trajectories, plus the PAGA, scVelo and pseudotime records that
-  ## readH5adAsSCE() creates.
-  trajectories <- extras$trajectories
-  imported_methods <- intersect(
-    names(trajectories),
-    setdiff(.exportTrajectoryMethods, 'monocle2')
-  )
-  if (
-    length(imported_methods) == 0L ||
-      length(trajectories) > length(imported_methods)
-  ) {
-    .addExportTrajectories(
-      export,
-      trajectories[setdiff(names(trajectories), imported_methods)],
-      verbose
+  .addExportTrajectories(
+    export,
+    extras$trajectories,
+    verbose,
+    supported_note = paste0(
+      'only trajectories generated with Monocle 2 (`monocle2`) are ',
+      'supported.'
     )
-  }
-  for (method in imported_methods) {
-    for (name in names(trajectories[[method]])) {
-      export$addTrajectory(method, name, trajectories[[method]][[name]])
-    }
-  }
-  .addExportExtraMaterial(export, extras$extra_material, verbose)
-  ## Preserve workbook/sheet display names without adding a fake content
-  ## category.
-  table_index <- viewerExtraMaterialTableIndex(
-    extras$extra_material$table_index,
-    as.character(names(export$getExtraMaterial()$tables))
   )
-  if (length(table_index)) {
-    export$addTechnicalInfo("extra_material_table_index", table_index)
-  }
+  .addExportExtraMaterial(export, extras$extra_material, verbose)
 
   ##--------------------------------------------------------------------------##
   ## Trekker single-cell spatial mapping
