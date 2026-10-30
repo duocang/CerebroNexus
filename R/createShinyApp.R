@@ -942,6 +942,11 @@
       immune_backends[index] <- list(cached$immune_backend)
       spatial_catalogs[[index]] <- cached$spatial_catalog
       dataset_catalog[index] <- list(cached$dataset_info)
+      ## the CRB is not read again, so its Viewer Pack is checked the long way
+      viewer_pack_valid[[index]] <- .bundleViewerPackValid(
+        cerebro_data[[index]],
+        NULL
+      )
       next
     }
     object <- read_object(cerebro_data[[index]])
@@ -3588,7 +3593,10 @@ createShinyApp <- function(
   ## re-reads datasets that may carry an immune repertoire.
   immune_known <- is.list(preflight_data) &&
     !is.null(preflight_data$immune_backends)
-  core_names <- setdiff(names(preflight_data), "immune_backends")
+  core_names <- setdiff(
+    names(preflight_data),
+    c("immune_backends", "viewer_pack_valid")
+  )
   valid <- is.character(cerebro_data) &&
     length(cerebro_data) > 0L &&
     !is.null(labels) &&

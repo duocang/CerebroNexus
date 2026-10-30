@@ -403,6 +403,36 @@ test_that("valid Viewer Packs are bundled beside their CRB", {
   )
 })
 
+test_that("a cached CRB preflight still bundles a valid Viewer Pack", {
+  root <- withr::local_tempdir()
+  crb <- write_bundle_crb(file.path(root, "source"))
+  object <- readCerebro(crb)
+  object$setMetaData(data.frame(
+    cell_barcode = c("cell-1", "cell-2"),
+    group = c("A", "B"),
+    stringsAsFactors = FALSE
+  ))
+  object$addProjection(
+    "umap",
+    data.frame(x = 1:2, y = 2:1, row.names = c("cell-1", "cell-2"))
+  )
+  saveCerebro(object, crb, codec = "rds", viewer_binary = "always")
+  data <- c(Dataset = crb)
+  preflight <- .preflightBundleData(data)
+  expect_true(preflight$viewer_pack_valid)
+  on.exit(.clearBundlePreflightCache(), add = TRUE)
+  expect_true(.cacheBundlePreflightData(
+    data,
+    preflight,
+    list(Dataset = .bundlePreflightFingerprint(crb))
+  ))
+
+  app <- file.path(root, "app")
+  build_test_app(data, app)
+
+  expect_true(dir.exists(file.path(app, "private-data", "dataset.viewer")))
+})
+
 test_that("scatter defaults accept one value or one value per dataset", {
   labels <- c("PBMC", "Xenium")
 
