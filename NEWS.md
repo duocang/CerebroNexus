@@ -43,8 +43,13 @@
 - The Viewer Pack stores the immune repertoire as integer columns
   (`immune/encoded.qs2`, `immune_encoding` in the manifest) and the HLA motif
   segments without scRepertoire's clone strings. Rebuild the Viewer Pack of a
-  data set built before: the Immune repertoire page asks for it. Data sets
-  without a Pack encode their repertoire in memory on first use.
+  data set built before (`buildViewerPack(<crb>, overwrite = TRUE)`; the large
+  demo data sets rebuild themselves). Until then, and for a data set without a
+  Pack, the Immune repertoire page encodes the repertoire in memory, says so,
+  and keeps the result in the user cache folder (`CEREBRO_IR_CACHE` changes
+  it): 21 s on the first start and 8 s after it on the 1.46 M-cell Ren data set,
+  1.1 s with a rebuilt Pack. The order of equally large clones in Compare is now
+  byte order of their names, not the locale's.
 
 ## Viewer
 

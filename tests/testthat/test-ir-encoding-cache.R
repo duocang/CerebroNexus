@@ -77,3 +77,20 @@ test_that("a damaged or outdated cache file is encoded again", {
     scope$ir_process_memo("encoded", key, compute, new.env(), disk = TRUE)
   )
 })
+
+test_that("encoding in memory says why and how to avoid it", {
+  scope <- ir_cache_functions()
+  expect_message(
+    scope$ir_notify_slow_encoding(list(manifest = list())),
+    "built before the fast Immune repertoire format"
+  )
+  expect_message(
+    scope$ir_notify_slow_encoding(NULL),
+    "has no Viewer Pack"
+  )
+  expect_message(
+    scope$ir_notify_slow_encoding(NULL),
+    "buildViewerPack(<crb file>, overwrite = TRUE)",
+    fixed = TRUE
+  )
+})

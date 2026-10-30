@@ -328,3 +328,21 @@ test_that("the Viewer Pack stores the encoded repertoire and its clone names", {
   descriptor$manifest$immune_encoding <- NULL
   expect_null(runtime$viewerPackImmuneEncoded(descriptor, 1L))
 })
+
+test_that("clone ranks sort the names in byte order, from the Pack or in memory", {
+  scope <- ir_encode_scope()
+  names <- c("TRBV10", "TRBV1", "TRAV2", "b", "B", "TRBV2.TRBJ1;CASS", "")
+  expected <- integer(length(names))
+  expected[order(names, method = "radix")] <- seq_along(names)
+  encoded <- list(names = list(CTgene = list(TRB = names)))
+  expect_identical(scope$ir_clone_rank(encoded, "CTgene", "TRB"), expected)
+  ## Upper case before lower case, whatever the machine's locale.
+  expect_lt(expected[[5L]], expected[[4L]])
+  ## A Pack's stored ranks win; a chain without names has none.
+  encoded$rank <- list(CTgene = list(TRB = rev(expected)))
+  expect_identical(
+    scope$ir_clone_rank(encoded, "CTgene", "TRB"),
+    rev(expected)
+  )
+  expect_null(scope$ir_clone_rank(encoded, "CTgene", "TRA"))
+})

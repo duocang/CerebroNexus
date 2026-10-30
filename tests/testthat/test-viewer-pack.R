@@ -806,3 +806,23 @@ test_that("packed violin summaries survive serialization without altering statis
   expect_identical(value, expected)
   expect_null(scope$viewerPackGroupMetric(NULL, "group", "nUMI"))
 })
+
+test_that("a Pack without this release's immune encoding is outdated", {
+  current <- .viewerPackImmuneEncoder()$IR_ENCODING_VERSION
+  expect_false(.viewerPackImmuneOutdated(list(immune_receptors = character())))
+  expect_false(.viewerPackImmuneOutdated(list(
+    immune_receptors = "TCR",
+    immune_encoding = current
+  )))
+  ## Built before the encoding (no entry), or with another version.
+  expect_true(.viewerPackImmuneOutdated(list(immune_receptors = "TCR")))
+  expect_true(.viewerPackImmuneOutdated(list(
+    immune_receptors = "TCR",
+    immune_encoding = current + 1L
+  )))
+  ## No repertoire, nothing to encode.
+  expect_false(.viewerPackImmuneOutdated(list(
+    immune_receptors = list(),
+    immune_encoding = 0L
+  )))
+})

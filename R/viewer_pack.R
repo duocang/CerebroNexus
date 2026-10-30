@@ -201,6 +201,17 @@
   )
 }
 
+## TRUE for a Pack of a data set with a repertoire whose integer encoding is
+## missing or of another version than this release's: its Immune repertoire
+## page would encode the repertoire in memory at every start.
+.viewerPackImmuneOutdated <- function(manifest) {
+  length(manifest$immune_receptors) > 0L &&
+    !identical(
+      as.integer(manifest$immune_encoding %||% 0L)[[1L]],
+      .viewerPackImmuneEncoder()$IR_ENCODING_VERSION
+    )
+}
+
 ## The repertoire's integer columns (inst/viewer/immune_repertoire/encode.R,
 ## which the Viewer also runs for a data set without a Pack).
 .viewerPackImmuneEncoder <- local({

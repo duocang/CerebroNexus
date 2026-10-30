@@ -5,6 +5,34 @@ ir_repertoire_available <- reactive({
   isTRUE(getImmuneRepertoireSummary()$available)
 })
 
+## Said once, when the repertoire really is encoded in memory (not read from
+## the process memo or the cache): the page takes about a minute on a million
+## cells, and the way out is to rebuild the Pack.
+ir_notify_slow_encoding <- function(pack) {
+  text <- paste0(
+    if (is.list(pack)) {
+      "This Viewer Pack was built before the fast Immune repertoire format"
+    } else {
+      "This data set has no Viewer Pack"
+    },
+    ", so its repertoire is encoded now: about a minute on a million cells, ",
+    "less when the next session reuses it. ",
+    "buildViewerPack(<crb file>, overwrite = TRUE) makes this page open in ",
+    "seconds."
+  )
+  message(text)
+  tryCatch(
+    shiny::showNotification(
+      text,
+      type = "warning",
+      duration = 30,
+      id = "ir-pack-outdated"
+    ),
+    error = function(error) NULL
+  )
+  invisible(NULL)
+}
+
 ## ---- The encoded repertoire (encode.R) -------------------------------- ##
 ## The tabs read the repertoire's integer columns: the Viewer Pack's, or for a
 ## data set without a Pack, or with a Pack built before the encoding, the same
@@ -26,6 +54,7 @@ ir_encoded <- reactive({
         if (!length(repertoire)) {
           return(NULL)
         }
+        ir_notify_slow_encoding(pack)
         ## The ranks are sorted when a plot needs them (ir_clone_rank()).
         ir_encode_repertoire(
           repertoire,
