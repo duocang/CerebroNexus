@@ -74,7 +74,7 @@
             if (is.na(chain$locus)) {
               next
             }
-            pieces[[length(pieces) + 1L]] <- data.frame(
+            pieces[[length(pieces) + 1L]] <- list(
               cell = as.character(table$barcode[[i]]),
               locus = chain$locus,
               v_call = chain$v_call,
@@ -82,8 +82,7 @@
               j_call = chain$j_call,
               c_call = chain$c_call,
               junction_aa = if (k <= length(aa)) aa[[k]] else NA_character_,
-              junction = if (k <= length(nt)) nt[[k]] else NA_character_,
-              stringsAsFactors = FALSE
+              junction = if (k <= length(nt)) nt[[k]] else NA_character_
             )
           }
         }
@@ -93,7 +92,19 @@
   if (!length(pieces)) {
     return(NULL)
   }
-  chains <- do.call(rbind, pieces)
+  ## one data frame for all chains: a data.frame() per chain took 0.5 ms each
+  column <- function(name) vapply(pieces, `[[`, "", name)
+  chains <- data.frame(
+    cell = column("cell"),
+    locus = column("locus"),
+    v_call = column("v_call"),
+    d_call = column("d_call"),
+    j_call = column("j_call"),
+    c_call = column("c_call"),
+    junction_aa = column("junction_aa"),
+    junction = column("junction"),
+    stringsAsFactors = FALSE
+  )
   chains <- chains[chains$cell %in% cells, , drop = FALSE]
   if (!nrow(chains)) {
     return(NULL)
@@ -146,9 +157,7 @@
   string_part <- function(values) {
     offsets_key <- next_key()
     data_key <- next_key()
-    bytes <- unlist(lapply(values, function(s) {
-      as.integer(charToRaw(enc2utf8(s)))
-    }))
+    bytes <- as.integer(charToRaw(enc2utf8(paste(values, collapse = ""))))
     list(
       form = sprintf(
         paste0(

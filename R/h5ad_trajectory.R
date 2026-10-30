@@ -15,10 +15,6 @@
 ##
 ## The Trajectory page needs a pseudotime, so graphs without one are skipped.
 
-#' @keywords internal
-#' @noRd
-.h5adTrajectoryMethods <- c("paga", "scvelo", "pseudotime")
-
 #' Numeric obs columns that hold a pseudotime (scanpy dpt, scVelo velocity
 #' pseudotime and latent time, and the usual `<tool>_pseudotime` names).
 #' @keywords internal

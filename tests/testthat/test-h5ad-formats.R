@@ -505,3 +505,37 @@ test_that("a SingleCellExperiment's altExp can be added by name, and an unknown 
     "not found"
   )
 })
+
+test_that("a CSC matrix with unsorted row indices is rebuilt in the right orientation", {
+  skip_if_not_installed("rhdf5")
+  ## cells x genes (4 x 3), stored by gene (CSC) with the rows of each column out of order
+  truth <- matrix(
+    c(0, 5, 0, 0, 7, 0, 0, 9, 1, 0, 2, 3),
+    nrow = 4L,
+    dimnames = NULL
+  )
+  path <- withr::local_tempfile(fileext = ".h5ad")
+  rhdf5::h5createFile(path)
+  rhdf5::h5createGroup(path, "X")
+  data <- c(5, 7, 9, 3, 1, 2) # rows of column 1: 1; column 2: 1, 3 (reversed); column 3: 3, 2, 0 (reversed)
+  indices <- c(1L, 3L, 1L, 3L, 2L, 0L)
+  indptr <- c(0L, 1L, 3L, 6L)
+  rhdf5::h5write(data, path, "X/data")
+  rhdf5::h5write(indices, path, "X/indices")
+  rhdf5::h5write(indptr, path, "X/indptr")
+  file <- rhdf5::H5Fopen(path)
+  group <- rhdf5::H5Gopen(file, "X")
+  rhdf5::h5writeAttribute("csc_matrix", group, "encoding-type")
+  rhdf5::h5writeAttribute(c(4L, 3L), group, "shape")
+  rhdf5::H5Gclose(group)
+  rhdf5::H5Fclose(file)
+  expected <- matrix(0, 4L, 3L)
+  expected[2L, 1L] <- 5
+  expected[c(4L, 2L), 2L] <- c(7, 9)
+  expected[c(4L, 3L, 1L), 3L] <- c(3, 1, 2)
+  ctx <- .h5adContext(path)
+  got <- .h5adReadMatrix(ctx, "X", n_obs = 4L, n_vars = 3L)
+  ## the reader returns genes x cells
+  expect_identical(dim(got), c(3L, 4L))
+  expect_equal(as.matrix(got), t(expected), ignore_attr = TRUE)
+})

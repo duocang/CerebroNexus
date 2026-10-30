@@ -288,9 +288,15 @@
         call. = FALSE
       )
     }
-    data <- as.numeric(.h5adVector(.h5adRead(ctx, paste0(path, "/data"))))
-    indices <- .h5adVector(.h5adRead(ctx, paste0(path, "/indices")))
-    indptr <- .h5adVector(.h5adRead(ctx, paste0(path, "/indptr")))
+    ## rhdf5 returns 1-d arrays; dropping the dim in place avoids copying
+    ## hundreds of millions of values the way as.vector() does.
+    data <- .h5adRead(ctx, paste0(path, "/data"))
+    dim(data) <- NULL
+    data <- as.numeric(data)
+    indices <- .h5adRead(ctx, paste0(path, "/indices"))
+    dim(indices) <- NULL
+    indptr <- .h5adRead(ctx, paste0(path, "/indptr"))
+    dim(indptr) <- NULL
     if (length(data) > .Machine$integer.max) {
       stop(
         "`",
@@ -320,12 +326,15 @@
     if (is.null(built)) {
       ## unsorted or duplicated indices within a slice: rebuild from triplets
       slice <- rep.int(seq_len(major), diff(indptr))
-      built <- if (csr) {
-        Matrix::sparseMatrix(i = indices + 1L, j = slice, x = data, dims = dims)
-      } else {
-        Matrix::sparseMatrix(i = slice, j = indices + 1L, x = data, dims = dims)
-      }
-      built <- methods::as(built, "CsparseMatrix")
+      built <- methods::as(
+        Matrix::sparseMatrix(
+          i = indices + 1L,
+          j = slice,
+          x = data,
+          dims = dims
+        ),
+        "CsparseMatrix"
+      )
     }
     return(if (csr) built else methods::as(Matrix::t(built), "CsparseMatrix"))
   }
@@ -913,7 +922,12 @@ readH5adAsSCE <- function(
     ## every modality but the expression one and the receptor one
     extra_modalities <- setdiff(
       modalities,
-      c(modality, if (identical(airr_source$kind, "modality")) airr_source$name)
+      c(
+        modality,
+        if (identical(airr_source$kind, "modality")) airr_source$name,
+        ## a receptor modality has no X to read, also when airr = FALSE
+        modalities[tolower(modalities) == "airr"]
+      )
     )
   }
   if (length(extra_modalities)) {

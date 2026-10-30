@@ -439,9 +439,7 @@
 
   ## rest of meta data
   meta_data_columns <- names(meta)
-  meta_data_columns <- meta_data_columns[-which(meta_data_columns %in% groups)]
-  meta_data_columns <- meta_data_columns[-which(meta_data_columns == nUMI)]
-  meta_data_columns <- meta_data_columns[-which(meta_data_columns == nGene)]
+  meta_data_columns <- setdiff(meta_data_columns, c(groups, nUMI, nGene))
 
   ##--------------------------------------------------------------------------##
   ## cell cycle
@@ -733,7 +731,7 @@
     unified_repertoire <- .normalizeImmuneRepertoire(
       unified_repertoire,
       cell_barcodes = cells,
-      source_label = "`@misc$immune_repertoire`"
+      source_label = "`@metadata$immune_repertoire`"
     )
     if (verbose) {
       message(
@@ -781,6 +779,10 @@
   ##--------------------------------------------------------------------------##
   ## BCR data (legacy)
   ##--------------------------------------------------------------------------##
+  ## The Cerebro class no longer has addBCRData() / addTCRData(): the legacy
+  ## slots are checked here and merged into the unified repertoire below.
+  bcr_data <- NULL
+  tcr_data <- NULL
   if (!has_unified_repertoire && !is.null(misc$bcr_data)) {
     bcr_data <- .dropEmptyRepertoireSamples(misc$bcr_data)
     ## Same check as the unified slot: `getImmuneRepertoire()` falls back to
@@ -789,7 +791,7 @@
     bcr_data <- .normalizeImmuneRepertoire(
       bcr_data,
       cell_barcodes = cells,
-      source_label = "`@misc$bcr_data`"
+      source_label = "`@metadata$bcr_data`"
     )
     if (verbose) {
       message(
@@ -799,9 +801,6 @@
           '] Extracting tables of BCR data...'
         )
       )
-    }
-    if (length(bcr_data) > 0L) {
-      export$addBCRData(bcr_data)
     }
   }
 
@@ -813,7 +812,7 @@
     tcr_data <- .normalizeImmuneRepertoire(
       tcr_data,
       cell_barcodes = cells,
-      source_label = "`@misc$tcr_data`"
+      source_label = "`@metadata$tcr_data`"
     )
     if (verbose) {
       message(
@@ -824,9 +823,6 @@
         )
       )
     }
-    if (length(tcr_data) > 0L) {
-      export$addTCRData(tcr_data)
-    }
   }
 
   ## R6 methods are serialized into the .crb, so changing the class getter does
@@ -835,8 +831,8 @@
   ## already prefers. Keep the legacy fields above for getBCR()/getTCR().
   if (!has_unified_repertoire) {
     legacy_repertoire <- .mergeRepertoiresBySample(
-      if (exists("tcr_data", inherits = FALSE)) tcr_data else NULL,
-      if (exists("bcr_data", inherits = FALSE)) bcr_data else NULL
+      tcr_data,
+      bcr_data
     )
     legacy_repertoire <- .dropEmptyRepertoireSamples(legacy_repertoire)
     if (!is.null(legacy_repertoire) && length(legacy_repertoire) > 0) {
@@ -990,9 +986,6 @@
   ##
   ## currently, only tables can be exported
   ##--------------------------------------------------------------------------##
-
-  ## define valid categories
-  valid_categories <- c('tables')
 
   ## check of extra material exists, that it is in list format, and that the
   ## list is not empty
@@ -1157,7 +1150,7 @@
         '] Something went wrong while ',
         'saving the file.'
       ),
-      .call = FALSE
+      call. = FALSE
     )
   }
 }
