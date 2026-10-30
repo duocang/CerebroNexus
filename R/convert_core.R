@@ -354,41 +354,34 @@
         )
       }
     } else if (is.list(most_expressed_genes)) {
-      # Check if list elements are data.frames and handle unnamed elements
-      unnamed_count <- 0
-      for (i in seq_along(most_expressed_genes)) {
-        # Check if element is a data.frame
-        if (!is.data.frame(most_expressed_genes[[i]])) {
-          warning(paste0(
-            "Element ",
-            i,
-            " in most_expressed_genes is not a data.frame and will be skipped."
+      # Skip elements that are not data.frames and name unnamed ones. Work on
+      # the original indices; deleting inside the loop shifted them.
+      is_table <- vapply(most_expressed_genes, is.data.frame, logical(1))
+      for (i in which(!is_table)) {
+        warning(paste0(
+          "Element ",
+          i,
+          " in most_expressed_genes is not a data.frame and will be skipped."
+        ))
+      }
+      table_names <- names(most_expressed_genes)
+      if (is.null(table_names)) {
+        table_names <- character(length(most_expressed_genes))
+      }
+      unnamed <- which(is_table & (is.na(table_names) | table_names == ""))
+      for (j in seq_along(unnamed)) {
+        table_names[unnamed[j]] <- paste0("unknown", j)
+        if (verbose) {
+          message(paste0(
+            "[INFO] Assigned name 'unknown",
+            j,
+            "' to unnamed element ",
+            unnamed[j]
           ))
-          most_expressed_genes[[i]] <- NULL
-          next
-        }
-
-        # Handle unnamed elements
-        if (
-          is.null(names(most_expressed_genes)[i]) ||
-            names(most_expressed_genes)[i] == ""
-        ) {
-          unnamed_count <- unnamed_count + 1
-          names(most_expressed_genes)[i] <- paste0("unknown", unnamed_count)
-          if (verbose) {
-            message(paste0(
-              "[INFO] Assigned name 'unknown",
-              unnamed_count,
-              "' to unnamed element ",
-              i
-            ))
-          }
         }
       }
-      # Remove NULL elements (those that weren't data.frames)
-      most_expressed_genes <- most_expressed_genes[
-        !sapply(most_expressed_genes, is.null)
-      ]
+      names(most_expressed_genes) <- table_names
+      most_expressed_genes <- most_expressed_genes[is_table]
     } else {
       stop(
         "most_expressed_genes must be either a data.frame or a list of data.frames.",
@@ -427,6 +420,18 @@
 
 #' @keywords internal
 #' @noRd
+.convertAsDgCMatrix <- function(x) {
+  if (inherits(x, "dgCMatrix")) {
+    return(x)
+  }
+  methods::as(
+    methods::as(methods::as(x, "CsparseMatrix"), "generalMatrix"),
+    "dMatrix"
+  )
+}
+
+#' @keywords internal
+#' @noRd
 .convertComputeGroupSummaries <- function(
   misc,
   meta,
@@ -448,7 +453,14 @@
     misc$mean_expression <- list()
   }
 
-  # Calculate for each group
+  # One cells x levels indicator matrix per group turns the per-level
+  # subsetting into two sparse products over the whole matrix.
+  expr <- .convertAsDgCMatrix(expr_matrix)
+  positive <- expr
+  positive@x <- as.numeric(expr@x > 0)
+  genes <- rownames(expr)
+  meta_rows <- match(colnames(expr), rownames(meta))
+
   for (group_name in groups) {
     if (verbose) {
       message(paste0(
@@ -459,85 +471,53 @@
       ))
     }
 
-    group_values <- unique(meta[[group_name]])
-    group_values <- group_values[!is.na(group_values)]
-
-    pct_results <- list()
-    expr_results <- list()
-
-    for (group_value in group_values) {
-      # Get cells belonging to this group value using cell names (more robust)
-      cells_in_group <- rownames(meta)[
-        meta[[group_name]] == group_value
-      ]
-      # Filter to cells that exist in the expression matrix
-      cells_in_group <- cells_in_group[
-        cells_in_group %in% colnames(expr_matrix)
-      ]
-
-      if (length(cells_in_group) == 0) {
-        next
-      }
-
-      # Get expression subset for this group
-      expr_subset <- expr_matrix[, cells_in_group, drop = FALSE]
-
-      # Calculate percentage of cells expressing each gene
-      gene_pct <- Matrix::rowSums(expr_subset > 0) /
-        length(cells_in_group) *
-        100
-
-      # Calculate mean expression per gene
-      gene_mean <- Matrix::rowMeans(expr_subset)
-
-      # Create data frame for percentage and sort
-      gene_pct_df <- data.frame(
-        gene = names(gene_pct),
-        pct = as.numeric(gene_pct),
-        stringsAsFactors = FALSE
-      )
-      gene_pct_df[["cluster"]] <- as.character(group_value)
-      gene_pct_df <- gene_pct_df[order(-gene_pct_df$pct), ]
-      rownames(gene_pct_df) <- NULL
-
-      # Create data frame for mean expression and sort
-      gene_expr_df <- data.frame(
-        gene = names(gene_mean),
-        mean_expr = as.numeric(gene_mean),
-        stringsAsFactors = FALSE
-      )
-      gene_expr_df[["cluster"]] <- as.character(group_value)
-      gene_expr_df <- gene_expr_df[order(-gene_expr_df$mean_expr), ]
-      rownames(gene_expr_df) <- NULL
-
-      pct_results[[as.character(group_value)]] <- gene_pct_df
-      expr_results[[as.character(group_value)]] <- gene_expr_df
-    }
-
-    # Merge all data frames into one and reorder columns with cluster first
-    if (length(pct_results) > 0) {
-      pct_results_df <- do.call(rbind, pct_results)
-      rownames(pct_results_df) <- NULL
-      pct_results_df <- pct_results_df[, c(
-        "cluster",
-        setdiff(names(pct_results_df), "cluster")
-      )]
-      misc$most_expressed_genes[[group_name]] <- pct_results_df
-    } else {
+    values <- meta[[group_name]]
+    group_values <- unique(values)
+    group_values <- as.character(group_values[!is.na(group_values)])
+    code <- match(as.character(values)[meta_rows], group_values)
+    keep <- which(!is.na(code))
+    members <- Matrix::sparseMatrix(
+      i = keep,
+      j = code[keep],
+      x = 1,
+      dims = c(ncol(expr), length(group_values))
+    )
+    size <- Matrix::colSums(members)
+    present <- which(size > 0)
+    if (!length(present)) {
       misc$most_expressed_genes[[group_name]] <- data.frame()
-    }
-
-    if (length(expr_results) > 0) {
-      expr_results_df <- do.call(rbind, expr_results)
-      rownames(expr_results_df) <- NULL
-      expr_results_df <- expr_results_df[, c(
-        "cluster",
-        setdiff(names(expr_results_df), "cluster")
-      )]
-      misc$mean_expression[[group_name]] <- expr_results_df
-    } else {
       misc$mean_expression[[group_name]] <- data.frame()
+      next
     }
+    members <- members[, present, drop = FALSE]
+    pct <- as.matrix(positive %*% members)
+    mean_expr <- as.matrix(expr %*% members)
+
+    # Per level, the genes sorted by the statistic (ties keep the gene order)
+    stack <- function(statistic, column) {
+      ordered <- lapply(seq_along(present), function(j) {
+        value <- statistic[, j]
+        order(-value)
+      })
+      data.frame(
+        cluster = rep(group_values[present], each = length(genes)),
+        gene = unlist(lapply(ordered, function(o) genes[o])),
+        value = unlist(lapply(seq_along(present), function(j) {
+          statistic[ordered[[j]], j]
+        })),
+        stringsAsFactors = FALSE
+      ) |>
+        stats::setNames(c("cluster", "gene", column))
+    }
+    n <- size[present]
+    misc$most_expressed_genes[[group_name]] <- stack(
+      sweep(pct, 2L, n, "/") * 100,
+      "pct"
+    )
+    misc$mean_expression[[group_name]] <- stack(
+      sweep(mean_expr, 2L, n, "/"),
+      "mean_expr"
+    )
   }
 
   if (verbose) {

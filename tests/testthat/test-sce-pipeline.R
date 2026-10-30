@@ -226,3 +226,65 @@ test_that("an SCE .crb carries metadata() payloads through the shared core", {
   expect_identical(obj$getMethodsForMarkerGenes(), "Diff. Expression")
   expect_identical(obj$getParameters()$note, "from SCE metadata")
 })
+
+test_that("provided most expressed genes skip non-tables without shifting the rest", {
+  table <- data.frame(gene = "A", pct = 1)
+  expect_warning(
+    result <- .convertAddProvidedMostExpressed(
+      list(),
+      list(a = table, b = "x", c = table),
+      verbose = FALSE
+    ),
+    "not a data.frame"
+  )
+  expect_identical(names(result$misc$most_expressed_genes), c("a", "c"))
+  unnamed <- .convertAddProvidedMostExpressed(
+    list(),
+    list(table, "x", table),
+    verbose = FALSE
+  )
+  expect_identical(
+    names(unnamed$misc$most_expressed_genes),
+    c("unknown1", "unknown2")
+  )
+})
+
+test_that("group summaries equal the per-level percentages and means", {
+  set.seed(1)
+  counts <- Matrix::rsparsematrix(8, 12, 0.4)
+  counts@x <- abs(counts@x)
+  dimnames(counts) <- list(paste0("g", 1:8), paste0("c", 1:12))
+  meta <- data.frame(
+    grp = rep(c("b", "a", NA, "c"), 3),
+    row.names = colnames(counts),
+    stringsAsFactors = FALSE
+  )
+  misc <- .convertComputeGroupSummaries(list(), meta, counts, "grp", FALSE)
+
+  expected_levels <- c("b", "a", "c")
+  pct <- misc$most_expressed_genes$grp
+  avg <- misc$mean_expression$grp
+  expect_identical(unique(pct$cluster), expected_levels)
+  expect_identical(names(pct), c("cluster", "gene", "pct"))
+  expect_identical(names(avg), c("cluster", "gene", "mean_expr"))
+  for (level in expected_levels) {
+    cells <- rownames(meta)[which(meta$grp == level)]
+    subset <- counts[, cells, drop = FALSE]
+    want_pct <- Matrix::rowSums(subset > 0) / length(cells) * 100
+    want_avg <- Matrix::rowMeans(subset)
+    got_pct <- pct[pct$cluster == level, ]
+    got_avg <- avg[avg$cluster == level, ]
+    expect_identical(got_pct$gene, names(want_pct)[order(-want_pct)])
+    expect_equal(got_pct$pct, as.numeric(want_pct[order(-want_pct)]))
+    expect_identical(got_avg$gene, names(want_avg)[order(-want_avg)])
+    expect_equal(got_avg$mean_expr, as.numeric(want_avg[order(-want_avg)]))
+  }
+  empty <- .convertComputeGroupSummaries(
+    list(),
+    data.frame(grp = rep(NA_character_, 12), row.names = colnames(counts)),
+    counts,
+    "grp",
+    FALSE
+  )
+  expect_identical(empty$most_expressed_genes$grp, data.frame())
+})

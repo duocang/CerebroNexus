@@ -522,74 +522,13 @@ convertSeuratToCerebro <- function(
   expr_resolution <- NULL
 
   # Handle most_expressed_genes input ---------------------------------------##
-  if (!is.null(most_expressed_genes)) {
-    # User provided most_expressed_genes
-    if (is.data.frame(most_expressed_genes)) {
-      # Convert data.frame to list
-      most_expressed_genes <- list(unknown = most_expressed_genes)
-      if (verbose) {
-        message(
-          "[INFO] Converted most_expressed_genes from data.frame to list(unknown = ...)"
-        )
-      }
-    } else if (is.list(most_expressed_genes)) {
-      # Skip elements that are not data.frames and name unnamed ones. Work on
-      # the original indices; deleting inside the loop shifted them.
-      is_table <- vapply(most_expressed_genes, is.data.frame, logical(1))
-      for (i in which(!is_table)) {
-        warning(paste0(
-          "Element ",
-          i,
-          " in most_expressed_genes is not a data.frame and will be skipped."
-        ))
-      }
-      table_names <- names(most_expressed_genes)
-      if (is.null(table_names)) {
-        table_names <- character(length(most_expressed_genes))
-      }
-      unnamed <- which(is_table & (is.na(table_names) | table_names == ""))
-      for (j in seq_along(unnamed)) {
-        table_names[unnamed[j]] <- paste0("unknown", j)
-        if (verbose) {
-          message(paste0(
-            "[INFO] Assigned name 'unknown",
-            j,
-            "' to unnamed element ",
-            unnamed[j]
-          ))
-        }
-      }
-      names(most_expressed_genes) <- table_names
-      most_expressed_genes <- most_expressed_genes[is_table]
-    } else {
-      stop(
-        "most_expressed_genes must be either a data.frame or a list of data.frames.",
-        call. = FALSE
-      )
-    }
-
-    # Assign to seurat object
-    if (length(most_expressed_genes) > 0) {
-      if (
-        is.null(seurat@misc$most_expressed_genes) ||
-          !is.list(seurat@misc$most_expressed_genes)
-      ) {
-        seurat@misc$most_expressed_genes <- list()
-      }
-      seurat@misc$most_expressed_genes <- c(
-        seurat@misc$most_expressed_genes,
-        most_expressed_genes
-      )
-      if (verbose) {
-        message(paste0(
-          "[INFO] Added ",
-          length(most_expressed_genes),
-          " most_expressed_genes group(s): ",
-          paste(names(most_expressed_genes), collapse = ", ")
-        ))
-      }
-    }
-
+  provided <- .convertAddProvidedMostExpressed(
+    seurat@misc,
+    most_expressed_genes,
+    verbose
+  )
+  seurat@misc <- provided$misc
+  if (provided$provided) {
     # Don't calculate if user provided data
     add_most_expressed_genes <- FALSE
   }

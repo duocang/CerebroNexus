@@ -60,7 +60,13 @@
     meta[[nUMI]] <- as.numeric(Matrix::colSums(counts))
   }
   if (need_gene) {
-    meta[[nGene]] <- as.numeric(Matrix::colSums(counts > 0))
+    meta[[nGene]] <- if (inherits(counts, "dgCMatrix")) {
+      ## positive entries per column without building counts > 0
+      running <- c(0, cumsum(counts@x > 0))
+      as.numeric(diff(running[counts@p + 1L]))
+    } else {
+      as.numeric(Matrix::colSums(counts > 0))
+    }
   }
   message(
     "[INFO] Computed missing QC column(s) ",
@@ -401,8 +407,6 @@ convertSCEToCerebro <- function(
     }
   )
 
-  rm(sce)
-  gc()
   invisible(out_file)
 }
 
