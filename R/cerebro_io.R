@@ -1072,6 +1072,19 @@ saveCerebro <- function(
   invisible(file)
 }
 
+## What readCerebro() does after the checks; the Builder's read-back calls it on
+## a payload it has read itself.
+.hydrateCerebroPayload <- function(serialized, file) {
+  file <- normalizePath(file, mustWork = TRUE)
+  backend <- .cerebroBackend(serialized)
+  schema <- .crbContract()$.readRuntimeCrbSchema(serialized, file)
+  object <- .currentCerebroCopy(serialized)
+  object <- .attachCerebroExpression(object, file, backend)
+  object <- .hydrateThinCerebro(object, file, backend, schema)
+  object <- .attachCerebroSpatialMolecules(object, file)
+  .attachCerebroImmuneRepertoire(object, file)
+}
+
 #' Read a Cerebro data file
 #'
 #' Reads a CRB written by \code{saveCerebro()} or the export functions, as RDS or
@@ -1092,13 +1105,7 @@ readCerebro <- function(file) {
     stop("`object` must be a serialized Cerebro object.", call. = FALSE)
   }
   .crbContract()$.assertCurrentRuntimeCrb(serialized, file)
-  backend <- .cerebroBackend(serialized)
-  schema <- .crbContract()$.readRuntimeCrbSchema(serialized, file)
-  object <- .currentCerebroCopy(serialized)
-  object <- .attachCerebroExpression(object, file, backend)
-  object <- .hydrateThinCerebro(object, file, backend, schema)
-  object <- .attachCerebroSpatialMolecules(object, file)
-  .attachCerebroImmuneRepertoire(object, file)
+  .hydrateCerebroPayload(serialized, file)
 }
 
 ## The one place that still knows the singular spatial image form: one
