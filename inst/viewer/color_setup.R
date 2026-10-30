@@ -81,7 +81,13 @@ cell_cycle_colorset <- setNames(
 ##----------------------------------------------------------------------------##
 ## Assign colors to groups.
 ##----------------------------------------------------------------------------##
-color_input_id <- function(variable, level) {
+## The ids of the colour inputs of `variable`'s `levels`: the data set and the
+## variable are encoded once, not once per level (a data set's palettes have
+## hundreds of levels).
+color_input_ids <- function(variable, levels) {
+  if (!length(levels)) {
+    return(character())
+  }
   dataset <- tryCatch(
     viewer_requested_dataset_context()$dataset_key,
     error = function(error) NULL
@@ -93,7 +99,7 @@ color_input_id <- function(variable, level) {
     ) %||%
     "__single__"
   encode <- function(value) {
-    paste(format(charToRaw(enc2utf8(as.character(value)))), collapse = "")
+    paste(as.character(charToRaw(enc2utf8(as.character(value)))), collapse = "")
   }
   paste0(
     "color_",
@@ -101,8 +107,12 @@ color_input_id <- function(variable, level) {
     "_",
     encode(variable),
     "_",
-    encode(level)
+    vapply(as.character(levels), encode, character(1), USE.NAMES = FALSE)
   )
+}
+
+color_input_id <- function(variable, level) {
+  color_input_ids(variable, level)
 }
 
 configured_colors_for_current_dataset <- function() {
@@ -136,11 +146,12 @@ resolve_reactive_palette <- function(variable, levels, defaults) {
   if (!length(pickers)) {
     return(defaults)
   }
-  for (level in levels) {
-    id <- color_input_id(variable, level)
-    picked <- if (id %in% pickers) input[[id]]
+  levels <- as.character(levels)
+  ids <- color_input_ids(variable, levels)
+  for (index in which(ids %in% pickers)) {
+    picked <- input[[ids[[index]]]]
     if (!is.null(picked)) {
-      defaults[level] <- picked
+      defaults[levels[[index]]] <- picked
     }
   }
   defaults
