@@ -1656,7 +1656,7 @@ output$ir_plot_clonalCompare <- plotly::renderPlotly({
         units = samples,
         top_clones = as.numeric(ir_param("ir_p_top_clones", 10)),
         proportion = proportion,
-        clone_rank = encoded$rank[[clone_col]][[pars$chain]],
+        clone_rank = ir_clone_rank(encoded, clone_col, pars$chain),
         clone_names = function(ids) {
           ir_clone_names(encoded, clone_col, pars$chain, ids)
         }

@@ -26,11 +26,14 @@ ir_encoded <- reactive({
         if (!length(repertoire)) {
           return(NULL)
         }
+        ## The ranks are sorted when a plot needs them (ir_clone_rank()).
         ir_encode_repertoire(
           repertoire,
-          as.character(getMetaData()$cell_barcode)
+          as.character(getMetaData()$cell_barcode),
+          rank = FALSE
         )
-      }
+      },
+      disk = TRUE
     )
   }
 })
@@ -274,14 +277,74 @@ ir_process_cache <- if (exists(".ir_process_cache", inherits = TRUE)) {
   new.env(parent = emptyenv())
 }
 
+## Where an encoding made in memory is kept between sessions: the user cache
+## directory (CEREBRO_IR_CACHE overrides it). The Pack's encoding is the real
+## store; this one spares a data set without it (or with a Pack built before
+## the encoding) the minute of encoding at every start.
+ir_disk_cache_file <- function(name, key) {
+  dir <- Sys.getenv("CEREBRO_IR_CACHE", unset = "")
+  if (!nzchar(dir)) {
+    dir <- file.path(tools::R_user_dir("CerebroNexus", "cache"), "immune")
+  }
+  file.path(
+    dir,
+    paste0(name, "-v", IR_ENCODING_VERSION, "-", rlang::hash(key), ".qs2")
+  )
+}
+
+ir_disk_cache_read <- function(file) {
+  if (!file.exists(file)) {
+    return(NULL)
+  }
+  value <- tryCatch(qs2::qs_read(file), error = function(e) NULL)
+  if (is.list(value) && identical(value$version, IR_ENCODING_VERSION)) {
+    value
+  }
+}
+
+## Written through a temporary name, so a session that stops half way or reads
+## at the same time never sees a partial file. A failure (a read-only cache) is
+## not an error: the next start encodes again.
+ir_disk_cache_write <- function(file, value) {
+  tryCatch(
+    {
+      dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+      partial <- paste0(file, ".", Sys.getpid(), ".tmp")
+      on.exit(unlink(partial), add = TRUE)
+      qs2::qs_save(value, partial)
+      file.rename(partial, file)
+    },
+    error = function(e) NULL
+  )
+  invisible(NULL)
+}
+
 ## compute() once per (name, key) in the process; without a key, every call.
-ir_process_memo <- function(name, key, compute, cache = ir_process_cache) {
+## `disk`: also keep the result in the user cache between sessions.
+ir_process_memo <- function(
+  name,
+  key,
+  compute,
+  cache = ir_process_cache,
+  disk = FALSE
+) {
   if (is.null(key)) {
     return(compute())
   }
   id <- paste0(name, ":", rlang::hash(key))
   if (!exists(id, envir = cache, inherits = FALSE)) {
-    assign(id, compute(), envir = cache)
+    value <- NULL
+    file <- if (isTRUE(disk)) ir_disk_cache_file(name, key)
+    if (!is.null(file)) {
+      value <- ir_disk_cache_read(file)
+    }
+    if (is.null(value)) {
+      value <- compute()
+      if (!is.null(file) && !is.null(value)) {
+        ir_disk_cache_write(file, value)
+      }
+    }
+    assign(id, value, envir = cache)
   }
   get(id, envir = cache, inherits = FALSE)
 }

@@ -142,7 +142,7 @@ ir_encode_isotypes <- function(genes) {
 
 ## `repertoire`: the list of sample tables. `cells`: the data set's cell names
 ## in canonical order (the Pack's, or the metadata's).
-ir_encode_repertoire <- function(repertoire, cells = NULL) {
+ir_encode_repertoire <- function(repertoire, cells = NULL, rank = TRUE) {
   frames <- lapply(repertoire, function(frame) {
     if (is.data.frame(frame)) frame else data.frame()
   })
@@ -318,13 +318,38 @@ ir_encode_repertoire <- function(repertoire, cells = NULL) {
     isotype = isotype,
     isotype_levels = isotype_levels,
     columns = columns,
-    rank = lapply(names_of, function(chains) {
-      lapply(chains, function(levels) {
-        rank <- integer(length(levels))
-        rank[order(levels)] <- seq_along(levels)
-        rank
-      })
-    }),
+    rank = if (isTRUE(rank)) ir_clone_ranks(names_of),
     names = names_of
   )
+}
+
+## The place of each clone id when the clone names are sorted (the tie order of
+## the largest clones). Byte order, not the locale's collation: sorting hundreds
+## of thousands of names with strcoll takes about a minute on the Ren data, and
+## the order should not depend on the machine that built the Pack.
+ir_clone_ranks <- function(names_of) {
+  lapply(names_of, function(chains) {
+    lapply(chains, function(levels) {
+      rank <- integer(length(levels))
+      rank[order(levels, method = "radix")] <- seq_along(levels)
+      rank
+    })
+  })
+}
+
+## The ranks of the clones of `column` on `chain`: stored in a Pack's encoding,
+## else sorted from the names the encoding holds in memory.
+ir_clone_rank <- function(encoded, column, chain) {
+  stored <- encoded$rank[[column]][[chain]]
+  if (!is.null(stored)) {
+    return(stored)
+  }
+  names <- encoded$names[[column]][[chain]]
+  if (is.null(names)) {
+    return(NULL)
+  }
+  ir_clone_ranks(stats::setNames(
+    list(stats::setNames(list(names), chain)),
+    column
+  ))[[column]][[chain]]
 }
