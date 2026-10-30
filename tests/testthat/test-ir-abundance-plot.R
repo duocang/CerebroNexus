@@ -1,7 +1,7 @@
 ## The functions of a Viewer file, without its reactives and outputs.
 ir_abundance_functions <- function(...) {
   scope <- new.env(parent = globalenv())
-  scope$`%>%` <- magrittr::`%>%`
+  scope$`%>%` <- dplyr::`%>%`
   for (file in list(...)) {
     for (expr in parse(file)) {
       if (
