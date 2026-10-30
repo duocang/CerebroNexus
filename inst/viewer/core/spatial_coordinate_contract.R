@@ -110,7 +110,7 @@
   if (!is.character(value) || is.object(value) || anyNA(value)) {
     return(NULL)
   }
-  tolower(gsub("[^a-z0-9]+", "", value))
+  gsub("[^a-z0-9]+", "", tolower(value))
 }
 
 .spx_contract_find_alias <- function(column_names, candidates) {
