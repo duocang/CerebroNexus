@@ -52,7 +52,10 @@
   if (!length(pick)) {
     return(NULL)
   }
-  list(name = names(embeddings)[[pick[[1L]]]], xy = embeddings[[pick[[1L]]]][, 1:2, drop = FALSE])
+  list(
+    name = names(embeddings)[[pick[[1L]]]],
+    xy = embeddings[[pick[[1L]]]][, 1:2, drop = FALSE]
+  )
 }
 
 #' The `state` of every cell: the PAGA grouping if there is one, otherwise the
@@ -60,7 +63,14 @@
 #' @keywords internal
 #' @noRd
 .h5adTrajectoryState <- function(columns, groupby, n_cells) {
-  candidates <- c(groupby, "leiden", "louvain", "clusters", "cell_type", "celltype")
+  candidates <- c(
+    groupby,
+    "leiden",
+    "louvain",
+    "clusters",
+    "cell_type",
+    "celltype"
+  )
   candidates <- candidates[!is.na(candidates) & candidates %in% names(columns)]
   for (column in candidates) {
     value <- columns[[column]]
@@ -137,7 +147,11 @@
     return(skip(paste0("its grouping `", groupby, "` is not an obs column.")))
   }
   groups <- columns[[groupby]]
-  labels <- if (is.factor(groups)) levels(groups) else sort(unique(as.character(groups)))
+  labels <- if (is.factor(groups)) {
+    levels(groups)
+  } else {
+    sort(unique(as.character(groups)))
+  }
   n <- length(labels)
   connectivities <- tryCatch(
     as.matrix(.h5adReadMatrix(ctx, "uns/paga/connectivities", n, n)),
@@ -151,7 +165,10 @@
   centroids <- do.call(
     rbind,
     lapply(labels, function(label) {
-      colMeans(xy[as.character(groups) %in% label, , drop = FALSE], na.rm = TRUE)
+      colMeans(
+        xy[as.character(groups) %in% label, , drop = FALSE],
+        na.rm = TRUE
+      )
     })
   )
   hit <- which(
@@ -275,7 +292,9 @@
   base <- .h5adTrajectoryEmbedding(embeddings)
   if (is.null(base)) {
     if (verbose) {
-      message("[INFO] Not importing trajectories: the file has no UMAP/t-SNE embedding to draw them on.")
+      message(
+        "[INFO] Not importing trajectories: the file has no UMAP/t-SNE embedding to draw them on."
+      )
     }
     return(list())
   }
@@ -294,13 +313,27 @@
   if (!is.null(paga)) {
     state <- .h5adTrajectoryState(columns, paga$groupby, length(cells))
     for (pseudotime in pseudotimes) {
-      add("paga", paste0(paga$groupby, " (", pseudotime, ")"), state, paga$edges, pseudotime)
+      add(
+        "paga",
+        paste0(paga$groupby, " (", pseudotime, ")"),
+        state,
+        paga$edges,
+        pseudotime
+      )
     }
   }
 
   if (has_velocity) {
-    state <- .h5adTrajectoryState(columns, if (!is.null(paga)) paga$groupby, length(cells))
-    for (entry in grep("^velocity_", .h5adChildren(ctx, "obsm"), value = TRUE)) {
+    state <- .h5adTrajectoryState(
+      columns,
+      if (!is.null(paga)) paga$groupby,
+      length(cells)
+    )
+    for (entry in grep(
+      "^velocity_",
+      .h5adChildren(ctx, "obsm"),
+      value = TRUE
+    )) {
       basis <- .h5adReductionName(sub("^velocity_", "", entry))
       path <- paste0("obsm/", entry)
       embedding <- embeddings[[basis]]
@@ -315,13 +348,29 @@
           ncol(raw) < 2L
       ) {
         if (verbose) {
-          message("[INFO] Skipping obsm[\"", entry, "\"]: no cells x 2 array, or no `", basis, "` embedding to match.")
+          message(
+            "[INFO] Skipping obsm[\"",
+            entry,
+            "\"]: no cells x 2 array, or no `",
+            basis,
+            "` embedding to match."
+          )
         }
         next
       }
-      arrows <- .h5adVelocityArrows(embedding[, 1:2, drop = FALSE], raw[, 1:2, drop = FALSE])
+      arrows <- .h5adVelocityArrows(
+        embedding[, 1:2, drop = FALSE],
+        raw[, 1:2, drop = FALSE]
+      )
       for (pseudotime in pseudotimes) {
-        add("scvelo", paste0(entry, " (", pseudotime, ")"), state, arrows, pseudotime, embedding[, 1:2, drop = FALSE])
+        add(
+          "scvelo",
+          paste0(entry, " (", pseudotime, ")"),
+          state,
+          arrows,
+          pseudotime,
+          embedding[, 1:2, drop = FALSE]
+        )
       }
     }
   }

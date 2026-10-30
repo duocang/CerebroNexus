@@ -64,14 +64,21 @@
   }
   class_name <- form[["class"]]
   parameters <- form[["parameters"]]
-  array_type <- if (is.null(parameters[["__array__"]])) "" else parameters[["__array__"]]
+  array_type <- if (is.null(parameters[["__array__"]])) {
+    ""
+  } else {
+    parameters[["__array__"]]
+  }
   decode_content <- function() .awkDecode(ctx, container, form[["content"]])
 
   switch(
     class_name,
     NumpyArray = {
       if (length(form[["inner_shape"]])) {
-        stop("Multi-dimensional awkward NumpyArray is not supported.", call. = FALSE)
+        stop(
+          "Multi-dimensional awkward NumpyArray is not supported.",
+          call. = FALSE
+        )
       }
       value <- buffer("data")
       if (identical(form[["primitive"]], "bool")) as.logical(value) else value
@@ -196,7 +203,10 @@
   if (!identical(as.character(attrs[["encoding-type"]]), "awkward-array")) {
     stop("`", path, "` is not an awkward array.", call. = FALSE)
   }
-  form <- jsonlite::fromJSON(as.character(attrs[["form"]]), simplifyVector = FALSE)
+  form <- jsonlite::fromJSON(
+    as.character(attrs[["form"]]),
+    simplifyVector = FALSE
+  )
   n <- as.integer(attrs[["length"]])
   top <- .awkDecode(ctx, path, form)
   if (!inherits(top, "awk_list") || !inherits(top$content, "awk_record")) {
@@ -299,7 +309,13 @@
 #' @param sample Sample of each entry of `cells` (named by cell).
 #' @keywords internal
 #' @noRd
-.airrToRepertoire <- function(chains, airr_cells, cells, sample, verbose = TRUE) {
+.airrToRepertoire <- function(
+  chains,
+  airr_cells,
+  cells,
+  sample,
+  verbose = TRUE
+) {
   if (!requireNamespace("scRepertoire", quietly = TRUE)) {
     stop(
       "Importing immune receptor data from AnnData needs the scRepertoire ",
@@ -316,7 +332,11 @@
   chains <- chains[chains$barcode %in% cells, , drop = FALSE]
   not_in_expression <- total - nrow(chains)
   chains$locus <- as.character(chains$locus)
-  chains <- chains[chains$locus %in% c(.airrTcrLoci, .airrBcrLoci), , drop = FALSE]
+  chains <- chains[
+    chains$locus %in% c(.airrTcrLoci, .airrBcrLoci),
+    ,
+    drop = FALSE
+  ]
   chains <- chains[
     !is.na(.airrField(chains, c("junction_aa", "cdr3_aa"))),
     ,
@@ -325,7 +345,9 @@
 
   if (!nrow(chains)) {
     if (verbose) {
-      message("[INFO] AIRR data holds no chain with a CDR3 for the cells read; skipped.")
+      message(
+        "[INFO] AIRR data holds no chain with a CDR3 for the cells read; skipped."
+      )
     }
     return(NULL)
   }
@@ -398,10 +420,18 @@
       length(repertoire),
       " sample(s)",
       if (not_in_expression) {
-        paste0("; ", not_in_expression, " chain(s) of cells absent from the expression data dropped")
+        paste0(
+          "; ",
+          not_in_expression,
+          " chain(s) of cells absent from the expression data dropped"
+        )
       },
       if (conflicting) {
-        paste0("; ", conflicting, " cell(s) with both TCR and BCR chains assigned to one type")
+        paste0(
+          "; ",
+          conflicting,
+          " cell(s) with both TCR and BCR chains assigned to one type"
+        )
       },
       "."
     )
@@ -449,7 +479,9 @@
   }
   entry <- if (explicit) airr else "airr"
   path <- paste0("obsm/", entry)
-  if (.h5adHas(ctx, path) && identical(.h5adEncoding(ctx, path), "awkward-array")) {
+  if (
+    .h5adHas(ctx, path) && identical(.h5adEncoding(ctx, path), "awkward-array")
+  ) {
     return(list(kind = "obsm", name = entry))
   }
   if (explicit) {
@@ -470,7 +502,11 @@
 #' @noRd
 .airrSampleOf <- function(col_data, cells, sample_col) {
   if (!is.null(sample_col)) {
-    if (!is.character(sample_col) || length(sample_col) != 1L || !sample_col %in% names(col_data)) {
+    if (
+      !is.character(sample_col) ||
+        length(sample_col) != 1L ||
+        !sample_col %in% names(col_data)
+    ) {
       stop(
         "`airr_sample` must name a column of obs: ",
         paste(names(col_data), collapse = ", "),
@@ -478,7 +514,10 @@
       )
     }
   } else {
-    found <- intersect(c("orig.ident", "sample", "Sample", "sample_id"), names(col_data))
+    found <- intersect(
+      c("orig.ident", "sample", "Sample", "sample_id"),
+      names(col_data)
+    )
     sample_col <- if (length(found)) found[[1L]] else NULL
   }
   if (is.null(sample_col)) {
@@ -511,13 +550,21 @@
         candidates,
         function(entry) {
           .h5adHas(ctx, paste0("obsm/", entry)) &&
-            identical(.h5adEncoding(ctx, paste0("obsm/", entry)), "awkward-array")
+            identical(
+              .h5adEncoding(ctx, paste0("obsm/", entry)),
+              "awkward-array"
+            )
         },
         logical(1)
       )][1L]
     )
     if (identical(path, "obsm/NA")) {
-      stop("Modality `", source$name, "` has no awkward-array AIRR data in obsm.", call. = FALSE)
+      stop(
+        "Modality `",
+        source$name,
+        "` has no awkward-array AIRR data in obsm.",
+        call. = FALSE
+      )
     }
     airr_cells <- .h5adReadDataFrame(ctx, "obs", verbose)$index
   } else {

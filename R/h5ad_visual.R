@@ -71,7 +71,7 @@
     return(NULL)
   }
   if (length(dim(raw)) == 3L && dim(raw)[[3L]] == 1L) {
-    raw <- raw[, , 1L]
+    raw <- raw[,, 1L]
   }
   top <- suppressWarnings(max(raw, na.rm = TRUE))
   if (is.finite(top) && top > 1) {

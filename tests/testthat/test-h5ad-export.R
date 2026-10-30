@@ -11,7 +11,10 @@ fixture <- function(name) testthat::test_path("fixtures", "anndata", name)
 quiet <- function(x) suppressWarnings(suppressMessages(x))
 
 ## A .crb built from the real-anndata fixture, which has every column type.
-make_crb <- function(mode = "embedded", dir = withr::local_tempdir(.local_envir = parent.frame())) {
+make_crb <- function(
+  mode = "embedded",
+  dir = withr::local_tempdir(.local_envir = parent.frame())
+) {
   quiet(convertH5adToCerebro(
     fixture("small_csr.h5ad"),
     dir,
@@ -68,7 +71,9 @@ test_that("the file follows the AnnData on-disk format", {
   obs <- attrs("obs")
   expect_identical(obs[["encoding-type"]], "dataframe")
   expect_identical(obs[["_index"]], "_index")
-  expect_true(all(c("cell_type", "donor", "batch_note") %in% obs[["column-order"]]))
+  expect_true(all(
+    c("cell_type", "donor", "batch_note") %in% obs[["column-order"]]
+  ))
   expect_false("cell_barcode" %in% obs[["column-order"]])
   expect_identical(attrs("obs/cell_type")[["encoding-type"]], "categorical")
   ## Cerebro sorts the levels of a character grouping variable
@@ -122,20 +127,35 @@ test_that("marker tables survive a Cerebro -> h5ad -> SCE trip", {
   markers <- quiet(readH5adAsSCE(out))@metadata$marker_genes
   expect_identical(names(markers), "scanpy: t-test")
   table <- markers[[1]][["cell_type"]]
-  original <- quiet(readH5adAsSCE(fixture("small_csr.h5ad")))@metadata$marker_genes[[1]][["cell_type"]]
+  original <- quiet(readH5adAsSCE(fixture(
+    "small_csr.h5ad"
+  )))@metadata$marker_genes[[1]][["cell_type"]]
   expect_identical(table$gene, original$gene)
   expect_equal(table$score, original$score)
-  expect_identical(as.character(table$cell_type), as.character(original$cell_type))
+  expect_identical(
+    as.character(table$cell_type),
+    as.character(original$cell_type)
+  )
 })
 
 test_that("a Cerebro object is accepted and unsupported content is named", {
   skip_if(
-    !nzchar(system.file("extdata/examples/demo_full_tcr_bcr.crb", package = "CerebroNexus")) &&
-      !file.exists(testthat::test_path("../../inst/extdata/examples/demo_full_tcr_bcr.crb"))
+    !nzchar(system.file(
+      "extdata/examples/demo_full_tcr_bcr.crb",
+      package = "CerebroNexus"
+    )) &&
+      !file.exists(testthat::test_path(
+        "../../inst/extdata/examples/demo_full_tcr_bcr.crb"
+      ))
   )
-  path <- system.file("extdata/examples/demo_full_tcr_bcr.crb", package = "CerebroNexus")
+  path <- system.file(
+    "extdata/examples/demo_full_tcr_bcr.crb",
+    package = "CerebroNexus"
+  )
   if (!nzchar(path)) {
-    path <- testthat::test_path("../../inst/extdata/examples/demo_full_tcr_bcr.crb")
+    path <- testthat::test_path(
+      "../../inst/extdata/examples/demo_full_tcr_bcr.crb"
+    )
   }
   object <- readCerebro(path)
   out <- file.path(withr::local_tempdir(), "demo.h5ad")
@@ -156,9 +176,15 @@ test_that("existing files are protected and replaced only by a finished export",
 
   before <- tools::md5sum(out)
   ## a failing export must leave the existing file and no stage files behind
-  expect_error(exportToH5ad(file.path(dir, "missing.crb"), out, overwrite = TRUE), "not found")
+  expect_error(
+    exportToH5ad(file.path(dir, "missing.crb"), out, overwrite = TRUE),
+    "not found"
+  )
   expect_identical(unname(tools::md5sum(out)), unname(before))
-  expect_error(exportToH5ad(1, out, overwrite = TRUE), "must be a .crb path or a Cerebro object")
+  expect_error(
+    exportToH5ad(1, out, overwrite = TRUE),
+    "must be a .crb path or a Cerebro object"
+  )
   expect_setequal(list.files(dir, all.files = TRUE, no.. = TRUE), "keep.h5ad")
 
   quiet(exportToH5ad(crb, out, overwrite = TRUE))

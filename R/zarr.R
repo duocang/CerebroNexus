@@ -19,7 +19,9 @@
 #' @keywords internal
 #' @noRd
 .zarrIsStore <- function(path) {
-  is.character(path) && length(path) == 1L && dir.exists(path) &&
+  is.character(path) &&
+    length(path) == 1L &&
+    dir.exists(path) &&
     any(file.exists(file.path(path, c("zarr.json", ".zgroup", ".zarray"))))
 }
 
@@ -32,8 +34,18 @@
     stop("Zarr node not found: ", base, call. = FALSE)
   }
   base <- normalizePath(base, winslash = "/", mustWork = TRUE)
-  v3 <- list.files(base, pattern = "^zarr\\.json$", recursive = TRUE, all.files = TRUE)
-  v2 <- list.files(base, pattern = "^\\.(zarray|zgroup)$", recursive = TRUE, all.files = TRUE)
+  v3 <- list.files(
+    base,
+    pattern = "^zarr\\.json$",
+    recursive = TRUE,
+    all.files = TRUE
+  )
+  v2 <- list.files(
+    base,
+    pattern = "^\\.(zarray|zgroup)$",
+    recursive = TRUE,
+    all.files = TRUE
+  )
   files <- c(v3, v2)
   if (!length(files)) {
     stop("`", base, "` holds no Zarr metadata.", call. = FALSE)
@@ -53,7 +65,11 @@
         return("H5I_GROUP")
       }
       text <- readChar(file.path(base, files[[i]]), 4096L, useBytes = TRUE)
-      if (grepl('"node_type"\\s*:\\s*"array"', text)) "H5I_DATASET" else "H5I_GROUP"
+      if (grepl('"node_type"\\s*:\\s*"array"', text)) {
+        "H5I_DATASET"
+      } else {
+        "H5I_GROUP"
+      }
     },
     character(1)
   )
@@ -75,7 +91,11 @@
   v3 <- file.path(directory, "zarr.json")
   if (file.exists(v3)) {
     meta <- jsonlite::fromJSON(v3, simplifyVector = FALSE)
-    return(list(version = 3L, meta = meta, attributes = meta$attributes %||% list()))
+    return(list(
+      version = 3L,
+      meta = meta,
+      attributes = meta$attributes %||% list()
+    ))
   }
   zarray <- file.path(directory, ".zarray")
   zattrs <- file.path(directory, ".zattrs")
@@ -106,7 +126,10 @@
   if (is.null(node) || !length(node$attributes)) {
     return(list())
   }
-  jsonlite::fromJSON(jsonlite::toJSON(node$attributes, auto_unbox = TRUE, null = "null"), simplifyVector = TRUE)
+  jsonlite::fromJSON(
+    jsonlite::toJSON(node$attributes, auto_unbox = TRUE, null = "null"),
+    simplifyVector = TRUE
+  )
 }
 
 #' Read a whole array. See the header for the shape convention.
@@ -129,9 +152,18 @@
   big <- startsWith(dtype, ">")
   code <- sub("^[<>|=]", "", dtype)
   names <- c(
-    i1 = "int8", i2 = "int16", i4 = "int32", i8 = "int64",
-    u1 = "uint8", u2 = "uint16", u4 = "uint32", u8 = "uint64",
-    f4 = "float32", f8 = "float64", b1 = "bool", O = "string"
+    i1 = "int8",
+    i2 = "int16",
+    i4 = "int32",
+    i8 = "int64",
+    u1 = "uint8",
+    u2 = "uint16",
+    u4 = "uint32",
+    u8 = "uint64",
+    f4 = "float32",
+    f8 = "float64",
+    b1 = "bool",
+    O = "string"
   )
   if (!code %in% names(names)) {
     stop("Unsupported Zarr data type `", dtype, "`.", call. = FALSE)
@@ -147,9 +179,19 @@
     return(switch(dtype, string = "", bool = FALSE, 0))
   }
   if (is.character(fill)) {
-    return(switch(fill, "NaN" = NaN, "Infinity" = Inf, "-Infinity" = -Inf, as.numeric(fill)))
+    return(switch(
+      fill,
+      "NaN" = NaN,
+      "Infinity" = Inf,
+      "-Infinity" = -Inf,
+      as.numeric(fill)
+    ))
   }
-  if (identical(as.character(dtype), "bool")) as.logical(fill) else as.numeric(fill)
+  if (identical(as.character(dtype), "bool")) {
+    as.logical(fill)
+  } else {
+    as.numeric(fill)
+  }
 }
 
 #' Decode the bytes of one chunk into a flat vector (C order, full chunk shape).
@@ -161,7 +203,11 @@
   string <- identical(as.character(dtype), "string")
   if (node$version == 3L) {
     codecs <- node$meta$codecs
-    names <- vapply(codecs, function(codec) as.character(codec$name), character(1))
+    names <- vapply(
+      codecs,
+      function(codec) as.character(codec$name),
+      character(1)
+    )
     for (i in rev(seq_along(codecs))) {
       name <- names[[i]]
       if (name %in% c("bytes", "vlen-utf8", "vlen-bytes", "transpose")) {
@@ -199,7 +245,12 @@
           "Re-save it with zstd or gzip, or convert it to .h5ad.",
           call. = FALSE
         ),
-        stop("Unsupported Zarr compressor `", compressor$id, "`.", call. = FALSE)
+        stop(
+          "Unsupported Zarr compressor `",
+          compressor$id,
+          "`.",
+          call. = FALSE
+        )
       )
     }
   }
@@ -221,7 +272,12 @@
   result <- character(count)
   position <- 5L
   for (i in seq_len(count)) {
-    size <- readBin(bytes[position:(position + 3L)], "integer", size = 4L, endian = "little")
+    size <- readBin(
+      bytes[position:(position + 3L)],
+      "integer",
+      size = 4L,
+      endian = "little"
+    )
     position <- position + 4L
     if (size > 0L) {
       result[[i]] <- rawToChar(bytes[position:(position + size - 1L)])
@@ -287,12 +343,19 @@
     grid <- meta$chunk_grid
     chunk_shape <- as.integer(unlist(grid$configuration$chunk_shape))
     key <- meta$chunk_key_encoding
-    separator <- key$configuration$separator %||% if (identical(key$name, "v2")) "." else "/"
+    separator <- key$configuration$separator %||%
+      if (identical(key$name, "v2")) "." else "/"
     prefix <- if (identical(key$name, "v2")) "" else "c"
     fill <- .zarrFill(dtype, meta$fill_value)
-    transpose <- Filter(function(codec) identical(codec$name, "transpose"), meta$codecs)
+    transpose <- Filter(
+      function(codec) identical(codec$name, "transpose"),
+      meta$codecs
+    )
     if (length(transpose)) {
-      stop("Zarr arrays with a transpose codec are not supported.", call. = FALSE)
+      stop(
+        "Zarr arrays with a transpose codec are not supported.",
+        call. = FALSE
+      )
     }
   } else {
     chunk_shape <- as.integer(unlist(meta$chunks))
@@ -318,9 +381,16 @@
   if (!length(shape)) {
     chunk_shape <- integer()
   }
-  counts <- if (length(shape)) as.integer(ceiling(shape / chunk_shape)) else integer()
+  counts <- if (length(shape)) {
+    as.integer(ceiling(shape / chunk_shape))
+  } else {
+    integer()
+  }
   sharding <- if (node$version == 3L) {
-    Filter(function(codec) identical(codec$name, "sharding_indexed"), meta$codecs)
+    Filter(
+      function(codec) identical(codec$name, "sharding_indexed"),
+      meta$codecs
+    )
   } else {
     list()
   }
@@ -345,7 +415,13 @@
     }
     bytes <- readBin(file, "raw", n = file.size(file))
     values <- if (length(sharding)) {
-      .zarrDecodeShard(bytes, sharding[[1L]]$configuration, dtype, chunk_shape, fill)
+      .zarrDecodeShard(
+        bytes,
+        sharding[[1L]]$configuration,
+        dtype,
+        chunk_shape,
+        fill
+      )
     } else {
       .zarrDecodeChunk(bytes, node, dtype, chunk_shape)
     }
@@ -385,7 +461,9 @@
       init = offsets[[k]]
     )
   }
-  target <- walk(lapply(seq_len(k), function(d) (start[[d]] + inside[[d]]) * array_strides[[d]]))
+  target <- walk(lapply(seq_len(k), function(d) {
+    (start[[d]] + inside[[d]]) * array_strides[[d]]
+  }))
   source <- if (all(extent == chunk_shape)) {
     seq_len(prod(chunk_shape))
   } else {
@@ -404,7 +482,11 @@
   inner_shape <- as.integer(unlist(config$chunk_shape))
   counts <- as.integer(ceiling(shard_shape / inner_shape))
   n <- prod(counts)
-  index_names <- vapply(config$index_codecs, function(codec) as.character(codec$name), character(1))
+  index_names <- vapply(
+    config$index_codecs,
+    function(codec) as.character(codec$name),
+    character(1)
+  )
   index_size <- 16L * n + if ("crc32c" %in% index_names) 4L else 0L
   at_start <- identical(config$index_location, "start")
   index_bytes <- if (at_start) {
@@ -412,7 +494,12 @@
   } else {
     bytes[(length(bytes) - index_size + 1L):length(bytes)]
   }
-  entries <- .zarrInt64(index_bytes[seq_len(16L * n)], 2L * n, "little", signed = FALSE)
+  entries <- .zarrInt64(
+    index_bytes[seq_len(16L * n)],
+    2L * n,
+    "little",
+    signed = FALSE
+  )
   offsets <- entries[seq(1L, 2L * n, by = 2L)]
   sizes <- entries[seq(2L, 2L * n, by = 2L)]
   missing_marker <- 2^64 - 1
@@ -425,14 +512,24 @@
   grid <- as.matrix(expand.grid(lapply(counts, function(c) seq_len(c) - 1L)))
   ## the index lists the inner chunks in C order; expand.grid varies the first
   ## dimension fastest, so reorder to C order
-  grid <- grid[do.call(order, unname(as.list(as.data.frame(grid)))), , drop = FALSE]
+  grid <- grid[
+    do.call(order, unname(as.list(as.data.frame(grid)))),
+    ,
+    drop = FALSE
+  ]
   for (k in seq_len(n)) {
     if (sizes[[k]] == 0 || offsets[[k]] >= missing_marker) {
       next
     }
     chunk <- bytes[(offsets[[k]] + 1):(offsets[[k]] + sizes[[k]])]
     values <- .zarrDecodeChunk(chunk, inner, dtype, inner_shape)
-    flat <- .zarrPlace(flat, values, shard_shape, grid[k, ] * inner_shape, inner_shape)
+    flat <- .zarrPlace(
+      flat,
+      values,
+      shard_shape,
+      grid[k, ] * inner_shape,
+      inner_shape
+    )
   }
   flat
 }

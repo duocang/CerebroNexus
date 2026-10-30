@@ -141,7 +141,9 @@ convertH5adToCerebro <- function(
   }
   if (.zarrIsStore(h5ad_file) && length(.sdTables(h5ad_file))) {
     stop(
-      "`", h5ad_file, "` is a SpatialData store; use convertSpatialDataToCerebro().",
+      "`",
+      h5ad_file,
+      "` is a SpatialData store; use convertSpatialDataToCerebro().",
       call. = FALSE
     )
   }

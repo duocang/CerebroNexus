@@ -42,7 +42,11 @@
   }
   pieces <- list()
   split_values <- function(x) {
-    if (is.null(x) || is.na(x)) character() else strsplit(x, ";", fixed = TRUE)[[1L]]
+    if (is.null(x) || is.na(x)) {
+      character()
+    } else {
+      strsplit(x, ";", fixed = TRUE)[[1L]]
+    }
   }
   ## T cells: TCR1 / TCR2; B cells: heavy chain (IGH) and light chain columns
   slots <- list(
@@ -122,7 +126,15 @@
 #' @keywords internal
 #' @noRd
 .h5adPutAirr <- function(stage, chains, n_cells) {
-  fields <- c("locus", "v_call", "d_call", "j_call", "c_call", "junction_aa", "junction")
+  fields <- c(
+    "locus",
+    "v_call",
+    "d_call",
+    "j_call",
+    "c_call",
+    "junction_aa",
+    "junction"
+  )
   counts <- tabulate(chains$index, nbins = n_cells)
   datasets <- list()
   node <- 0L
@@ -134,7 +146,9 @@
   string_part <- function(values) {
     offsets_key <- next_key()
     data_key <- next_key()
-    bytes <- unlist(lapply(values, function(s) as.integer(charToRaw(enc2utf8(s)))))
+    bytes <- unlist(lapply(values, function(s) {
+      as.integer(charToRaw(enc2utf8(s)))
+    }))
     list(
       form = sprintf(
         paste0(
@@ -223,8 +237,19 @@
     top_key
   )
 
-  .h5adPutGroup(stage, "obsm/airr", "awkward-array", "0.1.0", form = form, length = n_cells)
-  rhdf5::h5write(c(0L, cumsum(counts)), stage, paste0("obsm/airr/", top_key, "-offsets"))
+  .h5adPutGroup(
+    stage,
+    "obsm/airr",
+    "awkward-array",
+    "0.1.0",
+    form = form,
+    length = n_cells
+  )
+  rhdf5::h5write(
+    c(0L, cumsum(counts)),
+    stage,
+    paste0("obsm/airr/", top_key, "-offsets")
+  )
   for (name in names(datasets)) {
     path <- paste0("obsm/airr/", name)
     if (endsWith(name, "-data")) {
@@ -249,12 +274,21 @@
 #' @keywords internal
 #' @noRd
 .crbPseudotimeColumns <- function(object, cells, taken) {
-  methods <- tryCatch(object$getMethodsForTrajectories(), error = function(e) character())
+  methods <- tryCatch(object$getMethodsForTrajectories(), error = function(e) {
+    character()
+  })
   result <- list()
   for (method in methods) {
     for (name in object$getNamesOfTrajectories(method)) {
-      meta <- tryCatch(object$getTrajectory(method, name)[["meta"]], error = function(e) NULL)
-      if (!is.data.frame(meta) || !"pseudotime" %in% names(meta) || is.null(rownames(meta))) {
+      meta <- tryCatch(
+        object$getTrajectory(method, name)[["meta"]],
+        error = function(e) NULL
+      )
+      if (
+        !is.data.frame(meta) ||
+          !"pseudotime" %in% names(meta) ||
+          is.null(rownames(meta))
+      ) {
         next
       }
       column <- if (grepl("\\(.+\\)$", name)) {

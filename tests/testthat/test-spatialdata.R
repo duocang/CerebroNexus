@@ -42,8 +42,11 @@ test_that("a Zarr v3 and a Zarr v2 AnnData read the same as the .h5ad of the sam
 
 test_that("a Zarr store converts to a .crb", {
   crb <- readCerebro(quiet(convertH5adToCerebro(
-    fixture("small_v3.zarr"), withr::local_tempdir(),
-    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+    fixture("small_v3.zarr"),
+    withr::local_tempdir(),
+    groups = "cell_type",
+    viewer_binary = "never",
+    verbose = FALSE
   )))
   expect_equal(nrow(crb$getMetaData()), 60)
   expect_equal(length(crb$getGeneNames()), 30)
@@ -58,7 +61,10 @@ test_that("unsupported Zarr layouts say so", {
   )
   dir.create(file.path(store, "x", "c"))
   writeBin(as.raw(1:16), file.path(store, "x", "c", "0"))
-  writeLines('{"zarr_format":3,"node_type":"group","attributes":{}}', file.path(store, "zarr.json"))
+  writeLines(
+    '{"zarr_format":3,"node_type":"group","attributes":{}}',
+    file.path(store, "zarr.json")
+  )
   ctx <- CerebroNexus:::.zarrContext(store)
   expect_error(CerebroNexus:::.zarrRead(ctx, "x"), "Blosc")
 })
@@ -95,9 +101,18 @@ test_that("pictures are placed in the shape coordinates of their section", {
     images$sec2$hires$histology_image_bounds,
     c(xmin = 0, xmax = 320, ymin = 0, ymax = 360)
   )
-  array <- png::readPNG(base64enc::base64decode(sub("^data:image/png;base64,", "", images$sec1$hires$histology_image)))
+  array <- png::readPNG(base64enc::base64decode(sub(
+    "^data:image/png;base64,",
+    "",
+    images$sec1$hires$histology_image
+  )))
   expect_identical(dim(array)[1:2], c(40L, 36L))
-  expect_null(quiet(readSpatialDataAsSCE(fixture("small_sd_visium.zarr"), spatial_images = FALSE))@metadata$spatial_images)
+  expect_null(
+    quiet(readSpatialDataAsSCE(
+      fixture("small_sd_visium.zarr"),
+      spatial_images = FALSE
+    ))@metadata$spatial_images
+  )
 })
 
 test_that("cell coordinates come from the shapes the table annotates, matched by instance id", {
@@ -117,36 +132,61 @@ test_that("a SpatialData store converts to a .crb with one section per region an
   skip_if_not_installed("arrow")
   skip_if_not_installed("png")
   path <- quiet(convertSpatialDataToCerebro(
-    fixture("small_sd_visium.zarr"), withr::local_tempdir(),
-    groups = c("cell_type", "library_id"), viewer_binary = "never", verbose = FALSE
+    fixture("small_sd_visium.zarr"),
+    withr::local_tempdir(),
+    groups = c("cell_type", "library_id"),
+    viewer_binary = "never",
+    verbose = FALSE
   ))
   crb <- readCerebro(path)
   expect_identical(names(crb$spatial), c("spatial [sec1]", "spatial [sec2]"))
-  expect_equal(nrow(crb$getSpatialData("spatial [sec1]", FALSE)$coordinates), 30)
-  expect_identical(names(crb$getSpatialData("spatial [sec2]", FALSE)$histology_images), "hires")
+  expect_equal(
+    nrow(crb$getSpatialData("spatial [sec1]", FALSE)$coordinates),
+    30
+  )
+  expect_identical(
+    names(crb$getSpatialData("spatial [sec2]", FALSE)$histology_images),
+    "hires"
+  )
 
   cells <- readCerebro(quiet(convertSpatialDataToCerebro(
-    fixture("small_sd_cells.zarr"), withr::local_tempdir(),
-    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+    fixture("small_sd_cells.zarr"),
+    withr::local_tempdir(),
+    groups = "cell_type",
+    viewer_binary = "never",
+    verbose = FALSE
   )))
   expect_identical(names(cells$spatial), "spatial")
   expect_equal(nrow(cells$getSpatialData("spatial", FALSE)$coordinates), 50)
 })
 
 test_that("bad SpatialData input is refused with a clear message", {
-  expect_error(readSpatialDataAsSCE(fixture("small_csr.h5ad")), "SpatialData .zarr directory")
+  expect_error(
+    readSpatialDataAsSCE(fixture("small_csr.h5ad")),
+    "SpatialData .zarr directory"
+  )
   expect_error(readSpatialDataAsSCE(fixture("small_v3.zarr")), "no tables/")
-  expect_error(readSpatialDataAsSCE(fixture("small_sd_cells.zarr"), table = "nope"), "not found")
+  expect_error(
+    readSpatialDataAsSCE(fixture("small_sd_cells.zarr"), table = "nope"),
+    "not found"
+  )
 })
 
 test_that("WKB geometries give the centre of points and the centroid of polygons", {
-  point <- c(as.raw(1L), writeBin(1L, raw(), size = 4L), writeBin(c(3, 4), raw(), size = 8L))
+  point <- c(
+    as.raw(1L),
+    writeBin(1L, raw(), size = 4L),
+    writeBin(c(3, 4), raw(), size = 8L)
+  )
   expect_equal(CerebroNexus:::.sdWkbCentre(point), c(x = 3, y = 4))
   ## a 2 x 2 square with its corner at the origin, as a polygon
   ring <- matrix(c(0, 0, 2, 0, 2, 2, 0, 2, 0, 0), ncol = 2, byrow = TRUE)
   polygon <- c(
-    as.raw(1L), writeBin(3L, raw(), size = 4L), writeBin(1L, raw(), size = 4L),
-    writeBin(5L, raw(), size = 4L), writeBin(as.vector(t(ring)), raw(), size = 8L)
+    as.raw(1L),
+    writeBin(3L, raw(), size = 4L),
+    writeBin(1L, raw(), size = 4L),
+    writeBin(5L, raw(), size = 4L),
+    writeBin(as.vector(t(ring)), raw(), size = 8L)
   )
   expect_equal(CerebroNexus:::.sdWkbCentre(polygon), c(x = 1, y = 1))
 })
@@ -160,6 +200,9 @@ test_that("NGFF transformations compose in order", {
     list(type = "translation", translation = c(10, 20))
   )
   ## scale first, then translate: (1, 1) -> (2, 2) -> (12, 22)
-  expect_equal(drop(CerebroNexus:::.sdAffine(both, axes) %*% c(1, 1, 1))[1:2], c(12, 22))
+  expect_equal(
+    drop(CerebroNexus:::.sdAffine(both, axes) %*% c(1, 1, 1))[1:2],
+    c(12, 22)
+  )
   expect_null(CerebroNexus:::.sdAffine(list(list(type = "bijection")), axes))
 })

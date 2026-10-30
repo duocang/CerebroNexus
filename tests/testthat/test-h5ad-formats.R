@@ -44,12 +44,20 @@ write_legacy_h5ad <- function(path) {
     "obs"
   )
   rhdf5::h5write(
-    data.frame(index = genes, n_cells = seq_len(n_vars), stringsAsFactors = FALSE),
+    data.frame(
+      index = genes,
+      n_cells = seq_len(n_vars),
+      stringsAsFactors = FALSE
+    ),
     path,
     "var"
   )
   rhdf5::h5createGroup(path, "obsm")
-  rhdf5::h5write(rbind(seq_len(n_obs), rev(seq_len(n_obs))) * 1, path, "obsm/X_umap")
+  rhdf5::h5write(
+    rbind(seq_len(n_obs), rev(seq_len(n_obs))) * 1,
+    path,
+    "obsm/X_umap"
+  )
   ## raw.X (dot, not slash) is a CSR group written with the h5sparse attributes
   csr <- methods::as(Matrix::t(raw), "RsparseMatrix")
   rhdf5::h5createGroup(path, "raw.X")
@@ -72,8 +80,19 @@ write_legacy_h5ad <- function(path) {
   rhdf5::h5write(c("CD4 T", "B", "Monocyte"), path, "uns/louvain_categories")
   ## rank_genes_groups names its columns by group code, not by label
   rhdf5::h5createGroup(path, "uns/rank_genes_groups")
-  top <- data.frame(`0` = c("CD3D", "ACTB"), `1` = c("MS4A1", "ACTB"), `2` = c("LYZ", "ACTB"), check.names = FALSE, stringsAsFactors = FALSE)
-  score <- data.frame(`0` = c(9, 1), `1` = c(8, 1), `2` = c(7, 1), check.names = FALSE)
+  top <- data.frame(
+    `0` = c("CD3D", "ACTB"),
+    `1` = c("MS4A1", "ACTB"),
+    `2` = c("LYZ", "ACTB"),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  score <- data.frame(
+    `0` = c(9, 1),
+    `1` = c(8, 1),
+    `2` = c(7, 1),
+    check.names = FALSE
+  )
   rhdf5::h5write(top, path, "uns/rank_genes_groups/names")
   rhdf5::h5write(score, path, "uns/rank_genes_groups/scores")
   rhdf5::h5createGroup(path, "uns/rank_genes_groups/params")
@@ -88,25 +107,37 @@ test_that("a pre-0.7 h5ad (compound obs/var, uns categories, raw.X) is read", {
 
   expect_identical(dim(sce), c(6L, 12L))
   expect_identical(colnames(sce)[1:2], c("c1", "c2"))
-  expect_identical(rownames(sce), c("CD3D", "MS4A1", "LYZ", "GZMB", "PPBP", "ACTB"))
+  expect_identical(
+    rownames(sce),
+    c("CD3D", "MS4A1", "LYZ", "GZMB", "PPBP", "ACTB")
+  )
   ## integer codes become labelled factors via uns/louvain_categories
   louvain <- SummarizedExperiment::colData(sce)$louvain
   expect_s3_class(louvain, "factor")
   expect_identical(levels(louvain), c("CD4 T", "B", "Monocyte"))
-  expect_identical(as.character(louvain[c(1, 5, 9)]), c("CD4 T", "B", "Monocyte"))
+  expect_identical(
+    as.character(louvain[c(1, 5, 9)]),
+    c("CD4 T", "B", "Monocyte")
+  )
   expect_identical(SummarizedExperiment::colData(sce)$n_genes, 1:12)
   expect_identical(
     rownames(SingleCellExperiment::reducedDim(sce, "UMAP")),
     colnames(sce)
   )
-  expect_identical(dim(SingleCellExperiment::reducedDim(sce, "UMAP")), c(12L, 2L))
+  expect_identical(
+    dim(SingleCellExperiment::reducedDim(sce, "UMAP")),
+    c(12L, 2L)
+  )
   ## a dense (cells x genes) X is read as genes x cells
   x <- SummarizedExperiment::assay(sce, "X")
   expect_identical(dim(x), c(6L, 12L))
 })
 
 test_that("legacy raw.X / raw.var are used by use_raw", {
-  file <- write_legacy_h5ad(file.path(withr::local_tempdir(), "legacy_raw.h5ad"))
+  file <- write_legacy_h5ad(file.path(
+    withr::local_tempdir(),
+    "legacy_raw.h5ad"
+  ))
   raw <- read_h5ad(file, use_raw = TRUE)
   expect_identical(dim(raw), c(8L, 12L))
   expect_identical(rownames(raw)[7:8], c("EXTRA1", "EXTRA2"))
@@ -117,7 +148,10 @@ test_that("legacy raw.X / raw.var are used by use_raw", {
 })
 
 test_that("legacy rank_genes_groups maps group codes back to labels", {
-  file <- write_legacy_h5ad(file.path(withr::local_tempdir(), "legacy_markers.h5ad"))
+  file <- write_legacy_h5ad(file.path(
+    withr::local_tempdir(),
+    "legacy_markers.h5ad"
+  ))
   markers <- read_h5ad(file)@metadata$marker_genes
   expect_identical(names(markers), "scanpy: t-test")
   table <- markers[[1]][["louvain"]]
@@ -129,7 +163,10 @@ test_that("legacy rank_genes_groups maps group codes back to labels", {
 })
 
 test_that("a pre-0.7 h5ad converts end to end", {
-  file <- write_legacy_h5ad(file.path(withr::local_tempdir(), "legacy_e2e.h5ad"))
+  file <- write_legacy_h5ad(file.path(
+    withr::local_tempdir(),
+    "legacy_e2e.h5ad"
+  ))
   out <- withr::local_tempdir()
   path <- quiet(convertH5adToCerebro(
     file,
@@ -161,7 +198,10 @@ test_that("a MuData file is read through one modality", {
   expect_identical(dim(prot), c(4L, 120L))
   expect_identical(rownames(prot), paste0("P", 0:3))
 
-  expect_error(read_h5ad(file, modality = "nope"), "not found; the file has: gex, prot")
+  expect_error(
+    read_h5ad(file, modality = "nope"),
+    "not found; the file has: gex, prot"
+  )
   expect_error(
     read_h5ad(fixture("small_csr.h5ad"), modality = "gex"),
     "only for MuData"
@@ -375,16 +415,26 @@ test_that("a missing reduction is reported with a way out", {
 
 test_that("extra_modalities reads a MuData modality as an alternative experiment", {
   path <- testthat::test_path("fixtures", "anndata", "small_mudata.h5mu")
-  sce <- suppressWarnings(suppressMessages(readH5adAsSCE(path, modality = "gex", extra_modalities = "prot")))
+  sce <- suppressWarnings(suppressMessages(readH5adAsSCE(
+    path,
+    modality = "gex",
+    extra_modalities = "prot"
+  )))
   expect_identical(SingleCellExperiment::altExpNames(sce), "prot")
   expect_equal(dim(SingleCellExperiment::altExp(sce, "prot")), c(4, 120))
-  expect_identical(colnames(SingleCellExperiment::altExp(sce, "prot")), colnames(sce))
+  expect_identical(
+    colnames(SingleCellExperiment::altExp(sce, "prot")),
+    colnames(sce)
+  )
   expect_error(
     readH5adAsSCE(path, modality = "gex", extra_modalities = "nope"),
     "not found"
   )
   expect_error(
-    readH5adAsSCE(testthat::test_path("fixtures", "anndata", "small_csr.h5ad"), extra_modalities = "prot"),
+    readH5adAsSCE(
+      testthat::test_path("fixtures", "anndata", "small_csr.h5ad"),
+      extra_modalities = "prot"
+    ),
     "only for MuData"
   )
 })
@@ -392,15 +442,24 @@ test_that("extra_modalities reads a MuData modality as an alternative experiment
 test_that("extra features reach the .crb as <experiment>:<feature>", {
   path <- testthat::test_path("fixtures", "anndata", "small_mudata.h5mu")
   crb <- readCerebro(suppressWarnings(suppressMessages(convertH5adToCerebro(
-    path, withr::local_tempdir(), modality = "gex", extra_modalities = "prot",
-    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+    path,
+    withr::local_tempdir(),
+    modality = "gex",
+    extra_modalities = "prot",
+    groups = "cell_type",
+    viewer_binary = "never",
+    verbose = FALSE
   ))))
   genes <- crb$getGeneNames()
   expect_equal(length(genes), 60 + 4)
   expect_identical(genes[grepl("^prot:", genes)], paste0("prot:P", 0:3))
   plain <- readCerebro(suppressWarnings(suppressMessages(convertH5adToCerebro(
-    path, withr::local_tempdir(), modality = "gex",
-    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+    path,
+    withr::local_tempdir(),
+    modality = "gex",
+    groups = "cell_type",
+    viewer_binary = "never",
+    verbose = FALSE
   ))))
   expect_equal(length(plain$getGeneNames()), 60)
   ## the main genes are untouched
@@ -413,19 +472,35 @@ test_that("extra features reach the .crb as <experiment>:<feature>", {
 test_that("a SingleCellExperiment's altExp can be added by name, and an unknown one is refused", {
   sce <- suppressWarnings(suppressMessages(readH5adAsSCE(
     testthat::test_path("fixtures", "anndata", "small_mudata.h5mu"),
-    modality = "gex", extra_modalities = "prot"
+    modality = "gex",
+    extra_modalities = "prot"
   )))
   out <- withr::local_tempdir()
   crb <- readCerebro(suppressWarnings(suppressMessages(convertSCEToCerebro(
-    sce, out, assay = "X", groups = "cell_type", nUMI = "nUMI", nGene = "nGene",
-    extra_features = "prot", viewer_binary = "never", verbose = FALSE, .source_name = "x.rds"
+    sce,
+    out,
+    assay = "X",
+    groups = "cell_type",
+    nUMI = "nUMI",
+    nGene = "nGene",
+    extra_features = "prot",
+    viewer_binary = "never",
+    verbose = FALSE,
+    .source_name = "x.rds"
   ))))
   expect_equal(sum(grepl("^prot:", crb$getGeneNames())), 4)
   expect_error(
     suppressMessages(convertSCEToCerebro(
-      sce, withr::local_tempdir(), assay = "X", groups = "cell_type",
-      nUMI = "nUMI", nGene = "nGene", extra_features = "ADT",
-      viewer_binary = "never", verbose = FALSE, .source_name = "x.rds"
+      sce,
+      withr::local_tempdir(),
+      assay = "X",
+      groups = "cell_type",
+      nUMI = "nUMI",
+      nGene = "nGene",
+      extra_features = "ADT",
+      viewer_binary = "never",
+      verbose = FALSE,
+      .source_name = "x.rds"
     )),
     "not found"
   )

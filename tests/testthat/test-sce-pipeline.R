@@ -38,7 +38,9 @@ test_that("exportFromSCE writes an embedded .crb that round-trips the assay", {
   genes <- rownames(sce_raw)[1:5]
   expect_equal(
     unname(as.matrix(obj$getExpressionBlock(genes))),
-    unname(as.matrix(SummarizedExperiment::assay(sce_raw, "logcounts")[genes, ]))
+    unname(as.matrix(SummarizedExperiment::assay(sce_raw, "logcounts")[
+      genes,
+    ]))
   )
 })
 
@@ -52,7 +54,9 @@ test_that("exportFromSCE supports the h5 backend", {
   genes <- rownames(sce_raw)[1:5]
   expect_equal(
     unname(as.matrix(obj$getExpressionBlock(genes))),
-    unname(as.matrix(SummarizedExperiment::assay(sce_raw, "logcounts")[genes, ])),
+    unname(as.matrix(SummarizedExperiment::assay(sce_raw, "logcounts")[
+      genes,
+    ])),
     tolerance = 1e-6
   )
   ## nothing but the CRB and its sidecar is left beside the output
@@ -67,17 +71,27 @@ test_that("exportFromSCE converts non-CsparseMatrix assays for external backends
     "TsparseMatrix"
   )
   dir <- withr::local_tempdir()
-  export_sce(file.path(dir, "t.crb"), expression_matrix_mode = "h5", object = sce)
+  export_sce(
+    file.path(dir, "t.crb"),
+    expression_matrix_mode = "h5",
+    object = sce
+  )
   expect_true(file.exists(file.path(dir, "t.h5")))
 })
 
 test_that("exportFromSCE validates its inputs before writing anything", {
   dir <- withr::local_tempdir()
   f <- file.path(dir, "x.crb")
-  expect_error(export_sce(f, object = list()), "must be of class 'SingleCellExperiment'")
+  expect_error(
+    export_sce(f, object = list()),
+    "must be of class 'SingleCellExperiment'"
+  )
   expect_error(
     suppressMessages(exportFromSCE(
-      sce_raw, file = f, experiment_name = "x", organism = "hg",
+      sce_raw,
+      file = f,
+      experiment_name = "x",
+      organism = "hg",
       groups = c("sample", "nope")
     )),
     "nope"
@@ -145,14 +159,21 @@ test_that("convertSCEToCerebro computes missing nUMI / nGene from counts", {
   out <- withr::local_tempdir()
   expect_message(
     path <- suppressWarnings(convertSCEToCerebro(
-      sce, out, groups = "cluster", viewer_binary = "never", verbose = FALSE
+      sce,
+      out,
+      groups = "cluster",
+      viewer_binary = "never",
+      verbose = FALSE
     )),
     "Computed missing QC column"
   )
   meta <- readCerebro(path)$getMetaData()
   counts <- SummarizedExperiment::assay(sce, "counts")
   expect_equal(unname(meta$nUMI), unname(as.numeric(Matrix::colSums(counts))))
-  expect_equal(unname(meta$nGene), unname(as.numeric(Matrix::colSums(counts > 0))))
+  expect_equal(
+    unname(meta$nGene),
+    unname(as.numeric(Matrix::colSums(counts > 0)))
+  )
 })
 
 test_that("convertSCEToCerebro reads .qs2 files and reports bad input clearly", {
@@ -161,7 +182,11 @@ test_that("convertSCEToCerebro reads .qs2 files and reports bad input clearly", 
   qs_file <- file.path(dir, "pbmc.qs2")
   qs2::qs_save(sce_raw, qs_file)
   path <- suppressMessages(suppressWarnings(convertSCEToCerebro(
-    qs_file, dir, groups = "cluster", viewer_binary = "never", verbose = FALSE
+    qs_file,
+    dir,
+    groups = "cluster",
+    viewer_binary = "never",
+    verbose = FALSE
   )))
   expect_identical(basename(path), "cerebro_pbmc.crb")
 

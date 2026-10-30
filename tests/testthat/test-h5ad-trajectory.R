@@ -36,13 +36,21 @@ test_that("PAGA becomes edges between group centroids, one trajectory per pseudo
   expect_identical(
     colnames(trajectory$edges),
     c(
-      "source", "target", "weight", "source_dim_1", "source_dim_2",
-      "target_dim_1", "target_dim_2"
+      "source",
+      "target",
+      "weight",
+      "source_dim_1",
+      "source_dim_2",
+      "target_dim_1",
+      "target_dim_2"
     )
   )
   expect_identical(rownames(trajectory$meta), colnames(sce))
   expect_s3_class(trajectory$meta$state, "factor")
-  expect_identical(levels(trajectory$meta$state), c("T cell", "B cell", "Monocyte"))
+  expect_identical(
+    levels(trajectory$meta$state),
+    c("T cell", "B cell", "Monocyte")
+  )
 
   ## cells sit where the UMAP puts them, pseudotime is the obs column
   umap <- SingleCellExperiment::reducedDim(sce, "UMAP")
@@ -83,7 +91,10 @@ test_that("pseudotime keeps scanpy's and scVelo's values and turns non-finite in
 
   velocity_pt <- paga[["cell_type (velocity_pseudotime)"]]$meta$pseudotime
   expect_identical(which(is.na(velocity_pt)), which(seq_len(120L) %% 10L == 4L))
-  expect_equal(velocity_pt[!is.na(velocity_pt)], obs$velocity_pseudotime[!is.na(velocity_pt)])
+  expect_equal(
+    velocity_pt[!is.na(velocity_pt)],
+    obs$velocity_pseudotime[!is.na(velocity_pt)]
+  )
 
   dpt <- paga[["cell_type (dpt_pseudotime)"]]$meta$pseudotime
   expect_false(anyNA(dpt))
@@ -94,7 +105,10 @@ test_that("pseudotime keeps scanpy's and scVelo's values and turns non-finite in
 test_that("scVelo velocity becomes arrows that follow the velocity field", {
   sce <- read_fixture("small_trajectory.h5ad")
   ## obsm["velocity_umap"] holds vectors, not positions
-  expect_false(any(grepl("velocity", names(SingleCellExperiment::reducedDims(sce)))))
+  expect_false(any(grepl(
+    "velocity",
+    names(SingleCellExperiment::reducedDims(sce))
+  )))
 
   velocity <- trajectories_of(sce)$scvelo
   expect_identical(
@@ -190,7 +204,9 @@ test_that("the trajectories reach the .crb and the Viewer's methods", {
   expect_length(obj$getNamesOfTrajectories("paga"), 3L)
   trajectory <- obj$getTrajectory("paga", "cell_type (dpt_pseudotime)")
   expect_identical(rownames(trajectory$meta), obj$getMetaData()$cell_barcode)
-  expect_true(all(c("DR_1", "DR_2", "pseudotime", "state") %in% colnames(trajectory$meta)))
+  expect_true(all(
+    c("DR_1", "DR_2", "pseudotime", "state") %in% colnames(trajectory$meta)
+  ))
   expect_identical(nrow(trajectory$edges), 3L)
   ## the Viewer lists these methods and the dataset advertises the page
   utility <- new.env(parent = globalenv())
@@ -205,7 +221,10 @@ test_that("the trajectories reach the .crb and the Viewer's methods", {
 test_that("exportToH5ad writes pseudotime as obs columns, NaN where a cell has none", {
   crb <- suppressWarnings(suppressMessages(convertH5adToCerebro(
     testthat::test_path("fixtures", "anndata", "small_trajectory.h5ad"),
-    withr::local_tempdir(), groups = "cell_type", viewer_binary = "never", verbose = FALSE
+    withr::local_tempdir(),
+    groups = "cell_type",
+    viewer_binary = "never",
+    verbose = FALSE
   )))
   out <- file.path(withr::local_tempdir(), "pt.h5ad")
   suppressMessages(exportToH5ad(crb, out))
@@ -215,7 +234,13 @@ test_that("exportToH5ad writes pseudotime as obs columns, NaN where a cell has n
   source <- suppressWarnings(suppressMessages(readH5adAsSCE(
     testthat::test_path("fixtures", "anndata", "small_trajectory.h5ad")
   )))
-  expect_true("dpt_pseudotime" %in% colnames(SummarizedExperiment::colData(source)))
+  expect_true(
+    "dpt_pseudotime" %in% colnames(SummarizedExperiment::colData(source))
+  )
   shared <- !is.na(source$dpt_pseudotime)
-  expect_equal(back$dpt_pseudotime[shared], source$dpt_pseudotime[shared], tolerance = 1e-6)
+  expect_equal(
+    back$dpt_pseudotime[shared],
+    source$dpt_pseudotime[shared],
+    tolerance = 1e-6
+  )
 })

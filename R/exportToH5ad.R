@@ -59,7 +59,10 @@
   .h5adPutAttrs(
     file,
     path,
-    scalars = c(list(`encoding-type` = type, `encoding-version` = version), list(...))
+    scalars = c(
+      list(`encoding-type` = type, `encoding-version` = version),
+      list(...)
+    )
   )
 }
 
@@ -160,7 +163,10 @@
   .h5adPutAttrs(
     file,
     paste0(path, "/categories"),
-    scalars = list(`encoding-type` = "string-array", `encoding-version` = "0.2.0")
+    scalars = list(
+      `encoding-type` = "string-array",
+      `encoding-version` = "0.2.0"
+    )
   )
   invisible(TRUE)
 }
@@ -318,15 +324,26 @@
   coordinates <- matrix(NA_real_, nrow = length(cells), ncol = 2L)
   libraries <- list()
   for (name in names(object$spatial)) {
-    section <- tryCatch(object$getSpatialData(name, FALSE), error = function(e) NULL)
+    section <- tryCatch(
+      object$getSpatialData(name, FALSE),
+      error = function(e) NULL
+    )
     frame <- section$coordinates
-    if (!is.data.frame(frame) || !all(c("x", "y") %in% names(frame)) || is.null(rownames(frame))) {
+    if (
+      !is.data.frame(frame) ||
+        !all(c("x", "y") %in% names(frame)) ||
+        is.null(rownames(frame))
+    ) {
       notes <- c(notes, paste0("spatial section ", name))
       next
     }
     index <- match(rownames(frame), cells)
     keep <- !is.na(index)
-    coordinates[index[keep], ] <- as.matrix(frame[keep, c("x", "y"), drop = FALSE])
+    coordinates[index[keep], ] <- as.matrix(frame[
+      keep,
+      c("x", "y"),
+      drop = FALSE
+    ])
     library <- if (startsWith(name, "spatial [") && endsWith(name, "]")) {
       substr(name, nchar("spatial [") + 1L, nchar(name) - 1L)
     } else {
@@ -353,7 +370,9 @@
       nearest <- vapply(
         seq_len(min(nrow(spots), 2000L)),
         function(i) {
-          d <- sqrt((spots[, 1L] - spots[i, 1L])^2 + (spots[, 2L] - spots[i, 2L])^2)
+          d <- sqrt(
+            (spots[, 1L] - spots[i, 1L])^2 + (spots[, 2L] - spots[i, 2L])^2
+          )
           min(d[-i])
         },
         numeric(1)
@@ -365,22 +384,34 @@
       )
     }
     images <- libraries[[library]]$images
-    if (!length(images) || !requireNamespace("png", quietly = TRUE) ||
-        !requireNamespace("base64enc", quietly = TRUE)) {
+    if (
+      !length(images) ||
+        !requireNamespace("png", quietly = TRUE) ||
+        !requireNamespace("base64enc", quietly = TRUE)
+    ) {
       next
     }
     for (label in intersect(c("hires", "lowres"), names(images))) {
       entry <- images[[label]]
       array <- tryCatch(
-        png::readPNG(base64enc::base64decode(sub("^data:image/png;base64,", "", entry$histology_image))),
+        png::readPNG(base64enc::base64decode(sub(
+          "^data:image/png;base64,",
+          "",
+          entry$histology_image
+        ))),
         error = function(e) NULL
       )
       right <- entry$histology_image_bounds[["xmax"]]
-      if (is.null(array) || length(dim(array)) != 3L || !is.finite(right) || right <= 0) {
+      if (
+        is.null(array) ||
+          length(dim(array)) != 3L ||
+          !is.finite(right) ||
+          right <= 0
+      ) {
         notes <- c(notes, paste0("tissue image ", library, "/", label))
         next
       }
-      array <- array[, , seq_len(min(3L, dim(array)[[3L]])), drop = FALSE]
+      array <- array[,, seq_len(min(3L, dim(array)[[3L]])), drop = FALSE]
       ## HDF5 holds (height, width, channel) row-major; rhdf5 reverses dimensions
       path <- paste0(base, "/images/", label)
       stored <- aperm(array, c(3L, 2L, 1L))
@@ -486,14 +517,22 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
     stop("`file` must be one non-empty output path.", call. = FALSE)
   }
   if (dir.exists(file)) {
-    stop("`file` points to a directory, not a .h5ad path: ", file, call. = FALSE)
+    stop(
+      "`file` points to a directory, not a .h5ad path: ",
+      file,
+      call. = FALSE
+    )
   }
   if (file.exists(file) && !isTRUE(overwrite)) {
     stop("`file` already exists; use overwrite = TRUE: ", file, call. = FALSE)
   }
   object <- if (is.character(input)) {
     if (length(input) != 1L || !file.exists(input)) {
-      stop("Cerebro file not found: ", paste(input, collapse = ", "), call. = FALSE)
+      stop(
+        "Cerebro file not found: ",
+        paste(input, collapse = ", "),
+        call. = FALSE
+      )
     }
     readCerebro(input)
   } else {
@@ -505,7 +544,10 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
 
   expression <- object$expression
   if (is.null(expression)) {
-    stop("The Cerebro object has no expression matrix to export.", call. = FALSE)
+    stop(
+      "The Cerebro object has no expression matrix to export.",
+      call. = FALSE
+    )
   }
   cells <- colnames(expression)
   genes <- rownames(expression)
@@ -517,13 +559,20 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
   n_genes <- nrow(matrix)
 
   meta <- object$getMetaData()
-  if (!is.null(meta$cell_barcode) && !identical(as.character(meta$cell_barcode), cells)) {
+  if (
+    !is.null(meta$cell_barcode) &&
+      !identical(as.character(meta$cell_barcode), cells)
+  ) {
     meta <- meta[match(cells, meta$cell_barcode), , drop = FALSE]
   }
   columns <- as.list(meta[setdiff(names(meta), "cell_barcode")])
 
   dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
-  stage <- tempfile(pattern = ".h5ad-stage-", tmpdir = dirname(file), fileext = ".h5ad")
+  stage <- tempfile(
+    pattern = ".h5ad-stage-",
+    tmpdir = dirname(file),
+    fileext = ".h5ad"
+  )
   on.exit(unlink(stage, force = TRUE), add = TRUE)
   rhdf5::h5createFile(stage)
   .h5adPutAttrs(
@@ -549,7 +598,13 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
   obs_written <- .h5adPutDataFrame(stage, "obs", cells, columns)
   dropped <- setdiff(gsub("/", "_", names(columns), fixed = TRUE), obs_written)
   if (length(dropped)) {
-    skipped <- c(skipped, paste0("obs columns without an AnnData type: ", paste(dropped, collapse = ", ")))
+    skipped <- c(
+      skipped,
+      paste0(
+        "obs columns without an AnnData type: ",
+        paste(dropped, collapse = ", ")
+      )
+    )
   }
 
   ## AnnData requires a column-order attribute and rhdf5 cannot write an empty
@@ -565,10 +620,17 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
     }
     embedding <- as.matrix(embedding)
     if (nrow(embedding) != n_cells || !is.numeric(embedding)) {
-      skipped <- c(skipped, paste0("projection ", projection, " (does not match the cells)"))
+      skipped <- c(
+        skipped,
+        paste0("projection ", projection, " (does not match the cells)")
+      )
       next
     }
-    .h5adPutArray(stage, paste0("obsm/", .h5adProjectionName(projection)), t(unname(embedding)))
+    .h5adPutArray(
+      stage,
+      paste0("obsm/", .h5adProjectionName(projection)),
+      t(unname(embedding))
+    )
   }
 
   ## uns: marker tables, readable by readH5adAsSCE()
@@ -622,7 +684,10 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
     .h5adPutGroup(stage, "uns/cerebro", "dict", "0.1.0")
     .h5adPutGroup(stage, "uns/cerebro/marker_genes", "dict", "0.1.0")
     for (method in methods_with_markers) {
-      method_path <- paste0("uns/cerebro/marker_genes/", gsub("/", "_", method, fixed = TRUE))
+      method_path <- paste0(
+        "uns/cerebro/marker_genes/",
+        gsub("/", "_", method, fixed = TRUE)
+      )
       .h5adPutGroup(stage, method_path, "dict", "0.1.0")
       for (group in object$getGroupsWithMarkerGenes(method)) {
         table <- object$getMarkerGenes(method, group)
@@ -645,16 +710,24 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
       has(tryCatch(object$getImmuneRepertoire(), error = function(e) NULL)) &&
         !airr_written &&
         !length(airr_notes)
-    ) "immune repertoire (no chains found for the cells)",
+    ) {
+      "immune repertoire (no chains found for the cells)"
+    },
     if (has(object$hla_typing)) "HLA typing",
     if (length(object$trees)) "trees",
-    if (length(object$trajectories)) "trajectory layouts and edges (pseudotime is in obs)",
+    if (length(object$trajectories)) {
+      "trajectory layouts and edges (pseudotime is in obs)"
+    },
     if (length(object$enriched_pathways)) "enriched pathways",
     if (length(object$extra_material)) "extra material"
   )
   left_out <- c(left_out, skipped, spatial_notes, airr_notes)
   if (length(left_out)) {
-    message("[INFO] Not exported to h5ad: ", paste(left_out, collapse = "; "), ".")
+    message(
+      "[INFO] Not exported to h5ad: ",
+      paste(left_out, collapse = "; "),
+      "."
+    )
   }
 
   ## publish: replace only once the new file is complete

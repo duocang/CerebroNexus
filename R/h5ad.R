@@ -231,7 +231,12 @@
       },
       error = function(e) {
         if (verbose) {
-          message("[INFO] Skipping h5ad column `", column, "`: ", conditionMessage(e))
+          message(
+            "[INFO] Skipping h5ad column `",
+            column,
+            "`: ",
+            conditionMessage(e)
+          )
         }
         NULL
       }
@@ -301,7 +306,12 @@
     dims <- if (csr) c(n_vars, n_obs) else c(n_obs, n_vars)
     major <- if (csr) n_obs else n_vars
     if (length(indptr) != major + 1L || length(indices) != length(data)) {
-      stop("`", path, "` has inconsistent indptr/indices/data lengths.", call. = FALSE)
+      stop(
+        "`",
+        path,
+        "` has inconsistent indptr/indices/data lengths.",
+        call. = FALSE
+      )
     }
     built <- tryCatch(
       methods::new("dgCMatrix", i = indices, p = indptr, x = data, Dim = dims),
@@ -323,13 +333,25 @@
   if (identical(type, "array")) {
     ## C-order (cells x genes) is read by rhdf5 as an R (genes x cells) array
     dense <- .h5adRead(ctx, path)
-    if (!identical(as.integer(dim(dense)), c(as.integer(n_vars), as.integer(n_obs)))) {
+    if (
+      !identical(
+        as.integer(dim(dense)),
+        c(as.integer(n_vars), as.integer(n_obs))
+      )
+    ) {
       stop("Dense matrix `", path, "` does not match obs/var.", call. = FALSE)
     }
     storage.mode(dense) <- "double"
     return(methods::as(dense, "CsparseMatrix"))
   }
-  stop("Unsupported matrix encoding `", type, "` at `", path, "`.", call. = FALSE)
+  stop(
+    "Unsupported matrix encoding `",
+    type,
+    "` at `",
+    path,
+    "`.",
+    call. = FALSE
+  )
 }
 
 #' @keywords internal
@@ -387,7 +409,11 @@
             stop("unsupported encoding")
           }
           table <- .h5adReadDataFrame(ctx, path)
-          numeric <- table$columns[vapply(table$columns, is.numeric, logical(1))]
+          numeric <- table$columns[vapply(
+            table$columns,
+            is.numeric,
+            logical(1)
+          )]
           do.call(cbind, numeric)
         } else {
           raw <- .h5adRead(ctx, path)
@@ -396,15 +422,28 @@
       },
       error = function(e) NULL
     )
-    if (is.null(embedding) || !is.matrix(embedding) || nrow(embedding) != length(cells) || ncol(embedding) < 2L) {
+    if (
+      is.null(embedding) ||
+        !is.matrix(embedding) ||
+        nrow(embedding) != length(cells) ||
+        ncol(embedding) < 2L
+    ) {
       if (verbose) {
-        message("[INFO] Skipping obsm entry `", entry, "` (not a cells x >=2 numeric array).")
+        message(
+          "[INFO] Skipping obsm entry `",
+          entry,
+          "` (not a cells x >=2 numeric array)."
+        )
       }
       next
     }
     storage.mode(embedding) <- "double"
     if (is.null(colnames(embedding))) {
-      colnames(embedding) <- paste0(.h5adReductionName(entry), "_", seq_len(ncol(embedding)))
+      colnames(embedding) <- paste0(
+        .h5adReductionName(entry),
+        "_",
+        seq_len(ncol(embedding))
+      )
     }
     rownames(embedding) <- cells
     result[[.h5adReductionName(entry)]] <- embedding
@@ -425,12 +464,17 @@
   for (entry in .h5adChildren(ctx, "uns")) {
     base <- paste0("uns/", entry)
     needed <- paste0(base, c("/names", "/scores"))
-    if (!.h5adIsGroup(ctx, base) || !all(vapply(needed, function(p) .h5adHas(ctx, p), logical(1)))) {
+    if (
+      !.h5adIsGroup(ctx, base) ||
+        !all(vapply(needed, function(p) .h5adHas(ctx, p), logical(1)))
+    ) {
       next
     }
     read_field <- function(field) {
       path <- paste0(base, "/", field)
-      if (.h5adHas(ctx, path)) tryCatch(.h5adRead(ctx, path), error = function(e) NULL)
+      if (.h5adHas(ctx, path)) {
+        tryCatch(.h5adRead(ctx, path), error = function(e) NULL)
+      }
     }
     gene <- read_field("names")
     if (!is.data.frame(gene)) {
@@ -438,7 +482,11 @@
     }
     params <- function(field) {
       path <- paste0(base, "/params/", field)
-      if (.h5adHas(ctx, path)) as.character(.h5adVector(.h5adRead(ctx, path)))[[1L]] else NA_character_
+      if (.h5adHas(ctx, path)) {
+        as.character(.h5adVector(.h5adRead(ctx, path)))[[1L]]
+      } else {
+        NA_character_
+      }
     }
     groupby <- params("groupby")
     method <- params("method")
@@ -460,7 +508,9 @@
       names(gene) <- labels[as.integer(group_labels) + 1L]
       for (field in names(fields)) {
         if (is.data.frame(fields[[field]])) {
-          names(fields[[field]]) <- labels[as.integer(names(fields[[field]])) + 1L]
+          names(fields[[field]]) <- labels[
+            as.integer(names(fields[[field]])) + 1L
+          ]
         }
       }
     }
@@ -471,7 +521,9 @@
         stringsAsFactors = FALSE
       )
       for (field in names(fields)) {
-        if (is.data.frame(fields[[field]]) && level %in% names(fields[[field]])) {
+        if (
+          is.data.frame(fields[[field]]) && level %in% names(fields[[field]])
+        ) {
           table[[field]] <- as.numeric(fields[[field]][[level]])
         }
       }
@@ -527,9 +579,20 @@
 #' @noRd
 .h5adGeneNames <- function(index, columns, gene_names = NULL) {
   if (is.null(gene_names)) {
-    looks_ensembl <- mean(grepl("^ENS[A-Z]*[GTP][0-9]{6,}", utils::head(index, 200L))) > 0.9
+    looks_ensembl <- mean(grepl(
+      "^ENS[A-Z]*[GTP][0-9]{6,}",
+      utils::head(index, 200L)
+    )) >
+      0.9
     candidates <- intersect(
-      c("feature_name", "gene_symbols", "gene_symbol", "gene_name", "gene_names", "symbol"),
+      c(
+        "feature_name",
+        "gene_symbols",
+        "gene_symbol",
+        "gene_name",
+        "gene_names",
+        "symbol"
+      ),
       names(columns)
     )
     if (!looks_ensembl || !length(candidates)) {
@@ -698,10 +761,20 @@ readH5adAsSCE <- function(
   ctx <- tryCatch(
     .h5adContext(file, root = .root),
     error = function(e) {
-      stop("`", file, "` is not a readable HDF5/h5ad file: ", conditionMessage(e), call. = FALSE)
+      stop(
+        "`",
+        file,
+        "` is not a readable HDF5/h5ad file: ",
+        conditionMessage(e),
+        call. = FALSE
+      )
     }
   )
-  modalities <- if (.h5adHas(ctx, "mod")) .h5adChildren(ctx, "mod") else character(0)
+  modalities <- if (.h5adHas(ctx, "mod")) {
+    .h5adChildren(ctx, "mod")
+  } else {
+    character(0)
+  }
   airr_source <- .h5adFindAirr(ctx, airr, modalities, file)
   if (.h5adHas(ctx, "mod")) {
     ## MuData (.h5mu): read one modality, which is an AnnData in its own right
@@ -715,7 +788,9 @@ readH5adAsSCE <- function(
       if (!length(candidates)) {
         candidates <- available
       }
-      guess <- candidates[tolower(candidates) %in% c("rna", "gex", "expression")]
+      guess <- candidates[
+        tolower(candidates) %in% c("rna", "gex", "expression")
+      ]
       if (length(guess) != 1L && length(candidates) != 1L) {
         stop(
           "`",
@@ -745,20 +820,31 @@ readH5adAsSCE <- function(
     stop("`modality` is only for MuData (.h5mu) files.", call. = FALSE)
   }
   if (!.h5adHas(ctx, "X") && !.h5adHas(ctx, "layers")) {
-    stop("`", file, "` has no `X` matrix or layers; is it an h5ad file?", call. = FALSE)
+    stop(
+      "`",
+      file,
+      "` has no `X` matrix or layers; is it an h5ad file?",
+      call. = FALSE
+    )
   }
 
   obs <- .h5adReadDataFrame(ctx, "obs", verbose)
   cells <- obs$index
   if (anyNA(cells) || any(!nzchar(cells)) || anyDuplicated(cells)) {
-    stop("h5ad obs index (cell names) must be unique and non-empty.", call. = FALSE)
+    stop(
+      "h5ad obs index (cell names) must be unique and non-empty.",
+      call. = FALSE
+    )
   }
 
   var_path <- "var"
   x_path <- "X"
   if (isTRUE(use_raw)) {
     ## current files use raw/X; anndata < 0.7 wrote raw.X
-    raw_x <- c("raw/X", "raw.X")[c(.h5adHas(ctx, "raw/X"), .h5adHas(ctx, "raw.X"))][1L]
+    raw_x <- c("raw/X", "raw.X")[c(
+      .h5adHas(ctx, "raw/X"),
+      .h5adHas(ctx, "raw.X")
+    )][1L]
     if (is.na(raw_x)) {
       stop("`use_raw = TRUE` but the file has no `raw/X`.", call. = FALSE)
     }
@@ -787,12 +873,22 @@ readH5adAsSCE <- function(
     m
   }
   if (.h5adHas(ctx, x_path)) {
-    assays[["X"]] <- with_dimnames(.h5adReadMatrix(ctx, x_path, length(cells), length(genes)))
+    assays[["X"]] <- with_dimnames(.h5adReadMatrix(
+      ctx,
+      x_path,
+      length(cells),
+      length(genes)
+    ))
   }
   if (!isTRUE(use_raw) && .h5adHas(ctx, "layers")) {
     for (layer in .h5adChildren(ctx, "layers")) {
       assays[[layer]] <- tryCatch(
-        with_dimnames(.h5adReadMatrix(ctx, paste0("layers/", layer), length(cells), length(genes))),
+        with_dimnames(.h5adReadMatrix(
+          ctx,
+          paste0("layers/", layer),
+          length(cells),
+          length(genes)
+        )),
         error = function(e) {
           message("[INFO] Skipping layer `", layer, "`: ", conditionMessage(e))
           NULL
@@ -821,7 +917,14 @@ readH5adAsSCE <- function(
     )
   }
   if (length(extra_modalities)) {
-    sce <- .h5adAddAltModalities(sce, file, modalities, extra_modalities, modality, verbose)
+    sce <- .h5adAddAltModalities(
+      sce,
+      file,
+      modalities,
+      extra_modalities,
+      modality,
+      verbose
+    )
   }
   markers <- c(.h5adReadRankGenes(ctx), .h5adReadCerebroMarkers(ctx))
   if (length(markers)) {
@@ -862,15 +965,25 @@ readH5adAsSCE <- function(
 #' the modality does not have gets zeros, a cell it has extra is dropped).
 #' @keywords internal
 #' @noRd
-.h5adAddAltModalities <- function(sce, file, available, wanted, main, verbose = FALSE) {
+.h5adAddAltModalities <- function(
+  sce,
+  file,
+  available,
+  wanted,
+  main,
+  verbose = FALSE
+) {
   if (!length(available)) {
     stop("`extra_modalities` is only for MuData (.h5mu) files.", call. = FALSE)
   }
   unknown <- setdiff(wanted, available)
   if (length(unknown)) {
     stop(
-      "Modality `", unknown[[1L]], "` not found; the file has: ",
-      paste(available, collapse = ", "), call. = FALSE
+      "Modality `",
+      unknown[[1L]],
+      "` not found; the file has: ",
+      paste(available, collapse = ", "),
+      call. = FALSE
     )
   }
   for (name in setdiff(wanted, main)) {
@@ -889,13 +1002,21 @@ readH5adAsSCE <- function(
       dims = c(length(genes), ncol(sce)),
       dimnames = list(genes, colnames(sce))
     )
-    SingleCellExperiment::altExp(sce, name) <- SummarizedExperiment::SummarizedExperiment(
+    SingleCellExperiment::altExp(
+      sce,
+      name
+    ) <- SummarizedExperiment::SummarizedExperiment(
       assays = list(X = full)
     )
     if (verbose) {
       message(
-        "[INFO] Read modality `", name, "` (", length(genes), " features) as an ",
-        "alternative experiment; ", sum(!colnames(sce) %in% obs$index),
+        "[INFO] Read modality `",
+        name,
+        "` (",
+        length(genes),
+        " features) as an ",
+        "alternative experiment; ",
+        sum(!colnames(sce) %in% obs$index),
         " cell(s) of the expression modality have no values there."
       )
     }

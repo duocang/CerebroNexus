@@ -5,7 +5,13 @@
     stop("sce_file not found: ", sce_file, call. = FALSE)
   }
   if (.zarrIsStore(sce_file)) {
-    return(if (length(.sdTables(sce_file))) readSpatialDataAsSCE(sce_file) else readH5adAsSCE(sce_file))
+    return(
+      if (length(.sdTables(sce_file))) {
+        readSpatialDataAsSCE(sce_file)
+      } else {
+        readH5adAsSCE(sce_file)
+      }
+    )
   }
   ext <- tolower(tools::file_ext(sce_file))
   switch(
@@ -59,7 +65,10 @@
   message(
     "[INFO] Computed missing QC column(s) ",
     paste(
-      c(if (need_umi) paste0("`", nUMI, "`"), if (need_gene) paste0("`", nGene, "`")),
+      c(
+        if (need_umi) paste0("`", nUMI, "`"),
+        if (need_gene) paste0("`", nGene, "`")
+      ),
       collapse = " and "
     ),
     " from assay `",
@@ -215,7 +224,9 @@ convertSCEToCerebro <- function(
     meta <- SummarizedExperiment::colData(sce)
     usable <- names(meta)[vapply(
       names(meta),
-      function(column) is.character(meta[[column]]) || is.factor(meta[[column]]),
+      function(column) {
+        is.character(meta[[column]]) || is.factor(meta[[column]])
+      },
       logical(1)
     )]
     stop(
@@ -414,15 +425,24 @@ convertSCEToCerebro <- function(
   unknown <- setdiff(which, available)
   if (length(unknown)) {
     stop(
-      "Alternative experiment `", unknown[[1L]], "` not found",
-      if (length(available)) paste0("; the object has: ", paste(available, collapse = ", ")) else "",
+      "Alternative experiment `",
+      unknown[[1L]],
+      "` not found",
+      if (length(available)) {
+        paste0("; the object has: ", paste(available, collapse = ", "))
+      } else {
+        ""
+      },
       ".",
       call. = FALSE
     )
   }
   as_sparse <- function(x) {
     if (!methods::is(x, "dgCMatrix")) {
-      x <- methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+      x <- methods::as(
+        methods::as(methods::as(x, "dMatrix"), "generalMatrix"),
+        "CsparseMatrix"
+      )
     }
     x
   }
@@ -448,7 +468,10 @@ convertSCEToCerebro <- function(
 .sceAltExpRows <- function(sce, assay, which, verbose = FALSE) {
   as_sparse <- function(x) {
     if (!methods::is(x, "dgCMatrix")) {
-      x <- methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+      x <- methods::as(
+        methods::as(methods::as(x, "dMatrix"), "generalMatrix"),
+        "CsparseMatrix"
+      )
     }
     x
   }
@@ -462,7 +485,15 @@ convertSCEToCerebro <- function(
     dimnames(values) <- list(paste0(name, ":", rownames(alt)), colnames(sce))
     pieces[[length(pieces) + 1L]] <- values
     if (verbose) {
-      message("[INFO] Added ", nrow(values), " feature(s) of `", name, "` (assay `", source, "`).")
+      message(
+        "[INFO] Added ",
+        nrow(values),
+        " feature(s) of `",
+        name,
+        "` (assay `",
+        source,
+        "`)."
+      )
     }
   }
   do.call(rbind, pieces)

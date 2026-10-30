@@ -131,7 +131,12 @@ exportFromSCE <- function(
   expression_matrix_mode <- match.arg(expression_matrix_mode)
   codec <- match.arg(codec)
   viewer_options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
-  .exportCheckOutputArgs(file, expression_matrix_mode, use_delayed_array, verbose)
+  .exportCheckOutputArgs(
+    file,
+    expression_matrix_mode,
+    use_delayed_array,
+    verbose
+  )
 
   ## check if SingleCellExperiment is installed
   if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) {
@@ -204,7 +209,13 @@ exportFromSCE <- function(
   expression_data <- tryCatch(
     SummarizedExperiment::assay(object, i = assay),
     error = function(e) {
-      stop("Assay `", assay, "` could not be read: ", conditionMessage(e), call. = FALSE)
+      stop(
+        "Assay `",
+        assay,
+        "` could not be read: ",
+        conditionMessage(e),
+        call. = FALSE
+      )
     }
   )
 

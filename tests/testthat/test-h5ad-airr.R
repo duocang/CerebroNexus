@@ -72,7 +72,10 @@ test_that("AIRR chains of an h5mu are read as a per-sample repertoire", {
   expect_false(any(grepl("ghost", all$barcode)))
   expect_identical(anyDuplicated(all$barcode), 0L)
   ## the repertoire passes the validation the exporter applies
-  expect_silent(.validateImmuneRepertoire(repertoire, cell_barcodes = colnames(sce)))
+  expect_silent(.validateImmuneRepertoire(
+    repertoire,
+    cell_barcodes = colnames(sce)
+  ))
   ## a cell goes to the sample its obs row says
   sample_of <- as.character(SummarizedExperiment::colData(sce)$sample)
   names(sample_of) <- colnames(sce)
@@ -86,7 +89,10 @@ test_that("chains become CTgene / CTnt / CTaa / CTstrict the way scRepertoire wr
   row <- function(cell) all[all$barcode == cell, , drop = FALSE]
 
   ## cell000: TRA + TRB (clone 0): V.J.C for alpha, V.D.J.C for beta
-  expect_identical(row("cell000")$CTgene, "TRAV1.TRAJ1.TRAC_TRBV1.TRBD1.TRBJ1.TRBC1")
+  expect_identical(
+    row("cell000")$CTgene,
+    "TRAV1.TRAJ1.TRAC_TRBV1.TRBD1.TRBJ1.TRBC1"
+  )
   expect_identical(row("cell000")$CTaa, "CAVAAAF_CSSAAAF")
   expect_identical(
     row("cell000")$CTnt,
@@ -138,7 +144,9 @@ test_that("a plain h5ad with obsm['airr'] gives one sample and no reduction", {
   ## 19 distinct clones by CDR3 pair among the 66 cells
   expect_identical(length(unique(repertoire$Sample_1$CTaa)), 19L)
   ## same cells, same calls as the MuData version of the data
-  from_mudata <- bind_repertoire(repertoire_of(read_h5ad(fixture("small_airr.h5mu"))))
+  from_mudata <- bind_repertoire(repertoire_of(read_h5ad(fixture(
+    "small_airr.h5mu"
+  ))))
   from_h5ad <- bind_repertoire(repertoire)
   expect_identical(from_h5ad$barcode, from_mudata$barcode)
   expect_identical(from_h5ad$CTstrict, from_mudata$CTstrict)
@@ -146,7 +154,10 @@ test_that("a plain h5ad with obsm['airr'] gives one sample and no reduction", {
 
 test_that("the airr and airr_sample options are honoured", {
   ## skip receptor data
-  expect_null(repertoire_of(read_h5ad(fixture("small_airr.h5mu"), airr = FALSE)))
+  expect_null(repertoire_of(read_h5ad(
+    fixture("small_airr.h5mu"),
+    airr = FALSE
+  )))
   expect_null(repertoire_of(read_h5ad(fixture("small_airr.h5ad"), airr = NULL)))
   ## another sample column
   by_donor <- repertoire_of(
@@ -167,8 +178,14 @@ test_that("the airr and airr_sample options are honoured", {
     names(repertoire_of(read_h5ad(fixture("small_airr.h5ad"), airr = "airr"))),
     "Sample_1"
   )
-  expect_error(read_h5ad(fixture("small_airr.h5mu"), airr = "nope"), "not found")
-  expect_error(read_h5ad(fixture("small_csr.h5ad"), airr = "airr"), "awkward-array")
+  expect_error(
+    read_h5ad(fixture("small_airr.h5mu"), airr = "nope"),
+    "not found"
+  )
+  expect_error(
+    read_h5ad(fixture("small_csr.h5ad"), airr = "airr"),
+    "awkward-array"
+  )
   expect_error(read_h5ad(fixture("small_airr.h5mu"), airr = 1), "airr")
 })
 
@@ -232,16 +249,26 @@ test_that("convertH5adToCerebro carries the repertoire into the .crb", {
 test_that("exportToH5ad writes the immune repertoire as scirpy's obsm['airr'] and it reads back the same", {
   skip_if_not_installed("scRepertoire")
   first <- readCerebro(suppressWarnings(suppressMessages(convertH5adToCerebro(
-    fixture("small_airr.h5ad"), withr::local_tempdir(),
-    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+    fixture("small_airr.h5ad"),
+    withr::local_tempdir(),
+    groups = "cell_type",
+    viewer_binary = "never",
+    verbose = FALSE
   ))))
   out <- file.path(withr::local_tempdir(), "airr_back.h5ad")
   suppressMessages(exportToH5ad(first, out))
-  expect_true(rhdf5::h5read(out, "obsm/airr", read.attributes = TRUE) |> attr("encoding-type") |> identical("awkward-array"))
+  expect_true(
+    rhdf5::h5read(out, "obsm/airr", read.attributes = TRUE) |>
+      attr("encoding-type") |>
+      identical("awkward-array")
+  )
 
   again <- readCerebro(suppressWarnings(suppressMessages(convertH5adToCerebro(
-    out, withr::local_tempdir(), groups = "cell_type",
-    viewer_binary = "never", verbose = FALSE
+    out,
+    withr::local_tempdir(),
+    groups = "cell_type",
+    viewer_binary = "never",
+    verbose = FALSE
   ))))
   a <- first$getImmuneRepertoire()
   b <- again$getImmuneRepertoire()
@@ -256,8 +283,11 @@ test_that("exportToH5ad writes the immune repertoire as scirpy's obsm['airr'] an
 
 test_that("a Cerebro object without a repertoire writes no obsm['airr']", {
   crb <- suppressWarnings(suppressMessages(convertH5adToCerebro(
-    fixture("small_csr.h5ad"), withr::local_tempdir(),
-    groups = "cell_type", viewer_binary = "never", verbose = FALSE
+    fixture("small_csr.h5ad"),
+    withr::local_tempdir(),
+    groups = "cell_type",
+    viewer_binary = "never",
+    verbose = FALSE
   )))
   out <- file.path(withr::local_tempdir(), "none.h5ad")
   suppressMessages(exportToH5ad(crb, out))
