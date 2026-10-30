@@ -628,7 +628,11 @@ test_that("authentication stylesheet implements the balanced responsive UI", {
 })
 
 test_that("authentication and browser-test tools stay optional dependencies", {
-  path <- if (file.exists("DESCRIPTION")) "DESCRIPTION" else "../../DESCRIPTION"
+  path <- auth_test_package_file("DESCRIPTION")
+  skip_if_not(
+    file.exists(path),
+    "DESCRIPTION is not part of the installed tests"
+  )
   description <- read.dcf(path)
   suggests <- strsplit(description[[1L, "Suggests"]], ",")[[1L]]
   expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))

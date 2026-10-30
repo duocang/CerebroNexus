@@ -135,8 +135,11 @@ test_that("Viewer H5 gene means read rows without attaching the matrix", {
   for (cells in list(NULL, 1:4, c(4L, 1L, 3L), 2L)) {
     expect_equal(
       scope$viewerH5ExpressionMean(dataset, cells, genes),
-      unname(colMeans(source[genes, if (is.null(cells)) TRUE else cells,
-        drop = FALSE]))
+      unname(colMeans(source[
+        genes,
+        if (is.null(cells)) TRUE else cells,
+        drop = FALSE
+      ]))
     )
   }
   expect_true(rlang::env_binding_are_lazy(dataset, "expression"))

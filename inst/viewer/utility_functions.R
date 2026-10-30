@@ -1641,7 +1641,11 @@ cerebroCellViewDeferredAux <- function(
     list(
       ## Contiguous rows (every cell of a projection or trajectory in order)
       ## travel as their range, not as a million integers.
-      selection_index = if (!grouped) cerebroRowRange(index) %||% index else index,
+      selection_index = if (!grouped) {
+        cerebroRowRange(index) %||% index
+      } else {
+        index
+      },
       cell_names_resource = names_resource
     )
   } else {

@@ -1,7 +1,7 @@
 ir_home_env <- new.env(parent = globalenv())
 ir_home_env$`%||%` <- function(a, b) if (is.null(a)) b else a
 sys.source(
-  testthat::test_path("../../inst/viewer/immune_repertoire/encode.R"),
+  viewer_test_path("immune_repertoire", "encode.R"),
   envir = ir_home_env
 )
 ir_home_file <- testthat::test_path(
