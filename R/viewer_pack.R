@@ -1014,6 +1014,18 @@
 
 .viewerPackInvalid <- function(reason) list(valid = FALSE, reason = reason)
 
+.viewerPackSameCellOrder <- function(pack, manifest, cells) {
+  path <- "common/cell_order.qs2"
+  if (!is.data.frame(manifest$assets) || !path %in% manifest$assets$path) {
+    return(FALSE)
+  }
+  stored <- tryCatch(
+    qs2::qs_read(file.path(pack, path)),
+    error = function(error) NULL
+  )
+  is.character(stored) && identical(stored, cells)
+}
+
 #' Validate a Viewer Pack
 #' @param file Path to the canonical CRB.
 #' @param pack Optional Viewer Pack directory.
@@ -1060,11 +1072,16 @@ validateViewerPack <- function(
   ) {
     return(.viewerPackInvalid("Viewer Pack cell count mismatch"))
   }
+  ## A full check compares the CRB's cells with the pack's own cell-order
+  ## asset, whose checksum is verified below; hashing 1.3 M names again takes
+  ## longer than reading and comparing them.
+  same_order <- isTRUE(full) && .viewerPackSameCellOrder(pack, manifest, cells)
   if (
-    !identical(
-      manifest$cell_order_fingerprint,
-      .viewerPackCellOrderFingerprint(cells)
-    )
+    !same_order &&
+      !identical(
+        manifest$cell_order_fingerprint,
+        .viewerPackCellOrderFingerprint(cells)
+      )
   ) {
     return(.viewerPackInvalid("Viewer Pack cell-order fingerprint mismatch"))
   }
