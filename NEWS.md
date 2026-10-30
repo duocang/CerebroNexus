@@ -50,6 +50,8 @@
   it): 21 s on the first start and 8 s after it on the 1.46 M-cell Ren data set,
   1.1 s with a rebuilt Pack. The order of equally large clones in Compare is now
   byte order of their names, not the locale's.
+- `saveCerebro()`, `exportFromSeurat()` and `exportFromSCE()` build a Viewer Pack
+  above 100,000 cells (was 500,000), so mid-sized data sets get one too.
 
 ## Viewer
 
