@@ -153,7 +153,7 @@ expression_selection_snapshot <- debounceAfterFirst(
     available = list_of_genes(),
     value = expression_selected_genes_input()
   )),
-  200
+  100
 )
 expression_selected_genes_current <- reactive({
   snapshot <- expression_selection_snapshot()
