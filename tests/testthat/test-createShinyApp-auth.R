@@ -628,7 +628,7 @@ test_that("authentication stylesheet implements the balanced responsive UI", {
 })
 
 test_that("authentication and browser-test tools stay optional dependencies", {
-  path <- auth_test_package_file("DESCRIPTION")
+  path <- if (file.exists("DESCRIPTION")) "DESCRIPTION" else "../../DESCRIPTION"
   skip_if_not(
     file.exists(path),
     "DESCRIPTION is not part of the installed tests"
