@@ -952,7 +952,7 @@
     if (sel) {
       var s = new Set();
       sel.forEach(function (i) { if (panels.some(function (p) { return p.spaceId && shown(i, p); })) s.add(i); });
-      setSelection(s.size ? s : null);
+      setSelection(s.size ? s : null, null, { keepPending: true });
     } else {
       drawAll();
     }
@@ -2579,14 +2579,18 @@
     var sp = source.spaceId && spaceById[source.spaceId];
     return (sp && sp.label) || source.spaceId || '';
   }
-  function setSelection(s, source) {
+  // `options.keepPending`: a change the data or the controls make (a filter, a
+  // subsample) is not the user's selection, so a restored view keeps waiting.
+  function setSelection(s, source, options) {
     // A selection made while a restored view waits for its render wins over
     // the restored one.
-    dropPendingSingleState(singleActive);
+    if (!(options && options.keepPending)) dropPendingSingleState(singleActive);
     sel = (s && s.size) ? s : null;
     if (!sel) {
       selectionSource = null;
       selectionSourceSpace = null;
+      // No selection, no outline: nothing is left for it to outline.
+      clearLassos();
       // No selection, no Focus: every way of losing it is a Clear.
       leaveFocus();
     } else if (source) {
