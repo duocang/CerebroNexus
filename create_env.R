@@ -45,6 +45,7 @@ rix(
     "Seurat",
     "SeuratObject",
     "shinymanager",
+    "arrow", # SpatialData shapes (Suggests)
     # runtime dependencies (DESCRIPTION Imports)
     "base64enc",
     "biomaRt",
