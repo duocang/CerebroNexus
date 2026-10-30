@@ -1479,7 +1479,8 @@ ir_clonal_abundance_plotly <- function(
   counts,
   scale = FALSE,
   order_by = NULL,
-  legend = "Samples"
+  legend = "Samples",
+  prebuild = TRUE
 ) {
   if (!nrow(counts)) {
     return(ir_empty_plotly("No clonotypes are available for this selection."))
@@ -1584,7 +1585,8 @@ ir_clonal_abundance_plotly <- function(
       paper_bgcolor = cerebro_plotly_theme()$transparent,
       legend = list(title = list(text = legend))
     )
-  cerebro_plotly_toolbar(plot)
+  plot <- cerebro_plotly_toolbar(plot)
+  if (prebuild) cerebro_plotly_prebuilt(plot) else plot
 }
 
 ## The clone-size histogram depends on the clones only; scale and order are

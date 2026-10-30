@@ -85,6 +85,7 @@ test_that("Abundance lines match plot_ly's split and colour mapping", {
   scope$cerebro_plotly_hoverlabel <- function() list()
   scope$cerebro_plotly_theme <- function() list(transparent = "rgba(0,0,0,0)")
   scope$cerebro_plotly_toolbar <- identity
+  scope$cerebro_plotly_prebuilt <- identity
   for (n_samples in c(2L, 5L, 12L)) {
     samples <- sprintf("s%02d", rev(seq_len(n_samples)))
     counts <- data.frame(
