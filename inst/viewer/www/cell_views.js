@@ -8001,6 +8001,19 @@
     singleIndexCells = cells; singleIndexMap = out;
     return singleIndexMap;
   }
+  // True when `keys` name the view's cells one for one in order and the cells
+  // are every canonical cell, so each key's position is its own index and the
+  // barcode Map (a second of work for a million cells) is not needed. The
+  // comparison is one pass of string identity checks.
+  function keysAreViewCells(keys) {
+    var cells = D && D.cells;
+    if (D.rows !== 'all' || !Array.isArray(keys) || !Array.isArray(cells) ||
+        keys.length !== cells.length) return false;
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i] !== cells[i]) return false;
+    }
+    return true;
+  }
   function emptyVector(value) {
     return new Array(D && (D.n || (D.cells || []).length) || 0).fill(value);
   }
@@ -9006,8 +9019,9 @@
       hoverColumns: hoverColumns };
   }
   function quantisedField(label, raw, keys, data, panelScale, aligned) {
-    var index = aligned ? null : singleIndex(), min = Infinity, max = -Infinity;
     var direct = !keys || !keys.length;
+    var positional = direct || aligned || keysAreViewCells(keys);
+    var index = positional ? null : singleIndex(), min = Infinity, max = -Infinity;
     if (data && data.zero_color && (!raw || !raw.length)) {
       var zeroPalette = singlePalette(panelScale || data.colorscale,
         panelScale ? false : data.reversescale);
@@ -9025,10 +9039,10 @@
         palette: zeroPalette
       };
     }
-    var values = direct && ArrayBuffer.isView(raw) ? raw : emptyVector(null);
-    var complete = direct && values.length === (D && D.n || 0);
+    var values = positional && ArrayBuffer.isView(raw) ? raw : emptyVector(null);
+    var complete = positional && values.length === (D && D.n || 0);
     for (var i = 0; i < raw.length; i++) {
-      var at = direct || aligned ? i : index.get(String(keys[i]));
+      var at = positional ? i : index.get(String(keys[i]));
       var value = Number(raw[i]);
       if (at == null || !isFinite(value)) { complete = false; continue; }
       values[at] = value; if (value < min) min = value; if (value > max) max = value;

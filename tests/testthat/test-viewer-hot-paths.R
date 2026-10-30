@@ -283,3 +283,10 @@ test_that("the server leaves a selection summary the browser draws", {
   env$input$overview_projection_persistent_selection$dataset_context <- list()
   expect_false(env$viewerClientSelection("overview_projection"))
 })
+
+test_that("recolouring by keys that are the view's cells skips the barcode Map", {
+  expect_node_fixture(
+    "single-keys-positional.js",
+    viewer_test_path("www", "cell_views.js")
+  )
+})
