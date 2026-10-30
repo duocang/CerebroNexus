@@ -1462,7 +1462,7 @@
 
 .removeBundleSystemMetadata <- function(root) {
   metadata <- list.files(
-    root,
+    file.path(root, c("viewer", "extdata")),
     pattern = "^(\\.DS_Store|\\._.*)$",
     all.files = TRUE,
     full.names = TRUE,
@@ -3241,23 +3241,6 @@ createShinyApp <- function(
         "Failed to copy ",
         entry$artifact,
         ": ",
-        entry$target,
-        call. = FALSE
-      )
-    }
-    if (
-      identical(entry$artifact, "spatial image") &&
-        (!identical(
-          unname(file.size(target)),
-          unname(file.size(entry$source))
-        ) ||
-          !identical(
-            unname(as.character(tools::md5sum(target))),
-            unname(as.character(tools::md5sum(entry$source)))
-          ))
-    ) {
-      stop(
-        "The copied spatial image failed its byte-integrity check: ",
         entry$target,
         call. = FALSE
       )

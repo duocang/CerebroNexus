@@ -349,13 +349,6 @@
       "chains"
     )]
   }
-  spatial_backend <- .spatialMoleculeBackend(object, file)
-  if (!is.null(spatial_backend)) {
-    payload$spatial_molecule_backend <- spatial_backend[c(
-      "type",
-      "location"
-    )]
-  }
   if (identical(backend$type, "embedded")) {
     return(payload)
   }
@@ -1012,17 +1005,6 @@ saveCerebro <- function(
   invisible(file)
 }
 
-.hydrateCerebroPayload <- function(serialized, file) {
-  file <- normalizePath(file, mustWork = TRUE)
-  backend <- .cerebroBackend(serialized)
-  schema <- .crbContract()$.readRuntimeCrbSchema(serialized, file)
-  object <- .currentCerebroCopy(serialized)
-  object <- .attachCerebroExpression(object, file, backend)
-  object <- .hydrateThinCerebro(object, file, backend, schema)
-  object <- .attachCerebroSpatialMolecules(object, file)
-  .attachCerebroImmuneRepertoire(object, file)
-}
-
 #' Read a Cerebro data file
 #'
 #' Reads a CRB written by \code{saveCerebro()} or the export functions, as RDS or
@@ -1043,7 +1025,13 @@ readCerebro <- function(file) {
     stop("`object` must be a serialized Cerebro object.", call. = FALSE)
   }
   .crbContract()$.assertCurrentRuntimeCrb(serialized, file)
-  .hydrateCerebroPayload(serialized, file)
+  backend <- .cerebroBackend(serialized)
+  schema <- .crbContract()$.readRuntimeCrbSchema(serialized, file)
+  object <- .currentCerebroCopy(serialized)
+  object <- .attachCerebroExpression(object, file, backend)
+  object <- .hydrateThinCerebro(object, file, backend, schema)
+  object <- .attachCerebroSpatialMolecules(object, file)
+  .attachCerebroImmuneRepertoire(object, file)
 }
 
 ## The one place that still knows the singular spatial image form: one
