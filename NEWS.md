@@ -91,6 +91,8 @@
   replaces the view under it, and follows a restored view.
 - A restored view stops waiting for its render at the first click, key press or
   scroll, so a later render cannot undo what was done meanwhile.
+  A filter or subsample change does not end that wait, and a selection
+  emptied by one takes its brushed outline with it.
 - Gene expression summaries keep updating however tall they are, and when the
   gate changes size in place.
 - The plot toolbar of a short plot wraps into a second column and keeps clear
@@ -103,6 +105,7 @@
   bottom of a scrolled page no longer grows the plots, and a last, shorter row
   of plots starts at the left edge.
 - The Data info bars take the colour of their category, as on the other pages.
+  Only hex, named and plain rgb()/hsl() colours are used as a bar fill.
 
 # CerebroNexus 5.3.1
 

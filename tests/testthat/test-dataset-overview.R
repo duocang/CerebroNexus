@@ -224,3 +224,30 @@ test_that("both composition panels leave room for coloured bars", {
   expect_match(html, 'id="load_data_sample_plot"', fixed = TRUE)
   expect_match(html, 'id="load_data_annotation_plot"', fixed = TRUE)
 })
+
+test_that("only hex, named and numeric rgb or hsl colours become a bar fill", {
+  fills <- overview_helpers$viewerOverviewFills(
+    c("a", "b", "c", "d", "e", "f", "g"),
+    c(
+      a = "url(evil)",
+      b = "expression(alert(1))",
+      c = "#2f6fd6",
+      d = "steelblue",
+      e = "rgba(10, 20, 30, 0.5)",
+      f = "hsl(210, 50%, 40%)",
+      g = "#12"
+    )
+  )
+  expect_identical(
+    fills,
+    c(
+      "",
+      "",
+      ";background:#2f6fd6",
+      ";background:steelblue",
+      ";background:rgba(10, 20, 30, 0.5)",
+      ";background:hsl(210, 50%, 40%)",
+      ""
+    )
+  )
+})

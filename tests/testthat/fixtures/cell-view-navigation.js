@@ -236,3 +236,34 @@ for (const via of ['direct', 'groups', 'loadData']) {
   assert.throws(() => s.hydrateSpatialScenes({spaces: [{id: 'spatial', rows: [6], x: [1], y: [1]}]}));
   assert.throws(() => s.hydrateSpatialScenes({spaces: [{id: 'spatial', rows: [0, 1], x: [1], y: [1]}]}));
 }
+
+// An emptied selection takes its outline with it, and a filter or subsample
+// change (applyActiveChange) is not the user's selection: it leaves a restored
+// view waiting for its render.
+{
+  const lasso = [[0.1, 0.1], [0.2, 0.2], [0.1, 0.3]];
+  const c = {
+    sel: new Set([1]), pending: {selection: {cells: ['c1']}}, singleActive: 'overview_projection',
+    panels: [{spaceId: 'umap', lasso: null, lassoData: lasso}], visibleCells: new Set(),
+    selectionSource: 'x', selectionSourceSpace: 'umap', draws: 0,
+    singleView: () => ({set pendingSavedState(v) { c.pending = v; }, get pendingSavedState() { return c.pending; }}),
+    shown: i => c.visibleCells.has(i), leaveFocus: () => {}, rebuildNiche: () => {},
+    updateSelActions: () => {}, updateZselButtons: () => {}, renderSelbar: () => {},
+    renderReadout: () => {}, reportSelection: () => {}, renderLegend: () => {}, drawAll: () => { c.draws++; },
+    selectionSourceLabel: x => x
+  };
+  vm.createContext(c);
+  ['dropPendingSingleState', 'clearLassos', 'setSelection', 'applyActiveChange']
+    .forEach(name => vm.runInContext(fn(name), c));
+  // Every selected cell is filtered out: no selection, no outline, and the
+  // restored view still waits.
+  c.applyActiveChange();
+  assert.strictEqual(vm.runInContext('sel', c), null);
+  assert.strictEqual(c.panels[0].lassoData, null);
+  assert.notStrictEqual(c.pending, null);
+  // A brushed selection keeps its outline; the user's own selection drops the wait.
+  c.panels[0].lassoData = lasso;
+  vm.runInContext('setSelection(new Set([2]), {spaceId: "umap"})', c);
+  assert.deepStrictEqual(c.panels[0].lassoData, lasso);
+  assert.strictEqual(c.pending, null);
+}
