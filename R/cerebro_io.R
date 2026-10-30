@@ -349,6 +349,13 @@
       "chains"
     )]
   }
+  spatial_backend <- .spatialMoleculeBackend(object, file)
+  if (!is.null(spatial_backend)) {
+    payload$spatial_molecule_backend <- spatial_backend[c(
+      "type",
+      "location"
+    )]
+  }
   if (identical(backend$type, "embedded")) {
     return(payload)
   }
@@ -558,7 +565,12 @@
   list(type = "directory", location = backend$location, root = root)
 }
 
-.stageSpatialMolecules <- function(object, file, codec) {
+.stageSpatialMolecules <- function(
+  object,
+  file,
+  codec,
+  source_backend = .spatialMoleculeBackend(object, file)
+) {
   if (!.recognizedCerebroObject(object)) {
     return(list(payload = object, stage = NULL, location = NULL))
   }
@@ -578,7 +590,6 @@
     return(list(payload = payload, stage = NULL, location = NULL))
   }
 
-  source_backend <- .spatialMoleculeBackend(payload, file)
   location <- .spatialMoleculeSidecarName(file)
   stage <- tempfile(".spatial-s-", dirname(file))
   if (!dir.create(stage, recursive = FALSE, showWarnings = FALSE)) {
@@ -926,6 +937,9 @@ saveCerebro <- function(
   ) {
     .readPublishedImmuneBackend(file)
   }
+  ## The thin payload keeps no absolute root, so where the sidecar sits now is
+  ## taken from the object: saving to another directory still finds it.
+  source_spatial_backend <- .spatialMoleculeBackend(object, file)
   payload <- .thinCerebroPayload(object, file)
   immune <- NULL
   spatial <- NULL
@@ -950,7 +964,12 @@ saveCerebro <- function(
     immune_options$threshold
   )
   payload <- immune$payload
-  spatial <- .stageSpatialMolecules(payload, file, codec)
+  spatial <- .stageSpatialMolecules(
+    payload,
+    file,
+    codec,
+    source_backend = source_spatial_backend
+  )
   payload <- spatial$payload
   .writeCerebroPayload(payload, stage, codec)
   retired_immune <- .retiredImmuneSidecar(

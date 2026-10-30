@@ -1193,6 +1193,10 @@ test_that("spatial molecules are loaded one FOV at a time from a sidecar", {
 
   restored <- readCerebro(path)
   expect_true("root" %in% names(restored$spatial_molecule_backend))
+  expect_false(
+    "root" %in%
+      names(.thinCerebroPayload(restored, path)$spatial_molecule_backend)
+  )
   expect_s3_class(
     restored$spatial$fov1$molecules,
     "CerebroSpatialMoleculeRef"
