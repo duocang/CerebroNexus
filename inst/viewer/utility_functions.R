@@ -1232,6 +1232,15 @@ viewerH5ExpressionMean <- function(data_set, cells, genes) {
   ) {
     return(NULL)
   }
+  ## Every cell: add each gene's non-zero cells into one vector, not a dense
+  ## row per gene (twelve genes on a million cells: 12 vectors of 8 MB).
+  if (is.null(cells) && is.function(rows$each_sparse)) {
+    total <- numeric(rows$n_cells())
+    found <- rows$each_sparse(genes, function(i, entries) {
+      total[entries$index] <<- total[entries$index] + entries$value
+    })
+    return(if (found) total / length(genes))
+  }
   total <- NULL
   for (gene in genes) {
     value <- rows$row(gene)
@@ -4028,43 +4037,68 @@ get_or_load_crb <- function(
       state$genes <- .runtimeH5Names(sidecar, "barcodes")
     }
   }
+  ## The non-zero cells (1-based `index`) and `value`s of genes, one file
+  ## and dataset open for all of them (h5read opens the file for every
+  ## array: 3 x 12 times for twelve genes). `visit(i, entries)` gets the i-th
+  ## gene's entries. FALSE, with nothing read, when the file lacks a gene.
+  each_sparse <- function(genes, visit) {
+    prepare()
+    columns <- match(genes, state$genes)
+    if (anyNA(columns)) {
+      return(FALSE)
+    }
+    file <- rhdf5::H5Fopen(sidecar, flags = "H5F_ACC_RDONLY")
+    datasets <- lapply(c("indptr", "indices", "data"), function(name) {
+      rhdf5::H5Dopen(file, paste0("expression/", name))
+    })
+    on.exit({
+      for (dataset in datasets) {
+        rhdf5::H5Dclose(dataset)
+      }
+      rhdf5::H5Fclose(file)
+    })
+    slice <- function(dataset, start, count) {
+      space <- rhdf5::H5Dget_space(dataset)
+      on.exit(rhdf5::H5Sclose(space), add = TRUE)
+      rhdf5::H5Sselect_hyperslab(space, start = start, count = count)
+      memory <- rhdf5::H5Screate_simple(count)
+      on.exit(rhdf5::H5Sclose(memory), add = TRUE)
+      as.vector(rhdf5::H5Dread(
+        dataset,
+        h5spaceFile = space,
+        h5spaceMem = memory,
+        bit64conversion = "double"
+      ))
+    }
+    for (i in seq_along(columns)) {
+      bounds <- slice(datasets[[1L]], columns[[i]], 2L)
+      count <- bounds[[2L]] - bounds[[1L]]
+      entries <- if (count > 0) {
+        start <- bounds[[1L]] + 1
+        list(
+          index = slice(datasets[[2L]], start, count) + 1,
+          value = slice(datasets[[3L]], start, count)
+        )
+      } else {
+        list(index = integer(), value = numeric())
+      }
+      visit(i, entries)
+    }
+    TRUE
+  }
   list(
     n_cells = function() {
       prepare()
       state$n_cells
     },
+    each_sparse = each_sparse,
     ## NULL for a gene the file does not have.
     row = function(gene) {
-      prepare()
-      column <- match(gene, state$genes)
-      if (is.na(column)) {
-        return(NULL)
-      }
-      bounds <- as.vector(rhdf5::h5read(
-        sidecar,
-        "expression/indptr",
-        start = column,
-        count = 2L,
-        bit64conversion = "double"
-      ))
-      values <- numeric(state$n_cells)
-      count <- bounds[[2L]] - bounds[[1L]]
-      if (count > 0) {
-        start <- bounds[[1L]] + 1
-        cells <- rhdf5::h5read(
-          sidecar,
-          "expression/indices",
-          start = start,
-          count = count,
-          bit64conversion = "double"
-        )
-        values[as.vector(cells) + 1] <- as.vector(rhdf5::h5read(
-          sidecar,
-          "expression/data",
-          start = start,
-          count = count
-        ))
-      }
+      values <- NULL
+      each_sparse(gene, function(i, entries) {
+        values <<- numeric(state$n_cells)
+        values[entries$index] <<- entries$value
+      })
       values
     }
   )
