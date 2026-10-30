@@ -437,17 +437,28 @@ test_that("Linked views Focus turns off when its view is replaced", {
     "document.querySelector('#shiny-tab-coordinated_views ",
     ".cv-pane:not(.cv-hidden) .cv-tbtn[data-act=\"box\"]').click()"
   ))
-  canvas <- app$get_js(paste0(
-    "(() => {const r=document.querySelector('#shiny-tab-coordinated_views ",
-    ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)').getBoundingClientRect();",
-    "return {x1:r.left+r.width*.08,y1:r.top+r.height*.08,",
-    "x2:r.right-r.width*.08,y2:r.bottom-r.height*.08};})()"
-  ))
-  viewer_drag_mouse(app, canvas$x1, canvas$y1, canvas$x2, canvas$y2)
-  app$wait_for_js(
-    "document.getElementById('cv-zsel')?.getClientRects().length > 0",
-    timeout = 20000
-  )
+  ## A slow runner can finish laying the panes out, or projecting their points,
+  ## after the pane looked ready: a brush over unprojected points selects
+  ## nothing. Brush again, from the canvas as it is now, before giving up.
+  zsel_shown <- "document.getElementById('cv-zsel')?.getClientRects().length > 0"
+  for (attempt in 1:3) {
+    canvas <- app$get_js(paste0(
+      "(() => {const r=document.querySelector('#shiny-tab-coordinated_views ",
+      ".cv-pane:not(.cv-hidden) canvas:not(.cv-mini)').getBoundingClientRect();",
+      "return {x1:r.left+r.width*.08,y1:r.top+r.height*.08,",
+      "x2:r.right-r.width*.08,y2:r.bottom-r.height*.08};})()"
+    ))
+    viewer_drag_mouse(app, canvas$x1, canvas$y1, canvas$x2, canvas$y2)
+    brushed <- tryCatch(
+      {
+        app$wait_for_js(zsel_shown, timeout = 8000)
+        TRUE
+      },
+      error = function(error) FALSE
+    )
+    if (brushed) break
+  }
+  app$wait_for_js(zsel_shown, timeout = 20000)
   app$run_js("document.getElementById('cv-zsel').click()")
   app$wait_for_js(
     "document.getElementById('cv-zsel').getAttribute('aria-pressed') === 'true'",
