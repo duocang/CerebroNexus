@@ -1097,9 +1097,19 @@ ir_clonal_umap_data <- function(
   coord_index <- encoded$cell[rows]
   clones <- clone[rows]
   # Display filters and sampling must not redefine the biological clone size.
-  size <- tabulate(match(clones, unique(clones)))[match(clones, unique(clones))]
+  size <- if (length(clones) && min(clones) >= 1L) {
+    ## Clone ids are 1..n_clones: count them in place.
+    tabulate(clones, nbins = max(clones))[clones]
+  } else {
+    tabulate(match(clones, unique(clones)))[match(clones, unique(clones))]
+  }
   expansion_code <- findInterval(size, IR_CLONE_BINS, left.open = TRUE)
-  valid <- coord_index <= nrow(coords) & coord_index %in% visible_indices
+  ## Every row is visible unless `cells` narrows them (a lookup of each
+  ## receptor cell in a million-long index otherwise).
+  valid <- coord_index <= nrow(coords)
+  if (!is.null(cells)) {
+    valid <- valid & coord_index %in% visible_indices
+  }
   coord_index <- coord_index[valid]
   has_receptor <- length(coord_index) > 0L
   if (!has_receptor) {
