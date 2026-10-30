@@ -920,6 +920,7 @@
   immune_backends <- vector("list", length(cerebro_data))
   spatial_catalogs <- vector("list", length(cerebro_data))
   dataset_catalog <- vector("list", length(cerebro_data))
+  viewer_pack_valid <- logical(length(cerebro_data))
   names(backends) <- names(cerebro_data)
   names(spatial_backends) <- names(cerebro_data)
   names(immune_backends) <- names(cerebro_data)
@@ -952,6 +953,10 @@
           object,
           names(cerebro_data)[[index]]
         )
+        viewer_pack_valid[[index]] <- .bundleViewerPackValid(
+          cerebro_data[[index]],
+          object
+        )
       },
       error = function(error) {
         inspection_error <<- error
@@ -976,8 +981,21 @@
     spatial_backends = spatial_backends,
     immune_backends = immune_backends,
     spatial_catalogs = spatial_catalogs,
-    dataset_catalog = dataset_catalog
+    dataset_catalog = dataset_catalog,
+    viewer_pack_valid = viewer_pack_valid
   )
+}
+
+## Whether the Viewer Pack beside a CRB is valid, checked while preflight has
+## the CRB's object, so a thin CRB is not read a second time.
+.bundleViewerPackValid <- function(path, payload) {
+  file <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  pack <- .viewerPackPath(file)
+  dir.exists(pack) &&
+    isTRUE(tryCatch(
+      .validateViewerPack(file, pack, full = TRUE, payload = payload)$valid,
+      error = function(error) FALSE
+    ))
 }
 
 .bundlePathDigest <- function(bytes) {
@@ -2915,11 +2933,7 @@ createShinyApp <- function(
       "Cerebro data file"
     )
     viewer_pack <- .viewerPackPath(resolved_crb_sources[[index]])
-    if (
-      isTRUE(
-        validateViewerPack(resolved_crb_sources[[index]], viewer_pack)$valid
-      )
-    ) {
+    if (isTRUE(preflight_data$viewer_pack_valid[[index]])) {
       claim_target(
         file.path(
           dirname(crb_targets[[index]]),

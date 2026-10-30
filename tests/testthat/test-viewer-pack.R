@@ -826,3 +826,49 @@ test_that("a Pack without this release's immune encoding is outdated", {
     immune_encoding = 0L
   )))
 })
+
+test_that("a Viewer Pack beside a thin H5 CRB is checked through its recorded cell hash", {
+  skip_if_not_installed("qs2")
+  root <- withr::local_tempdir()
+  cells <- h5_cells()
+  counts <- h5_counts(cells)
+  viewer_h5_matrix(counts, file.path(root, "expression.h5"))
+  object <- Cerebro$new()
+  object$setExpressionBackend("h5", "expression.h5")
+  object$meta_data <- data.frame(
+    cell_barcode = cells,
+    sample = c("a", "a", "b", "b"),
+    nUMI = as.double(colSums(counts)),
+    nGene = as.double(colSums(counts > 0)),
+    stringsAsFactors = FALSE
+  )
+  object$projections <- list(
+    umap = data.frame(
+      UMAP_1 = seq_along(cells),
+      UMAP_2 = rev(seq_along(cells)),
+      row.names = cells
+    )
+  )
+  crb <- file.path(root, "thin.crb")
+  saveCerebro(object, crb)
+  pack <- buildViewerPack(crb, viewer_binary = "always")
+  manifest <- jsonlite::read_json(
+    file.path(pack, "manifest.json"),
+    simplifyVector = TRUE
+  )
+  payload <- .readCerebroPayload(crb)
+
+  expect_true(.viewerPackMatchesThinCrb(crb, pack, manifest, payload))
+  expect_true(.validateViewerPack(crb, pack, TRUE, payload)$valid)
+  expect_true(.bundleViewerPackValid(crb, payload))
+
+  ## An embedded CRB has no recorded hash, so it is read again and still valid.
+  embedded <- viewer_pack_fixture(file.path(root, "embedded.crb"), n = 3L)
+  embedded_pack <- buildViewerPack(embedded, viewer_binary = "always")
+  expect_true(.bundleViewerPackValid(embedded, .readCerebroPayload(embedded)))
+
+  ## A pack whose cell order differs from the CRB's cells is rejected.
+  qs2::qs_save(rev(cells), file.path(pack, "common", "cell_order.qs2"))
+  expect_false(.viewerPackMatchesThinCrb(crb, pack, manifest, payload))
+  expect_false(.bundleViewerPackValid(crb, payload))
+})

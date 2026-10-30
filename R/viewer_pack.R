@@ -1014,16 +1014,38 @@
 
 .viewerPackInvalid <- function(reason) list(valid = FALSE, reason = reason)
 
-.viewerPackSameCellOrder <- function(pack, manifest, cells) {
+.viewerPackReadCellOrder <- function(pack, manifest) {
   path <- "common/cell_order.qs2"
   if (!is.data.frame(manifest$assets) || !path %in% manifest$assets$path) {
-    return(FALSE)
+    return(NULL)
   }
-  stored <- tryCatch(
+  tryCatch(
     qs2::qs_read(file.path(pack, path)),
     error = function(error) NULL
   )
+}
+
+.viewerPackSameCellOrder <- function(pack, manifest, cells) {
+  stored <- .viewerPackReadCellOrder(pack, manifest)
   is.character(stored) && identical(stored, cells)
+}
+
+## A thin CRB records the hash of its H5 file's cell names, so a pack whose
+## cell-order asset hashes to it was built for this CRB's cells, without
+## reading the H5 file or hydrating the object a second time.
+.viewerPackMatchesThinCrb <- function(file, pack, manifest, payload) {
+  schema <- tryCatch(
+    .crbContract()$.readRuntimeCrbSchema(payload, file),
+    error = function(error) NULL
+  )
+  if (is.null(schema)) {
+    return(FALSE)
+  }
+  stored <- .viewerPackReadCellOrder(pack, manifest)
+  is.character(stored) &&
+    identical(length(stored), as.integer(manifest$n_cells)) &&
+    identical(length(stored), as.integer(schema$n_cells)) &&
+    identical(.cerebroCellNamesHash(stored), schema$cell_names_hash)
 }
 
 #' Validate a Viewer Pack
@@ -1037,6 +1059,12 @@ validateViewerPack <- function(
   pack = .viewerPackPath(file),
   full = TRUE
 ) {
+  .validateViewerPack(file, pack, full)
+}
+
+## `payload` is the CRB's serialized object when the caller has read it
+## already; a thin CRB is then matched through its recorded cell-name hash.
+.validateViewerPack <- function(file, pack, full, payload = NULL) {
   if (!file.exists(file) || dir.exists(file)) {
     return(.viewerPackInvalid("CRB is missing"))
   }
@@ -1062,28 +1090,34 @@ validateViewerPack <- function(
   ) {
     return(.viewerPackInvalid("Viewer Pack dataset fingerprint mismatch"))
   }
-  object <- tryCatch(readCerebro(file), error = function(error) NULL)
-  if (is.null(object)) {
-    return(.viewerPackInvalid("CRB could not be read"))
-  }
-  cells <- tryCatch(.viewerPackCells(object), error = function(error) NULL)
-  if (
-    is.null(cells) || !identical(as.integer(manifest$n_cells), length(cells))
-  ) {
-    return(.viewerPackInvalid("Viewer Pack cell count mismatch"))
-  }
-  ## A full check compares the CRB's cells with the pack's own cell-order
-  ## asset, whose checksum is verified below; hashing 1.3 M names again takes
-  ## longer than reading and comparing them.
-  same_order <- isTRUE(full) && .viewerPackSameCellOrder(pack, manifest, cells)
-  if (
-    !same_order &&
-      !identical(
-        manifest$cell_order_fingerprint,
-        .viewerPackCellOrderFingerprint(cells)
-      )
-  ) {
-    return(.viewerPackInvalid("Viewer Pack cell-order fingerprint mismatch"))
+  thin_match <- isTRUE(full) &&
+    !is.null(payload) &&
+    .viewerPackMatchesThinCrb(file, pack, manifest, payload)
+  if (!thin_match) {
+    object <- tryCatch(readCerebro(file), error = function(error) NULL)
+    if (is.null(object)) {
+      return(.viewerPackInvalid("CRB could not be read"))
+    }
+    cells <- tryCatch(.viewerPackCells(object), error = function(error) NULL)
+    if (
+      is.null(cells) || !identical(as.integer(manifest$n_cells), length(cells))
+    ) {
+      return(.viewerPackInvalid("Viewer Pack cell count mismatch"))
+    }
+    ## A full check compares the CRB's cells with the pack's own cell-order
+    ## asset, whose checksum is verified below; hashing 1.3 M names again takes
+    ## longer than reading and comparing them.
+    same_order <- isTRUE(full) &&
+      .viewerPackSameCellOrder(pack, manifest, cells)
+    if (
+      !same_order &&
+        !identical(
+          manifest$cell_order_fingerprint,
+          .viewerPackCellOrderFingerprint(cells)
+        )
+    ) {
+      return(.viewerPackInvalid("Viewer Pack cell-order fingerprint mismatch"))
+    }
   }
   assets <- manifest$assets
   if (
