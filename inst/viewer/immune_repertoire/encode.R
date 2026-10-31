@@ -29,7 +29,9 @@
 ## without one encodes its repertoire in memory when the page first needs it.
 ## Pure base R: the Pack builder sources this file too.
 
-IR_ENCODING_VERSION <- 1L
+## 2: the clone ranks are in byte order (1: the locale's collation), so a Pack or
+## a cached encoding of version 1 sorts equally large clones differently.
+IR_ENCODING_VERSION <- 2L
 IR_ENCODED_COLUMNS <- c("CTgene", "CTnt", "CTaa", "CTstrict")
 IR_ENCODED_CHAINS <- c("TRA", "TRB", "TRG", "TRD", "IGH", "IGK", "IGL")
 ## scRepertoire's .offTheChain(): these chains are the first "_" part of a

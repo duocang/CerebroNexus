@@ -1596,3 +1596,23 @@ test_that("the schema contract checks the cell-indexed fields of version 4", {
     "invalid repertoire cell index"
   )
 })
+
+test_that("only a locked R6 object of a Cerebro class is a Cerebro object", {
+  fake <- new.env()
+  class(fake) <- "CerebroFake"
+  lockEnvironment(fake)
+  expect_false(.recognizedCerebroObject(fake))
+  expect_false(.recognizedCerebroObject(list()))
+  r6 <- R6::R6Class("CerebroLike", lock_objects = TRUE)$new()
+  lockEnvironment(r6)
+  expect_true(.recognizedCerebroObject(r6))
+})
+
+test_that("Seurat before 5.0 is refused", {
+  skip_if_not_installed("Seurat")
+  testthat::local_mocked_bindings(
+    packageVersion = function(pkg, ...) package_version("4.3.0"),
+    .package = "utils"
+  )
+  expect_error(.checkSeuratAvailable(), "at least v5.0 is required")
+})

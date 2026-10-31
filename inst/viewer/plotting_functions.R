@@ -461,7 +461,7 @@ cerebroViolinData <- function(
       approximate = column("approximate"),
       violins = unname(lapply(seq_along(groups), function(i) {
         cerebroViolinDensity(
-          values[rows[[groups[[i]]]]],
+          values[rows[[i]]],
           points,
           summary$minimum[[i]],
           summary$maximum[[i]]

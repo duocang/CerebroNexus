@@ -43,12 +43,16 @@ test_that("an encoding made in memory is kept for the next session", {
   expect_identical(calls, 1L)
   expect_identical(second, first)
   ## Another data set, or a changed file, is another entry.
-  other <- modifyList(key, list(size = 9))
+  other <- modifyList(key, list(path = "b.crb"))
   scope$ir_process_memo("encoded", other, compute, new.env(), disk = TRUE)
   expect_identical(calls, 2L)
+  ## The same file in another version replaces the old entry.
+  changed <- modifyList(key, list(size = 9))
+  scope$ir_process_memo("encoded", changed, compute, new.env(), disk = TRUE)
+  expect_identical(calls, 3L)
   ## Without `disk` nothing is written or read.
   scope$ir_process_memo("plain", key, compute, new.env())
-  expect_identical(calls, 3L)
+  expect_identical(calls, 4L)
   expect_length(list.files(Sys.getenv("CEREBRO_IR_CACHE")), 2L)
 })
 

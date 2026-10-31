@@ -43,6 +43,7 @@
 
 .recognizedCerebroObject <- function(object) {
   is.environment(object) &&
+    inherits(object, "R6") &&
     any(startsWith(class(object), "Cerebro")) &&
     environmentIsLocked(object)
 }

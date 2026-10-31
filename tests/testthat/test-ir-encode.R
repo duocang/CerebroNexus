@@ -257,7 +257,10 @@ test_that("the Viewer Pack stores the encoded repertoire and its clone names", {
     file.path(pack, "manifest.json"),
     simplifyVector = TRUE
   )
-  expect_identical(manifest$immune_encoding, 1L)
+  expect_identical(
+    manifest$immune_encoding,
+    ir_encode_scope()$IR_ENCODING_VERSION
+  )
 
   scope <- ir_encode_scope()
   expected <- scope$ir_encode_repertoire(
@@ -267,7 +270,10 @@ test_that("the Viewer Pack stores the encoded repertoire and its clone names", {
   runtime <- new.env(parent = globalenv())
   sys.source(viewer_test_path("core", "viewer_pack.R"), envir = runtime)
   descriptor <- runtime$viewerPackOpen(crb)
-  encoded <- runtime$viewerPackImmuneEncoded(descriptor, 1L)
+  encoded <- runtime$viewerPackImmuneEncoded(
+    descriptor,
+    ir_encode_scope()$IR_ENCODING_VERSION
+  )
   blocks <- encoded$name_blocks
   encoded$name_blocks <- NULL
   expect_identical(encoded, expected[setdiff(names(expected), "names")])
@@ -321,12 +327,13 @@ test_that("the Viewer Pack stores the encoded repertoire and its clone names", {
   ## Ranks order the names.
   expect_identical(
     expected$names$CTaa$both[order(expected$rank$CTaa$both)],
-    sort(expected$names$CTaa$both)
+    sort(expected$names$CTaa$both, method = "radix")
   )
-  expect_null(runtime$viewerPackImmuneEncoded(descriptor, 2L))
+  version <- ir_encode_scope()$IR_ENCODING_VERSION
+  expect_null(runtime$viewerPackImmuneEncoded(descriptor, version + 1L))
   ## A manifest without the encoding has no answer; the page encodes in memory.
   descriptor$manifest$immune_encoding <- NULL
-  expect_null(runtime$viewerPackImmuneEncoded(descriptor, 1L))
+  expect_null(runtime$viewerPackImmuneEncoded(descriptor, version))
 })
 
 test_that("clone ranks sort the names in byte order, from the Pack or in memory", {

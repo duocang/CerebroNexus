@@ -223,7 +223,11 @@
 .viewerCosMxEmbedding <- function(
   expression,
   n_pcs = 30L,
-  threads = max(1L, min(8L, parallel::detectCores(logical = FALSE))),
+  threads = max(
+    1L,
+    min(8L, parallel::detectCores(logical = FALSE)),
+    na.rm = TRUE
+  ),
   seed = 20211015L
 ) {
   .demoRequire(c("irlba", "uwot"), "CosMx")

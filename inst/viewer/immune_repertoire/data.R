@@ -317,7 +317,16 @@ ir_disk_cache_file <- function(name, key) {
   }
   file.path(
     dir,
-    paste0(name, "-v", IR_ENCODING_VERSION, "-", rlang::hash(key), ".qs2")
+    paste0(
+      name,
+      "-v",
+      IR_ENCODING_VERSION,
+      "-",
+      rlang::hash(as.character(key$path %||% "")),
+      "-",
+      rlang::hash(key),
+      ".qs2"
+    )
   )
 }
 
@@ -342,6 +351,14 @@ ir_disk_cache_write <- function(file, value) {
       on.exit(unlink(partial), add = TRUE)
       qs2::qs_save(value, partial)
       file.rename(partial, file)
+      ## The data set's earlier entries (another file version, another encoding
+      ## version) are out of date for good.
+      same_path <- sub("-[0-9a-f]+[.]qs2$", "", basename(file))
+      stale <- list.files(
+        dirname(file),
+        pattern = paste0("^", gsub("-v[0-9]+-", "-v[0-9]+-", same_path), "-")
+      )
+      unlink(file.path(dirname(file), setdiff(stale, basename(file))))
     },
     error = function(e) NULL
   )

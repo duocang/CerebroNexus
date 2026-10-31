@@ -30,6 +30,13 @@
 
 ## Changes
 
+- Seurat 5.0 or later is required (`DESCRIPTION` already said so); an older
+  Seurat is refused with a message, and Seurat 4 objects are no longer read.
+- The HLA & TCR Motifs network is drawn in the browser, so `visNetwork` is no
+  longer a dependency; the page needs `stringdist` and `igraph`.
+- The prepared mouse brain demo data set is version 3: an existing
+  `1m/cerebro-v2` folder is not reused, and `run-demo.R --data=1m` builds it
+  again.
 - `readCerebro()` opens an H5-backed data file without loading HDF5Array: the
   cell names are read from the H5 file with rhdf5, and the expression matrix is
   attached when `$expression` is first used. Reading the 1.3 and 1.5 million
@@ -48,8 +55,10 @@
   Pack, the Immune repertoire page encodes the repertoire in memory, says so,
   and keeps the result in the user cache folder (`CEREBRO_IR_CACHE` changes
   it): 21 s on the first start and 8 s after it on the 1.46 M-cell Ren data set,
-  1.1 s with a rebuilt Pack. The order of equally large clones in Compare is now
-  byte order of their names, not the locale's.
+  1.1 s with a rebuilt Pack. The encoding is version 2: the order of equally
+  large clones in Compare is now the byte order of their names, not the
+  locale's, so a Pack with an earlier encoding counts as outdated and is
+  rebuilt by the large demos.
 - `saveCerebro()`, `exportFromSeurat()` and `exportFromSCE()` build a Viewer Pack
   above 100,000 cells (was 500,000), so mid-sized data sets get one too.
 

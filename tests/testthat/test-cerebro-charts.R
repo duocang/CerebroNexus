@@ -408,3 +408,25 @@ test_that("count bars, violin panels, lines and scatter payloads draw", {
     pass = "cerebro charts render ok"
   )
 })
+
+test_that("a violin group named with an empty string keeps its shape", {
+  scope <- groups_charts_env()
+  table <- data.frame(
+    group = factor(c(rep("", 20), rep("a", 20)), levels = c("", "a")),
+    value = c(seq(1, 20), seq(5, 24))
+  )
+  violin <- scope$cerebroViolinData(
+    table,
+    "value",
+    "group",
+    c(a = "#ff0000"),
+    "Value",
+    "number"
+  )
+  expect_identical(as.vector(violin$groups), c("", "a"))
+  expect_gt(length(violin$violins[[1L]]$y %||% violin$violins[[1L]][[1L]]), 0L)
+  expect_identical(
+    lengths(violin$violins[[1L]]),
+    lengths(violin$violins[[2L]])
+  )
+})

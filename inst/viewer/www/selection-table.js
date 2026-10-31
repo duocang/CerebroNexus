@@ -264,7 +264,9 @@
           style = numberStyle(column.value(i), self.profiles[c], colors);
         } else if (highlighting && column.kind === 'categorical' && column.palette) {
           var code = column.value(i), color = code >= 0 ? column.colors[code] : null;
-          if (color) style = 'background-color:' + color + ';font-weight:bold;';
+          if (color && /^(#[0-9a-fA-F]{3,8}|(rgb|hsl)a?[(][0-9., %]+[)]|[a-zA-Z]+)$/.test(color)) {
+            style = 'background-color:' + color + ';font-weight:bold;';
+          }
         }
         return '<td class="cst-' + column.kind + '"' + (style ? ' style="' + style + '"' : '') + '>' +
           esc(self.display(c, i, formatting)) + '</td>';

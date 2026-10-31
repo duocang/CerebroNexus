@@ -9778,8 +9778,9 @@
     renderSelbar();
     if (!drawn) drawAll();
     reportSingleHiddenGroups(); reportSelection(eventKind || 'interaction');
-    // Gene's selection core is requested by click or brush. Sending all cell
-    // IDs here competes with the user's first gene operation on the R thread.
+    // Gene's selection core is requested by click or brush, and, once the page
+    // is idle, in the background: sending all cell IDs at once would compete
+    // with the user's first gene operation on the R thread.
     if (id !== 'expression_projection' && id !== 'trajectory_projection') requestSingleAux();
     else {
       var idleView = singleView(id);
