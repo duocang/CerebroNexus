@@ -248,25 +248,15 @@ test_that("App request rejects altered login summary fields", {
 })
 
 builder_app_backend_fixture <- function(
-  mode,
+  mode = "h5",
   stage = withr::local_tempdir(.local_envir = parent.frame())
 ) {
   fixture <- builder_app_bundle_fixture(stage = stage)
-  location <- paste0(
-    "dataset-a.",
-    if (identical(mode, "h5")) "h5" else "bpcells"
-  )
+  location <- "dataset-a.h5"
   fixture$plan$items[[1L]]$expression_backend <- mode
   fixture$plan$items[[1L]]$sidecars <- location
   sidecar <- file.path(fixture$stage, location)
-  if (identical(mode, "h5")) {
-    writeBin(as.raw(1:32), sidecar)
-  } else {
-    dir.create(file.path(sidecar, "nested"), recursive = TRUE)
-    dir.create(file.path(sidecar, "empty"))
-    writeBin(as.raw(1:16), file.path(sidecar, "index.bin"))
-    writeBin(as.raw(17:32), file.path(sidecar, "nested", "matrix.bin"))
-  }
+  writeBin(as.raw(1:32), sidecar)
   fixture$sidecar <- sidecar
   fixture
 }
@@ -559,7 +549,7 @@ test_that("App arguments come only from the frozen plan", {
 })
 
 test_that("App requests freeze portable copied-content identities", {
-  fixture <- builder_app_backend_fixture("bpcells")
+  fixture <- builder_app_backend_fixture("h5")
   request <- builder_app_bundle_request(
     fixture$plan,
     fixture$paths,
@@ -576,16 +566,13 @@ test_that("App requests freeze portable copied-content identities", {
   expect_identical(content$crb$type, "file")
   expect_identical(content$crb$size, request$crb_identities[[1L]]$size)
   expect_identical(content$crb$md5, request$crb_identities[[1L]]$md5)
-  expect_identical(content$backend$type, "bpcells")
-  expect_identical(content$backend$root, "private-data/dataset-a.bpcells")
+  expect_identical(content$backend$type, "h5")
+  expect_identical(content$backend$root, "private-data/dataset-a.h5")
   expect_identical(
     content$spatial_molecules,
     list(type = "none", root = NULL, entries = list())
   )
-  expect_true(
-    "private-data/dataset-a.bpcells/empty" %in%
-      names(content$backend$entries)
-  )
+  expect_identical(names(content$backend$entries), "private-data/dataset-a.h5")
 })
 
 test_that("App requests freeze spatial molecule sidecar identities", {
@@ -625,7 +612,7 @@ test_that("App requests freeze spatial molecule sidecar identities", {
   identity <- request$spatial_molecule_identities[[relative_crb]]
   content <- request$content_identities[[relative_crb]]$spatial_molecules
 
-  expect_identical(identity$type, "bpcells")
+  expect_identical(identity$type, "directory")
   expect_identical(basename(identity$root), "dataset-a.spatial")
   expect_true("dataset-a.spatial/0001.rds" %in% names(identity$entries))
   expect_identical(content$type, "directory")
@@ -679,67 +666,7 @@ test_that("spatial molecule identities reject stale absolute roots", {
 })
 
 test_that("App requests freeze the complete backend closure", {
-  for (mode in c("h5", "bpcells")) {
-    fixture <- builder_app_backend_fixture(mode)
-    request <- builder_app_bundle_request(
-      fixture$plan,
-      fixture$paths,
-      fixture$labels
-    )
-    relative_crb <- "private-data/dataset-a.crb"
-    closure <- request$backend_identities[[relative_crb]]
-
-    expect_identical(
-      names(closure),
-      c("type", "root", "root_fingerprint", "entries")
-    )
-    expect_identical(closure$type, mode)
-    expect_identical(
-      closure$root,
-      normalizePath(fixture$sidecar, winslash = "/", mustWork = TRUE)
-    )
-    expect_true(length(closure$entries) >= 1L)
-    if (identical(mode, "bpcells")) {
-      expect_identical(closure$root_fingerprint$type, "directory")
-      expect_identical(
-        names(closure$root_fingerprint),
-        c(
-          "type",
-          "size",
-          "permissions",
-          "device_id",
-          "inode",
-          "hard_links",
-          "modification_time",
-          "change_time"
-        )
-      )
-      expect_identical(
-        names(closure$entries),
-        file.path(
-          "dataset-a.bpcells",
-          c("empty", "index.bin", "nested", "nested/matrix.bin")
-        )
-      )
-      expect_identical(
-        unname(vapply(closure$entries, `[[`, character(1), "type")),
-        c("directory", "file", "directory", "file")
-      )
-    }
-    files <- Filter(
-      function(identity) identical(identity$type, "file"),
-      closure$entries
-    )
-    expect_true(all(vapply(
-      files,
-      function(entry) grepl("^[0-9a-f]{32}$", entry$identity$md5),
-      logical(1)
-    )))
-  }
-})
-
-test_that("Backend topology identities use an exact request schema", {
-  fixture <- builder_app_backend_fixture("bpcells")
+  fixture <- builder_app_backend_fixture("h5")
   request <- builder_app_bundle_request(
     fixture$plan,
     fixture$paths,
@@ -747,180 +674,59 @@ test_that("Backend topology identities use an exact request schema", {
   )
   relative_crb <- "private-data/dataset-a.crb"
   closure <- request$backend_identities[[relative_crb]]
-  malformed <- list(
-    within(request, {
-      backend_identities[[relative_crb]]$root_fingerprint$inode <- 1L
-    }),
-    within(request, {
-      backend_identities[[relative_crb]]$root_fingerprint$size <- 1.5
-    }),
-    within(request, {
-      backend_identities[[relative_crb]]$root_fingerprint$inode <- 1.5
-    }),
-    within(request, {
-      backend_identities[[relative_crb]]$root_fingerprint$hard_links <- 1.5
-    }),
-    within(request, {
-      backend_identities[[relative_crb]]$root_fingerprint$unknown <- TRUE
-    }),
-    within(request, {
-      backend_identities[[relative_crb]]$root_fingerprint$permissions <-
-        "garbage"
-    }),
-    within(request, {
-      backend_identities[[relative_crb]]$entries <-
-        rev(backend_identities[[relative_crb]]$entries)
-    }),
-    within(request, {
-      directory <- "dataset-a.bpcells/empty"
-      backend_identities[[relative_crb]]$entries[[directory]]$unknown <- TRUE
-    }),
-    within(request, {
-      directory <- "dataset-a.bpcells/empty"
-      backend_identities[[relative_crb]]$entries[[
-        directory
-      ]]$fingerprint$permissions <-
-        "garbage"
-    }),
-    within(request, {
-      file <- "dataset-a.bpcells/index.bin"
-      backend_identities[[relative_crb]]$entries[[file]]$identity$md5 <-
-        toupper(backend_identities[[relative_crb]]$entries[[file]]$identity$md5)
-    }),
-    within(request, {
-      file <- "dataset-a.bpcells/index.bin"
-      backend_identities[[relative_crb]]$entries[[file]]$identity$permissions <-
-        "garbage"
-    }),
-    within(request, {
-      file <- "dataset-a.bpcells/index.bin"
-      backend_identities[[relative_crb]]$entries[[file]]$identity$inode <- 1.5
-    })
-  )
 
-  expect_true(length(closure$entries) > 1L)
-  for (value in malformed) {
-    expect_error(.builder_app_validate_request(value), "request contract")
-  }
-  negative_time <- request
-  negative_time$backend_identities[[
-    relative_crb
-  ]]$root_fingerprint$modification_time <-
-    -1
-  expect_no_error(.builder_app_validate_request(negative_time))
+  expect_identical(
+    names(closure),
+    c("type", "root", "root_fingerprint", "entries")
+  )
+  expect_identical(closure$type, "h5")
+  expect_identical(
+    closure$root,
+    normalizePath(fixture$sidecar, winslash = "/", mustWork = TRUE)
+  )
+  expect_null(closure$root_fingerprint)
+  expect_identical(names(closure$entries), "dataset-a.h5")
+  expect_true(grepl("^[0-9a-f]{32}$", closure$entries[[1L]]$identity$md5))
 })
 
 test_that("App assembly rejects backend closure drift before dispatch", {
-  mutations <- list(
-    h5_modify = function(fixture) builder_flip_file_byte(fixture$sidecar),
-    bpcells_modify = function(fixture) {
-      builder_flip_file_byte(file.path(fixture$sidecar, "index.bin"))
-    },
-    bpcells_add = function(fixture) {
-      writeBin(as.raw(1:4), file.path(fixture$sidecar, "added.bin"))
-    },
-    bpcells_remove = function(fixture) {
-      unlink(file.path(fixture$sidecar, "index.bin"))
-    },
-    bpcells_replace = function(fixture) {
-      member <- file.path(fixture$sidecar, "index.bin")
-      bytes <- readBin(member, "raw", n = file.info(member)$size)
-      unlink(member)
-      writeBin(bytes, member)
-    },
-    bpcells_add_empty_directory = function(fixture) {
-      dir.create(file.path(fixture$sidecar, "added-empty"))
-    },
-    bpcells_remove_empty_directory = function(fixture) {
-      unlink(file.path(fixture$sidecar, "empty"), recursive = TRUE)
-    },
-    bpcells_rename_empty_directory = function(fixture) {
-      file.rename(
-        file.path(fixture$sidecar, "empty"),
-        file.path(fixture$sidecar, "renamed-empty")
-      )
-    },
-    bpcells_replace_empty_directory = function(fixture) {
-      directory <- file.path(fixture$sidecar, "empty")
-      unlink(directory, recursive = TRUE)
-      dir.create(directory)
-    }
+  fixture <- builder_app_backend_fixture("h5")
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
   )
-  if (!identical(.Platform$OS.type, "windows")) {
-    mutations$bpcells_directory_mode <- function(fixture) {
-      directory <- file.path(fixture$sidecar, "nested")
-      mode <- if (identical(as.character(file.info(directory)$mode), "700")) {
-        "0755"
-      } else {
-        "0700"
-      }
-      Sys.chmod(
-        directory,
-        mode = mode,
-        use_umask = FALSE
-      )
-    }
-    mutations$bpcells_root_mode <- function(fixture) {
-      mode <- if (
-        identical(as.character(file.info(fixture$sidecar)$mode), "700")
-      ) {
-        "0755"
-      } else {
-        "0700"
-      }
-      Sys.chmod(fixture$sidecar, mode = mode, use_umask = FALSE)
-    }
-  }
-  for (name in names(mutations)) {
-    mode <- if (startsWith(name, "h5")) "h5" else "bpcells"
-    fixture <- builder_app_backend_fixture(mode)
-    request <- builder_app_bundle_request(
-      fixture$plan,
-      fixture$paths,
-      fixture$labels
-    )
-    mutations[[name]](fixture)
-    called <- FALSE
+  builder_flip_file_byte(fixture$sidecar)
+  called <- FALSE
 
-    expect_error(
-      builder_build_app(
-        request,
-        fixture$stage,
-        create_app = function(...) called <<- TRUE
-      ),
-      "backend closure"
-    )
-    expect_false(called)
-  }
+  expect_error(
+    builder_build_app(
+      request,
+      fixture$stage,
+      create_app = function(...) called <<- TRUE
+    ),
+    "backend closure"
+  )
+  expect_false(called)
 })
 
 test_that("App assembly rejects backend closure drift during create_app", {
-  for (mode in c("h5", "bpcells")) {
-    fixture <- builder_app_backend_fixture(mode)
-    request <- builder_app_bundle_request(
-      fixture$plan,
-      fixture$paths,
-      fixture$labels
-    )
-    create_app <- function(...) {
-      arguments <- list(...)
-      builder_fake_app(request, arguments$result_dir)
-      target <- if (identical(mode, "h5")) {
-        fixture$sidecar
-      } else {
-        dir.create(file.path(fixture$sidecar, "during-empty"))
-        NULL
-      }
-      if (!is.null(target)) {
-        builder_flip_file_byte(target)
-      }
-    }
-
-    expect_error(
-      builder_build_app(request, fixture$stage, create_app),
-      "backend closure"
-    )
+  fixture <- builder_app_backend_fixture("h5")
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  create_app <- function(...) {
+    arguments <- list(...)
+    builder_fake_app(request, arguments$result_dir)
+    builder_flip_file_byte(fixture$sidecar)
   }
+
+  expect_error(
+    builder_build_app(request, fixture$stage, create_app),
+    "backend closure"
+  )
 })
 
 test_that("Backend closure capture rejects aliases and unreadable files", {
@@ -933,23 +739,6 @@ test_that("Backend closure capture rejects aliases and unreadable files", {
   expect_error(
     builder_app_bundle_request(linked$plan, linked$paths, linked$labels),
     "hard link"
-  )
-
-  symbolic <- builder_app_backend_fixture("bpcells")
-  external <- tempfile()
-  writeBin(as.raw(1:4), external)
-  withr::defer(unlink(external))
-  expect_true(file.symlink(
-    external,
-    file.path(symbolic$sidecar, "linked.bin")
-  ))
-  expect_error(
-    builder_app_bundle_request(
-      symbolic$plan,
-      symbolic$paths,
-      symbolic$labels
-    ),
-    "symbolic"
   )
 
   unreadable <- builder_app_backend_fixture("h5")
@@ -967,23 +756,6 @@ test_that("Backend closure capture rejects aliases and unreadable files", {
       unreadable$labels
     ),
     "readable"
-  )
-
-  unreadable_tree <- builder_app_backend_fixture("bpcells")
-  old_tree_mode <- file.info(unreadable_tree$sidecar)$mode
-  Sys.chmod(unreadable_tree$sidecar, mode = "0000", use_umask = FALSE)
-  withr::defer(Sys.chmod(
-    unreadable_tree$sidecar,
-    mode = old_tree_mode,
-    use_umask = FALSE
-  ))
-  expect_error(
-    builder_app_bundle_request(
-      unreadable_tree$plan,
-      unreadable_tree$paths,
-      unreadable_tree$labels
-    ),
-    "enumerated safely"
   )
 })
 
@@ -1072,11 +844,15 @@ test_that("App requests consume prior staged file identities", {
 })
 
 test_that("empty staged identity evidence is ignored", {
-  expect_null(.builder_app_previous_closure("bpcells", "data.bpcells", list()))
+  expect_null(.builder_app_previous_closure(
+    "directory",
+    "data.spatial",
+    list()
+  ))
 })
 
 test_that("App requests reuse identities captured while sidecars were staged", {
-  for (mode in c("h5", "bpcells")) {
+  for (mode in "h5") {
     fixture <- builder_app_backend_fixture(mode)
     first <- builder_app_bundle_request(
       fixture$plan,
@@ -1783,42 +1559,22 @@ test_that("App verification rejects stable copied data replacements", {
     "copied content"
   )
 
-  for (mode in c("h5", "bpcells")) {
-    fixture <- builder_app_backend_fixture(mode)
-    request <- builder_app_bundle_request(
-      fixture$plan,
-      fixture$paths,
-      fixture$labels
-    )
-    app_dir <- builder_fake_app(
-      request,
-      file.path(fixture$stage, "cerebro_app")
-    )
-    output_backend <- builder_copy_backend_to_app(fixture, app_dir)
-    target <- if (identical(mode, "h5")) {
-      output_backend
-    } else {
-      file.path(output_backend, "nested", "matrix.bin")
-    }
-    builder_flip_file_byte(target)
+  fixture <- builder_app_backend_fixture("h5")
+  request <- builder_app_bundle_request(
+    fixture$plan,
+    fixture$paths,
+    fixture$labels
+  )
+  app_dir <- builder_fake_app(
+    request,
+    file.path(fixture$stage, "cerebro_app")
+  )
+  builder_flip_file_byte(builder_copy_backend_to_app(fixture, app_dir))
 
-    expect_error(
-      builder_verify_app(app_dir, request),
-      "copied content"
-    )
-    if (identical(mode, "bpcells")) {
-      expect_true(file.copy(
-        file.path(fixture$sidecar, "nested", "matrix.bin"),
-        target,
-        overwrite = TRUE
-      ))
-      dir.create(file.path(output_backend, "unexpected-empty"))
-      expect_error(
-        builder_verify_app(app_dir, request),
-        "copied content"
-      )
-    }
-  }
+  expect_error(
+    builder_verify_app(app_dir, request),
+    "copied content"
+  )
 })
 
 test_that("App verification rejects unrequested private artifacts", {
@@ -2085,23 +1841,6 @@ test_that("App verification requires every bundled backend sidecar", {
   expect_true(file.copy(fixture$sidecar, sidecar))
   expect_true(builder_verify_app(app_dir, request)$valid)
 
-  fixture <- builder_app_backend_fixture("bpcells")
-  request <- builder_app_bundle_request(
-    fixture$plan,
-    fixture$paths,
-    fixture$labels
-  )
-  app_dir <- builder_fake_app(
-    request,
-    file.path(fixture$stage, "cerebro_app")
-  )
-  sidecar <- file.path(app_dir, "private-data", "dataset-a.bpcells")
-  writeBin(as.raw(1:4), sidecar)
-  expect_error(builder_verify_app(app_dir, request), "directory")
-  unlink(sidecar)
-  builder_copy_backend_to_app(fixture, app_dir)
-  expect_true(builder_verify_app(app_dir, request)$valid)
-
   writeLines("not valid R code }", file.path(app_dir, "app.R"))
   expect_error(builder_verify_app(app_dir, request), "parsed")
 })
@@ -2283,7 +2022,6 @@ test_that("App verification rejects private data outside exact allowed roots", {
 
   assert_rejected("misc/rogue.crb")
   assert_rejected("misc/rogue.h5")
-  assert_rejected("misc/rogue.bpcells", directory = TRUE)
   assert_rejected("misc/leak.rds")
   assert_rejected("extdata/examples/rogue.crb")
   assert_rejected("viewer/www/leak.crb")

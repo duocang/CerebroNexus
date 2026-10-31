@@ -39,7 +39,7 @@ test_that("Build dependency preflight loads only frozen plan capabilities", {
 test_that("Build dependency preflight keeps selected optional capabilities", {
   plan <- list(
     items = list(list(
-      expression_backend = "bpcells",
+      expression_backend = "h5",
       reused_artifact = NULL,
       source_snapshot_identity = list(
         snapshot = list(serialization = "qs")
@@ -51,7 +51,7 @@ test_that("Build dependency preflight keeps selected optional capabilities", {
 
   expect_true(all(
     c(
-      "BPCells",
+      "HDF5Array (>= 1.18.1)",
       "qs",
       "shinymanager (>= 1.1.0)",
       "digest"

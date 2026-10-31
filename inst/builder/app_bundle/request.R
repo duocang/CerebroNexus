@@ -333,7 +333,7 @@ builder_app_bundle_request <- function(
   spatial_molecule_identities <- lapply(seq_along(resolved), function(index) {
     report("Checking spatial data", index, length(resolved))
     previous <- .builder_app_previous_closure(
-      "bpcells",
+      "directory",
       paste0(tools::file_path_sans_ext(filenames[[index]]), ".spatial"),
       previous_file_identities[[index]]
     )

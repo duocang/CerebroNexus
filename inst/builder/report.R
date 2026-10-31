@@ -293,7 +293,7 @@
       .builder_report_count(dataset$cell_count) &&
       .builder_report_count(dataset$feature_count) &&
       .builder_report_text(dataset$expression_backend) &&
-      dataset$expression_backend %in% c("embedded", "h5", "bpcells") &&
+      dataset$expression_backend %in% c("embedded", "h5") &&
       expression_storage_valid &&
       spatial_storage_valid &&
       valid_vector(dataset$pages, unique = TRUE)

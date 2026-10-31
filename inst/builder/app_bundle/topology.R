@@ -712,7 +712,7 @@
   for (content in request$content_identities) {
     expected[[content$crb$path]] <- "file"
     backend <- content$backend
-    if (identical(backend$type, "bpcells")) {
+    if (identical(backend$type, "directory")) {
       expected[[backend$root]] <- "directory"
     }
     for (entry in backend$entries) {
@@ -798,8 +798,7 @@
   private <- canonical_entries == private_root |
     startsWith(canonical_entries, paste0(private_root, "/"))
   data_entry <-
-    grepl("[.](crb|h5|hdf5|rds)$", lower) |
-    grepl("(^|/)[^/]+[.]bpcells($|/)", lower)
+    grepl("[.](crb|h5|hdf5|rds)$", lower)
   data_entry[paths == "cerebro_config.rds"] <- FALSE
   expected_demo_hash <- unname(.builder_app_demo_data[paths])
   allowed_demo <-

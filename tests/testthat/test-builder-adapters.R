@@ -735,10 +735,7 @@ test_that("real worker loads, fresh-builds and drops an owned snapshot", {
   worker <- loaded$worker
   expect_true(loaded$result$done)
   expect_null(loaded$result$value$error)
-  expected_backends <- list(
-    bpcells = FALSE,
-    h5 = requireNamespace("HDF5Array", quietly = TRUE)
-  )
+  expected_backends <- list(h5 = requireNamespace("HDF5Array", quietly = TRUE))
   expect_identical(
     loaded$result$value$backend_capabilities,
     list(build = expected_backends, viewer = expected_backends)

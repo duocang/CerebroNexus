@@ -157,16 +157,8 @@ builder_build_reuse_records <- function(plan, value) {
   }
   tryCatch(
     {
-      if (item$expression_backend %in% c("bpcells", "h5")) {
-        .builder_build_sidecar_path(
-          target,
-          item,
-          if (identical(item$expression_backend, "bpcells")) {
-            "directory"
-          } else {
-            "file"
-          }
-        )
+      if (identical(item$expression_backend, "h5")) {
+        .builder_build_sidecar_path(target, item)
       } else if (length(item$sidecars)) {
         stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
       }
@@ -680,11 +672,10 @@ builder_build_progress_finish <- function(plan, path, current_note = NULL) {
   as.character(fallback %||% character())
 }
 
-.builder_build_sidecar_path <- function(path, item, expected_type) {
+.builder_build_sidecar_path <- function(path, item) {
   if (
     length(item$sidecars) != 1L ||
-      !.builder_build_safe_relative(item$sidecars[[1L]]) ||
-      !expected_type %in% c("file", "directory")
+      !.builder_build_safe_relative(item$sidecars[[1L]])
   ) {
     stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
   }
@@ -697,7 +688,7 @@ builder_build_progress_finish <- function(plan, path, current_note = NULL) {
   if (
     nzchar(Sys.readlink(sidecar)) ||
       is.null(info) ||
-      !identical(as.character(info$type), expected_type) ||
+      !identical(as.character(info$type), "file") ||
       !.builder_build_path_within(sidecar, root, must_exist = TRUE)
   ) {
     stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
@@ -715,7 +706,7 @@ builder_build_progress_finish <- function(plan, path, current_note = NULL) {
       call. = FALSE
     )
   }
-  sidecar <- .builder_build_sidecar_path(path, item, "file")
+  sidecar <- .builder_build_sidecar_path(path, item)
   matrix <- tryCatch(
     DelayedArray::t(HDF5Array::TENxMatrix(sidecar, group = "expression")),
     error = function(error) NULL
@@ -823,16 +814,8 @@ builder_verify_crb <- function(
   if (!file.exists(path) || dir.exists(path) || nzchar(Sys.readlink(path))) {
     stop("The staged CRB is missing or is not a regular file.", call. = FALSE)
   }
-  if (item$expression_backend %in% c("bpcells", "h5")) {
-    .builder_build_sidecar_path(
-      path,
-      item,
-      if (identical(item$expression_backend, "bpcells")) {
-        "directory"
-      } else {
-        "file"
-      }
-    )
+  if (identical(item$expression_backend, "h5")) {
+    .builder_build_sidecar_path(path, item)
   } else if (length(item$sidecars)) {
     stop("The staged CRB sidecar does not match BuildPlan.", call. = FALSE)
   }

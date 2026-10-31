@@ -414,9 +414,6 @@ builder_build_package_requirements <- function(plan) {
   if ("h5" %in% backends) {
     required <- c(required, "HDF5Array (>= 1.18.1)", "DelayedArray")
   }
-  if ("bpcells" %in% backends) {
-    required <- c(required, "BPCells")
-  }
 
   serializations <- unlist(
     lapply(materialized, function(item) {

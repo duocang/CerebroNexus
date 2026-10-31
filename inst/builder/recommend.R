@@ -498,7 +498,7 @@ builder_validate_nomenclature <- function(organism, nomenclature) {
 }
 
 .builder_recommend_available <- function(available) {
-  capabilities <- c("bpcells", "h5")
+  capabilities <- "h5"
   blank <- stats::setNames(rep(FALSE, length(capabilities)), capabilities)
   normalize_side <- function(side) {
     values <- blank
@@ -556,17 +556,6 @@ builder_recommend_backend <- function(matrix_summary, available) {
   complete <- function(name) {
     isTRUE(normalized$build[[name]]) && isTRUE(normalized$viewer[[name]])
   }
-  if (identical(storage, "bpcells") && complete("bpcells")) {
-    return(.builder_recommend_record(
-      value = "bpcells",
-      reason = "The source already uses BPCells with complete support.",
-      confidence = 1,
-      requires_confirmation = FALSE,
-      available = normalized,
-      blocking = character(),
-      dependency_actions = character()
-    ))
-  }
   if (matrix_summary$estimated_bytes <= 256 * 1024^2) {
     return(.builder_recommend_record(
       value = "embedded",
@@ -578,25 +567,10 @@ builder_recommend_backend <- function(matrix_summary, available) {
       dependency_actions = character()
     ))
   }
-  if (isTRUE(matrix_summary$sparse) && complete("bpcells")) {
-    return(.builder_recommend_record(
-      value = "bpcells",
-      reason = "A large sparse matrix has complete BPCells support.",
-      confidence = 1,
-      requires_confirmation = FALSE,
-      available = normalized,
-      blocking = character(),
-      dependency_actions = character()
-    ))
-  }
   if (complete("h5")) {
     return(.builder_recommend_record(
       value = "h5",
-      reason = if (isTRUE(matrix_summary$sparse)) {
-        "BPCells is unavailable, so complete H5 support is used."
-      } else {
-        "A large dense matrix uses complete H5 support."
-      },
+      reason = "A large matrix uses complete H5 support.",
       confidence = 1,
       requires_confirmation = FALSE,
       available = normalized,
@@ -611,6 +585,6 @@ builder_recommend_backend <- function(matrix_summary, available) {
     requires_confirmation = TRUE,
     available = normalized,
     blocking = "expression_backend",
-    dependency_actions = "Enable BPCells or HDF5 support."
+    dependency_actions = "Enable HDF5 support."
   )
 }

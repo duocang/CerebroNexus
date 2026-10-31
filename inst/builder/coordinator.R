@@ -803,46 +803,6 @@ environment(builder_runtime_assert_identity) <- baseenv()
       }
     }
   }
-  sidecars <- unique(unlist(
-    lapply(items, function(item) {
-      if (!identical(.subset2(item, "expression_backend"), "bpcells")) {
-        return(character())
-      }
-      .subset2(item, "sidecars") %||% character()
-    }),
-    use.names = FALSE
-  ))
-  sidecars <- sidecars[
-    !is.na(sidecars) & nzchar(sidecars) & !grepl("[/\\\\]", sidecars)
-  ]
-  if (length(sidecars)) {
-    # BPCells matrix directories use this fixed set of implementation-owned
-    # entries. An earlier 96-character placeholder rejected otherwise safe
-    # Windows paths even though BPCells never created such a component.
-    bpcells_entries <- c(
-      "col_names",
-      "idxptr",
-      "index_data",
-      "index_idx",
-      "index_idx_offsets",
-      "index_starts",
-      "row_names",
-      "shape",
-      "storage_order",
-      "val",
-      "version"
-    )
-    candidates <- c(
-      candidates,
-      unlist(
-        lapply(
-          sidecars,
-          function(sidecar) file.path(export_stage, sidecar, bpcells_entries)
-        ),
-        use.names = FALSE
-      )
-    )
-  }
   if (isTRUE(app_expected)) {
     app_dir <- file.path(stage, "cerebro_app")
     app_stage <- .tempfile(

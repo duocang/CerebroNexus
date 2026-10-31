@@ -267,34 +267,24 @@ test_that("backends derive exact private sidecars and release targets", {
     h5 <- builder_task6_entry()
     h5$settings$expression_backend <- "h5"
     h5$settings$sidecars <- NULL
-    bpcells <- builder_task6_entry()
-    bpcells$id <- "dataset-b"
-    bpcells$settings$name <- "Dataset B"
-    bpcells$settings$expression_backend <- "bpcells"
-    bpcells$settings$sidecars <- NULL
-
-    plan <- builder_freeze_plan(list(h5, bpcells), out_dir, FALSE)
-    expect_null(plan$error)
-    expected_sidecars <- c(
-      paste0(
-        tools::file_path_sans_ext(plan$items[[1L]]$filename),
-        ".h5"
-      ),
-      paste0(
-        tools::file_path_sans_ext(plan$items[[2L]]$filename),
-        ".bpcells"
-      )
+    unsupported <- builder_task6_entry()
+    unsupported$settings$expression_backend <- "bpcells"
+    unsupported$settings$sidecars <- NULL
+    expect_identical(
+      builder_freeze_plan(list(unsupported), out_dir, FALSE)$error_code,
+      "invalid_expression_backend"
     )
-    expect_identical(plan$items[[1L]]$sidecars, expected_sidecars[[1L]])
-    expect_identical(plan$items[[2L]]$sidecars, expected_sidecars[[2L]])
+
+    plan <- builder_freeze_plan(list(h5), out_dir, FALSE)
+    expect_null(plan$error)
+    expected_sidecars <- paste0(
+      tools::file_path_sans_ext(plan$items[[1L]]$filename),
+      ".h5"
+    )
+    expect_identical(plan$items[[1L]]$sidecars, expected_sidecars)
     expected_targets <- file.path(
       plan$out_dir,
-      c(
-        plan$items[[1L]]$filename,
-        expected_sidecars[[1L]],
-        plan$items[[2L]]$filename,
-        expected_sidecars[[2L]]
-      )
+      c(plan$items[[1L]]$filename, expected_sidecars)
     )
     expect_identical(plan$output_release$targets, expected_targets)
     expect_true(all(expected_sidecars %in% plan$private_assets))

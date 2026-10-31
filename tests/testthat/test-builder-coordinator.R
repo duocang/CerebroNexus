@@ -47,7 +47,7 @@ builder_app_coordinator_plan_fixture <- function(
     items[[1L]]$expression_backend <- backend
     items[[1L]]$sidecars <- paste0(
       tools::file_path_sans_ext(filenames[[1L]]),
-      if (identical(backend, "h5")) ".h5" else ".bpcells"
+      ".h5"
     )
   }
   targets <- if (isTRUE(make_app)) {
@@ -726,7 +726,6 @@ builder_app_coordinator_fake_app <- function(
 builder_app_coordinator_fixture <- function(
   make_app = TRUE,
   backend = "embedded",
-  bpcells_payload = NULL,
   valid_crb = FALSE,
   root = NULL,
   target = NULL,
@@ -759,12 +758,6 @@ builder_app_coordinator_fixture <- function(
   })
   if (identical(backend, "h5")) {
     writeBin(as.raw(1:32), file.path(handle$stage, plan$items[[1L]]$sidecars))
-  } else if (identical(backend, "bpcells")) {
-    sidecar <- file.path(handle$stage, plan$items[[1L]]$sidecars)
-    dir.create(sidecar)
-    if (!is.null(bpcells_payload)) {
-      writeBin(bpcells_payload, file.path(sidecar, "matrix_data"))
-    }
   }
   result <- list(
     state = "success",
@@ -944,30 +937,30 @@ test_that("Windows path budget fails before a stage is created", {
       os_type = "windows"
     ))
 
-    bpcells_plan <- list(
+    h5_plan <- list(
       items = list(list(
         id = "ds3",
         filename = "03-17-0-durafibro-sample-roi-2-ds3.crb",
-        sidecars = "03-17-0-durafibro-sample-roi-2-ds3.bpcells",
-        expression_backend = "bpcells"
+        sidecars = "03-17-0-durafibro-sample-roi-2-ds3.h5",
+        expression_backend = "h5"
       ))
     )
     realistic_stage <- paste0(
       "C:/Users/example/Projects/spatial-project/",
       ".output.cerebro-control/stages/stage-764819176784"
     )
-    bpcells_candidates <- .builder_coordinator_windows_path_candidates(
-      bpcells_plan,
+    h5_candidates <- .builder_coordinator_windows_path_candidates(
+      h5_plan,
       realistic_stage,
       app_expected = FALSE,
       .tempfile = function(pattern, tmpdir, fileext = "") {
         file.path(tmpdir, paste0(pattern, "76481c31183a", fileext))
       }
     )
-    expect_true(any(endsWith(bpcells_candidates, "/index_idx_offsets")))
-    expect_false(any(endsWith(bpcells_candidates, strrep("x", 96L))))
+    expect_true(any(endsWith(h5_candidates, "-ds3.h5")))
+    expect_false(any(endsWith(h5_candidates, strrep("x", 96L))))
     expect_true(.builder_coordinator_assert_windows_path_budget(
-      bpcells_plan,
+      h5_plan,
       realistic_stage,
       app_expected = TRUE,
       os_type = "windows"
@@ -1039,7 +1032,7 @@ test_that("Windows path budget fails before a stage is created", {
       )
     )
     project_candidates <- .builder_coordinator_windows_path_candidates(
-      bpcells_plan,
+      h5_plan,
       project_checkpoint_stage,
       app_expected = TRUE,
       .tempfile = function(pattern, tmpdir, fileext = "") {
@@ -1057,7 +1050,7 @@ test_that("Windows path budget fails before a stage is created", {
       actual_viewer_paths[[1L]]
     )))
     expect_true(.builder_coordinator_assert_windows_path_budget(
-      bpcells_plan,
+      h5_plan,
       project_checkpoint_stage,
       app_expected = TRUE,
       os_type = "windows",
@@ -2644,24 +2637,24 @@ test_that("same-byte staged CRB hard-link swaps stay unpublished", {
   })
 })
 
-test_that("empty BPCells root type remains bound after parent verification", {
+test_that("an H5 sidecar type remains bound after parent verification", {
   local({
     builder_task9_source()
     fixture <- builder_app_coordinator_fixture(
-      backend = "bpcells",
+      backend = "h5",
       .local_envir = environment(),
       coordinator_prepare = builder_coordinator_prepare,
       bundle_request = builder_app_bundle_request,
       verify_app = builder_verify_app
     )
-    sidecar <- file.path(fixture$handle$stage, "dataset-a.bpcells")
+    sidecar <- file.path(fixture$handle$stage, "dataset-a.h5")
     original_identity <- .builder_coordinator_stage_identity
     injected <- FALSE
     .builder_coordinator_stage_identity <- function(...) {
       if (!injected) {
         injected <<- TRUE
         unlink(sidecar, recursive = TRUE)
-        writeBin(raw(), sidecar)
+        dir.create(sidecar)
       }
       original_identity(...)
     }
@@ -2867,14 +2860,14 @@ test_that("App publication reuses full release identities", {
   })
 })
 
-test_that("App build and publication hash BPCells payloads four times", {
+test_that("App build and publication hash an H5 payload three times", {
   local({
     builder_task9_source()
     original_tree_identity <- .builder_app_tree_identity
     original_release_md5 <- .builder_release_payload_md5
     hashed <- character()
     record_hash <- function(path, digest) {
-      if (identical(basename(path), "matrix_data")) {
+      if (identical(basename(path), "dataset-a.h5")) {
         hashed <<- c(hashed, normalizePath(path, winslash = "/"))
       }
       digest(path)
@@ -2898,7 +2891,7 @@ test_that("App build and publication hash BPCells payloads four times", {
     root <- withr::local_tempdir(.local_envir = environment())
     plan <- builder_app_coordinator_plan_fixture(
       file.path(root, "release"),
-      backend = "bpcells"
+      backend = "h5"
     )
     plan$app_auth <- list(
       enabled = FALSE,
@@ -2908,8 +2901,7 @@ test_that("App build and publication hash BPCells payloads four times", {
     fixture <- builder_app_coordinator_fixture(
       root = root,
       plan = plan,
-      backend = "bpcells",
-      bpcells_payload = as.raw(seq_len(32L)),
+      backend = "h5",
       valid_crb = TRUE,
       .local_envir = environment(),
       coordinator_prepare = builder_coordinator_prepare,
@@ -2921,9 +2913,7 @@ test_that("App build and publication hash BPCells payloads four times", {
     published <- builder_coordinator_publish(fixture$handle, fixture$result)
 
     expect_true(published$published)
-    expect_identical(length(hashed), 5L)
-    expect_identical(length(unique(dirname(hashed))), 2L)
-    expect_identical(as.integer(sort(table(dirname(hashed)))), c(2L, 3L))
+    expect_identical(length(hashed), 3L)
   })
 })
 

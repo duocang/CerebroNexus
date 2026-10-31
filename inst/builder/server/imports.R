@@ -3247,8 +3247,8 @@ observe({
     ## same library paths and returns only capability flags to the UI process.
     backend_capabilities <- value$backend_capabilities %||%
       list(
-        build = list(bpcells = FALSE, h5 = FALSE),
-        viewer = list(bpcells = FALSE, h5 = FALSE)
+        build = list(h5 = FALSE),
+        viewer = list(h5 = FALSE)
       )
     recommendations <- list(
       metadata = builder_recommend_metadata(value$dataset_profile),

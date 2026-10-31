@@ -4,9 +4,6 @@ skip_backend_if_unavailable <- function(backend) {
   if (identical(backend, "h5")) {
     testthat::skip_if_not_installed("HDF5Array")
   }
-  if (identical(backend, "bpcells")) {
-    testthat::skip_if_not_installed("BPCells")
-  }
   invisible(backend)
 }
 

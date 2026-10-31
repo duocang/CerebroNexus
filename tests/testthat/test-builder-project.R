@@ -6757,12 +6757,12 @@ test_that("artifact registration reuses the committed release identity safely", 
   )
 })
 
-test_that("artifact bundles retain BPCells directory contents", {
+test_that("artifact bundles retain directory sidecar contents", {
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
   build_dir <- file.path(root, "build")
   project <- file.path(root, "project")
-  sidecar <- file.path(build_dir, "ds1.bpcells")
+  sidecar <- file.path(build_dir, "ds1.spatial")
   dir.create(file.path(sidecar, "matrix"), recursive = TRUE)
   dir.create(project)
   primary <- file.path(build_dir, "ds1.crb")
@@ -6772,7 +6772,7 @@ test_that("artifact bundles retain BPCells directory contents", {
 
   bundle <- runtime$builder_project_store_artifact_bundle(
     primary,
-    sidecars = "ds1.bpcells",
+    sidecars = "ds1.spatial",
     dataset_id = "ds1",
     root = project,
     promote = TRUE
@@ -6783,7 +6783,7 @@ test_that("artifact bundles retain BPCells directory contents", {
   expect_false(file.exists(file.path(sidecar, "matrix", "data")))
   expect_setequal(
     vapply(bundle$members, `[[`, character(1), "target"),
-    c("ds1.bpcells/.index", "ds1.bpcells/matrix/data")
+    c("ds1.spatial/.index", "ds1.spatial/matrix/data")
   )
   expect_true(runtime$builder_project_artifact_available(
     c(list(status = "ready"), bundle),
@@ -6791,13 +6791,13 @@ test_that("artifact bundles retain BPCells directory contents", {
   ))
 })
 
-test_that("BPCells artifact bundles reject symbolic links", {
+test_that("directory sidecars of artifact bundles reject symbolic links", {
   skip_on_os("windows")
   runtime <- builder_project_test_runtime()
   root <- withr::local_tempdir()
   build_dir <- file.path(root, "build")
   project <- file.path(root, "project")
-  sidecar <- file.path(build_dir, "ds1.bpcells")
+  sidecar <- file.path(build_dir, "ds1.spatial")
   dir.create(sidecar, recursive = TRUE)
   dir.create(project)
   primary <- file.path(build_dir, "ds1.crb")
@@ -6809,7 +6809,7 @@ test_that("BPCells artifact bundles reject symbolic links", {
   expect_error(
     runtime$builder_project_store_artifact_bundle(
       primary,
-      sidecars = "ds1.bpcells",
+      sidecars = "ds1.spatial",
       dataset_id = "ds1",
       root = project
     ),

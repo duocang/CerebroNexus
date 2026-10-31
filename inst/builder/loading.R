@@ -396,8 +396,8 @@ builder_import_auto_focus <- function(current_id, active_id, new_id) {
 }
 
 ## On-disk layer backends reported with every load. Probed once per process
-## with system.file(): loading HDF5Array or BPCells on every import only to
-## report a flag costs seconds of namespace loading.
+## with system.file(): loading HDF5Array on every import only to report a flag
+## costs seconds of namespace loading.
 .builder_backend_capability_cache <- new.env(parent = emptyenv())
 
 builder_backend_capabilities <- function(
@@ -405,11 +405,7 @@ builder_backend_capabilities <- function(
 ) {
   cached <- .builder_backend_capability_cache$value
   if (is.null(cached)) {
-    cached <- list(
-      ## exportFromSeurat() no longer writes BPCells matrices.
-      bpcells = FALSE,
-      h5 = isTRUE(.installed("HDF5Array"))
-    )
+    cached <- list(h5 = isTRUE(.installed("HDF5Array")))
     .builder_backend_capability_cache$value <- cached
   }
   cached

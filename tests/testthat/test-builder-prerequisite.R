@@ -335,7 +335,7 @@ test_that("Build dependency preflight includes conditional plan requirements", {
   )
   plan <- list(
     items = list(list(
-      expression_backend = "bpcells",
+      expression_backend = "h5",
       reused_artifact = NULL,
       source_snapshot_identity = list(
         snapshot = list(serialization = "qs")
@@ -350,7 +350,7 @@ test_that("Build dependency preflight includes conditional plan requirements", {
       builder_build_base_package_requirements(),
       "Seurat (>= 3.0.0)",
       "SeuratObject",
-      "BPCells",
+      "HDF5Array (>= 1.18.1)",
       "qs",
       "shinymanager (>= 1.1.0)",
       "digest"

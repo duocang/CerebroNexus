@@ -61,10 +61,7 @@ test_that("the live recommendation contract is available", {
 
 test_that("backend recommendations keep large sparse exports off embedded", {
   mib <- 1024^2
-  available <- list(
-    build = list(bpcells = TRUE, h5 = TRUE),
-    viewer = list(bpcells = TRUE, h5 = TRUE)
-  )
+  available <- list(build = list(h5 = TRUE), viewer = list(h5 = TRUE))
 
   expect_identical(
     builder_recommend_backend(
@@ -78,34 +75,28 @@ test_that("backend recommendations keep large sparse exports off embedded", {
       list(estimated_bytes = 256 * mib + 1, sparse = TRUE, storage = "memory"),
       available
     )$value,
-    "bpcells"
+    "h5"
   )
   expect_identical(
     builder_recommend_backend(
-      list(estimated_bytes = 1024, sparse = TRUE, storage = "bpcells"),
+      list(estimated_bytes = 300 * mib, sparse = FALSE, storage = "memory"),
       available
     )$value,
-    "bpcells"
+    "h5"
   )
-  expect_identical(
+  unavailable <- list(build = list(h5 = FALSE), viewer = list(h5 = TRUE))
+  expect_null(
     builder_recommend_backend(
       list(estimated_bytes = 300 * mib, sparse = TRUE, storage = "memory"),
-      list(
-        build = list(bpcells = FALSE, h5 = TRUE),
-        viewer = list(bpcells = FALSE, h5 = TRUE)
-      )
-    )$value,
-    "h5"
+      unavailable
+    )$value
   )
 })
 
 test_that("backend recommendations fail closed on malformed bounded facts", {
   recommendation <- builder_recommend_backend(
     list(estimated_bytes = NA_real_, sparse = TRUE, storage = "memory"),
-    list(
-      build = list(bpcells = TRUE, h5 = TRUE),
-      viewer = list(bpcells = TRUE, h5 = TRUE)
-    )
+    list(build = list(h5 = TRUE), viewer = list(h5 = TRUE))
   )
 
   expect_null(recommendation$value)

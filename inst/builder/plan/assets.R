@@ -229,7 +229,7 @@
   }
   if (
     !builder_has_text(backend %||% "") ||
-      !backend %in% c("embedded", "h5", "bpcells")
+      !backend %in% c("embedded", "h5")
   ) {
     return(list(valid = FALSE, error_code = "invalid_expression_backend"))
   }
@@ -237,8 +237,7 @@
   sidecars <- switch(
     backend,
     embedded = character(),
-    h5 = paste0(stem, ".h5"),
-    bpcells = paste0(stem, ".bpcells")
+    h5 = paste0(stem, ".h5")
   )
   supplied <- settings$sidecars
   if (!is.null(supplied) && !identical(supplied, sidecars)) {

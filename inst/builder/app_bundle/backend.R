@@ -74,7 +74,7 @@
           !is.character(entry$type) ||
           length(entry$type) != 1L ||
           is.na(entry$type) ||
-          !entry$type %in% c("embedded", "h5", "bpcells") ||
+          !entry$type %in% c("embedded", "h5") ||
           !is.character(entry$mode) ||
           length(entry$mode) != 1L ||
           is.na(entry$mode)
@@ -86,7 +86,7 @@
       } else {
         expected_location <- paste0(
           tools::file_path_sans_ext(basename(cerebro_data[[index]])),
-          if (identical(entry$type, "h5")) ".h5" else ".bpcells"
+          ".h5"
         )
         identical(entry$mode, "bundled") &&
           identical(entry$location, expected_location)
@@ -99,7 +99,7 @@
 .builder_app_previous_backend_tree <- function(previous, location) {
   if (
     !is.list(previous) ||
-      !identical(previous$type, "bpcells") ||
+      !identical(previous$type, "directory") ||
       !is.list(previous$entries)
   ) {
     return(NULL)
@@ -245,7 +245,7 @@
   })
   names(entries) <- file.path(entry$location, names(tree$entries))
   list(
-    type = "bpcells",
+    type = "directory",
     root = root,
     root_fingerprint = tree$root_fingerprint,
     entries = entries
@@ -372,7 +372,7 @@
     )
   }
   .builder_app_capture_backend_identity(
-    list(type = "bpcells", mode = "bundled", location = backend$location),
+    list(type = "directory", mode = "bundled", location = backend$location),
     crb_path,
     .previous = .previous
   )
@@ -404,7 +404,7 @@
       plan <- list(
         schema_version = 1L,
         entries = stats::setNames(
-          list(list(type = "bpcells", mode = "bundled", location = location)),
+          list(list(type = "directory", mode = "bundled", location = location)),
           relative_crbs[[index]]
         )
       )
@@ -498,7 +498,7 @@
       h5_invalid <- identical(entry$type, "h5") &&
         (!is.null(closure$root_fingerprint) ||
           !identical(mappings, entry$location))
-      bpcells_invalid <- identical(entry$type, "bpcells") &&
+      directory_invalid <- identical(entry$type, "directory") &&
         (!.builder_app_fingerprint_valid(
           closure$root_fingerprint,
           "directory"
@@ -509,7 +509,7 @@
         !identical(closure$root, expected_root) ||
           mappings_invalid ||
           h5_invalid ||
-          bpcells_invalid
+          directory_invalid
       ) {
         return(FALSE)
       }
@@ -542,7 +542,7 @@
                 file.path(dirname(cerebro_data[[index]]), mapping)
               )
           } else if (identical(tree_entry$type, "directory")) {
-            identical(entry$type, "bpcells") &&
+            identical(entry$type, "directory") &&
               identical(
                 names(tree_entry),
                 .builder_app_backend_directory_entry_fields
@@ -880,7 +880,7 @@
     !is.character(mode) ||
       length(mode) != 1L ||
       is.na(mode) ||
-      !mode %in% c("embedded", "h5", "bpcells")
+      !mode %in% c("embedded", "h5")
   ) {
     stop("BuildPlan contains an invalid expression backend.", call. = FALSE)
   }

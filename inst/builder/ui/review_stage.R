@@ -521,7 +521,6 @@ builder_review_model <- function(plan, verification = NULL) {
         item$expression_backend %||% "embedded",
         embedded = "Embedded",
         h5 = "HDF5",
-        bpcells = "BPCells",
         item$expression_backend %||% "Embedded"
       ),
       spatial_alignment = spatial_alignment,

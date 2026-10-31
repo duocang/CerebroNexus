@@ -507,7 +507,7 @@ builder_verify_app <- function(
       expected_type <- switch(
         entry$type,
         h5 = "file",
-        bpcells = "directory",
+        directory = "directory",
         NULL
       )
       sidecar_info <- tryCatch(
