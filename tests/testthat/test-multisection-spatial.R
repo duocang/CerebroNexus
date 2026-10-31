@@ -105,11 +105,11 @@ test_that("external histology remains scoped to its own section", {
       )
     }
 
-    applied <- builder_attach_crb_extras(crb_path, external_images = images)
+    crb <- readCerebro(crb_path)
+    applied <- .builder_apply_external_spatial_appearance(crb, images)
     expect_null(applied$error)
     expect_setequal(applied$applied, sections)
 
-    crb <- readCerebro(crb_path)
     external <- .builder_build_materialize_spatial_images(
       list(id = "dataset", name = "Dataset", images = images),
       dir
@@ -169,15 +169,15 @@ test_that("attaching to some sections leaves the others without an image", {
       section = list(id = "sectionA2", kind = "spatial"),
       source_path = image$source_path
     )
-    applied <- builder_attach_crb_extras(
-      crb_path,
-      external_images = list(sectionA2 = record)
+    crb <- readCerebro(crb_path)
+    applied <- .builder_apply_external_spatial_appearance(
+      crb,
+      list(sectionA2 = record)
     )
     expect_equal(applied$applied, "sectionA2")
 
     ## A partial attachment is legitimate -- the viewer simply offers no
     ## background for the bare sections -- but it must not bleed across.
-    crb <- readCerebro(crb_path)
     expect_length(crb$getSpatialData("sectionA2")$histology_images, 0L)
     expect_length(crb$getSpatialData("sectionA1")$histology_images, 0L)
     expect_length(crb$getSpatialData("sectionB1")$histology_images, 0L)
@@ -186,6 +186,7 @@ test_that("attaching to some sections leaves the others without an image", {
 
 test_that("attaching nothing, or to a section that is absent, is handled", {
   skip_if_not_installed("Seurat")
+  skip_if_not_installed("png")
 
   local({
     builder_multisection_source_extras(environment())
@@ -194,19 +195,29 @@ test_that("attaching nothing, or to a section that is absent, is handled", {
     dir <- withr::local_tempdir()
     crb_path <- convert_synthetic_to_crb(obj, dir, "multisection")
 
+    crb <- readCerebro(crb_path)
+
     ## No images at all: a no-op, not an error -- most data sets have none.
     expect_equal(
-      builder_attach_crb_extras(crb_path, list())$applied,
+      .builder_apply_external_spatial_appearance(crb, list())$applied,
       character()
     )
 
-    ## The legacy positional image argument is rejected rather than embedded.
-    bad <- builder_attach_crb_extras(
-      crb_path,
-      list(
-        nosuchsection = list(uri = "data:image/png;base64,AA", bounds = list())
-      )
+    ## An image for a section the object lacks is not applied to any other.
+    image_path <- withr::local_tempfile(fileext = ".png")
+    png::writePNG(array(stats::runif(6 * 6 * 3), dim = c(6, 6, 3)), image_path)
+    image <- builder_read_image(image_path)
+    record <- builder_alignment_record(
+      source = list(name = basename(image_path), type = image$mime),
+      base_bounds = list(xmin = 0, xmax = 100, ymin = 0, ymax = 80),
+      section = list(id = "nosuchsection", kind = "spatial"),
+      source_path = image$source_path
     )
-    expect_match(bad$error, "no longer embeds", fixed = TRUE)
+    absent <- .builder_apply_external_spatial_appearance(
+      crb,
+      list(nosuchsection = record)
+    )
+    expect_equal(absent$applied, character())
+    expect_equal(absent$changed, character())
   })
 })

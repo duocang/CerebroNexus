@@ -1128,70 +1128,27 @@ test_that("CRB stores alignment only while image bytes remain external", {
     )
   }
   spatial_alignment <- make_alignment("slice-a", "spatial")
-  trekker_alignment <- make_alignment("trekker", "trekker")
-  trekker <- list(x = 1, y = 2, clusters = 0L)
 
-  result <- builder_attach_crb_extras(
-    crb_path,
-    trekker = trekker,
-    trekker_alignment = trekker_alignment,
-    external_images = list(
-      `slice-a` = list(`tissue.png` = spatial_alignment)
-    )
+  observed <- readCerebro(crb_path)
+  result <- .builder_apply_external_spatial_appearance(
+    observed,
+    list(`slice-a` = list(`tissue.png` = spatial_alignment))
   )
 
   expect_null(result$error)
-  observed <- readRDS(crb_path)
+  expect_identical(result$applied, "slice-a")
   expect_identical(
     observed$spatial[["slice-a"]]$histology_alignment,
     builder_alignment_payload(spatial_alignment)
   )
   expect_length(observed$spatial[["slice-a"]]$histology_images, 0L)
   expect_identical(
-    observed$trekker$histology_alignment,
-    builder_alignment_payload(trekker_alignment)
-  )
-  expect_null(observed$trekker$histology_image)
-  expect_null(observed$trekker$histology_image_bounds)
-  expect_identical(
-    observed$spatial_molecule_backend,
+    observed$spatial_molecule_backend[c("type", "location")],
     list(type = "directory", location = basename(spatial_sidecar))
   )
   serialized <- paste(capture.output(str(observed)), collapse = "\n")
   expect_false(grepl("/private/tmp/shiny-upload", serialized, fixed = TRUE))
   expect_false(grepl("source_uri", serialized, fixed = TRUE))
-})
-
-test_that("CRB extras use the fast gzip compression level", {
-  crb_path <- tempfile(fileext = ".crb")
-  on.exit(unlink(crb_path), add = TRUE)
-
-  crb <- Cerebro$new()
-  crb$setExpressionBackend(type = "embedded")
-  saveRDS(crb, crb_path)
-
-  observed_compression <- NULL
-  open_gz <- function(description, open, compression) {
-    observed_compression <<- compression
-    gzfile(description, open = open, compression = compression)
-  }
-  result <- builder_attach_crb_extras(
-    crb_path,
-    trekker = list(x = 1, y = 2, clusters = 0L),
-    .open_gz = open_gz
-  )
-
-  expect_null(result$error)
-  expect_identical(observed_compression, 1L)
-})
-
-test_that("CRB extras no-op does not open the exported CRB", {
-  missing <- tempfile(fileext = ".crb")
-
-  expect_identical(
-    builder_attach_crb_extras(missing),
-    list(applied = character(), trekker = FALSE)
-  )
 })
 
 test_that("Trekker-only extras do not rewrite an exported CRB", {

@@ -2057,12 +2057,11 @@ builder_pair_sections <- function(picture, per_section) {
   out
 }
 
-#' Attach post-export payloads with one atomic CRB replacement.
+#' Give each Spatial section the alignment of its external image.
 #'
-#' The default Builder path prepares Trekker before `exportFromSeurat()`, while
-#' direct callers may still supply it here. This helper validates and applies all
-#' requested payloads in memory, writes a sibling temporary file, then replaces
-#' the original with rollback.
+#' Works on the Cerebro object in memory (the object an export is about to
+#' write); the image bytes stay outside the object. Returns the object, the
+#' sections that got an alignment and the sections that changed, or an error.
 .builder_apply_external_spatial_appearance <- function(crb, images) {
   collection <- builder_image_collection_normalize(images)
   available <- try(crb$availableSpatial(), silent = TRUE)
@@ -2095,118 +2094,6 @@ builder_pair_sections <- function(picture, per_section) {
     }
   }
   list(object = crb, applied = applied, changed = changed)
-}
-
-builder_attach_crb_extras <- function(
-  crb_path,
-  images = list(),
-  trekker = NULL,
-  trekker_alignment = NULL,
-  external_images = list(),
-  .open_gz = gzfile
-) {
-  if (length(images)) {
-    return(list(
-      error = "Builder no longer embeds Spatial image bytes in CRB files."
-    ))
-  }
-  if (!is.null(trekker) && length(trekker) && !is.list(trekker)) {
-    return(list(error = "Trekker data must be a list."))
-  }
-  if (!length(trekker) && !length(external_images)) {
-    return(list(applied = character(), trekker = FALSE))
-  }
-
-  codec <- try(
-    .builder_build_runtime_function(".cerebroPayloadCodec")(crb_path),
-    silent = TRUE
-  )
-  crb <- try(readCerebro(crb_path), silent = TRUE)
-  if (inherits(crb, "try-error")) {
-    return(list(error = "The exported .crb could not be read back."))
-  }
-
-  applied <- character()
-  trekker_applied <- FALSE
-  if (!is.null(trekker) && length(trekker)) {
-    alignment <- builder_alignment_normalize(
-      trekker_alignment,
-      section_id = "trekker",
-      section_kind = "trekker"
-    )
-    trekker$histology_image <- NULL
-    trekker$histology_image_bounds <- NULL
-    if (!is.null(alignment)) {
-      trekker$histology_alignment <- builder_alignment_payload(alignment)
-    }
-    added <- try(crb$addTrekker(trekker), silent = TRUE)
-    if (inherits(added, "try-error")) {
-      return(list(
-        error = paste0(
-          "Could not attach Trekker data: ",
-          conditionMessage(attr(added, "condition"))
-        )
-      ))
-    }
-    trekker_applied <- TRUE
-  }
-
-  external <- .builder_apply_external_spatial_appearance(crb, external_images)
-  if (!is.null(external$error)) {
-    return(list(error = external$error))
-  }
-  crb <- external$object
-  applied <- external$applied
-  if (!isTRUE(trekker_applied) && !length(external$changed)) {
-    return(list(applied = applied, trekker = FALSE))
-  }
-
-  temporary <- tempfile(
-    ".crb-s-",
-    tmpdir = dirname(crb_path)
-  )
-  backup <- tempfile(
-    ".crb-b-",
-    tmpdir = dirname(crb_path)
-  )
-  on.exit(unlink(c(temporary, backup), force = TRUE), add = TRUE)
-
-  written <- try(
-    {
-      payload <- .builder_build_runtime_function(".thinCerebroPayload")(
-        crb,
-        crb_path
-      )
-      if (identical(codec, "rds")) {
-        connection <- .open_gz(temporary, open = "wb", compression = 1L)
-        tryCatch(saveRDS(payload, connection), finally = close(connection))
-      } else {
-        .builder_build_runtime_function(".writeCerebroPayload")(
-          payload,
-          temporary,
-          codec
-        )
-      }
-    },
-    silent = TRUE
-  )
-  if (inherits(written, "try-error") || !file.exists(temporary)) {
-    return(list(error = "Could not write the augmented .crb."))
-  }
-  if (!file.rename(crb_path, backup)) {
-    return(list(
-      error = "Could not protect the exported .crb before updating it."
-    ))
-  }
-  if (!file.rename(temporary, crb_path)) {
-    file.rename(backup, crb_path)
-    return(list(
-      error = "Could not replace the exported .crb; it was restored."
-    ))
-  }
-  unlink(backup, force = TRUE)
-
-  list(applied = applied, trekker = trekker_applied)
 }
 
 #' The coordinates of the first spatial slice, for bounds decisions.

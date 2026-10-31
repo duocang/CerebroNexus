@@ -63,30 +63,3 @@ test_that("release runtime resolves contracts without source namespace injection
     expect_match(result$invalid, "contract-v1 BuildPlan")
   }
 })
-
-test_that("installed worker can rewrite extras through private payload helpers", {
-  root <- normalizePath(builder_test_inst_path("builder"))
-  result <- callr::r(
-    function(root) {
-      suppressPackageStartupMessages(library(CerebroNexus))
-      Sys.unsetenv("CEREBRO_PACKAGE_SOURCE")
-      runtime <- new.env(parent = globalenv())
-      runtime$`%||%` <- function(a, b) if (is.null(a)) b else a
-      for (file in c("spatial.R", "extras.R", "build.R")) {
-        sys.source(file.path(root, file), runtime)
-      }
-      path <- tempfile(fileext = ".crb")
-      crb <- Cerebro$new()
-      crb$setExpressionBackend("embedded")
-      saveRDS(crb, path)
-      result <- runtime$builder_attach_crb_extras(
-        path,
-        trekker = list(x = 1, y = 2, clusters = 0L)
-      )
-      list(result = result, trekker = readRDS(path)$trekker)
-    },
-    args = list(root = root)
-  )
-  expect_null(result$result$error)
-  expect_equal(result$trekker$x, 1)
-})
