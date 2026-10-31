@@ -5895,13 +5895,41 @@ trajectorySelectionValid <- function(
   name %in% names_for_method
 }
 
+## An SVG is drawn as an image, which cannot run script, but the session route
+## also serves it as a document: only a plain SVG (no script, foreignObject,
+## event handler, javascript: URL or entity declaration) is accepted.
+viewerSvgIsPlain <- function(path, maximum_bytes = 20 * 1024^2) {
+  size <- file.size(path)
+  if (is.na(size) || size < 1 || size > maximum_bytes) {
+    return(FALSE)
+  }
+  text <- tryCatch(
+    rawToChar(readBin(path, what = "raw", n = size)),
+    error = function(error) NA_character_
+  )
+  if (is.na(text)) {
+    return(FALSE)
+  }
+  grepl("<svg[[:space:]>/]", substr(text, 1L, 4096L), useBytes = TRUE) &&
+    !grepl(
+      "<script|<foreignObject|<!ENTITY|javascript:|[[:space:]\"']on[a-z]+[[:space:]]*=",
+      text,
+      ignore.case = TRUE,
+      perl = TRUE,
+      useBytes = TRUE
+    )
+}
+
 viewerImageMime <- function(path) {
   if (!isTRUE(file_test("-f", path))) {
     return(NULL)
   }
   ext <- tolower(tools::file_ext(path))
-  if (!ext %in% c("png", "jpg", "jpeg")) {
+  if (!ext %in% c("png", "jpg", "jpeg", "svg")) {
     return(NULL)
+  }
+  if (identical(ext, "svg")) {
+    return(if (viewerSvgIsPlain(path)) "image/svg+xml" else NULL)
   }
   bytes <- tryCatch(
     readBin(path, what = "raw", n = 8L),
