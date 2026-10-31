@@ -1,5 +1,25 @@
 setOldClass(Classes = 'package_version')
 
+## The methods of a Cerebro object are saved inside every .crb together with
+## the environment they are enclosed in, which reaches the CerebroNexus
+## namespace. A createShinyApp() bundle never loads that namespace, so a method
+## cannot call a package function there. `getSpatialData()` checks the images
+## with the same functions `addSpatialData()` uses, so the object carries a copy
+## of them whose environment holds only base R and the helpers they call.
+.cerebroStandaloneSpatialImages <- function() {
+  helpers <- list(
+    .spatialImageBounds = .spatialImageBounds,
+    .spatialImageLabels = .spatialImageLabels,
+    .spatialImageRoiScope = .spatialImageRoiScope,
+    .normalizeEmbeddedSpatialImages = .normalizeEmbeddedSpatialImages
+  )
+  env <- list2env(helpers, parent = baseenv())
+  for (name in names(helpers)) {
+    environment(env[[name]]) <- env
+  }
+  env[[".normalizeEmbeddedSpatialImages"]]
+}
+
 #' @title
 #' R6 class in which data sets will be stored for visualization in Cerebro.
 #'
@@ -153,6 +173,7 @@ Cerebro <- R6::R6Class(
     #' @return
     #' A new \code{Cerebro} object.
     initialize = function() {
+      private$normalizeSpatialImages <- .cerebroStandaloneSpatialImages()
       self$experiment <- list(
         experiment_name = NULL,
         organism = NULL,
@@ -1277,244 +1298,18 @@ Cerebro <- R6::R6Class(
         self$spatial[[name]] <- data
       }
       context <- paste0("Spatial data `", name, "`")
-      normalize_bounds <- function(
-        bounds,
-        coordinates,
-        image_context,
-        allow_outside = FALSE
-      ) {
-        valid_coordinates <- is.data.frame(coordinates) &&
-          all(c("x", "y") %in% colnames(coordinates)) &&
-          is.numeric(coordinates[["x"]]) &&
-          is.numeric(coordinates[["y"]]) &&
-          nrow(coordinates) > 0L
-        if (!valid_coordinates) {
-          stop(
-            image_context,
-            " requires non-empty numeric x and y coordinates.",
-            call. = FALSE
-          )
-        }
-        xy <- coordinates[, c("x", "y"), drop = FALSE]
-        if (any(!is.finite(as.matrix(xy)))) {
-          stop(image_context, " coordinates must be finite.", call. = FALSE)
-        }
-        required <- c("xmin", "xmax", "ymin", "ymax")
-        if (is.null(bounds)) {
-          bounds <- c(
-            xmin = min(coordinates[["x"]]),
-            xmax = max(coordinates[["x"]]),
-            ymin = min(coordinates[["y"]]),
-            ymax = max(coordinates[["y"]])
-          )
-        } else {
-          valid_bounds <- is.numeric(bounds) &&
-            length(bounds) == 4L &&
-            !is.null(names(bounds)) &&
-            setequal(names(bounds), required) &&
-            !anyDuplicated(names(bounds))
-          if (!valid_bounds) {
-            stop(
-              image_context,
-              " bounds must contain exactly xmin, xmax, ymin, and ymax.",
-              call. = FALSE
-            )
-          }
-          bounds <- bounds[required]
-        }
-        if (any(!is.finite(bounds))) {
-          stop(image_context, " bounds must be finite.", call. = FALSE)
-        }
-        if (bounds[["xmin"]] >= bounds[["xmax"]]) {
-          stop(
-            image_context,
-            " requires xmin to be less than xmax.",
-            call. = FALSE
-          )
-        }
-        if (bounds[["ymin"]] >= bounds[["ymax"]]) {
-          stop(
-            image_context,
-            " requires ymin to be less than ymax.",
-            call. = FALSE
-          )
-        }
-        outside <- coordinates[["x"]] < bounds[["xmin"]] |
-          coordinates[["x"]] > bounds[["xmax"]] |
-          coordinates[["y"]] < bounds[["ymin"]] |
-          coordinates[["y"]] > bounds[["ymax"]]
-        if (!isTRUE(allow_outside) && any(outside)) {
-          stop(
-            image_context,
-            " has coordinates outside its declared bounds.",
-            call. = FALSE
-          )
-        }
-        bounds
-      }
-      if ("histology_images" %in% names(data)) {
-        images <- data[["histology_images"]]
+      images <- if ("histology_images" %in% names(data)) {
+        data[["histology_images"]]
       } else {
-        images <- list()
+        list()
       }
-      if (!is.list(images)) {
-        stop(
-          context,
-          " `histology_images` must be a named list.",
-          call. = FALSE
-        )
-      }
-      if (length(images) > 0L) {
-        image_names <- names(images)
-        if (
-          is.null(image_names) ||
-            anyNA(image_names) ||
-            any(!nzchar(image_names))
-        ) {
-          invalid_label <- if (is.null(image_names)) {
-            "<unnamed>"
-          } else if (anyNA(image_names)) {
-            "<NA>"
-          } else {
-            "<empty>"
-          }
-          stop(
-            context,
-            " image label `",
-            invalid_label,
-            "` is invalid; labels must be non-empty.",
-            call. = FALSE
-          )
-        }
-        if (anyDuplicated(image_names)) {
-          duplicate_label <- unique(image_names[duplicated(image_names)])[[1L]]
-          stop(
-            context,
-            " has duplicate image label `",
-            duplicate_label,
-            "`; labels must be unique.",
-            call. = FALSE
-          )
-        }
-        normalized <- lapply(seq_along(images), function(i) {
-          label <- image_names[[i]]
-          payload <- images[[i]]
-          image_context <- paste0(context, " image `", label, "`")
-          valid_fields <- c(
-            "histology_image",
-            "histology_image_bounds",
-            "histology_alignment",
-            "image_label",
-            "roi_field",
-            "roi_value"
-          )
-          if (
-            !is.list(payload) ||
-              is.null(names(payload)) ||
-              !"histology_image" %in% names(payload) ||
-              anyDuplicated(names(payload)) ||
-              any(!names(payload) %in% valid_fields)
-          ) {
-            stop(
-              image_context,
-              " must contain `histology_image` and optional ",
-              "`histology_image_bounds`.",
-              call. = FALSE
-            )
-          }
-          image <- payload[["histology_image"]]
-          valid_image <- is.character(image) &&
-            length(image) == 1L &&
-            !is.na(image) &&
-            grepl(
-              "^data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/]+={0,2}$",
-              image
-            )
-          if (!valid_image) {
-            stop(
-              image_context,
-              " must contain one base64 `data:image/...` URI.",
-              call. = FALSE
-            )
-          }
-          alignment <- payload[["histology_alignment"]]
-          if (
-            !is.null(alignment) &&
-              (!is.list(alignment) ||
-                is.null(names(alignment)) ||
-                anyDuplicated(names(alignment)))
-          ) {
-            stop(
-              image_context,
-              " alignment must be a named list.",
-              call. = FALSE
-            )
-          }
-          scope_fields <- c("roi_field", "roi_value")
-          scope_present <- scope_fields %in% names(payload)
-          if (any(scope_present) && !all(scope_present)) {
-            stop(
-              image_context,
-              " must declare both `roi_field` and `roi_value`.",
-              call. = FALSE
-            )
-          }
-          if (all(scope_present)) {
-            valid_scope <- vapply(
-              payload[scope_fields],
-              function(value) {
-                is.character(value) &&
-                  length(value) == 1L &&
-                  !is.na(value) &&
-                  nzchar(value)
-              },
-              logical(1)
-            )
-            if (!all(valid_scope)) {
-              stop(
-                image_context,
-                " ROI scope must contain non-empty strings.",
-                call. = FALSE
-              )
-            }
-          }
-          result <- c(
-            list(
-              histology_image = image,
-              histology_image_bounds = normalize_bounds(
-                payload[["histology_image_bounds"]],
-                data[["coordinates"]],
-                image_context,
-                allow_outside = all(scope_present)
-              )
-            ),
-            payload[scope_fields[scope_present]]
-          )
-          if (!is.null(payload[["image_label"]])) {
-            display_label <- payload[["image_label"]]
-            if (
-              !is.character(display_label) ||
-                length(display_label) != 1L ||
-                is.na(display_label) ||
-                !nzchar(display_label)
-            ) {
-              stop(
-                image_context,
-                " display label must be non-empty.",
-                call. = FALSE
-              )
-            }
-            result$image_label <- display_label
-          }
-          if (!is.null(alignment)) {
-            result$histology_alignment <- alignment
-          }
-          result
-        })
-        names(normalized) <- image_names
-        images <- normalized
-      }
-      data[["histology_images"]] <- images
+      ## The checks are the ones `addSpatialData()` applies, kept in
+      ## spatial_image_manifest.R; see `.cerebroStandaloneSpatialImages()`.
+      data[["histology_images"]] <- private$normalizeSpatialImages(
+        images,
+        data[["coordinates"]],
+        context
+      )
       data
     },
 
@@ -1822,6 +1617,10 @@ Cerebro <- R6::R6Class(
 
   ## private fields and methods
   private = list(
+    ## The spatial image checks of `.normalizeEmbeddedSpatialImages()`, as a
+    ## copy that needs no CerebroNexus namespace (set in `initialize()`).
+    normalizeSpatialImages = NULL,
+
     ## Cell names of the metadata rows, for barcodes a thin CRB stores by cell
     ## index (in the Viewer this hydrates the thin metadata).
     storedCellNames = function() {

@@ -449,3 +449,39 @@ test_that("exportFromSeurat rejects Seurat v4 VisiumV1 images only", {
   expect_no_error(.assertCurrentSpatialImages(plain))
   expect_no_error(.assertCurrentSpatialImages(object))
 })
+
+test_that("a Cerebro object checks spatial images without the package namespace", {
+  skip_if_not_installed("callr")
+  crb <- Cerebro$new()
+  payload <- valid_spatial_image_payload()
+  payload$histology_image_bounds <- c(xmin = 0, xmax = 20, ymin = 0, ymax = 20)
+  crb$spatial[["section"]] <- list(
+    coordinates = data.frame(x = c(10, 90), y = c(5, 75)),
+    histology_images = tissue_image(payload)
+  )
+
+  ## The check is a copy that sees only base R, because a createShinyApp()
+  ## bundle never loads the namespace the object's other methods point to.
+  check <- crb$.__enclos_env__$private$normalizeSpatialImages
+  expect_identical(parent.env(environment(check)), baseenv())
+
+  file <- withr::local_tempfile(fileext = ".rds")
+  saveRDS(crb, file)
+  result <- callr::r(
+    function(file) {
+      list(
+        namespace_loaded = "CerebroNexus" %in% loadedNamespaces(),
+        message = tryCatch(
+          {
+            suppressWarnings(readRDS(file))$getSpatialData("section")
+            NA_character_
+          },
+          error = conditionMessage
+        )
+      )
+    },
+    args = list(file = file)
+  )
+  skip_if(result$namespace_loaded, "CerebroNexus is installed in the library")
+  expect_match(result$message, "has coordinates outside its declared bounds")
+})
