@@ -53,21 +53,6 @@
   }
 }
 
-.newCerebroExport <- function(experiment_name, organism, verbose) {
-  .logStep(
-    if (verbose) {
-      'Initializing Cerebro object...'
-    } else {
-      'Start collecting data...'
-    }
-  )
-  export <- Cerebro$new()
-  export$addExperiment('experiment_name', experiment_name)
-  export$addExperiment('organism', organism)
-  export$setVersion(utils::packageVersion('CerebroNexus'))
-  export
-}
-
 ## Convert the matrix to an RleArray when `use_delayed_array` asks for it.
 .delayedExportExpression <- function(
   expression_data,
@@ -142,7 +127,8 @@
   nGene,
   cell_cycle,
   add_all_meta_data,
-  verbose
+  verbose,
+  main_group = NULL
 ) {
   if (verbose) {
     .logStep('Collecting available meta data...')
@@ -174,22 +160,38 @@
   for (group in groups) {
     export$addGroup(group, levels(meta_data[[group]]))
   }
+  if (!is.null(main_group)) {
+    export$addParameters('main_group', main_group)
+  }
   if (length(cell_cycle) > 0) {
     export$setCellCycle(cell_cycle)
   }
 }
 
-## Non-PCA reductions; PCA only when it is the only one. `embedding(name)`
-## returns the cell embeddings of one reduction.
-.addExportProjections <- function(export, available, embedding, verbose) {
+## Non-PCA reductions; PCA only when it is the only one, or every requested
+## reduction in the requested order when `explicit`. `embedding(name)` returns
+## the cell embeddings of one reduction.
+.addExportProjections <- function(
+  export,
+  available,
+  embedding,
+  verbose,
+  explicit = FALSE
+) {
   if (verbose) {
     .logStep('Extracting dimensional reductions...')
   }
-  is_pca <- grepl('pca', available, ignore.case = TRUE)
   if (length(available) == 0) {
-    stop('No dimensional reductions available.', call. = FALSE)
+    stop(
+      'No dimensional reductions available. Add at least one first, e.g. ',
+      'scater::runPCA() / scater::runUMAP() on a SingleCellExperiment, ',
+      'scanpy.tl.umap() on an AnnData, or RunUMAP() on a Seurat object.',
+      call. = FALSE
+    )
   }
-  if (length(available) == 1 && is_pca) {
+  is_pca <- grepl('pca', available, ignore.case = TRUE)
+  chosen <- if (explicit) available else available[!is_pca]
+  if (!explicit && length(available) == 1 && is_pca) {
     export$addProjection(available, as.data.frame(embedding(available)))
     warning(
       'Warning: Only PCA as dimensional reduction found, will export ',
@@ -197,14 +199,14 @@
       'UMAP instead.',
       call. = FALSE
     )
-  } else if (any(!is_pca)) {
+  } else if (length(chosen) > 0) {
     if (verbose) {
       .logStep(
         'Will export the following dimensional reductions: ',
-        paste(available[!is_pca], collapse = ', ')
+        paste(chosen, collapse = ', ')
       )
     }
-    for (projection in available[!is_pca]) {
+    for (projection in chosen) {
       export$addProjection(projection, as.data.frame(embedding(projection)))
     }
   }
@@ -268,65 +270,151 @@
   }
 }
 
-## Monocle 2 trajectories; other methods are skipped with a warning.
-.addExportTrajectories <- function(export, trajectories, verbose) {
+## Immune repertoire, HLA typing and the legacy TCR/BCR slots of `extras` (the
+## misc list of a Seurat object, the metadata of an SCE). `where` names it in
+## error messages, e.g. "@misc". The legacy slots are checked like the unified
+## one and merged into the one repertoire the .crb stores.
+.addExportImmune <- function(export, extras, cells, where, verbose) {
+  ## `is.list()` was the whole guard, and a data.frame passes it -- its columns
+  ## became the sample names and the wrong shape reached the .crb intact.
+  unified <- .dropEmptyRepertoireSamples(extras$immune_repertoire)
+  has_unified <- !is.null(unified) && length(unified) > 0
+  if (has_unified) {
+    unified <- .normalizeImmuneRepertoire(
+      unified,
+      cell_barcodes = cells,
+      source_label = paste0('`', where, '$immune_repertoire`')
+    )
+    if (verbose) {
+      .logStep(
+        'Extracting immune repertoire data (',
+        length(unified),
+        ' samples)...'
+      )
+    }
+    export$addImmuneRepertoire(unified)
+  }
+
+  ## HLA typing: a canonical long data.frame, a wide sample x locus table, or a
+  ## named list (sample -> allele vector). The source type is read from an
+  ## optional `hla_typing_source_type` (default "unknown"), so an uploaded or
+  ## imputed genotype is never silently treated as directly typed.
+  hla <- extras$hla_typing
+  if (
+    !is.null(hla) &&
+      (is.data.frame(hla) || (is.list(hla) && length(hla) > 0))
+  ) {
+    if (verbose) {
+      .logStep('Extracting HLA typing...')
+    }
+    source_type <- extras$hla_typing_source_type
+    if (is.null(source_type) || !nzchar(source_type)) {
+      source_type <- 'unknown'
+    }
+    export$addHLATyping(hla, source_type = source_type)
+  }
+
+  if (!has_unified) {
+    receptor_slots <- list(tcr_data = 'TCR', bcr_data = 'BCR')
+    receptors <- lapply(names(receptor_slots), function(slot) {
+      data <- .dropEmptyRepertoireSamples(extras[[slot]])
+      if (is.null(data)) {
+        return(NULL)
+      }
+      if (verbose) {
+        .logStep('Extracting tables of ', receptor_slots[[slot]], ' data...')
+      }
+      .normalizeImmuneRepertoire(
+        data,
+        cell_barcodes = cells,
+        source_label = paste0('`', where, '$', slot, '`')
+      )
+    })
+    merged <- .dropEmptyRepertoireSamples(
+      do.call(.mergeRepertoiresBySample, receptors)
+    )
+    if (!is.null(merged) && length(merged) > 0) {
+      export$addImmuneRepertoire(.normalizeImmuneRepertoire(
+        merged,
+        cell_barcodes = cells,
+        source_label = 'the merged TCR and BCR repertoire'
+      ))
+    }
+  }
+}
+
+## Trajectory methods that are exported: Monocle 2, and what readH5adAsSCE()
+## makes from scanpy/scVelo results. Other methods are skipped with a warning.
+.exportTrajectoryMethods <- c('monocle2', 'paga', 'scvelo', 'pseudotime')
+
+.addExportTrajectories <- function(
+  export,
+  trajectories,
+  verbose,
+  supported_note = NULL
+) {
+  if (is.null(supported_note)) {
+    supported_note <- paste0(
+      'only trajectories of the methods ',
+      paste0('`', .exportTrajectoryMethods, '`', collapse = ', '),
+      ' are supported.'
+    )
+  }
   if (length(trajectories) == 0) {
     if (verbose) {
       .logStep('No trajectories to extract...')
     }
     return(invisible())
   }
+  supported <- intersect(names(trajectories), .exportTrajectoryMethods)
   if (verbose) {
     .logStep(
       'Will export the following trajectories: ',
-      paste(names(trajectories$monocle2), collapse = ', ')
+      paste(unlist(lapply(trajectories[supported], names)), collapse = ', ')
     )
   }
-  for (i in seq_along(trajectories)) {
-    method <- names(trajectories)[i]
-    if (method == 'monocle2') {
-      for (j in seq_along(trajectories[[i]])) {
-        export$addTrajectory(
-          method,
-          names(trajectories[[i]])[j],
-          trajectories[[i]][[j]]
-        )
+  for (method in names(trajectories)) {
+    if (method %in% .exportTrajectoryMethods) {
+      for (name in names(trajectories[[method]])) {
+        export$addTrajectory(method, name, trajectories[[method]][[name]])
       }
     } else {
       warning(
         'Warning: Skipping trajectories of method `',
         method,
-        '`. At the moment, only trajectories generated with Monocle 2 ',
-        '(`monocle2`) are supported.',
+        '`. At the moment, ',
+        supported_note,
         call. = FALSE
       )
     }
   }
 }
 
-## Extra tables and plots.
+## Extra tables and plots, and the workbook/sheet display names of the tables
+## (kept as technical info, not as a content category).
 .addExportExtraMaterial <- function(export, extra_material, verbose) {
-  if (!is.list(extra_material) || length(extra_material) == 0) {
-    return(invisible())
-  }
-  if (verbose) {
-    .logStep('Found extra material to export...')
-  }
-  for (category in names(extra_material)) {
-    if (category %in% c('tables', 'plots')) {
-      content <- extra_material[[category]]
-      for (i in seq_along(content)) {
-        export$addExtraMaterial(
-          category = category,
-          name = names(content)[i],
-          content = content[[i]]
-        )
+  if (is.list(extra_material) && length(extra_material) > 0) {
+    if (verbose) {
+      .logStep('Found extra material to export...')
+    }
+    for (category in names(extra_material)) {
+      if (category %in% c('tables', 'plots')) {
+        content <- extra_material[[category]]
+        for (i in seq_along(content)) {
+          export$addExtraMaterial(
+            category = category,
+            name = names(content)[i],
+            content = content[[i]]
+          )
+        }
       }
     }
   }
-}
-
-.printExportOverview <- function(export) {
-  .logStep('Overview of Cerebro object:\n')
-  export$print()
+  table_index <- viewerExtraMaterialTableIndex(
+    extra_material$table_index,
+    as.character(names(export$getExtraMaterial()$tables))
+  )
+  if (length(table_index)) {
+    export$addTechnicalInfo("extra_material_table_index", table_index)
+  }
 }

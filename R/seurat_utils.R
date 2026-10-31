@@ -1103,6 +1103,324 @@
   invisible(object)
 }
 
+.spx_get_tissue_coordinates_fun <- function() {
+  for (package in c("Seurat", "SeuratObject")) {
+    if (
+      requireNamespace(package, quietly = TRUE) &&
+        exists(
+          "GetTissueCoordinates",
+          envir = asNamespace(package),
+          inherits = FALSE
+        )
+    ) {
+      return(get(
+        "GetTissueCoordinates",
+        envir = asNamespace(package)
+      ))
+    }
+  }
+  NULL
+}
+
+# Extract cell polygons without mixing them into the one-row-per-cell coordinate
+# table used by .getSpatialData(). Xenium/FOV segmentation is optional.
+.getSpatialBoundaries <- function(object, image, valid_cells) {
+  if (
+    !requireNamespace("SeuratObject", quietly = TRUE) ||
+      !is.character(image) ||
+      length(image) != 1L ||
+      is.na(image) ||
+      !is.character(valid_cells) ||
+      !length(valid_cells)
+  ) {
+    return(NULL)
+  }
+  image_object <- .spx_try(object[[image]])
+  if (.spx_is_try_error(image_object) || is.null(image_object)) {
+    return(NULL)
+  }
+  get_coordinates <- .spx_get_tissue_coordinates_fun()
+  if (is.null(get_coordinates)) {
+    return(NULL)
+  }
+  candidates <- list(.spx_try(get_coordinates(
+    image_object,
+    which = "segmentation"
+  )))
+  if (.spx_has_slot(image_object, "boundaries")) {
+    stored <- .spx_try(methods::slot(image_object, "boundaries"))
+    if (!.spx_is_try_error(stored) && is.list(stored)) {
+      stored <- Filter(
+        function(boundary) methods::is(boundary, "Segmentation"),
+        stored
+      )
+      candidates <- c(
+        candidates,
+        lapply(stored, function(boundary) {
+          .spx_try(get_coordinates(boundary))
+        })
+      )
+    }
+  }
+  candidates <- Filter(
+    function(candidate) {
+      !.spx_is_try_error(candidate) && !is.null(candidate)
+    },
+    candidates
+  )
+  for (candidate in candidates) {
+    coordinates <- tryCatch(
+      as.data.frame(candidate, stringsAsFactors = FALSE),
+      error = function(error) NULL
+    )
+    if (is.null(coordinates) || !nrow(coordinates)) {
+      next
+    }
+    xy <- .spx_find_coordinate_columns(coordinates)
+    barcode <- .spx_find_barcode_column(coordinates, valid_cells)
+    if (is.null(xy) || is.null(barcode)) {
+      next
+    }
+    cell_barcode <- as.character(coordinates[[barcode]])
+    x <- suppressWarnings(as.numeric(coordinates[[xy$x]]))
+    y <- suppressWarnings(as.numeric(coordinates[[xy$y]]))
+    keep <- cell_barcode %in% valid_cells & is.finite(x) & is.finite(y)
+    if (!any(keep)) {
+      next
+    }
+    part_column <- intersect(
+      c("part", "component", "polygon", "piece"),
+      colnames(coordinates)
+    )
+    part <- if (length(part_column)) {
+      as.character(coordinates[[part_column[[1L]]]])
+    } else {
+      rep("1", nrow(coordinates))
+    }
+    part[is.na(part) | !nzchar(part)] <- "1"
+    return(data.frame(
+      cell_barcode = cell_barcode[keep],
+      x = x[keep],
+      y = y[keep],
+      part = part[keep],
+      stringsAsFactors = FALSE
+    ))
+  }
+  NULL
+}
+
+.spx_sample_large_molecules <- function(stored, max_molecules) {
+  minimum_coordinate_bytes <- as.double(max_molecules) * 25 * 2 * 8
+  stored_bytes <- sum(vapply(
+    stored,
+    function(molecules) as.double(utils::object.size(molecules)),
+    numeric(1L)
+  ))
+  if (stored_bytes <= minimum_coordinate_bytes) {
+    return(NULL)
+  }
+  layouts <- lapply(stored, function(molecules) {
+    features <- names(molecules)
+    if (
+      !inherits(molecules, "Molecules") ||
+        !length(features) ||
+        anyNA(features) ||
+        any(!nzchar(features))
+    ) {
+      return(NULL)
+    }
+    counts <- vapply(
+      features,
+      function(feature) {
+        points <- .spx_try(molecules[[feature]])
+        if (
+          .spx_is_try_error(points) ||
+            !methods::is(points, "SpatialPoints") ||
+            !.spx_has_slot(points, "coords")
+        ) {
+          return(NA_integer_)
+        }
+        coordinates <- methods::slot(points, "coords")
+        if (
+          !is.matrix(coordinates) ||
+            ncol(coordinates) < 2L ||
+            !is.numeric(coordinates)
+        ) {
+          return(NA_integer_)
+        }
+        nrow(coordinates)
+      },
+      integer(1L)
+    )
+    if (anyNA(counts)) {
+      return(NULL)
+    }
+    list(molecules = molecules, features = features, counts = counts)
+  })
+  if (any(vapply(layouts, is.null, logical(1L)))) {
+    return(NULL)
+  }
+  total_count <- sum(vapply(
+    layouts,
+    function(layout) sum(layout$counts),
+    numeric(1L)
+  ))
+  if (total_count <= as.double(max_molecules) * 25) {
+    return(NULL)
+  }
+  finite <- all(vapply(
+    layouts,
+    function(layout) {
+      all(vapply(
+        layout$features,
+        function(feature) {
+          coordinates <- methods::slot(layout$molecules[[feature]], "coords")
+          all(is.finite(coordinates[, 1:2, drop = FALSE]))
+        },
+        logical(1L)
+      ))
+    },
+    logical(1L)
+  ))
+  if (!finite) {
+    return(NULL)
+  }
+  keep <- unique(round(seq.int(
+    1L,
+    total_count,
+    length.out = floor(max_molecules)
+  )))
+  gene <- character(length(keep))
+  x <- y <- numeric(length(keep))
+  offset <- 0
+  for (layout in layouts) {
+    for (index in seq_along(layout$features)) {
+      count <- layout$counts[[index]]
+      selected <- which(keep > offset & keep <= offset + count)
+      if (length(selected)) {
+        source <- keep[selected] - offset
+        coordinates <- methods::slot(
+          layout$molecules[[layout$features[[index]]]],
+          "coords"
+        )
+        gene[selected] <- layout$features[[index]]
+        x[selected] <- coordinates[source, 1L]
+        y[selected] <- coordinates[source, 2L]
+      }
+      offset <- offset + count
+    }
+  }
+  data <- data.frame(gene = gene, x = x, y = y, stringsAsFactors = FALSE)
+  list(
+    data = data,
+    genes = sort(unique(data$gene)),
+    total_count = as.integer(total_count),
+    exported_count = as.integer(nrow(data)),
+    truncated = TRUE
+  )
+}
+
+.getSpatialMolecules <- function(
+  object,
+  image,
+  max_molecules = 200000L
+) {
+  if (
+    !is.numeric(max_molecules) ||
+      length(max_molecules) != 1L ||
+      is.na(max_molecules) ||
+      !is.finite(max_molecules) ||
+      max_molecules < 1L
+  ) {
+    return(NULL)
+  }
+  image_object <- .spx_try(object[[image]])
+  if (
+    .spx_is_try_error(image_object) ||
+      is.null(image_object) ||
+      !.spx_has_slot(image_object, "molecules")
+  ) {
+    return(NULL)
+  }
+  stored <- .spx_try(methods::slot(image_object, "molecules"))
+  if (.spx_is_try_error(stored) || !is.list(stored) || !length(stored)) {
+    return(NULL)
+  }
+  sampled <- .spx_sample_large_molecules(stored, max_molecules)
+  if (!is.null(sampled)) {
+    return(sampled)
+  }
+  get_coordinates <- .spx_get_tissue_coordinates_fun()
+  if (is.null(get_coordinates)) {
+    return(NULL)
+  }
+  records <- lapply(stored, function(molecules) {
+    coordinates <- .spx_try(get_coordinates(molecules))
+    if (.spx_is_try_error(coordinates) || is.null(coordinates)) {
+      return(NULL)
+    }
+    coordinates <- tryCatch(
+      as.data.frame(coordinates, stringsAsFactors = FALSE),
+      error = function(error) NULL
+    )
+    if (is.null(coordinates) || !nrow(coordinates)) {
+      return(NULL)
+    }
+    xy <- .spx_find_coordinate_columns(coordinates)
+    gene_column <- intersect(
+      c("molecule", "gene", "feature", "target"),
+      colnames(coordinates)
+    )
+    if (is.null(xy) || !length(gene_column)) {
+      return(NULL)
+    }
+    gene <- as.character(coordinates[[gene_column[[1L]]]])
+    x <- suppressWarnings(as.numeric(coordinates[[xy$x]]))
+    y <- suppressWarnings(as.numeric(coordinates[[xy$y]]))
+    keep <- !is.na(gene) & nzchar(gene) & is.finite(x) & is.finite(y)
+    if (!any(keep)) {
+      return(NULL)
+    }
+    list(gene = gene[keep], x = x[keep], y = y[keep])
+  })
+  records <- Filter(Negate(is.null), records)
+  if (!length(records)) {
+    return(NULL)
+  }
+  counts <- vapply(records, function(record) length(record$gene), integer(1L))
+  total_count <- sum(counts)
+  if (total_count > max_molecules) {
+    keep <- unique(round(seq.int(
+      1L,
+      total_count,
+      length.out = floor(max_molecules)
+    )))
+  } else {
+    keep <- seq_len(total_count)
+  }
+  gene <- character(length(keep))
+  x <- y <- numeric(length(keep))
+  offset <- 0L
+  for (record in records) {
+    selected <- which(keep > offset & keep <= offset + length(record$gene))
+    if (length(selected)) {
+      source <- keep[selected] - offset
+      gene[selected] <- record$gene[source]
+      x[selected] <- record$x[source]
+      y[selected] <- record$y[source]
+    }
+    offset <- offset + length(record$gene)
+  }
+  data <- data.frame(gene = gene, x = x, y = y, stringsAsFactors = FALSE)
+  list(
+    data = data,
+    genes = sort(unique(data$gene)),
+    total_count = as.integer(total_count),
+    exported_count = as.integer(nrow(data)),
+    truncated = total_count > nrow(data)
+  )
+}
+
 # Extract spatial coordinates and expression from a Seurat object --------------
 #
 # Multi-strategy extraction supporting Visium, FOV, Xenium, and generic images:

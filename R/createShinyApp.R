@@ -2104,8 +2104,57 @@
 
 # Public API ---------------------------------------------------------------
 
+.cerebroSourceRoot <- function() {
+  source_root <- Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = "")
+  if (!nzchar(source_root)) {
+    return(NULL)
+  }
+  description <- file.path(source_root, "DESCRIPTION")
+  package <- if (file.exists(description)) {
+    tryCatch(
+      read.dcf(description, fields = "Package")[[1L]],
+      error = function(error) NA_character_
+    )
+  } else {
+    NA_character_
+  }
+  if (
+    identical(unname(package), "CerebroNexus") &&
+      dir.exists(file.path(source_root, "inst")) &&
+      length(list.files(file.path(source_root, "R"), pattern = "[.][Rr]$")) > 0L
+  ) {
+    normalizePath(source_root, winslash = "/", mustWork = TRUE)
+  } else {
+    NULL
+  }
+}
+
 .cerebroPackageResource <- function(...) {
+  relative <- file.path(...)
+  source_root <- .cerebroSourceRoot()
+  if (!is.null(source_root)) {
+    source_resource <- file.path(source_root, "inst", relative)
+    return(normalizePath(
+      source_resource,
+      winslash = "/",
+      mustWork = FALSE
+    ))
+  }
   system.file(..., package = "CerebroNexus")
+}
+
+.cerebroRuntimeVersion <- function() {
+  source_root <- .cerebroSourceRoot()
+  if (!is.null(source_root)) {
+    description <- tryCatch(
+      read.dcf(file.path(source_root, "DESCRIPTION"), fields = "Version"),
+      error = function(e) NULL
+    )
+    if (!is.null(description) && nzchar(description[[1L]])) {
+      return(as.character(description[[1L]]))
+    }
+  }
+  as.character(utils::packageVersion("CerebroNexus"))
 }
 
 #' Create a self-contained CerebroNexus Shiny app folder
@@ -2139,6 +2188,12 @@
 #' one of field and getter.
 #' Dataset labels are unique. Two labels may name the same input file; the
 #' bundle then holds one copy of it per label.
+#' While developing the package, the environment variable
+#' \code{CEREBRO_PACKAGE_SOURCE} may name a source checkout (a directory with
+#' \code{DESCRIPTION} for \code{Package: CerebroNexus}, \code{R/} and
+#' \code{inst/}); the Viewer files and the version written into the bundle then
+#' come from it instead of from the installed package. Any other directory is
+#' ignored.
 #' Generated bundles follow the standard deployment model of one app per R
 #' process; process-global \code{Cerebro.options} does not provide same-process
 #' isolation between separately sourced apps.
@@ -3271,9 +3326,7 @@ createShinyApp <- function(
   ## Resolve the version while the package is present, then serialize it into
   ## the generated app. The standalone bundle never needs CerebroNexus at
   ## runtime merely to render its About page.
-  cerebro_options[["cerebro_version"]] <- as.character(utils::packageVersion(
-    "CerebroNexus"
-  ))
+  cerebro_options[["cerebro_version"]] <- .cerebroRuntimeVersion()
   cerebro_options[["crb_file_to_load"]] <- crb_files
   cerebro_options[["cerebro_root"]] <- "."
   internal_option_names <- c(

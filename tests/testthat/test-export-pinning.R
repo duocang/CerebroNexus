@@ -154,7 +154,8 @@ test_that("exportFromSCE builds the pinned Cerebro object", {
     out$warnings,
     paste0(
       "Warning: Skipping trajectories of method `slingshot`. At the moment, ",
-      "only trajectories generated with Monocle 2 (`monocle2`) are supported."
+      "only trajectories of the methods `monocle2`, `paga`, `scvelo`, ",
+      "`pseudotime` are supported."
     )
   )
   expect_true(any(grepl("Overview of Cerebro object:", out$messages)))
