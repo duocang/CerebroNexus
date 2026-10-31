@@ -566,41 +566,26 @@ test_that("v2 configuration identity survives JSON normalization", {
   )
 })
 
-test_that("legacy identities are upgraded but missing legacy files are rejected", {
+test_that("a missing configuration file is rejected on the next save", {
   runtime <- builder_project_integrity_runtime()
   root <- withr::local_tempdir()
-  entry <- builder_project_integrity_entry("legacy", 5L)
+  entry <- builder_project_integrity_entry("missing", 5L)
   manifest <- builder_project_integrity_manifest(runtime, root, entry)
-  record <- manifest$datasets[[1L]]
-  record$configuration$contract_version <- 1L
-  record$configuration$digest <- runtime$builder_project_configuration_digest_legacy(
-    entry
-  )
-  record$configuration$checked_digest <- record$configuration$digest
-  manifest$datasets[[1L]] <- record
-  jsonlite::write_json(
-    manifest,
-    runtime$builder_project_manifest_path(root),
-    auto_unbox = TRUE,
-    null = "null",
-    pretty = TRUE,
-    digits = NA
-  )
 
   saved <- runtime$builder_project_write(
     manifest,
     root,
     expected_revision = 0L
   )
-  upgraded <- saved$manifest$datasets[[1L]]$configuration
+  saved_configuration <- saved$manifest$datasets[[1L]]$configuration
   expect_identical(
-    upgraded$contract_version,
+    saved_configuration$contract_version,
     runtime$.builder_project_configuration_contract_version
   )
   expect_true(runtime$builder_project_diagnose(saved$path)$manifest$valid)
 
   sidecar <- runtime$builder_project_resolve_path(
-    upgraded$path,
+    saved_configuration$path,
     root,
     "managed"
   )

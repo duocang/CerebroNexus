@@ -1,9 +1,10 @@
 ## Builder projects keep durable user choices separate from session-only
 ## workers. Schema v3 is an index: exact configuration lives in small typed
 ## sidecars while source-derived profiles are regenerated from source data.
+## Earlier schemas (v1 and v2, with inline configuration payloads and R
+## serialization digests) are not read.
 
 .builder_project_schema_version <- 3L
-.builder_project_supported_schema_versions <- c(1L, 2L, 3L)
 .builder_project_config_schema_version <- 1L
 .builder_project_configuration_contract_version <- 3L
 .builder_project_manifest_max_bytes <- 10L * 1024L^2
@@ -359,8 +360,7 @@ builder_project_live_dirty <- function(
   FALSE
 }
 
-## Whether an explicit Save has nothing to write: the manifest is current
-## schema without pending migration, every live dataset's source is saved,
+## Whether an explicit Save has nothing to write: every live dataset's source is saved,
 ## the Project settings and last view match, and no attachment needs staging.
 ## The server adds the session checks (clean phase, nothing queued).
 builder_project_save_unchanged <- function(
@@ -377,7 +377,6 @@ builder_project_save_unchanged <- function(
         suppressWarnings(as.integer(manifest$schema_version %||% NA_integer_)),
         .builder_project_schema_version
       ) ||
-      !is.null(manifest$migrated_from_schema) ||
       (is.list(manifest$pending_build) &&
         !identical(manifest$pending_build$status %||% NULL, "running"))
   ) {
@@ -397,8 +396,6 @@ builder_project_save_unchanged <- function(
       record <- records[[as.character(entry$id %||% "")]] %||% NULL
       configuration <- record$configuration %||% list()
       is.list(record) &&
-        !.builder_project_text(configuration$payload %||% NULL) &&
-        !.builder_project_text(configuration$legacy_payload %||% NULL) &&
         (identical(entry$load_state %||% "loaded", "artifact_ready") ||
           identical(record$source$status %||% NULL, "ready"))
     },
@@ -480,7 +477,7 @@ builder_project_retain_check_marks <- function(
     .builder_project_stored_integer(value, default),
     error = function(error) NA_integer_
   )
-  if (!parsed %in% c(1L, 2L, 3L)) {
+  if (!identical(parsed, .builder_project_configuration_contract_version)) {
     stop("The dataset configuration contract is not supported.", call. = FALSE)
   }
   parsed
@@ -3276,38 +3273,6 @@ builder_project_read_configuration_file <- function(path, fingerprint = FALSE) {
   )
 }
 
-builder_project_legacy_configuration_identity_fallback <- function(
-  path,
-  contract_version,
-  digest,
-  expected_fingerprint,
-  actual_fingerprint
-) {
-  contract_version <- tryCatch(
-    .builder_project_contract_version(contract_version, 1L),
-    error = function(error) NA_integer_
-  )
-  if (
-    !contract_version %in% c(1L, 2L) ||
-      !.builder_project_text(digest %||% NULL) ||
-      !grepl("^[[:xdigit:]]{32}$", digest) ||
-      !is.list(expected_fingerprint) ||
-      !is.list(actual_fingerprint) ||
-      !builder_project_content_fingerprint_matches(
-        expected_fingerprint,
-        actual_fingerprint
-      )
-  ) {
-    return(FALSE)
-  }
-  actual_md5 <- tolower(as.character(actual_fingerprint$md5 %||% ""))
-  .builder_project_text(actual_md5) &&
-    identical(
-      tolower(tools::file_path_sans_ext(basename(path))),
-      actual_md5
-    )
-}
-
 ## Key of a verified configuration sidecar: its stat identity plus what it was
 ## verified to contain. NULL when the file has no trusted stat identity.
 .builder_project_configuration_verify_key <- function(
@@ -3404,22 +3369,12 @@ builder_project_verify_configuration <- function(
   ) {
     stop("A saved dataset configuration has the wrong revision.", call. = FALSE)
   }
-  contract_version <- .builder_project_contract_version(contract_version, 1L)
-  actual_digest <- builder_project_configuration_digest_for_contract(
-    config,
-    contract_version
-  )
-  identity_matches <- .builder_project_text(digest %||% NULL) &&
-    identical(as.character(actual_digest), as.character(digest))
-  legacy_fallback <- !identity_matches &&
-    builder_project_legacy_configuration_identity_fallback(
-      path,
-      contract_version,
-      digest,
-      fingerprint,
-      current
-    )
-  if (!identity_matches && !legacy_fallback) {
+  contract_version <- .builder_project_contract_version(contract_version)
+  actual_digest <- builder_project_configuration_digest(config)
+  if (
+    !.builder_project_text(digest %||% NULL) ||
+      !identical(as.character(actual_digest), as.character(digest))
+  ) {
     stop(
       "A saved dataset configuration has the wrong configuration identity.",
       call. = FALSE
@@ -3428,9 +3383,8 @@ builder_project_verify_configuration <- function(
   verified <- list(
     config = config,
     fingerprint = current,
-    digest = if (legacy_fallback) as.character(digest) else actual_digest,
-    contract_version = contract_version,
-    legacy_runtime_fallback = isTRUE(legacy_fallback)
+    digest = actual_digest,
+    contract_version = contract_version
   )
   if (.builder_project_text(cache_key)) {
     assign(cache_key, verified, envir = verification_cache)
@@ -3616,151 +3570,8 @@ builder_project_write_dataset_config <- function(
   )
 }
 
-builder_project_inline_configuration_integrity <- function(record) {
-  configuration <- record$configuration %||% list()
-  payload <- configuration$payload %||%
-    configuration$legacy_payload %||%
-    NULL
-  if (!.builder_project_text(payload)) {
-    return(NULL)
-  }
-  parsed <- tryCatch(jsonlite::unserializeJSON(payload), error = identity)
-  json_parseable <- is.list(parsed) && !inherits(parsed, "condition")
-  runtime_legacy <- configuration$runtime_legacy_configuration %||% NULL
-  runtime_migrated <- is.list(runtime_legacy)
-  expected_legacy_digest <- as.character(
-    if (runtime_migrated) {
-      runtime_legacy$digest %||% ""
-    } else {
-      configuration$digest %||% ""
-    }
-  )
-  actual_legacy_digest <- if (json_parseable) {
-    tryCatch(
-      builder_project_configuration_digest_legacy(parsed),
-      error = function(error) ""
-    )
-  } else {
-    ""
-  }
-  actual_digest <- if (json_parseable) {
-    tryCatch(
-      builder_project_configuration_digest(parsed),
-      error = function(error) ""
-    )
-  } else {
-    ""
-  }
-  legacy_identity_matches <- .builder_project_text(expected_legacy_digest) &&
-    identical(actual_legacy_digest, expected_legacy_digest)
-  current_identity_matches <- !runtime_migrated ||
-    (.builder_project_text(configuration$digest %||% NULL) &&
-      identical(
-        actual_digest,
-        as.character(configuration$digest)
-      ))
-  expected_revision <- tryCatch(
-    .builder_project_stored_integer(configuration$revision %||% 0L, 0L),
-    error = function(error) NA_integer_
-  )
-  actual_revision <- if (json_parseable) {
-    tryCatch(
-      .builder_project_stored_integer(parsed$revision %||% 0L, 0L),
-      error = function(error) NA_integer_
-    )
-  } else {
-    NA_integer_
-  }
-  revision_matches <- json_parseable &&
-    identical(actual_revision, expected_revision)
-  dataset_matches <- json_parseable &&
-    identical(
-      as.character(parsed$id %||% ""),
-      as.character(record$id %||% "")
-    )
-  errors <- character()
-  if (!json_parseable) {
-    errors <- c(errors, "inline configuration JSON is invalid")
-  }
-  if (json_parseable && !dataset_matches) {
-    errors <- c(errors, "configuration dataset id does not match")
-  }
-  if (json_parseable && !revision_matches) {
-    errors <- c(errors, "configuration revision does not match")
-  }
-  if (
-    json_parseable &&
-      (!legacy_identity_matches || !current_identity_matches)
-  ) {
-    errors <- c(errors, "configuration identity does not match")
-  }
-  list(
-    valid = isTRUE(
-      json_parseable &&
-        dataset_matches &&
-        revision_matches &&
-        legacy_identity_matches &&
-        current_identity_matches
-    ),
-    checked = isTRUE(configuration$checked),
-    expected_path = "",
-    exists = TRUE,
-    readable = TRUE,
-    json_parseable = json_parseable,
-    expected_md5 = "",
-    actual_md5 = "",
-    md5_matches = TRUE,
-    expected_identity = as.character(configuration$digest %||% ""),
-    actual_identity = actual_digest,
-    identity_matches = legacy_identity_matches && current_identity_matches,
-    identity_contract_version = 1L,
-    legacy_identity_allowed = FALSE,
-    expected_revision = expected_revision,
-    actual_revision = actual_revision,
-    revision_matches = revision_matches,
-    dataset_matches = dataset_matches,
-    path_matches_md5 = TRUE,
-    latest_valid_previous_revision = NULL,
-    errors = unique(errors),
-    entry = if (json_parseable) parsed else NULL,
-    legacy_digest = actual_legacy_digest,
-    digest = actual_digest
-  )
-}
-
 builder_project_read_dataset_config <- function(record, root, details = FALSE) {
   configuration <- record$configuration %||% list()
-  inline <- builder_project_inline_configuration_integrity(record)
-  if (is.list(inline)) {
-    if (!isTRUE(inline$json_parseable)) {
-      stop("A saved dataset configuration is not valid JSON.", call. = FALSE)
-    }
-    if (!isTRUE(inline$dataset_matches)) {
-      stop(
-        "A saved dataset configuration has the wrong dataset id.",
-        call. = FALSE
-      )
-    }
-    if (!isTRUE(inline$revision_matches)) {
-      stop(
-        "A saved dataset configuration has the wrong revision.",
-        call. = FALSE
-      )
-    }
-    if (!isTRUE(inline$identity_matches)) {
-      stop(
-        "A saved dataset configuration has the wrong configuration identity.",
-        call. = FALSE
-      )
-    }
-    return(
-      if (isTRUE(details)) {
-        list(config = inline$entry, fingerprint = NULL)
-      } else {
-        inline$entry
-      }
-    )
-  }
   path <- configuration$path %||% NULL
   if (.builder_project_text(path)) {
     resolved <- builder_project_resolve_path(path, root, "managed")
@@ -3776,25 +3587,16 @@ builder_project_read_dataset_config <- function(record, root, details = FALSE) {
       configuration$revision %||% 0L,
       configuration$digest %||% NULL,
       configuration$fingerprint,
-      contract_version = configuration$contract_version %||% 1L
+      contract_version = configuration$contract_version
     )
     verified$config$runtime_project_configuration <- list(
       verified = TRUE,
       contract_version = verified$contract_version,
       digest = verified$digest,
       artifact_digest = tryCatch(
-        builder_project_artifact_configuration_digest(
-          verified$config,
-          digest = function(candidate) {
-            builder_project_configuration_digest_for_contract(
-              candidate,
-              verified$contract_version
-            )
-          }
-        ),
+        builder_project_artifact_configuration_digest(verified$config),
         error = function(error) NULL
-      ),
-      legacy_runtime_fallback = isTRUE(verified$legacy_runtime_fallback)
+      )
     )
     return(
       if (isTRUE(details)) {
@@ -3814,10 +3616,6 @@ builder_project_configuration_integrity <- function(
   scan_previous = FALSE,
   verification_cache = NULL
 ) {
-  inline <- builder_project_inline_configuration_integrity(record)
-  if (is.list(inline)) {
-    return(inline)
-  }
   configuration <- record$configuration %||% list()
   expected_path <- as.character(configuration$path %||% "")
   resolved <- tryCatch(
@@ -3872,10 +3670,7 @@ builder_project_configuration_integrity <- function(
       configuration$revision %||% 0L,
       configuration$digest %||% "",
       tryCatch(
-        .builder_project_contract_version(
-          configuration$contract_version %||% 1L,
-          1L
-        ),
+        .builder_project_contract_version(configuration$contract_version),
         error = function(error) NA_integer_
       ),
       verification_cache
@@ -3885,7 +3680,7 @@ builder_project_configuration_integrity <- function(
     } else {
       NULL
     }
-    if (is.list(hit) && !isTRUE(hit$legacy_runtime_fallback)) hit else NULL
+    if (is.list(hit)) hit else NULL
   } else {
     NULL
   }
@@ -3911,20 +3706,14 @@ builder_project_configuration_integrity <- function(
   parsed <- if (readable) loaded$config else loaded
   json_parseable <- is.list(parsed) && !inherits(parsed, "condition")
   contract_version <- tryCatch(
-    .builder_project_contract_version(
-      configuration$contract_version %||% 1L,
-      1L
-    ),
+    .builder_project_contract_version(configuration$contract_version),
     error = function(error) NA_integer_
   )
   actual_digest <- if (is.list(verified)) {
     as.character(verified$digest)
-  } else if (json_parseable) {
+  } else if (json_parseable && !is.na(contract_version)) {
     tryCatch(
-      builder_project_configuration_digest_for_contract(
-        parsed,
-        contract_version
-      ),
+      builder_project_configuration_digest(parsed),
       error = function(error) ""
     )
   } else {
@@ -3957,20 +3746,6 @@ builder_project_configuration_integrity <- function(
       tolower(tools::file_path_sans_ext(basename(expected_path))),
       tolower(actual_md5)
     )
-  ## Contracts v1 and v2 used R serialization in their identities, whose bytes
-  ## can change between R versions. When the immutable sidecar still matches the
-  ## manifest's exact content fingerprint and content-addressed path, the
-  ## recorded legacy identity remains safe to trust for migration to v3.
-  legacy_identity_allowed <- !identity_matches &&
-    json_parseable &&
-    builder_project_legacy_configuration_identity_fallback(
-      resolved,
-      contract_version,
-      expected_digest,
-      configuration$fingerprint,
-      current
-    )
-  identity_matches <- identity_matches || legacy_identity_allowed
   valid <- isTRUE(
     exists &&
       readable &&
@@ -4073,7 +3848,6 @@ builder_project_configuration_integrity <- function(
     actual_identity = actual_digest,
     identity_matches = identity_matches,
     identity_contract_version = contract_version,
-    legacy_identity_allowed = legacy_identity_allowed,
     expected_revision = expected_revision,
     actual_revision = actual_revision,
     revision_matches = revision_matches,
@@ -4366,85 +4140,6 @@ builder_project_assert_configuration_records <- function(
     paste(detail, collapse = " | "),
     call. = FALSE
   )
-}
-
-builder_project_materialize_configuration_records <- function(
-  manifest,
-  root,
-  preflight_verified = FALSE
-) {
-  if (!isTRUE(preflight_verified)) {
-    stop(
-      "Project configuration materialization requires a verified preflight.",
-      call. = FALSE
-    )
-  }
-  manifest$datasets <- lapply(manifest$datasets %||% list(), function(record) {
-    configuration <- record$configuration %||% list()
-    inline <- builder_project_inline_configuration_integrity(record)
-    contract_version <- .builder_project_contract_version(
-      configuration$contract_version %||% 1L,
-      1L
-    )
-    if (
-      !is.list(inline) &&
-        identical(
-          contract_version,
-          .builder_project_configuration_contract_version
-        )
-    ) {
-      return(record)
-    }
-    entry <- builder_project_read_dataset_config(record, root)
-    entry <- builder_project_stage_spatial_assets(entry, root)
-    artifact_configuration_matches <- is.list(record$artifact) &&
-      tryCatch(
-        builder_project_artifact_matches_entry(
-          record$artifact,
-          entry,
-          source = record$source %||% NULL
-        ),
-        error = function(error) FALSE
-      )
-    next_artifact_digest <- tryCatch(
-      builder_project_artifact_configuration_digest(entry),
-      error = function(error) NULL
-    )
-    descriptor <- builder_project_write_dataset_config(entry, root)
-    digest <- descriptor$digest
-    checked <- builder_project_record_configuration_confirmed(record)
-    record$configuration <- utils::modifyList(
-      descriptor,
-      list(
-        digest = digest,
-        ## `reviewed` is retained as a compatibility alias for projects written
-        ## by the short-lived split-state contract. It has the same meaning as
-        ## `checked`; CRB readiness lives exclusively on the artifact record.
-        reviewed = checked,
-        reviewed_digest = if (checked) digest else NULL,
-        checked = checked,
-        checked_digest = if (checked) digest else NULL,
-        contract_version = .builder_project_configuration_contract_version
-      )
-    )
-    if (!checked) {
-      record$artifact <- NULL
-    } else if (is.list(record$artifact)) {
-      if (
-        isTRUE(artifact_configuration_matches) &&
-          .builder_project_text(next_artifact_digest)
-      ) {
-        record$artifact$built_from_configuration <- next_artifact_digest
-        record$artifact$built_from_revision <- as.integer(
-          entry$revision %||% 0L
-        )
-      } else {
-        record$artifact <- NULL
-      }
-    }
-    record
-  })
-  manifest
 }
 
 .builder_project_asset_segment <- function(value) {
@@ -4847,10 +4542,7 @@ builder_project_cleanup_checkpoint <- function(path, root) {
   TRUE
 }
 
-builder_project_configuration_digest_value <- function(
-  entry,
-  contract_version = .builder_project_configuration_contract_version
-) {
+builder_project_configuration_digest_value <- function(entry) {
   digest_entry <- list(
     settings = entry$settings %||% list(),
     acknowledgements = entry$acknowledgements %||% character(),
@@ -4902,46 +4594,21 @@ builder_project_configuration_digest_value <- function(
   # `levels` is source-derived and immutable after import. Source fingerprinting,
   # rather than the editable-configuration digest, invalidates it on reload.
   list(
-    contract_version = as.integer(contract_version),
+    contract_version = .builder_project_configuration_contract_version,
     settings = digest_entry$settings %||% list(),
     acknowledgements = digest_entry$acknowledgements %||% character(),
     spatial_drafts = digest_entry$spatial_drafts %||% list()
   )
 }
 
-builder_project_configuration_digest_legacy <- function(entry) {
-  value <- builder_project_configuration_digest_value(entry, 1L)
-  unclass(as.character(digest::digest(
-    serialize(value, NULL, version = 3L),
-    algo = "md5",
-    serialize = FALSE
-  )))
-}
-
-builder_project_configuration_digest_v2 <- function(entry) {
-  value <- builder_project_configuration_digest_value(entry, 2L)
-  canonical <- jsonlite::unserializeJSON(jsonlite::serializeJSON(
-    value,
-    digits = NA,
-    pretty = FALSE
-  ))
-  unclass(as.character(digest::digest(
-    serialize(canonical, NULL, version = 3L),
-    algo = "md5",
-    serialize = FALSE
-  )))
-}
-
-## Contract v2 hashed an R serialization of canonical JSON. The decoded value
-## is equivalent across supported R versions, but serialize() is not a durable
-## cross-version byte format. Contract v3 hashes the canonical UTF-8 JSON bytes
-## themselves, so a Project saved by one R runtime opens identically in
+## The digest hashes the canonical UTF-8 JSON bytes themselves, not an R
+## serialization, so a Project saved by one R runtime opens identically in
 ## another.
 builder_project_configuration_digest <- function(
   entry,
   memo = .builder_project_configuration_digest_memo
 ) {
-  value <- builder_project_configuration_digest_value(entry, 3L)
+  value <- builder_project_configuration_digest_value(entry)
   # serializeJSON() dominates a Save (tens of ms per dataset, several times
   # per dataset and transaction). The digest is a pure function of `value`,
   # so key it by the much cheaper in-process R serialization of that value.
@@ -4978,19 +4645,6 @@ builder_project_configuration_digest <- function(
 }
 
 .builder_project_configuration_digest_memo <- new.env(parent = emptyenv())
-
-builder_project_configuration_digest_for_contract <- function(
-  entry,
-  contract_version
-) {
-  contract_version <- .builder_project_contract_version(contract_version, 1L)
-  switch(
-    as.character(contract_version),
-    `1` = builder_project_configuration_digest_legacy(entry),
-    `2` = builder_project_configuration_digest_v2(entry),
-    `3` = builder_project_configuration_digest(entry)
-  )
-}
 
 builder_project_artifact_configuration_digest <- function(
   entry,
@@ -6017,8 +5671,7 @@ builder_project_artifact_entry_mismatch <- function(
   contract_version <- tryCatch(
     .builder_project_contract_version(
       runtime_configuration$contract_version %||%
-        .builder_project_configuration_contract_version,
-      .builder_project_configuration_contract_version
+        .builder_project_configuration_contract_version
     ),
     error = function(error) NA_integer_
   )
@@ -6041,57 +5694,14 @@ builder_project_artifact_entry_mismatch <- function(
     builder_project_cached_configuration_digest(
       entry,
       identity_cache,
-      digest = if (contract_version %in% c(1L, 2L)) {
-        function(value) {
-          builder_project_artifact_configuration_digest(
-            value,
-            digest = function(candidate) {
-              builder_project_configuration_digest_for_contract(
-                candidate,
-                contract_version
-              )
-            }
-          )
-        }
-      } else {
-        builder_project_artifact_configuration_digest
-      },
+      digest = builder_project_artifact_configuration_digest,
       variant = paste0("project-artifact-v", contract_version)
     )
   }
   stored_artifact_digest <- as.character(
     artifact$built_from_configuration %||% ""
   )
-  digest_matches <- identical(stored_artifact_digest, current_artifact_digest)
-  if (
-    !digest_matches &&
-      identical(contract_version, 3L) &&
-      isTRUE(runtime_configuration$verified) &&
-      grepl("^[[:xdigit:]]{32}$", stored_artifact_digest)
-  ) {
-    digest_matches <- isTRUE(tryCatch(
-      any(vapply(
-        c(1L, 2L),
-        function(version) {
-          identical(
-            stored_artifact_digest,
-            builder_project_artifact_configuration_digest(
-              entry,
-              digest = function(candidate) {
-                builder_project_configuration_digest_for_contract(
-                  candidate,
-                  version
-                )
-              }
-            )
-          )
-        },
-        logical(1)
-      )),
-      error = function(error) FALSE
-    ))
-  }
-  if (!digest_matches) {
+  if (!identical(stored_artifact_digest, current_artifact_digest)) {
     return("The dataset cache was built from a different configuration.")
   }
   artifact_source <- artifact$built_from_source_fingerprint %||% NULL
@@ -7070,61 +6680,7 @@ builder_project_configuration <- function(
   )
 }
 
-builder_project_migrate_manifest <- function(manifest, root) {
-  version <- .builder_project_integer(manifest$schema_version)
-  if (!version %in% .builder_project_supported_schema_versions) {
-    stop("This is not a supported Builder project.", call. = FALSE)
-  }
-  if (version < .builder_project_schema_version) {
-    manifest$migrated_from_schema <- version
-    if (identical(version, 1L)) {
-      manifest$configuration <- builder_project_configuration()
-    }
-    manifest$datasets <- lapply(manifest$datasets, function(record) {
-      inline <- builder_project_inline_configuration_integrity(record)
-      if (!is.list(inline) || !isTRUE(inline$valid)) {
-        return(record)
-      }
-      old_digest <- as.character(record$configuration$digest %||% "")
-      new_digest <- inline$digest
-      new_artifact_digest <- tryCatch(
-        builder_project_artifact_configuration_digest(inline$entry),
-        error = function(error) NULL
-      )
-      if (!.builder_project_text(new_digest)) {
-        return(record)
-      }
-      checked <- isTRUE(record$configuration$checked)
-      reviewed <- isTRUE(
-        record$configuration$reviewed %||% checked
-      )
-      record$configuration$digest <- new_digest
-      record$configuration$reviewed <- reviewed
-      record$configuration$reviewed_digest <- if (reviewed) new_digest else NULL
-      record$configuration$checked_digest <- if (checked) new_digest else NULL
-      record$configuration$contract_version <-
-        .builder_project_configuration_contract_version
-      record$configuration$runtime_legacy_configuration <- list(
-        schema_version = version,
-        digest = old_digest
-      )
-      record$cache <- NULL
-      if (
-        is.list(record$artifact) &&
-          .builder_project_text(new_artifact_digest) &&
-          identical(
-            as.character(
-              record$artifact$built_from_configuration %||% ""
-            ),
-            old_digest
-          )
-      ) {
-        record$artifact$built_from_configuration <- new_artifact_digest
-      }
-      record
-    })
-    manifest$schema_version <- .builder_project_schema_version
-  }
+builder_project_normalize_manifest <- function(manifest) {
   configuration <- manifest$configuration %||% list()
   manifest$configuration <- builder_project_configuration(
     review_options = configuration$review_options %||% NULL,
@@ -7270,8 +6826,7 @@ builder_project_read_manifest_payload <- function(path, payload = NULL) {
   )
   if (
     !is.list(manifest) ||
-      !schema_version %in%
-        .builder_project_supported_schema_versions ||
+      !identical(schema_version, .builder_project_schema_version) ||
       !is.list(manifest$project) ||
       !.builder_project_identifier(manifest$project$id) ||
       is.na(project_revision) ||
@@ -7302,7 +6857,7 @@ builder_project_read_manifest_payload <- function(path, payload = NULL) {
 
 builder_project_read <- function(path) {
   manifest <- builder_project_read_manifest_payload(path)
-  builder_project_migrate_manifest(manifest, root = dirname(path))
+  builder_project_normalize_manifest(manifest)
 }
 
 builder_project_read_stable_manifest <- function(
@@ -7342,9 +6897,8 @@ builder_project_read_stable_manifest <- function(
       call. = FALSE
     )
   }
-  manifest <- builder_project_migrate_manifest(
-    .read(path, payload = payload),
-    root = dirname(path)
+  manifest <- builder_project_normalize_manifest(
+    .read(path, payload = payload)
   )
   after$md5 <- unclass(as.character(digest::digest(
     payload,
@@ -8363,34 +7917,11 @@ builder_project_write <- function(
   if (!is.list(manifest$project)) {
     stop("The Builder project header is missing.", call. = FALSE)
   }
-  ## This preflight is deliberately complete before legacy materialization can
-  ## create a config or spatial sidecar. A bad historical identity therefore
-  ## leaves the project tree byte-for-byte untouched.
   builder_project_assert_configuration_records(
     manifest,
     root,
     verification_cache = verification_cache
   )
-  manifest <- builder_project_materialize_configuration_records(
-    manifest,
-    root,
-    preflight_verified = TRUE
-  )
-  inline_payloads <- vapply(
-    manifest$datasets %||% list(),
-    function(record) {
-      configuration <- record$configuration %||% list()
-      .builder_project_text(configuration$payload %||% NULL) ||
-        .builder_project_text(configuration$legacy_payload %||% NULL)
-    },
-    logical(1)
-  )
-  if (any(inline_payloads)) {
-    stop(
-      "Schema v3 cannot write inline dataset payloads.",
-      call. = FALSE
-    )
-  }
   runtime_configuration <- vapply(
     manifest$datasets %||% list(),
     function(record) {
@@ -8406,7 +7937,6 @@ builder_project_write <- function(
     )
   }
   manifest$schema_version <- .builder_project_schema_version
-  manifest$migrated_from_schema <- NULL
   manifest$configuration <- builder_project_configuration(
     review_options = manifest$configuration$review_options %||% NULL,
     build_mode = manifest$configuration$build_mode %||% FALSE,

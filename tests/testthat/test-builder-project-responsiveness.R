@@ -307,12 +307,9 @@ test_that("an unchanged Save is recognised without a manifest transaction", {
   options <- context
   options$configuration$build_mode <- !isTRUE(configuration$build_mode)
   expect_false(unchanged(context = options))
-  legacy <- manifest
-  legacy$datasets[[1L]]$configuration$payload <- "{}"
-  expect_false(unchanged(manifest = legacy))
-  migrated <- manifest
-  migrated$migrated_from_schema <- 2L
-  expect_false(unchanged(manifest = migrated))
+  earlier <- manifest
+  earlier$schema_version <- 2L
+  expect_false(unchanged(manifest = earlier))
   interrupted <- manifest
   interrupted$pending_build <- list(status = "interrupted")
   expect_false(unchanged(manifest = interrupted))

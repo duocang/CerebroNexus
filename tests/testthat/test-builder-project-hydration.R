@@ -501,107 +501,27 @@ test_that("Spatial control ranges retain saved offsets before preview bounds arr
   expect_identical(ready$dy$max, 200)
 })
 
-test_that("schema v1 projects migrate durable project preferences explicitly", {
+test_that("projects of an earlier schema are not read", {
   runtime <- builder_project_open_runtime()
   root <- withr::local_tempdir()
   path <- runtime$builder_project_manifest_path(root)
-  jsonlite::write_json(
-    list(
-      schema_version = 1L,
-      project = list(id = "project-safe", revision = 2L),
-      datasets = list(),
-      last_ui = list(stage = "configure", selected_dataset = "ds1")
-    ),
-    path,
-    auto_unbox = TRUE,
-    null = "null"
-  )
-
-  migrated <- runtime$builder_project_read(path)
-
-  expect_identical(migrated$schema_version, 3L)
-  expect_identical(migrated$migrated_from_schema, 1L)
-  expect_false(migrated$configuration$build_mode)
-  expect_false(migrated$configuration$auth_enabled)
-  expect_null(migrated$configuration$review_options)
-  expect_identical(migrated$last_ui$stage, "configure")
-})
-
-test_that("schema v1 migration stays read-only and materializes on save", {
-  runtime <- builder_project_open_runtime()
-  root <- withr::local_tempdir()
-  path <- runtime$builder_project_manifest_path(root)
-  entry <- builder_minimal_entry("ds1", "Saved dataset")
-  canonical <- runtime$builder_project_configuration_digest(entry)
-  record <- runtime$builder_project_dataset_record(
-    entry,
-    source = list(kind = "example", example = "complete_viewer_data"),
-    checked = TRUE,
-    root = dirname(path)
-  )
-  legacy <- runtime$builder_project_configuration_digest_legacy(entry)
-  record$configuration <- list(
-    revision = as.integer(entry$revision %||% 0L),
-    digest = legacy,
-    checked = TRUE,
-    payload = jsonlite::serializeJSON(entry, digits = NA, pretty = FALSE)
-  )
-  record$artifact <- NULL
-  unlink(file.path(dirname(path), "datasets"), recursive = TRUE, force = TRUE)
-  jsonlite::write_json(
-    list(
-      schema_version = 1L,
-      project = list(id = "project-safe", revision = 2L),
-      datasets = list(record),
-      last_ui = list(stage = "configure", selected_dataset = "ds1")
-    ),
-    path,
-    auto_unbox = TRUE,
-    null = "null"
-  )
-  before <- sort(list.files(
-    dirname(path),
-    all.files = TRUE,
-    no.. = TRUE,
-    recursive = TRUE,
-    include.dirs = TRUE
-  ))
-
-  migrated <- runtime$builder_project_read(path)
-
-  migrated_record <- migrated$datasets[[1L]]
-  expect_identical(migrated$datasets[[1L]]$configuration$digest, canonical)
-  expect_true(runtime$.builder_project_text(
-    migrated_record$configuration$payload
-  ))
-  expect_identical(
-    sort(list.files(
-      dirname(path),
-      all.files = TRUE,
-      no.. = TRUE,
-      recursive = TRUE,
-      include.dirs = TRUE
-    )),
-    before
-  )
-  expect_null(migrated_record$cache)
-  expect_false(runtime$builder_project_live_dirty(
-    list(entry),
-    "ds1",
-    migrated
-  ))
-  saved <- runtime$builder_project_write(
-    migrated,
-    dirname(path),
-    expected_revision = migrated$project$revision
-  )
-  saved_record <- saved$manifest$datasets[[1L]]
-  expect_null(saved_record$configuration$payload)
-  expect_null(saved_record$configuration$runtime_legacy_configuration)
-  expect_true(file.exists(file.path(
-    dirname(path),
-    saved_record$configuration$path
-  )))
+  for (version in c(1L, 2L)) {
+    jsonlite::write_json(
+      list(
+        schema_version = version,
+        project = list(id = "project-safe", revision = 2L),
+        datasets = list(),
+        last_ui = list(stage = "configure", selected_dataset = "ds1")
+      ),
+      path,
+      auto_unbox = TRUE,
+      null = "null"
+    )
+    expect_error(
+      runtime$builder_project_read(path),
+      "not a supported Builder project"
+    )
+  }
 })
 
 test_that("project preferences retain only validated non-secret values", {
@@ -671,7 +591,6 @@ test_that("schema v3 preferences survive a manifest write and read", {
 
   expect_identical(restored$schema_version, 3L)
   expect_identical(restored$configuration, written$manifest$configuration)
-  expect_null(restored$migrated_from_schema)
 })
 
 test_that("schema v3 excludes source-derived profiles from project storage", {
@@ -703,7 +622,6 @@ test_that("schema v3 excludes source-derived profiles from project storage", {
   expect_true(file.exists(file.path(root, record$configuration$path)))
   expect_null(record$cache)
   expect_null(record$configuration$payload)
-  expect_null(record$configuration$legacy_payload)
 
   status <- runtime$builder_project_dataset_status(record, root)
   restored <- runtime$builder_project_restore_entry(

@@ -49,7 +49,7 @@ readLines <- function(
 
 builder_project_test_manifest <- function(ids = character()) {
   list(
-    schema_version = 1L,
+    schema_version = 3L,
     project = list(id = "project-safe", revision = 0L),
     datasets = lapply(ids, function(id) list(id = id))
   )
@@ -2405,22 +2405,14 @@ test_that("configuration contract v3 hashes canonical JSON bytes", {
   )
 })
 
-test_that("configuration digest dispatch is exact and fail closed", {
+test_that("only the current configuration contract is supported", {
   runtime <- builder_project_test_runtime()
-  entry <- list(
-    id = "ds1",
-    settings = list(name = "Dataset", included_projections = "umap"),
-    acknowledgements = character(),
-    spatial_drafts = list()
-  )
 
-  expect_identical(
-    runtime$builder_project_configuration_digest_for_contract(entry, 3L),
-    runtime$builder_project_configuration_digest(entry)
-  )
-  for (version in list(0L, 4L, 999L, 1.5, 2.9, 3.5, "3x")) {
+  expect_identical(runtime$.builder_project_contract_version(3L), 3L)
+  expect_identical(runtime$.builder_project_contract_version("3"), 3L)
+  for (version in list(NULL, 0L, 1L, 2L, 4L, 999L, 1.5, 2.9, 3.5, "3x")) {
     expect_error(
-      runtime$builder_project_configuration_digest_for_contract(entry, version),
+      runtime$.builder_project_contract_version(version),
       "not supported",
       fixed = TRUE
     )
@@ -2488,194 +2480,6 @@ test_that("persisted schema and revision integers are exact", {
     "persisted integer is invalid",
     fixed = TRUE
   )
-})
-
-test_that("verified legacy configurations migrate across R runtimes", {
-  runtime <- builder_project_test_runtime()
-  root <- withr::local_tempdir()
-  for (contract_version in c(1L, 2L)) {
-    dataset_id <- paste0("ds", contract_version)
-    entry <- list(
-      id = dataset_id,
-      revision = 4L,
-      settings = list(name = "Dataset", included_projections = "umap"),
-      acknowledgements = character(),
-      spatial_drafts = list()
-    )
-    config <- runtime$builder_project_configuration_entry(entry)
-    payload <- jsonlite::serializeJSON(config, digits = NA, pretty = TRUE)
-    payload_md5 <- unclass(as.character(digest::digest(
-      charToRaw(enc2utf8(payload)),
-      algo = "md5",
-      serialize = FALSE
-    )))
-    relative <- file.path(
-      "datasets",
-      dataset_id,
-      "configs",
-      paste0(payload_md5, ".json")
-    )
-    path <- file.path(root, relative)
-    dir.create(dirname(path), recursive = TRUE)
-    writeBin(charToRaw(enc2utf8(payload)), path)
-    fingerprint <- runtime$builder_project_file_fingerprint(
-      path,
-      content = TRUE
-    )
-    foreign_digest <- strrep("a", 32L)
-    expect_false(identical(
-      foreign_digest,
-      runtime$builder_project_configuration_digest_for_contract(
-        config,
-        contract_version
-      )
-    ))
-    record <- list(
-      id = dataset_id,
-      configuration = list(
-        contract_version = contract_version,
-        path = gsub("\\\\", "/", relative),
-        revision = 4L,
-        fingerprint = fingerprint,
-        digest = foreign_digest,
-        checked = TRUE,
-        checked_digest = foreign_digest
-      )
-    )
-
-    restored <- runtime$builder_project_read_dataset_config(record, root)
-    integrity <- runtime$builder_project_configuration_integrity(record, root)
-    artifact <- list(
-      built_from_revision = 4L,
-      built_from_configuration = strrep("b", 32L)
-    )
-    verified_artifact <- artifact
-    verified_artifact$built_from_configuration <-
-      runtime$builder_project_artifact_configuration_digest(
-        restored,
-        digest = function(candidate) {
-          runtime$builder_project_configuration_digest_for_contract(
-            candidate,
-            contract_version
-          )
-        }
-      )
-
-    expect_true(isTRUE(
-      restored$runtime_project_configuration$legacy_runtime_fallback
-    ))
-    expect_true(integrity$valid)
-    expect_false(runtime$builder_project_artifact_matches_entry(
-      artifact,
-      restored
-    ))
-    expect_true(runtime$builder_project_artifact_matches_entry(
-      verified_artifact,
-      restored
-    ))
-    migrated <- runtime$builder_project_materialize_configuration_records(
-      list(datasets = list(record)),
-      root,
-      preflight_verified = TRUE
-    )
-    expect_identical(
-      migrated$datasets[[1L]]$configuration$contract_version,
-      3L
-    )
-    expect_true(migrated$datasets[[1L]]$configuration$reviewed)
-    expect_true(migrated$datasets[[1L]]$configuration$checked)
-    expect_silent(runtime$builder_project_read_dataset_config(
-      migrated$datasets[[1L]],
-      root
-    ))
-    restored$revision <- 5L
-    expect_true(runtime$builder_project_artifact_matches_entry(
-      verified_artifact,
-      restored
-    ))
-    restored$settings$included_projections <- "pca"
-    expect_false(runtime$builder_project_artifact_matches_entry(
-      verified_artifact,
-      restored
-    ))
-    expect_error(
-      runtime$builder_project_verify_configuration(
-        path,
-        dataset_id,
-        4L,
-        foreign_digest,
-        fingerprint,
-        contract_version = 3L
-      ),
-      "wrong configuration identity"
-    )
-  }
-})
-
-test_that("verified v3 configurations reuse exact v1 and v2 CRB identities", {
-  runtime <- builder_project_test_runtime()
-  base_root <- withr::local_tempdir()
-  for (prior_contract in c(1L, 2L)) {
-    root <- file.path(base_root, paste0("v", prior_contract))
-    dir.create(root, recursive = TRUE)
-    prior_entry <- list(
-      id = "ds1",
-      revision = 4L,
-      snapshot = list(source_fingerprint = "source-a"),
-      settings = list(name = "Dataset", layer = "data"),
-      acknowledgements = character(),
-      spatial_drafts = list()
-    )
-    current_entry <- prior_entry
-    current_entry$settings$overview_point_size <- 7
-    configuration <- runtime$builder_project_write_dataset_config(
-      current_entry,
-      root
-    )
-    source <- list(fingerprint = "source-a")
-    artifact <- list(
-      built_from_source_fingerprint = "source-a",
-      built_from_configuration = runtime$builder_project_artifact_configuration_digest(
-        prior_entry,
-        digest = function(candidate) {
-          runtime$builder_project_configuration_digest_for_contract(
-            candidate,
-            prior_contract
-          )
-        }
-      )
-    )
-    record <- list(
-      id = "ds1",
-      source = source,
-      configuration = configuration,
-      artifact = artifact
-    )
-    verified <- runtime$builder_project_read_dataset_config(record, root)
-
-    expect_false(identical(
-      artifact$built_from_configuration,
-      verified$runtime_project_configuration$artifact_digest
-    ))
-    expect_true(runtime$builder_project_artifact_matches_entry(
-      artifact,
-      verified,
-      source
-    ))
-
-    changed_entry <- current_entry
-    changed_entry$settings$layer <- "counts"
-    record$configuration <- runtime$builder_project_write_dataset_config(
-      changed_entry,
-      root
-    )
-    changed <- runtime$builder_project_read_dataset_config(record, root)
-    expect_false(runtime$builder_project_artifact_matches_entry(
-      artifact,
-      changed,
-      source
-    ))
-  }
 })
 
 test_that("build execution rejects a reusable CRB changed after checkpoint", {
