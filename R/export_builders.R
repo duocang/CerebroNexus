@@ -53,21 +53,6 @@
   }
 }
 
-.newCerebroExport <- function(experiment_name, organism, verbose) {
-  .logStep(
-    if (verbose) {
-      'Initializing Cerebro object...'
-    } else {
-      'Start collecting data...'
-    }
-  )
-  export <- Cerebro$new()
-  export$addExperiment('experiment_name', experiment_name)
-  export$addExperiment('organism', organism)
-  export$setVersion(utils::packageVersion('CerebroNexus'))
-  export
-}
-
 ## Convert the matrix to an RleArray when `use_delayed_array` asks for it.
 .delayedExportExpression <- function(
   expression_data,
@@ -366,12 +351,15 @@
   export,
   trajectories,
   verbose,
-  supported_note = paste0(
-    'only trajectories of the methods ',
-    paste0('`', .exportTrajectoryMethods, '`', collapse = ', '),
-    ' are supported.'
-  )
+  supported_note = NULL
 ) {
+  if (is.null(supported_note)) {
+    supported_note <- paste0(
+      'only trajectories of the methods ',
+      paste0('`', .exportTrajectoryMethods, '`', collapse = ', '),
+      ' are supported.'
+    )
+  }
   if (length(trajectories) == 0) {
     if (verbose) {
       .logStep('No trajectories to extract...')
@@ -429,9 +417,4 @@
   if (length(table_index)) {
     export$addTechnicalInfo("extra_material_table_index", table_index)
   }
-}
-
-.printExportOverview <- function(export) {
-  .logStep('Overview of Cerebro object:\n')
-  export$print()
 }

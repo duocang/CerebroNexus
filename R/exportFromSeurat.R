@@ -886,48 +886,12 @@ exportFromSeurat <- function(
     match.arg(immune_sidecar),
     immune_sidecar_threshold
   )
-  if (
-    !is.character(file) ||
-      length(file) != 1L ||
-      is.na(file) ||
-      !nzchar(file)
-  ) {
-    stop("`file` must be one non-empty output path.", call. = FALSE)
-  }
-  if (dir.exists(file)) {
-    stop("`file` points to a directory, not a .crb path: ", file, call. = FALSE)
-  }
-  if (!identical(expression_matrix_mode, "embedded")) {
-    if (!identical(tolower(tools::file_ext(file)), "crb")) {
-      stop(
-        "External expression backends require `file` to end in .crb so the ",
-        "Cerebro object and its sidecar have distinct portable names. Received: ",
-        file,
-        call. = FALSE
-      )
-    }
-    .validatePortableExportBasename(file)
-  }
-  if (
-    expression_matrix_mode == "h5" &&
-      !requireNamespace("HDF5Array", quietly = TRUE)
-  ) {
-    stop(
-      "expression_matrix_mode = \"h5\" requires the HDF5Array package. ",
-      "Install it via BiocManager::install(\"HDF5Array\") and re-run, or ",
-      "switch to expression_matrix_mode = \"embedded\".",
-      call. = FALSE
-    )
-  }
-  if (expression_matrix_mode != "embedded" && use_delayed_array) {
-    if (verbose) {
-      message(
-        "expression_matrix_mode = \"",
-        expression_matrix_mode,
-        "\" supersedes use_delayed_array; the RleArray conversion is skipped."
-      )
-    }
-  }
+  .exportCheckOutputArgs(
+    file,
+    expression_matrix_mode,
+    use_delayed_array,
+    verbose
+  )
 
   .checkSeuratAvailable()
   .checkSeuratObject(object)
@@ -982,22 +946,7 @@ exportFromSeurat <- function(
     add = TRUE
   )
 
-  export <- .newCerebroExport(experiment_name, organism, verbose)
-  ## Preserve optional overview prose exactly when supplied, never manufacture it.
-  for (field in c("description", "source", "sample_column")) {
-    value <- object@misc$experiment[[field]]
-    if (
-      is.character(value) &&
-        length(value) == 1L &&
-        !is.na(value) &&
-        nzchar(trimws(value))
-    ) {
-      export$addExperiment(field, value)
-    }
-  }
-  ## The version of the running source tree, which is the installed package
-  ## outside a development checkout.
-  export$setVersion(package_version(.cerebroRuntimeVersion()))
+  export <- .exportInit(experiment_name, organism, object@misc, verbose)
 
   ##--------------------------------------------------------------------------##
   ## add transcript counts
@@ -1057,62 +1006,16 @@ exportFromSeurat <- function(
     resolved_layer = expression_resolution$resolved
   )
 
-  if (expression_matrix_mode == "embedded") {
-    expression_data <- .delayedExportExpression(
-      expression_data,
-      use_delayed_array,
-      verbose
-    )
-
-    .logStep('Adding expression data (embedded)...')
-    export$setExpression(expression_data)
-  } else if (expression_matrix_mode == "h5") {
-    ## Write the expression matrix to a TENxMatrix-format sparse HDF5 file
-    ## sitting next to the target .crb. The on-disk orientation is cells x
-    ## genes — TENx CSC stores columns contiguously, so the per-gene reads
-    ## that Cerebro does at runtime become single-column lookups. Cerebro's
-    ## internal layout is genes x cells, so the runtime attach lazily
-    ## transposes the TENxMatrix seed back via DelayedArray::t() (free).
-    crb_dir <- export_stage_dir
-    h5_filename <- .exportSidecarName(final_file, expression_matrix_mode)
-    h5_abs <- file.path(crb_dir, h5_filename)
-
-    if (!inherits(expression_data, "dgCMatrix")) {
-      if (inherits(expression_data, "matrix")) {
-        expression_data <- methods::as(expression_data, "CsparseMatrix")
-      }
-    }
-
-    ## transpose genes x cells -> cells x genes for storage
-    m_disk <- if (inherits(expression_data, c("RleMatrix", "DelayedMatrix"))) {
-      DelayedArray::t(expression_data)
-    } else {
-      methods::as(Matrix::t(expression_data), "CsparseMatrix")
-    }
-
-    if (verbose) {
-      .logStep("Writing expression matrix to TENx HDF5 file: ", h5_abs)
-    }
-
-    if (file.exists(h5_abs)) {
-      file.remove(h5_abs)
-    }
-    ## The default gzip level 0 stores the data without compression (the
-    ## shuffle and deflate filters are still applied). On 1.3-1.5M-cell
-    ## sources it reads single genes ~30% faster than HDF5Array's default
-    ## level 6, at roughly 7x the file size.
-    HDF5Array::writeTENxMatrix(
-      m_disk,
-      h5_abs,
-      group = "expression",
-      level = h5_compression_level
-    )
-
-    ## self$expression stays NULL — saveRDS therefore does not embed the
-    ## matrix inside the .crb. The runtime attach reads the sibling back
-    ## as a lazy TENxMatrix seed (no in-memory dgCMatrix materialisation).
-    export$setExpressionBackend(type = "h5", location = h5_filename)
-  }
+  expression_data <- .exportWriteExpression(
+    export = export,
+    expression_data = expression_data,
+    expression_matrix_mode = expression_matrix_mode,
+    use_delayed_array = use_delayed_array,
+    export_stage_dir = export_stage_dir,
+    final_file = final_file,
+    verbose = verbose,
+    h5_compression_level = h5_compression_level
+  )
 
   extras <- object@misc
   .addExportExperiment(export, extras)
@@ -1137,85 +1040,18 @@ exportFromSeurat <- function(
     verbose,
     explicit = !is.null(projections)
   )
-  .addExportGroupTables(
-    extras$trees,
-    'object@misc$trees',
-    'Extracting trees...',
-    export$addTree,
-    verbose
-  )
-  ## Unlike exportFromSCE(), tables of groups that are not exported are skipped.
-  .addExportGroupTables(
-    extras$most_expressed_genes,
-    'object@misc$most_expressed_genes',
-    'Extracting tables of most expressed genes...',
-    export$addMostExpressedGenes,
-    verbose,
-    groups
-  )
-  .addExportGroupTables(
-    extras$mean_expression,
-    'object@misc$mean_expression',
-    'Extracting tables of mean expression...',
-    export$addMeanExpression,
-    verbose,
-    groups
-  )
-
-  .addExportImmune(export, extras, Seurat::Cells(object), '@misc', verbose)
-
-  ## marker_genes is a nested list: list(method = list(group = data.frame))
-  .addExportMethodTables(
-    extras$marker_genes,
-    'object@misc$marker_genes',
-    'Extracting marker genes table...',
-    export$addMarkerGenes,
-    verbose
-  )
-  .addExportMethodTables(
-    extras$enriched_pathways,
-    'object@misc$enriched_pathways',
-    'Extracting pathway enrichment results...',
-    export$addEnrichedPathways,
-    verbose,
-    groups
-  )
-  .addExportTrajectories(
-    export,
-    extras$trajectories,
-    verbose,
+  .exportAddMiscResults(
+    export = export,
+    misc = extras,
+    groups = groups,
+    cells = Seurat::Cells(object),
+    verbose = verbose,
+    where = "@misc",
     supported_note = paste0(
       'only trajectories generated with Monocle 2 (`monocle2`) are ',
       'supported.'
     )
   )
-  .addExportExtraMaterial(export, extras$extra_material, verbose)
-
-  ##--------------------------------------------------------------------------##
-  ## Trekker single-cell spatial mapping
-  ##--------------------------------------------------------------------------##
-  if (!is.null(object@misc$trekker)) {
-    export$addTrekker(object@misc$trekker)
-  }
-
-  ## Default colours for groups, e.g. scanpy's uns[<column>_colors]: a list named
-  ## by grouping variable, each a named vector (level -> "#RRGGBB"). The Viewer
-  ## uses them as the starting colours; only exported groups are kept.
-  if (is.list(extras$group_colors) && length(extras$group_colors)) {
-    kept <- Filter(
-      function(colors) {
-        is.character(colors) &&
-          !is.null(names(colors)) &&
-          length(colors) > 0L &&
-          !anyNA(colors) &&
-          all(grepl("^#[0-9A-Fa-f]{6}$", colors))
-      },
-      extras$group_colors[intersect(names(extras$group_colors), groups)]
-    )
-    if (length(kept)) {
-      export$addTechnicalInfo("group_colors", kept)
-    }
-  }
 
   ##--------------------------------------------------------------------------##
   ## spatial data
@@ -1319,33 +1155,14 @@ exportFromSeurat <- function(
           # Extract spatial data (coordinates + expression)
           # Using .getSpatialData helper which handles Visium, FOV/Xenium, etc.
           spatial_data <- if (image_name %in% reduction_names) {
-            embeddings <- SeuratObject::Embeddings(object[[image_name]])
-            cells <- intersect(rownames(embeddings), colnames(expression_data))
-            coordinates <- data.frame(
-              .cell = cells,
-              .image = image_name,
-              .coordinate_source = paste0("reduction.", image_name),
-              x = as.numeric(embeddings[cells, 1L]),
-              y = as.numeric(embeddings[cells, 2L]),
-              row.names = cells,
-              stringsAsFactors = FALSE
-            )
-            if (
-              !length(cells) ||
-                anyDuplicated(rownames(embeddings)) ||
-                any(!is.finite(coordinates$x)) ||
-                any(!is.finite(coordinates$y))
-            ) {
-              stop("The spatial reduction has no safe paired coordinates.")
-            }
-            list(
-              coordinates = coordinates,
-              expression = expression_data[, cells, drop = FALSE],
-              assay = assay,
+            .exportEmbeddingSpatialData(
+              SeuratObject::Embeddings(object[[image_name]]),
+              image_name,
+              image_name,
+              expression_data,
+              assay,
               requested_layer = slot,
-              layer = expression_resolution$resolved,
-              image = image_name,
-              coordinate_source = paste0("reduction.", image_name)
+              layer = expression_resolution$resolved
             )
           } else {
             extracted <- .getSpatialData(
@@ -1475,34 +1292,13 @@ exportFromSeurat <- function(
     }
   }
 
-  .printExportOverview(export)
-  .logStep('Saving Cerebro object to: ', final_file)
-
-  ## Replace the sidecar and .crb with best-effort rollback on ordinary errors.
-  .publishCerebroExport(
+  .exportFinalize(
     export = export,
     final_file = final_file,
-    stage_dir = export_stage_dir,
+    export_stage_dir = export_stage_dir,
     expression_matrix_mode = expression_matrix_mode,
     codec = codec,
-    immune_sidecar = immune_options$mode,
-    immune_sidecar_threshold = immune_options$threshold
+    viewer_options = viewer_options,
+    immune_options = immune_options
   )
-  if (
-    .viewerPackEnabled(
-      viewer_options$mode,
-      viewer_options$threshold,
-      length(.viewerPackCells(export))
-    )
-  ) {
-    buildViewerPack(
-      final_file,
-      viewer_binary = "always",
-      viewer_binary_threshold = viewer_options$threshold,
-      overwrite = TRUE
-    )
-  }
-
-  ## .publishCerebroExport() stops when the file is not written
-  .logStep('Done!')
 }

@@ -159,8 +159,6 @@ exportFromSCE <- function(
   }
 
   meta <- SingleCellExperiment::colData(object)
-  .exportCheckGroups(names(meta), groups, main_group)
-
   available_reductions <- names(SingleCellExperiment::reducedDims(object))
   if (
     !is.null(projections) &&
@@ -177,7 +175,14 @@ exportFromSCE <- function(
     )
   }
 
-  .exportCheckMetaColumns(names(meta), nUMI, nGene, cell_cycle)
+  .validateExportColumns(
+    names(meta),
+    groups,
+    nUMI,
+    nGene,
+    cell_cycle,
+    main_group
+  )
 
   ## check if provided assay exists
   if ((assay %in% names(SummarizedExperiment::assays(object)) == FALSE)) {
@@ -192,7 +197,7 @@ exportFromSCE <- function(
   ## Stage every output artefact beside the final destination; nothing is
   ## published until the whole object has been built (see exportFromSeurat()).
   final_file <- file
-  export_stage_dir <- .exportPrepareOutput(final_file)
+  export_stage_dir <- .createPrivateExportStage(final_file)
   on.exit(
     unlink(export_stage_dir, recursive = TRUE, force = TRUE),
     add = TRUE

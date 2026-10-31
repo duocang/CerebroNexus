@@ -44,7 +44,7 @@ core_fixture <- function(n_cells = 30L, n_genes = 12L) {
 }
 
 run_core_export <- function(fx, file, mode = "embedded", misc = list()) {
-  stage <- .exportPrepareOutput(file)
+  stage <- .createPrivateExportStage(file)
   on.exit(unlink(stage, recursive = TRUE, force = TRUE), add = TRUE)
   export <- .exportInit("core test", "hg", misc, verbose = FALSE)
   expression_data <- .exportWriteExpression(
@@ -136,12 +136,19 @@ test_that("core argument checks reject bad output specs before any work", {
     "to end in .crb"
   )
   expect_error(
-    .exportCheckGroups(c("a", "b"), groups = c("a", "zzz"), main_group = NULL),
+    .validateExportColumns(
+      c("a", "b"),
+      groups = c("a", "zzz"),
+      nUMI = "a",
+      nGene = "b",
+      cell_cycle = NULL
+    ),
     "zzz"
   )
   expect_error(
-    .exportCheckMetaColumns(
+    .validateExportColumns(
       c("a"),
+      groups = "a",
       nUMI = "missing",
       nGene = "a",
       cell_cycle = NULL

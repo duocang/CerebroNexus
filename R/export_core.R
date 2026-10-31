@@ -61,129 +61,19 @@
 
 #' @keywords internal
 #' @noRd
-.exportCheckGroups <- function(
-  meta_names,
-  groups,
-  main_group
-) {
-  ## `groups`
-  if (any(groups %in% meta_names == FALSE)) {
-    stop(
-      paste0(
-        'Some group columns could not be found in meta data: ',
-        paste0(
-          groups[which(groups %in% meta_names == FALSE)],
-          collapse = ', '
-        )
-      ),
-      call. = FALSE
-    )
-  }
-
-  ## `main_group`
-  if (!is.null(main_group) && !(main_group %in% groups)) {
-    stop(
-      paste0(
-        'Specified main_group `',
-        main_group,
-        '` is not in the list of groups. ',
-        'Valid options are: ',
-        paste(groups, collapse = ', ')
-      ),
-      call. = FALSE
-    )
-  }
-}
-
-#' @keywords internal
-#' @noRd
-.exportCheckMetaColumns <- function(
-  meta_names,
-  nUMI,
-  nGene,
-  cell_cycle
-) {
-  ## `nUMI`
-  if ((nUMI %in% meta_names == FALSE)) {
-    stop(
-      paste0(
-        'Column with number of transcripts per cell (`',
-        nUMI,
-        '`) not found in meta data.'
-      ),
-      call. = FALSE
-    )
-  }
-
-  ## `nGene`
-  if ((nGene %in% meta_names == FALSE)) {
-    stop(
-      paste0(
-        'Column with number of expressed genes per cell (`',
-        nGene,
-        '`) not found in meta data.'
-      ),
-      call. = FALSE
-    )
-  }
-
-  ## `cell_cycle`
-  if (any(cell_cycle %in% meta_names == FALSE)) {
-    stop(
-      paste0(
-        'Some cell cycle columns could not be found in meta data: ',
-        paste0(
-          cell_cycle[which(cell_cycle %in% meta_names == FALSE)],
-          collapse = ', '
-        )
-      ),
-      call. = FALSE
-    )
-  }
-}
-
-#' Create the output directory and the private stage; returns the stage dir.
-#' The caller owns cleanup (`on.exit(unlink(stage))`).
-#' @keywords internal
-#' @noRd
-.exportPrepareOutput <- function(
-  final_file
-) {
-  final_dir <- dirname(final_file)
-  if (!dir.exists(final_dir)) {
-    dir.create(final_dir, recursive = TRUE, showWarnings = FALSE)
-  }
-  if (!dir.exists(final_dir)) {
-    stop("Failed to create output directory: ", final_dir, call. = FALSE)
-  }
-  .createPrivateExportStage(final_file)
-}
-
-#' @keywords internal
-#' @noRd
 .exportInit <- function(
   experiment_name,
   organism,
   misc,
   verbose
 ) {
-  if (verbose) {
-    message(
-      paste0(
-        '[',
-        format(Sys.time(), '%H:%M:%S'),
-        '] Initializing Cerebro object...'
-      )
-    )
-  } else {
-    message(
-      paste0(
-        '[',
-        format(Sys.time(), '%H:%M:%S'),
-        '] Start collecting data...'
-      )
-    )
-  }
+  .logStep(
+    if (verbose) {
+      'Initializing Cerebro object...'
+    } else {
+      'Start collecting data...'
+    }
+  )
 
   ## create new Cerebro object
   export <- Cerebro$new()
@@ -223,38 +113,16 @@
   use_delayed_array,
   export_stage_dir,
   final_file,
-  verbose
+  verbose,
+  h5_compression_level = NULL
 ) {
   if (expression_matrix_mode == "embedded") {
-    ## convert expression data to "RleArray" if requested, if it is "dgCMatrix" or
-    ## "matrix" format, and if the "DelayedArray" package is available
-    if (
-      use_delayed_array == TRUE &&
-        inherits(expression_data, c('matrix', 'dgCMatrix')) &&
-        requireNamespace("DelayedArray", quietly = TRUE)
-    ) {
-      if (verbose) {
-        message(
-          paste0(
-            '[',
-            format(Sys.time(), '%H:%M:%S'),
-            '] Storing expression data as ',
-            'DelayedArray...'
-          )
-        )
-      }
-      requireNamespace("DelayedArray", quietly = TRUE)
-      expression_data <- methods::as(expression_data, "RleArray")
-    }
-
-    ## add expression data
-    message(
-      paste0(
-        '[',
-        format(Sys.time(), '%H:%M:%S'),
-        '] Adding expression data (embedded)...'
-      )
+    expression_data <- .delayedExportExpression(
+      expression_data,
+      use_delayed_array,
+      verbose
     )
+    .logStep('Adding expression data (embedded)...')
     export$setExpression(expression_data)
   } else if (expression_matrix_mode == "h5") {
     ## Write the expression matrix to a TENxMatrix-format sparse HDF5 file
@@ -281,17 +149,22 @@
     }
 
     if (verbose) {
-      message(sprintf(
-        "[%s] Writing expression matrix to TENx HDF5 file: %s",
-        format(Sys.time(), "%H:%M:%S"),
-        h5_abs
-      ))
+      .logStep("Writing expression matrix to TENx HDF5 file: ", h5_abs)
     }
 
     if (file.exists(h5_abs)) {
       file.remove(h5_abs)
     }
-    HDF5Array::writeTENxMatrix(m_disk, h5_abs, group = "expression")
+    ## A level of 0 stores the data without compression (the shuffle and
+    ## deflate filters are still applied): on 1.3-1.5M-cell sources single genes
+    ## read ~30% faster than at HDF5Array's default level 6, at roughly 7x the
+    ## file size. NULL leaves HDF5Array's default.
+    HDF5Array::writeTENxMatrix(
+      m_disk,
+      h5_abs,
+      group = "expression",
+      level = h5_compression_level
+    )
 
     ## self$expression stays NULL — saveRDS therefore does not embed the
     ## matrix inside the .crb. The runtime attach reads the sibling back
@@ -312,18 +185,20 @@
   misc,
   groups,
   cells,
-  verbose
+  verbose,
+  where = "@metadata",
+  supported_note = NULL
 ) {
   .addExportGroupTables(
     misc$trees,
-    '`@metadata$trees`',
+    paste0(where, '$trees'),
     'Extracting trees...',
     export$addTree,
     verbose
   )
   .addExportGroupTables(
     misc$most_expressed_genes,
-    '`@metadata$most_expressed_genes`',
+    paste0(where, '$most_expressed_genes'),
     'Extracting tables of most expressed genes...',
     export$addMostExpressedGenes,
     verbose,
@@ -331,32 +206,37 @@
   )
   .addExportGroupTables(
     misc$mean_expression,
-    '`@metadata$mean_expression`',
+    paste0(where, '$mean_expression'),
     'Extracting tables of mean expression...',
     export$addMeanExpression,
     verbose,
     groups
   )
 
-  .addExportImmune(export, misc, cells, '@metadata', verbose)
+  .addExportImmune(export, misc, cells, where, verbose)
 
   ## marker_genes is a nested list: list(method = list(group = data.frame))
   .addExportMethodTables(
     misc$marker_genes,
-    '`@metadata$marker_genes`',
+    paste0(where, '$marker_genes'),
     'Extracting marker genes table...',
     export$addMarkerGenes,
     verbose
   )
   .addExportMethodTables(
     misc$enriched_pathways,
-    '`@metadata$enriched_pathways`',
+    paste0(where, '$enriched_pathways'),
     'Extracting pathway enrichment results...',
     export$addEnrichedPathways,
     verbose,
     groups
   )
-  .addExportTrajectories(export, misc$trajectories, verbose)
+  .addExportTrajectories(
+    export,
+    misc$trajectories,
+    verbose,
+    supported_note = supported_note
+  )
   .addExportExtraMaterial(export, misc$extra_material, verbose)
 
   ##--------------------------------------------------------------------------##
@@ -396,19 +276,13 @@
   export_stage_dir,
   expression_matrix_mode,
   codec,
-  viewer_options
+  viewer_options,
+  immune_options = list(mode = "auto", threshold = 100000L)
 ) {
   ##--------------------------------------------------------------------------##
   ## show overview of Cerebro object
   ##--------------------------------------------------------------------------##
-  message(
-    paste0(
-      '[',
-      format(Sys.time(), '%H:%M:%S'),
-      '] ',
-      'Overview of Cerebro object:\n'
-    )
-  )
+  .logStep('Overview of Cerebro object:\n')
 
   ## print object
   export$print()
@@ -418,14 +292,7 @@
   ##--------------------------------------------------------------------------##
 
   ## log message
-  message(
-    paste0(
-      '[',
-      format(Sys.time(), '%H:%M:%S'),
-      '] Saving Cerebro object to: ',
-      final_file
-    )
-  )
+  .logStep('Saving Cerebro object to: ', final_file)
 
   ## Replace the sidecar and .crb with best-effort rollback on ordinary errors.
   .publishCerebroExport(
@@ -433,7 +300,9 @@
     final_file = final_file,
     stage_dir = export_stage_dir,
     expression_matrix_mode = expression_matrix_mode,
-    codec = codec
+    codec = codec,
+    immune_sidecar = immune_options$mode,
+    immune_sidecar_threshold = immune_options$threshold
   )
   if (
     .viewerPackEnabled(
@@ -453,25 +322,59 @@
   ## log message
   ## ... writing to file was successful
   if (file.exists(final_file)) {
-    message(
-      paste0(
-        '[',
-        format(Sys.time(), '%H:%M:%S'),
-        '] Done!'
-      )
-    )
+    .logStep('Done!')
     ## ... target file doesn't exist
   } else {
     stop(
-      paste0(
-        '[',
-        format(Sys.time(), '%H:%M:%S'),
-        '] Something went wrong while ',
-        'saving the file.'
-      ),
+      '[',
+      format(Sys.time(), '%H:%M:%S'),
+      '] Something went wrong while saving the file.',
       call. = FALSE
     )
   }
+}
+
+#' The spatial record of one embedding of point coordinates: its first two
+#' columns paired with the expression of the same cells. Stops when the cells
+#' and coordinates are not safely paired.
+#' @keywords internal
+#' @noRd
+.exportEmbeddingSpatialData <- function(
+  embedding,
+  entry_name,
+  source_name,
+  expression_data,
+  assay,
+  requested_layer,
+  layer
+) {
+  cells <- intersect(rownames(embedding), colnames(expression_data))
+  coordinates <- data.frame(
+    .cell = cells,
+    .image = entry_name,
+    .coordinate_source = paste0("reduction.", source_name),
+    x = as.numeric(embedding[cells, 1L]),
+    y = as.numeric(embedding[cells, 2L]),
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  if (
+    !length(cells) ||
+      anyDuplicated(rownames(embedding)) ||
+      any(!is.finite(coordinates$x)) ||
+      any(!is.finite(coordinates$y))
+  ) {
+    stop("The spatial reduction has no safe paired coordinates.")
+  }
+  list(
+    coordinates = coordinates,
+    expression = expression_data[, cells, drop = FALSE],
+    assay = assay,
+    requested_layer = requested_layer,
+    layer = layer,
+    image = entry_name,
+    coordinate_source = paste0("reduction.", source_name)
+  )
 }
 
 #' Spatial tab from point coordinates held in embeddings (MERFISH, Slide-seq,
@@ -503,34 +406,22 @@
   ) {
     spatial_data <- tryCatch(
       {
-        cells <- intersect(rownames(embedding), colnames(expression_data))
-        coordinates <- data.frame(
-          .cell = cells,
-          .image = entry_name,
-          .coordinate_source = paste0("reduction.", source_name),
-          x = as.numeric(embedding[cells, 1L]),
-          y = as.numeric(embedding[cells, 2L]),
-          row.names = cells,
-          stringsAsFactors = FALSE
-        )
-        if (
-          !length(cells) ||
-            anyDuplicated(rownames(embedding)) ||
-            any(!is.finite(coordinates$x)) ||
-            any(!is.finite(coordinates$y))
-        ) {
-          stop("The spatial reduction has no safe paired coordinates.")
-        }
-        projection <- .spx_export_projection_coordinates(coordinates)
-        list(
-          coordinates = if (is.null(projection)) coordinates else projection,
-          expression = expression_data[, cells, drop = FALSE],
-          assay = assay,
+        spatial_data <- .exportEmbeddingSpatialData(
+          embedding,
+          entry_name,
+          source_name,
+          expression_data,
+          assay,
           requested_layer = layer,
-          layer = layer,
-          image = entry_name,
-          coordinate_source = paste0("reduction.", source_name)
+          layer = layer
         )
+        projection <- .spx_export_projection_coordinates(
+          spatial_data$coordinates
+        )
+        if (!is.null(projection)) {
+          spatial_data$coordinates <- projection
+        }
+        spatial_data
       },
       error = function(e) {
         ## never drop spatial data silently
