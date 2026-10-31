@@ -386,8 +386,11 @@ builder_example_adapter <- function(id, object) {
     object <- read$object
   }
   cache <- .builder_saved_cache(object)
+  ## Only a Seurat serialization can be copied as the snapshot; an h5ad, h5mu or
+  ## SpatialData source is converted, so the file itself still needs its md5.
   snapshot_reusable <- identical(adapter$type, "file") &&
     isTRUE(adapter$snapshot_reusable) &&
+    serialization %in% c("rds", "qs2", "qs") &&
     is.null(cache) &&
     !length(.builder_snapshot_layer_contracts(object))
   source_md5 <- NULL

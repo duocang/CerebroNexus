@@ -87,6 +87,17 @@ test_that("counts, data layers and spatial coordinates are placed by what they h
   expect_setequal(SeuratObject::Layers(both), c("counts", "data"))
 })
 
+test_that("an AnnData source keeps the md5 of the file, not of its snapshot", {
+  path <- fixture("small_csr.h5ad")
+  inspected <- quiet(builder_adapter_inspect(builder_seurat_file_adapter(path)))
+  ## the h5ad is converted, so no snapshot is a copy of it
+  expect_null(inspected$snapshot_source)
+  expect_identical(
+    inspected$source_md5,
+    unname(as.character(tools::md5sum(path)))
+  )
+})
+
 test_that("an AnnData file goes through the Builder's own inspect path", {
   adapter <- builder_seurat_file_adapter(fixture("small_csr.h5ad"))
   expect_identical(adapter$format, "h5ad")
