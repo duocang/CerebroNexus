@@ -14,7 +14,16 @@
 - Zarr stores compressed with Blosc (lz4, zstd or zlib, with or without the
   byte shuffle) and arrays of numpy fixed-width strings (`<U`, `|S`) are read.
   Blosc with blosclz, snappy, the bit shuffle or the delta filter, and any
-  other codec, stop with their name.
+  other codec, stop with their name; a truncated Blosc chunk is an error, not
+  zeros. Blosc chunks are decoded in R (lz4, the numcodecs default, at about
+  4 MB/s), so re-save a large store with zstd, or use an `.h5ad` file. Zarr
+  arrays with a transpose codec are not read.
+- `readH5adAsSCE()` says how many `obs` or `var` columns it skipped for an
+  encoding it does not read, also with `verbose = FALSE`; a float tissue image
+  whose maximum is just above 1 is no longer darkened (its type, not its
+  maximum, tells 0-255 pixels from 0-1 ones); the environment variable
+  `CEREBRO_PACKAGE_SOURCE` is documented and ignored unless it names a
+  CerebroNexus checkout.
 
 ## Changes
 
