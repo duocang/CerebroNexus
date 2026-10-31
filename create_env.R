@@ -45,6 +45,7 @@ rix(
     "Seurat",
     "SeuratObject",
     "shinymanager",
+    "anndataR", # reference reader in a test (Suggests)
     "arrow", # SpatialData shapes (Suggests)
     # runtime dependencies (DESCRIPTION Imports)
     "base64enc",
