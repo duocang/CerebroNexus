@@ -91,7 +91,9 @@ The cell table, the coordinates and the tissue pictures are read from the
 `obsm["spatial"]` when the table has them (Visium) and from the shapes the
 table annotates otherwise (MERFISH, Xenium). Stores compressed with Blosc
 (lz4, zstd or zlib), zstd or gzip are read; a store that needs another codec
-stops with the codec's name.
+stops with the codec's name. Blosc chunks are decoded in R, lz4 (the numcodecs
+default) at about 4 MB/s, so re-save a large store with zstd, or use an
+`.h5ad` file.
 
 # Back to scanpy
 

@@ -308,3 +308,106 @@ test_that("numpy fixed-width strings are read", {
   )
   expect_identical(CerebroNexus:::.zarrRead(store, "x"), strings)
 })
+
+## Frames written by numcodecs 0.17.1 (c-blosc 1.21): the streams Rarr does not
+## write. The first three are 300 float64 / int32 values of a fixed pattern.
+blosc_numcodecs_zstd <- hex_raw(paste0(
+  "0201910860090000600900003c000000140000002400000028b52ffd606008d5",
+  "0000480000f0083f0000404005001f40055809a445dd8acb08fe411b"
+))
+blosc_numcodecs_zlib <- hex_raw(paste0(
+  "020161086009000060090000a8000000140000000d000000785e63601805c402",
+  "00012c00010d000000785e63601805c40200012c00010d000000785e63601805",
+  "c40200012c00010d000000785e63601805c40200012c00010d000000785e6360",
+  "1805c40200012c00010d000000785e63601805c40200012c000112000000785e",
+  "63f8c000011c0ca32c022c00764b1d1114000000785e63b067607060600011a3",
+  "2c022c0026631663"
+))
+blosc_numcodecs_ramp <- hex_raw(paste0(
+  "02019104b0040000b004000038010000140000002001000028b52ffd60b003b5",
+  "08002410000102030405060708090a0b0c0d0e0f101112131415161718191a1b",
+  "1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b",
+  "3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b",
+  "5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b",
+  "7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b",
+  "9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babb",
+  "bcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadb",
+  "dcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafb",
+  "fcfdfeff0001050081408528a000601e1fa7588006cc3505"
+))
+blosc_numcodecs_bitshuffle <- hex_raw(paste0(
+  "02019408600900006009000039000000140000002100000028b52ffd606008bd",
+  "0000480000f03f004000084004000d99828f8107036570000b"
+))
+blosc_numcodecs_blosclz <- hex_raw(paste0(
+  "020101086009000060090000a6000000140000000d0000002300000000e0ff1d",
+  "03020000000d0000002300000000e0ff1d03020000000d0000002300000000e0",
+  "ff1d03020000000d0000002300000000e0ff1d03020000000d00000023000000",
+  "00e0ff1d03020000000d0000002300000000e0ff1d0302000000120000002900",
+  "f00000000000000008e0ff18090100081200000029003f0000400000000040e0",
+  "ff1809010040"
+))
+
+test_that("Blosc zstd and zlib frames written by numcodecs are decoded", {
+  counts <- blosc_double_bytes(rep(c(0, 1, 0, 0, 2, 0, 0, 0, 0, 3), 30))
+  expect_identical(CerebroNexus:::.zarrBlosc(blosc_numcodecs_zstd), counts)
+  expect_identical(CerebroNexus:::.zarrBlosc(blosc_numcodecs_zlib), counts)
+  expect_identical(
+    CerebroNexus:::.zarrBlosc(blosc_numcodecs_ramp),
+    writeBin(0:299, raw(), size = 4L)
+  )
+})
+
+test_that("numcodecs frames with blosclz or the bit shuffle stop with their name", {
+  expect_error(
+    CerebroNexus:::.zarrBlosc(blosc_numcodecs_blosclz),
+    "`blosclz`"
+  )
+  expect_error(
+    CerebroNexus:::.zarrBlosc(blosc_numcodecs_bitshuffle),
+    "bit shuffle"
+  )
+})
+
+test_that("a truncated Blosc chunk is an error, not zeros", {
+  for (frame in list(
+    blosc_lz4_counts,
+    blosc_numcodecs_zstd,
+    blosc_numcodecs_zlib,
+    blosc_frame(blosc_double_bytes(1:300), 8L, "zlib")
+  )) {
+    for (cut in c(1L, 5L, 20L)) {
+      expect_error(
+        CerebroNexus:::.zarrBlosc(frame[seq_len(length(frame) - cut)]),
+        "truncated"
+      )
+    }
+  }
+})
+
+test_that("an array with a transpose codec says so", {
+  v3 <- write_zarr_array_store(
+    meta_v3 = paste0(
+      '{"zarr_format":3,"node_type":"array","shape":[2,2],',
+      '"data_type":"int32","chunk_grid":{"name":"regular",',
+      '"configuration":{"chunk_shape":[2,2]}},"chunk_key_encoding":',
+      '{"name":"default","configuration":{"separator":"/"}},"fill_value":0,',
+      '"codecs":[{"name":"transpose","configuration":{"order":[1,0]}},',
+      '{"name":"bytes","configuration":{"endian":"little"}}]}'
+    ),
+    chunks = list(as.raw(1:16))
+  )
+  expect_error(CerebroNexus:::.zarrRead(v3, "x"), "transpose codec")
+})
+
+test_that("|S strings that are not UTF-8 stay usable", {
+  bytes <- c(
+    charToRaw("ab"),
+    as.raw(c(0x00, 0x00)),
+    as.raw(c(0x63, 0xe9, 0x00, 0x00))
+  )
+  strings <- CerebroNexus:::.zarrFixedStrings(bytes, 2L, "S", 4L)
+  expect_true(all(validUTF8(strings)))
+  expect_identical(strings, c("ab", "c\u00e9"))
+  expect_identical(nchar(strings), c(2L, 2L))
+})

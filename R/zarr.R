@@ -8,9 +8,14 @@
 ##
 ## Zarr v3 (what zarr-python 3 and SpatialData 0.7 write) and v2 (zarr-python 2,
 ## anndata before 0.12) are read, with the codecs bytes, zstd, gzip, crc32c,
-## sharding and transpose, the variable-length string codec, and Blosc chunks
-## compressed with lz4, zstd or zlib (plain or byte-shuffled; blosclz, snappy
-## and the bit shuffle say so). Any other codec stops with its name.
+## sharding, the variable-length string codec, and Blosc chunks compressed with
+## lz4, zstd or zlib (plain or byte-shuffled; blosclz, snappy and the bit
+## shuffle say so). Any other codec stops with its name, and so does an array
+## with a transpose codec (Rarr writes one for arrays of two dimensions).
+##
+## Blosc chunks are decoded in R: zstd and zlib at the speed of those
+## libraries, lz4 (the numcodecs default) at about 4 MB/s of output. Re-save a
+## large store with zstd, or use an .h5ad file.
 ##
 ## Why not anndataR (the scverse reader)? Tried on the fixtures of this package
 ## and on a 300,000 cell h5ad: it cannot read AIRR (awkward) arrays or `.h5mu`,
@@ -313,7 +318,12 @@
     },
     character(1)
   )
+  ## bytes of unknown encoding: UTF-8 when they are, else read as latin1
+  invalid <- !validUTF8(result)
   Encoding(result) <- "UTF-8"
+  if (any(invalid)) {
+    result[invalid] <- iconv(result[invalid], "latin1", "UTF-8")
+  }
   result
 }
 
@@ -393,6 +403,18 @@
   sizes <- readBin(bytes[5:16], "integer", n = 3L, size = 4L, endian = "little")
   nbytes <- sizes[[1L]]
   blocksize <- sizes[[2L]]
+  if (length(bytes) < sizes[[3L]]) {
+    ## R would read past the end as zeros, which a matrix reads as "not
+    ## expressed"
+    stop(
+      "A Blosc chunk is truncated: its header says ",
+      sizes[[3L]],
+      " bytes and the file has ",
+      length(bytes),
+      ".",
+      call. = FALSE
+    )
+  }
   if (nbytes == 0L) {
     return(raw())
   }

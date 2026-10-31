@@ -402,7 +402,9 @@
 #'
 #' Zarr v2 and v3 stores are read (including sharded arrays) with zstd, gzip,
 #' Blosc (lz4, zstd or zlib) or no compression; any other codec stops with its
-#' name.
+#' name. Blosc chunks are decoded in R, lz4 (the numcodecs default) at about
+#' 4 MB/s of output: re-save a large store with zstd, or use an \code{.h5ad}
+#' file.
 #'
 #' @param path A SpatialData \code{.zarr} directory, or a \code{.zip} of one (as the
 #'   SpatialData sample datasets are distributed).
