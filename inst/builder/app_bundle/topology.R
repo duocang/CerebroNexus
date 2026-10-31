@@ -63,6 +63,48 @@
   fingerprint
 }
 
+## The fingerprints of every row of `info`, checked as .builder_app_file_fingerprint()
+## checks one row, from the columns instead of slicing the table once per entry
+## (about half the time of an enumeration of a few hundred files).
+.builder_app_file_fingerprints <- function(info) {
+  if (is.null(info) || !nrow(info)) {
+    return(list())
+  }
+  columns <- list(
+    type = as.character(info$type),
+    size = as.double(info$size),
+    permissions = as.character(info$permissions),
+    device_id = as.double(info$device_id),
+    inode = as.double(info$inode),
+    hard_links = as.double(info$hard_links),
+    modification_time = as.double(info$modification_time),
+    change_time = as.double(info$change_time)
+  )
+  numeric_fields <- c(
+    "size",
+    "device_id",
+    "inode",
+    "hard_links",
+    "modification_time",
+    "change_time"
+  )
+  valid <- all(lengths(columns) == nrow(info)) &&
+    !any(vapply(columns, anyNA, TRUE)) &&
+    all(vapply(columns[numeric_fields], function(x) all(is.finite(x)), TRUE)) &&
+    all(nzchar(columns$type)) &&
+    all(nzchar(columns$permissions)) &&
+    all(columns$size >= 0) &&
+    all(columns$device_id >= 0) &&
+    all(columns$inode >= 0) &&
+    all(columns$hard_links >= 1)
+  if (!valid) {
+    stop("A staged App entry could not be fingerprinted safely.", call. = FALSE)
+  }
+  lapply(seq_len(nrow(info)), function(index) {
+    lapply(columns, `[[`, index)
+  })
+}
+
 .builder_app_list_directory <- function(path) {
   as.character(fs::dir_ls(
     path,
@@ -196,12 +238,7 @@
           call. = FALSE
         )
       }
-      listed_fingerprints <- lapply(
-        seq_len(nrow(info)),
-        function(index) {
-          .builder_app_file_fingerprint(info[index, , drop = FALSE])
-        }
-      )
+      listed_fingerprints <- .builder_app_file_fingerprints(info)
       directories <- listed[types == "directory"]
       queue <- c(
         queue,
@@ -247,12 +284,7 @@
     if (is.null(confirmed) || nrow(confirmed) != length(entries)) {
       stop("Staged App entries changed after enumeration.", call. = FALSE)
     }
-    confirmed_fingerprints <- lapply(
-      seq_len(nrow(confirmed)),
-      function(index) {
-        .builder_app_file_fingerprint(confirmed[index, , drop = FALSE])
-      }
-    )
+    confirmed_fingerprints <- .builder_app_file_fingerprints(confirmed)
     if (
       !all(mapply(
         identical,

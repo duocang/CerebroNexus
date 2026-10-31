@@ -2484,3 +2484,27 @@ test_that("external spatial topology contains only declared relative assets", {
     "spatial-assets topology"
   )
 })
+
+test_that("fingerprinting a table of entries equals fingerprinting its rows one by one", {
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "sub"))
+  for (name in c("a.txt", "b.txt", file.path("sub", "c.txt"))) {
+    writeLines(name, file.path(root, name))
+  }
+  entries <- sort(
+    as.character(fs::dir_ls(root, recurse = TRUE, all = TRUE)),
+    method = "radix"
+  )
+  info <- fs::file_info(entries, fail = TRUE, follow = FALSE)
+  one_by_one <- lapply(seq_len(nrow(info)), function(index) {
+    .builder_app_file_fingerprint(info[index, , drop = FALSE])
+  })
+  expect_identical(.builder_app_file_fingerprints(info), one_by_one)
+  expect_identical(.builder_app_file_fingerprints(info[0L, ]), list())
+  broken <- info
+  broken$size[[2L]] <- NA
+  expect_error(
+    .builder_app_file_fingerprints(broken),
+    "could not be fingerprinted safely"
+  )
+})
