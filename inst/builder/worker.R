@@ -1349,7 +1349,6 @@ builder_worker_start <- function(
       analysis = function() {
         source_files(c(
           file.path(dir, "preview.R"),
-          file.path(dir, "stats.R"),
           file.path(dir, "extras.R"),
           file.path(dir, "analysis.R"),
           file.path(dir, "marker_import.R")

@@ -104,14 +104,6 @@ builder_inspect_model <- function(
     labels <- tolower(vapply(content_tags, `[[`, character(1), "label"))
     content_tags <- content_tags[!duplicated(labels)]
   }
-  statistics <- if (exists("builder_stats_frame", mode = "function")) {
-    builder_stats_frame(profile, settings)
-  } else {
-    list(
-      cells = as.integer(profile$n_cells %||% 0L),
-      genes = as.integer(profile$n_genes %||% 0L)
-    )
-  }
   list(
     summary = c(
       paste(format(profile$n_cells, big.mark = ","), "cells"),
@@ -128,7 +120,6 @@ builder_inspect_model <- function(
       character(1)
     ),
     content_tags = content_tags,
-    statistics = statistics,
     diagnostics = c(paste("Format", format), paste("Dataset id", dataset_id))
   )
 }
