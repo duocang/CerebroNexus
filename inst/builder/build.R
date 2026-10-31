@@ -1630,6 +1630,17 @@ builder_verify_crb <- function(
     expression_matrix_mode = item$expression_backend,
     codec = "qs2",
     spatial_coordinate_transforms = coordinate_transforms,
+    .finalize_export = if (length(item$images %||% list())) {
+      function(export) {
+        external <- .builder_apply_external_spatial_appearance(
+          export,
+          item$images
+        )
+        if (!is.null(external$error)) {
+          stop(external$error, call. = FALSE)
+        }
+      }
+    },
     verbose = FALSE
   )
   path
@@ -1644,16 +1655,12 @@ builder_verify_crb <- function(
   if (!is.null(trekker) && length(trekker) && !is.list(trekker)) {
     stop("Trekker data must be a list.", call. = FALSE)
   }
-  trekker_applied <- is.list(trekker) && length(trekker) > 0L
-  result <- builder_attach_crb_extras(
-    crb_path = path,
-    images = list(),
-    external_images = item$images %||% list()
+  ## Trekker and the external Spatial appearance are part of the exported
+  ## object (see .builder_build_export()); the written CRB is not read back.
+  result <- list(
+    applied = character(),
+    trekker = is.list(trekker) && length(trekker) > 0L
   )
-  if (!is.null(result$error)) {
-    stop(result$error, call. = FALSE)
-  }
-  result$trekker <- trekker_applied
   external <- .builder_build_materialize_spatial_images(item, dirname(path))
   result$external_images <- external$images
   result$external_settings <- external$settings

@@ -782,6 +782,10 @@
 #' @param .expression_resolution Internal handoff used by
 #' \code{convertSeuratToCerebro()} to reuse a matrix that has already been
 #' resolved and validated. Users should leave this as \code{NULL}.
+#' @param .finalize_export Internal hook used by the Builder: a function called
+#' with the Cerebro object just before it is written, so the object can be
+#' completed without reading the written file back. Users should leave this
+#' as \code{NULL}.
 #' @param projections Optional ordered names of dimensional reductions to
 #'   export. When supplied, every named reduction is exported in that order,
 #'   including PCA beside other projections. The default \code{NULL} preserves
@@ -860,6 +864,7 @@ exportFromSeurat <- function(
   immune_sidecar = c("auto", "always", "never"),
   immune_sidecar_threshold = 100000L,
   .expression_resolution = NULL,
+  .finalize_export = NULL,
   projections = NULL,
   spatial_coordinate_transforms = NULL
 ) {
@@ -1290,6 +1295,10 @@ exportFromSeurat <- function(
         )
       }
     }
+  }
+
+  if (is.function(.finalize_export)) {
+    .finalize_export(export)
   }
 
   .exportFinalize(
