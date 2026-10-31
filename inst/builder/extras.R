@@ -110,7 +110,8 @@ builder_read_table_source <- function(record) {
         sep = if (extension == "csv") "," else "\t",
         stringsAsFactors = FALSE,
         check.names = FALSE,
-        comment.char = ""
+        comment.char = "",
+        quote = "\""
       )
     } else if (extension %in% c("xls", "xlsx", "xlsm")) {
       readxl::read_excel(path, sheet = record$sheet_name %||% record$sheet)
