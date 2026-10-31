@@ -118,29 +118,36 @@ builder_scatter_thumbnail_ui <- function(
     role = "img",
     `aria-label` = label,
     `data-point-size` = format(point_size, trim = TRUE),
+    ## A preview holds up to a thousand points per projection; building them as
+    ## tags and rendering them again cost most of a dataset switch.
     if (nrow(coordinates$edges)) {
-      lapply(seq_len(nrow(coordinates$edges)), function(index) {
-        edge <- coordinates$edges[index, ]
-        tags$line(
-          x1 = round(edge$x, 2L),
-          y1 = round(edge$y, 2L),
-          x2 = round(edge$xend, 2L),
-          y2 = round(edge$yend, 2L),
-          class = "viewer-trajectory-edge"
-        )
-      })
+      HTML(paste0(
+        '<line x1="',
+        round(coordinates$edges$x, 2L),
+        '" y1="',
+        round(coordinates$edges$y, 2L),
+        '" x2="',
+        round(coordinates$edges$xend, 2L),
+        '" y2="',
+        round(coordinates$edges$yend, 2L),
+        '" class="viewer-trajectory-edge"></line>',
+        collapse = ""
+      ))
     },
-    lapply(seq_len(nrow(coordinates$points)), function(index) {
-      point <- coordinates$points[index, ]
-      tags$circle(
-        cx = round(point$x, 2L),
-        cy = round(point$y, 2L),
-        r = round(radius, 2L),
-        fill = unname(palette[[groups[[index]]]]),
-        class = "viewer-scatter-point",
-        `data-group` = groups[[index]]
-      )
-    })
+    HTML(paste0(
+      '<circle cx="',
+      round(coordinates$points$x, 2L),
+      '" cy="',
+      round(coordinates$points$y, 2L),
+      '" r="',
+      round(radius, 2L),
+      '" fill="',
+      htmltools::htmlEscape(unname(palette[groups]), attribute = TRUE),
+      '" class="viewer-scatter-point" data-group="',
+      htmltools::htmlEscape(groups, attribute = TRUE),
+      '"></circle>',
+      collapse = ""
+    ))
   )
 }
 
