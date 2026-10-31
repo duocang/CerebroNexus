@@ -60,16 +60,17 @@ builder_match_cells <- function(ids, expected, mode = c("exact", "subset")) {
   expected_duplicates <- unique(
     expected_usable[duplicated(expected_usable)]
   )
-  missing <- setdiff(unique(expected_usable), unique(usable))
-  extra <- setdiff(unique(usable), unique(expected_usable))
-  matched_ids <- unique(expected_usable[expected_usable %in% usable])
+  ## Each id vector is de-duplicated and hashed once (at 1M cells every extra
+  ## unique() or %in% costs about half a second).
+  unique_usable <- unique(usable)
+  unique_expected <- unique(expected_usable)
+  in_usable <- unique_expected %in% unique_usable
+  missing <- unique_expected[!in_usable]
+  extra <- unique_usable[!unique_usable %in% unique_expected]
+  matched_ids <- unique_expected[in_usable]
   input_index <- match(matched_ids, ids)
-  denominator <- length(unique(expected_usable))
-  coverage <- if (!denominator) {
-    1
-  } else {
-    length(intersect(unique(usable), unique(expected_usable))) / denominator
-  }
+  denominator <- length(unique_expected)
+  coverage <- if (!denominator) 1 else length(matched_ids) / denominator
   structurally_valid <- !any(blank) &&
     !any(expected_blank) &&
     !length(duplicates) &&

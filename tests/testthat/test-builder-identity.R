@@ -314,3 +314,35 @@ test_that("projection downsampling preserves matched barcode identity", {
     ]
   )
 })
+
+test_that("matching ids gives what the set operations on each id vector give", {
+  set.seed(7)
+  pool <- c(paste0("cell-", 1:40), "", NA)
+  for (trial in 1:50) {
+    ids <- sample(pool, sample(0:60, 1L), replace = TRUE)
+    expected <- sample(pool, sample(1:60, 1L), replace = TRUE)
+    got <- builder_match_cells(ids, expected, "subset")
+    usable <- ids[!(is.na(ids) | !nzchar(ids))]
+    expected_usable <- expected[!(is.na(expected) | !nzchar(expected))]
+    matched <- unique(expected_usable[expected_usable %in% usable])
+    denominator <- length(unique(expected_usable))
+    expect_identical(
+      got$missing,
+      setdiff(unique(expected_usable), unique(usable))
+    )
+    expect_identical(
+      got$extra,
+      setdiff(unique(usable), unique(expected_usable))
+    )
+    expect_identical(got$matched_ids, matched)
+    expect_identical(got$input_index, match(matched, as.character(ids)))
+    expect_identical(
+      got$coverage,
+      if (!denominator) {
+        1
+      } else {
+        length(intersect(unique(usable), unique(expected_usable))) / denominator
+      }
+    )
+  }
+})
