@@ -539,3 +539,23 @@ test_that("a CSC matrix with unsorted row indices is rebuilt in the right orient
   expect_identical(dim(got), c(3L, 4L))
   expect_equal(as.matrix(got), t(expected), ignore_attr = TRUE)
 })
+
+test_that("repeated entries of a CSR matrix are added up and unsorted ones kept", {
+  skip_if_not_installed("rhdf5")
+  ## cells x genes (2 x 3), CSR: cell 1 has gene 2, gene 0 and gene 2 again
+  path <- withr::local_tempfile(fileext = ".h5ad")
+  rhdf5::h5createFile(path)
+  rhdf5::h5createGroup(path, "X")
+  rhdf5::h5write(c(1, 2, 4, 8), path, "X/data")
+  rhdf5::h5write(c(2L, 0L, 2L, 1L), path, "X/indices")
+  rhdf5::h5write(c(0L, 3L, 4L), path, "X/indptr")
+  file <- rhdf5::H5Fopen(path)
+  group <- rhdf5::H5Gopen(file, "X")
+  rhdf5::h5writeAttribute("csr_matrix", group, "encoding-type")
+  rhdf5::h5writeAttribute(c(2L, 3L), group, "shape")
+  rhdf5::H5Gclose(group)
+  rhdf5::H5Fclose(file)
+  got <- .h5adReadMatrix(.h5adContext(path), "X", n_obs = 2L, n_vars = 3L)
+  expected <- matrix(c(2, 0, 5, 0, 8, 0), nrow = 3L)
+  expect_equal(as.matrix(got), expected, ignore_attr = TRUE)
+})

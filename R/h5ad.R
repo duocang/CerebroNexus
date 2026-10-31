@@ -324,17 +324,39 @@
       error = function(e) NULL
     )
     if (is.null(built)) {
-      ## unsorted or duplicated indices within a slice: rebuild from triplets
+      ## unsorted or repeated indices within a slice. Sorting each slice (a
+      ## radix sort) is all an unsorted matrix needs; repeated entries are added
+      ## up by the triplet rebuild. Rebuilding every Visium layer from triplets
+      ## took 4 s.
       slice <- rep.int(seq_len(major), diff(indptr))
-      built <- methods::as(
-        Matrix::sparseMatrix(
-          i = indices + 1L,
-          j = slice,
-          x = data,
-          dims = dims
-        ),
-        "CsparseMatrix"
-      )
+      ordered <- order(slice, indices, method = "radix")
+      sorted_indices <- indices[ordered]
+      ## the sort keeps every entry inside its slice: an index repeated within a
+      ## slice is two equal neighbours that do not straddle a slice boundary
+      same_as_previous <- diff(sorted_indices) == 0L
+      starts <- indptr[-c(1L, length(indptr))]
+      same_as_previous[starts[starts > 0L & starts < length(slice)]] <- FALSE
+      repeated <- any(same_as_previous)
+      rm(same_as_previous)
+      built <- if (repeated) {
+        methods::as(
+          Matrix::sparseMatrix(
+            i = indices + 1L,
+            j = slice,
+            x = data,
+            dims = dims
+          ),
+          "CsparseMatrix"
+        )
+      } else {
+        methods::new(
+          "dgCMatrix",
+          i = sorted_indices,
+          p = indptr,
+          x = data[ordered],
+          Dim = dims
+        )
+      }
     }
     return(if (csr) built else methods::as(Matrix::t(built), "CsparseMatrix"))
   }
