@@ -444,20 +444,22 @@ test_that("example adapters use the same safe cache cleanup path", {
   expect_false(file.exists(sentinel))
 })
 
-test_that("file adapters reject an incomplete cache stub without executing it", {
-  skip_if_not_installed("BPCells")
-  root <- withr::local_tempdir()
-  source <- file.path(root, "bp")
-  suppressWarnings(BPCells::write_matrix_dir(
-    methods::as(
-      methods::as(builder_profile_matrix(paste0("c", 1:6)), "CsparseMatrix"),
-      "IterableMatrix"
-    ),
-    dir = source
-  ))
-  object <- SeuratObject::CreateSeuratObject(
-    counts = BPCells::open_matrix_dir(source)
+## A Seurat object whose counts live in an HDF5 file under `root`.
+builder_hdf5_backed_object <- function(root) {
+  matrix <- builder_profile_matrix(paste0("c", 1:6))
+  on_disk <- HDF5Array::writeHDF5Array(
+    matrix,
+    filepath = file.path(root, "source.h5"),
+    name = "counts"
   )
+  dimnames(on_disk) <- dimnames(matrix)
+  SeuratObject::CreateSeuratObject(counts = on_disk)
+}
+
+test_that("file adapters reject an incomplete cache stub without executing it", {
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
+  object <- builder_hdf5_backed_object(root)
   stub_path <- file.path(root, "stub.rds")
   SaveSeuratRds <- SeuratObject::SaveSeuratRds
   suppressWarnings(SaveSeuratRds(object, stub_path, move = FALSE))
@@ -477,18 +479,10 @@ test_that("file adapters reject an incomplete cache stub without executing it", 
   expect_false(file.exists(sentinel))
 })
 
-test_that("loaded BPCells objects can be saved, adapted and snapshotted", {
-  skip_if_not_installed("BPCells")
+test_that("loaded HDF5-backed objects can be saved, adapted and snapshotted", {
+  skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
-  source <- file.path(root, "bp")
-  matrix <- builder_profile_matrix(paste0("c", 1:6))
-  suppressWarnings(BPCells::write_matrix_dir(
-    methods::as(methods::as(matrix, "CsparseMatrix"), "IterableMatrix"),
-    dir = source
-  ))
-  object <- SeuratObject::CreateSeuratObject(
-    counts = BPCells::open_matrix_dir(source)
-  )
+  object <- builder_hdf5_backed_object(root)
   seurat_path <- file.path(root, "saved.rds")
   SaveSeuratRds <- SeuratObject::SaveSeuratRds
   suppressWarnings(SaveSeuratRds(object, seurat_path, move = FALSE))
@@ -504,8 +498,7 @@ test_that("loaded BPCells objects can be saved, adapted and snapshotted", {
     inspected$source_md5,
     unname(tools::md5sum(seurat_path))
   )
-  expect_identical(inspected$matrix_summary$storage, "bpcells")
-  expect_true(inspected$matrix_summary$sparse)
+  expect_identical(inspected$matrix_summary$storage, "h5")
   snapshot <- builder_snapshot_seurat(
     inspected$object,
     file.path(root, "snapshot"),

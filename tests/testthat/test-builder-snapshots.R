@@ -30,7 +30,7 @@ builder_repo_source("adapters.R")
   expect_true(all(startsWith(targets, paste0(root, "/"))))
 }
 
-.builder_cache_fixture <- function(path, pkg = "BPCells") {
+.builder_cache_fixture <- function(path, pkg = "HDF5Array") {
   data.frame(
     layer = "counts",
     path = path,
@@ -132,18 +132,24 @@ test_that("in-memory snapshots keep the inspected object without a stub read-bac
   )
 })
 
-test_that("file-backed snapshots read the stub once and re-link to the backing", {
-  skip_if_not_installed("BPCells")
-  root <- withr::local_tempdir()
-  source <- file.path(root, "bp-source")
-  BPCells::write_matrix_dir(
-    methods::as(
-      methods::as(.builder_snapshot_dense(), "CsparseMatrix"),
-      "IterableMatrix"
-    ),
-    dir = source
+## A Seurat object whose counts live in an HDF5 file under `root`.
+.builder_snapshot_hdf5_object <- function(root, name = "counts") {
+  source <- file.path(root, "source.h5")
+  on_disk <- HDF5Array::writeHDF5Array(
+    .builder_snapshot_dense(),
+    filepath = source,
+    name = name
   )
-  object <- .builder_snapshot_object(BPCells::open_matrix_dir(source))
+  dimnames(on_disk) <- dimnames(.builder_snapshot_dense())
+  list(object = .builder_snapshot_object(on_disk), source = source)
+}
+
+test_that("file-backed snapshots read the stub once and re-link to the backing", {
+  skip_if_not_installed("HDF5Array")
+  root <- withr::local_tempdir()
+  fixture <- .builder_snapshot_hdf5_object(root)
+  object <- fixture$object
+  source <- fixture$source
   original_readRDS <- base::readRDS
   read_backs <- 0L
   frozen <- local({
@@ -156,11 +162,11 @@ test_that("file-backed snapshots read the stub once and re-link to the backing",
     )
     .builder_snapshot_seurat_impl(
       object,
-      file.path(root, "bp.snapshot"),
+      file.path(root, "hdf5.snapshot"),
       available_bytes = 2^40
     )
   })
-  unlink(source, recursive = TRUE)
+  unlink(source)
 
   expect_identical(read_backs, 1L)
   expect_equal(
@@ -171,159 +177,7 @@ test_that("file-backed snapshots read the stub once and re-link to the backing",
   expect_s4_class(builder_open_snapshot(frozen$snapshot), "Seurat")
 })
 
-test_that("BPCells backing data is closed over before its source disappears", {
-  skip_if_not_installed("BPCells")
-  root <- withr::local_tempdir()
-  source <- file.path(root, "bp-source")
-  BPCells::write_matrix_dir(
-    methods::as(
-      methods::as(.builder_snapshot_dense(), "CsparseMatrix"),
-      "IterableMatrix"
-    ),
-    dir = source
-  )
-  object <- .builder_snapshot_object(BPCells::open_matrix_dir(source))
-  snapshot <- builder_snapshot_seurat(
-    object,
-    file.path(root, "bp.snapshot"),
-    available_bytes = 2^40
-  )
-  unlink(source, recursive = TRUE)
-
-  reopened <- builder_open_snapshot(snapshot)
-  expect_equal(
-    as.matrix(SeuratObject::LayerData(reopened, layer = "counts")),
-    as.matrix(.builder_snapshot_dense())
-  )
-  .builder_expect_cache_contained(snapshot)
-})
-
-test_that("BPCells snapshots preserve valid multi-input comma caches", {
-  skip_if_not_installed("BPCells")
-  root <- withr::local_tempdir()
-  dense <- .builder_snapshot_dense()
-  source_one <- file.path(root, "bp-one")
-  source_two <- file.path(root, "bp-two")
-  suppressWarnings(BPCells::write_matrix_dir(
-    methods::as(dense[, 1:3], "IterableMatrix"),
-    dir = source_one
-  ))
-  suppressWarnings(BPCells::write_matrix_dir(
-    methods::as(dense[, 4:6], "IterableMatrix"),
-    dir = source_two
-  ))
-  combined <- cbind(
-    BPCells::open_matrix_dir(source_one),
-    BPCells::open_matrix_dir(source_two)
-  )
-  snapshot <- builder_snapshot_seurat(
-    .builder_snapshot_object(combined),
-    file.path(root, "bp-multi.snapshot"),
-    available_bytes = 2^40
-  )
-  unlink(source_one, recursive = TRUE)
-  unlink(source_two, recursive = TRUE)
-
-  cache <- .builder_snapshot_cache(snapshot$path)
-  expect_match(cache$path[[1L]], ",", fixed = TRUE)
-  expect_equal(
-    as.matrix(SeuratObject::LayerData(
-      builder_open_snapshot(snapshot),
-      layer = "counts"
-    )),
-    as.matrix(dense)
-  )
-  .builder_expect_cache_contained(snapshot)
-})
-
-test_that("BPCells MatrixH5 snapshots use a structured group loader", {
-  skip_if_not_installed("BPCells")
-  root <- withr::local_tempdir()
-  source <- file.path(root, "matrix.h5")
-  suppressWarnings(BPCells::write_matrix_hdf5(
-    methods::as(.builder_snapshot_dense(), "IterableMatrix"),
-    path = source,
-    group = "counts  batch:+1"
-  ))
-  snapshot <- builder_snapshot_seurat(
-    .builder_snapshot_object(BPCells::open_matrix_hdf5(
-      source,
-      "counts  batch:+1"
-    )),
-    file.path(root, "matrix-h5.snapshot"),
-    available_bytes = 2^40
-  )
-  unlink(source)
-
-  expect_equal(
-    as.matrix(SeuratObject::LayerData(
-      builder_open_snapshot(snapshot),
-      layer = "counts"
-    )),
-    as.matrix(.builder_snapshot_dense())
-  )
-})
-
-test_that("BPCells mixed MatrixDir and MatrixH5 inputs remain exact", {
-  skip_if_not_installed("BPCells")
-  root <- withr::local_tempdir()
-  dense <- .builder_snapshot_dense()
-  directory <- file.path(root, "matrix-dir")
-  hdf5 <- file.path(root, "matrix.h5")
-  group <- "counts  batch:@v1=计数+1"
-  suppressWarnings(BPCells::write_matrix_dir(
-    methods::as(dense[, 1:3], "IterableMatrix"),
-    directory
-  ))
-  suppressWarnings(BPCells::write_matrix_hdf5(
-    methods::as(dense[, 4:6], "IterableMatrix"),
-    hdf5,
-    group
-  ))
-  combined <- cbind(
-    BPCells::open_matrix_dir(directory),
-    BPCells::open_matrix_hdf5(hdf5, group)
-  )
-  snapshot <- builder_snapshot_seurat(
-    .builder_snapshot_object(combined),
-    file.path(root, "mixed.snapshot"),
-    available_bytes = 2^40
-  )
-  unlink(directory, recursive = TRUE)
-  unlink(hdf5)
-
-  expect_equal(
-    as.matrix(SeuratObject::LayerData(
-      builder_open_snapshot(snapshot),
-      layer = "counts"
-    )),
-    as.matrix(dense)
-  )
-})
-
-test_that("embedded BPCells memory matrices remain snapshot-compatible", {
-  skip_if_not_installed("BPCells")
-  root <- withr::local_tempdir()
-  memory <- BPCells::write_matrix_memory(
-    methods::as(.builder_snapshot_dense(), "IterableMatrix")
-  )
-  snapshot <- builder_snapshot_seurat(
-    .builder_snapshot_object(memory),
-    file.path(root, "bp-memory.snapshot"),
-    available_bytes = 2^40
-  )
-
-  expect_null(.builder_snapshot_cache(snapshot$path))
-  expect_equal(
-    as.matrix(SeuratObject::LayerData(
-      builder_open_snapshot(snapshot),
-      layer = "counts"
-    )),
-    as.matrix(.builder_snapshot_dense())
-  )
-})
-
-test_that("BPCells queued operations fail closed before snapshot publication", {
+test_that("BPCells matrices are rejected before snapshot publication", {
   skip_if_not_installed("BPCells")
   root <- withr::local_tempdir()
   source <- file.path(root, "raw")
@@ -331,12 +185,11 @@ test_that("BPCells queued operations fail closed before snapshot publication", {
     methods::as(.builder_snapshot_dense(), "IterableMatrix"),
     source
   ))
-  raw <- BPCells::open_matrix_dir(source)
-  transpose <- methods::selectMethod("t", "IterableMatrix")
   cases <- list(
-    scale = raw * 2,
-    transpose = transpose(raw),
-    subset = raw[1:4, , drop = FALSE]
+    directory = BPCells::open_matrix_dir(source),
+    memory = BPCells::write_matrix_memory(
+      methods::as(.builder_snapshot_dense(), "IterableMatrix")
+    )
   )
 
   for (name in names(cases)) {
@@ -347,7 +200,7 @@ test_that("BPCells queued operations fail closed before snapshot publication", {
         target,
         available_bytes = 2^40
       ),
-      "unsupported BPCells|queued operation",
+      "BPCells matrix",
       info = name
     )
     expect_false(dir.exists(target), info = name)
@@ -521,7 +374,7 @@ test_that("layer cache validation rejects incomplete and ambiguous closures", {
   adapter_env <- environment(.builder_snapshot_validate_cache)
   assign(
     "requireNamespace",
-    function(package, quietly) !identical(package, "BPCells"),
+    function(package, quietly) !identical(package, "HDF5Array"),
     envir = adapter_env
   )
   on.exit(rm("requireNamespace", envir = adapter_env), add = TRUE)
@@ -580,15 +433,10 @@ test_that("opening rejects a changed snapshot before cache code can run", {
 })
 
 test_that("opening rejects non-allowlisted cache loaders without executing", {
-  skip_if_not_installed("BPCells")
+  skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
-  source <- file.path(root, "bp")
-  suppressWarnings(BPCells::write_matrix_dir(
-    methods::as(.builder_snapshot_dense(), "IterableMatrix"),
-    dir = source
-  ))
   snapshot <- builder_snapshot_seurat(
-    .builder_snapshot_object(BPCells::open_matrix_dir(source)),
+    .builder_snapshot_hdf5_object(root)$object,
     file.path(root, "loader.snapshot"),
     available_bytes = 2^40
   )
@@ -597,7 +445,7 @@ test_that("opening rejects non-allowlisted cache loaders without executing", {
   object@tools$SaveSeuratRds$fxn <- paste0(
     "function(x) { file.create(",
     dQuote(sentinel),
-    "); BPCells::open_matrix_dir(x) }"
+    "); x }"
   )
   saveRDS(object, snapshot$object_file)
   marker_path <- file.path(snapshot$path, ".builder-owner.rds")
@@ -780,19 +628,16 @@ test_that("failed stage cleanup preserves a raced foreign replacement", {
 })
 
 test_that("backing changes during copy prevent publication", {
-  skip_if_not_installed("BPCells")
+  skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
-  source <- file.path(root, "bp")
-  suppressWarnings(BPCells::write_matrix_dir(
-    methods::as(.builder_snapshot_dense(), "IterableMatrix"),
-    dir = source
-  ))
-  object <- .builder_snapshot_object(BPCells::open_matrix_dir(source))
+  fixture <- .builder_snapshot_hdf5_object(root)
+  object <- fixture$object
+  source <- fixture$source
   adapter_env <- environment(builder_snapshot_seurat)
   original <- .builder_snapshot_after_copy
   assign(
     ".builder_snapshot_after_copy",
-    function() writeLines("changed", file.path(source, "changed")),
+    function() cat("changed", file = source, append = TRUE),
     envir = adapter_env
   )
   on.exit(

@@ -582,7 +582,7 @@ builder_adapter_inspect <- function(adapter) {
       .builder_adapter_abort("SaveSeuratRds produced a malformed layer cache.")
     }
   }
-  if (any(!cache$pkg %in% c("BPCells", "HDF5Array"))) {
+  if (any(cache$pkg != "HDF5Array")) {
     .builder_adapter_abort(
       "The snapshot layer loader is not allowed by Builder."
     )
@@ -613,26 +613,6 @@ builder_adapter_inspect <- function(adapter) {
     }
   }
   list(cache = cache, members = members)
-}
-
-.builder_expected_bpcells_loader <- function(loaders) {
-  if (length(loaders) == 1L) {
-    return(loaders[[1L]])
-  }
-  paste(
-    "function(x) {",
-    "paths <- unlist(x = strsplit(x = x, split = ','));",
-    "fxns <- list(",
-    paste(paste0("'", loaders, "'"), collapse = ", "),
-    ");",
-    "mats <- vector(mode = 'list', length = length(x = paths));",
-    "for (i in seq_along(paths)) {",
-    "fn <- eval(str2lang(fxns[[i]]));",
-    "mats[[i]] <- fn(paths[i]);",
-    "};",
-    "return(Reduce(cbind, mats));",
-    "}"
-  )
 }
 
 .builder_loader_function_body <- function(loader) {
@@ -680,79 +660,6 @@ builder_adapter_inspect <- function(adapter) {
   call
 }
 
-.builder_bpcells_single_contract <- function(loader, path) {
-  body <- .builder_loader_function_body(loader)
-  directory <- .builder_loader_namespace_call(
-    body,
-    "BPCells",
-    "open_matrix_dir"
-  )
-  if (
-    !is.null(directory) &&
-      identical(names(directory), c("", "dir")) &&
-      identical(directory[[2L]], as.name("x")) &&
-      dir.exists(path)
-  ) {
-    return(list(type = "directory", loader = trimws(loader)))
-  }
-  hdf5 <- .builder_loader_namespace_call(
-    body,
-    "BPCells",
-    "open_matrix_hdf5"
-  )
-  if (
-    !is.null(hdf5) &&
-      identical(names(hdf5), c("", "path", "group")) &&
-      identical(hdf5[[2L]], as.name("x")) &&
-      is.character(hdf5[[3L]]) &&
-      length(hdf5[[3L]]) == 1L &&
-      !is.na(hdf5[[3L]]) &&
-      nzchar(hdf5[[3L]]) &&
-      file.exists(path)
-  ) {
-    return(list(
-      type = "hdf5",
-      group = hdf5[[3L]],
-      loader = trimws(loader)
-    ))
-  }
-  NULL
-}
-
-.builder_bpcells_loader_contract <- function(loader, paths) {
-  loader <- trimws(loader)
-  if (length(paths) == 1L) {
-    contract <- .builder_bpcells_single_contract(loader, paths[[1L]])
-    if (is.null(contract)) {
-      return(NULL)
-    }
-    return(list(contract))
-  }
-  token_pattern <- paste0(
-    "function\\(x\\) BPCells::(",
-    "open_matrix_dir\\(dir = x\\)|",
-    "open_matrix_hdf5\\(path = x, group = ",
-    "'[^']+' \\))"
-  )
-  positions <- gregexpr(token_pattern, loader, perl = TRUE)[[1L]]
-  if (identical(positions[[1L]], -1L)) {
-    return(NULL)
-  }
-  tokens <- regmatches(loader, list(positions))[[1L]]
-  if (length(tokens) != length(paths)) {
-    return(NULL)
-  }
-  contracts <- Map(.builder_bpcells_single_contract, tokens, paths)
-  if (any(vapply(contracts, is.null, logical(1)))) {
-    return(NULL)
-  }
-  expected <- .builder_expected_bpcells_loader(tokens)
-  if (!identical(loader, expected)) {
-    return(NULL)
-  }
-  contracts
-}
-
 .builder_hdf5_loader_contract <- function(loader) {
   body <- .builder_loader_function_body(loader)
   call <- .builder_loader_namespace_call(body, "HDF5Array", "HDF5Array")
@@ -780,31 +687,6 @@ builder_adapter_inspect <- function(adapter) {
   package <- cache$pkg[[index]]
   loader <- cache$fxn[[index]]
   paths <- members[[index]]
-  if (identical(package, "BPCells")) {
-    contracts <- .builder_bpcells_loader_contract(loader, paths)
-    if (is.null(contracts)) {
-      .builder_adapter_abort(
-        paste0(
-          "The snapshot BPCells loader is not allowed by Builder. Only ",
-          "MatrixDir and MatrixH5 inputs are supported."
-        )
-      )
-    }
-    matrices <- Map(
-      function(path, contract) {
-        if (identical(contract$type, "directory")) {
-          return(BPCells::open_matrix_dir(path))
-        }
-        BPCells::open_matrix_hdf5(path, group = contract$group)
-      },
-      paths,
-      contracts
-    )
-    if (length(matrices) == 1L) {
-      return(matrices[[1L]])
-    }
-    return(Reduce(cbind, matrices))
-  }
   if (identical(package, "HDF5Array")) {
     contract <- .builder_hdf5_loader_contract(loader)
     if (
@@ -1400,53 +1282,6 @@ builder_adapter_inspect <- function(adapter) {
 
 ## -- On-disk layer equivalence contracts -----------------------------------
 
-.builder_bpcells_raw_node <- function(node) {
-  class_name <- class(node)[[1L]]
-  class_name %in%
-    c("MatrixDir", "MatrixH5") &&
-    "transpose" %in% methods::slotNames(node) &&
-    identical(methods::slot(node, "transpose"), FALSE)
-}
-
-.builder_bpcells_layer_signature <- function(layer) {
-  if (
-    !identical(class(layer)[[1L]], "RenameDims") ||
-      !"matrix" %in% methods::slotNames(layer) ||
-      !"transpose" %in% methods::slotNames(layer) ||
-      !identical(methods::slot(layer, "transpose"), FALSE)
-  ) {
-    return(NULL)
-  }
-  node <- methods::slot(layer, "matrix")
-  if (.builder_bpcells_raw_node(node)) {
-    return(c("RenameDims", class(node)[[1L]]))
-  }
-  if (
-    !identical(class(node)[[1L]], "ColBindMatrices") ||
-      !"matrix_list" %in% methods::slotNames(node) ||
-      !"transpose" %in% methods::slotNames(node) ||
-      !identical(methods::slot(node, "transpose"), FALSE)
-  ) {
-    return(NULL)
-  }
-  children <- methods::slot(node, "matrix_list")
-  if (
-    !length(children) ||
-      !all(vapply(
-        children,
-        .builder_bpcells_raw_node,
-        logical(1)
-      ))
-  ) {
-    return(NULL)
-  }
-  c(
-    "RenameDims",
-    "ColBindMatrices",
-    vapply(children, function(child) class(child)[[1L]], character(1))
-  )
-}
-
 .builder_hdf5_layer_safe <- function(layer) {
   if (
     identical(class(layer)[[1L]], "HDF5Matrix") &&
@@ -1496,44 +1331,14 @@ builder_adapter_inspect <- function(adapter) {
       }
       signature <- NULL
       if (inherits(layer, "IterableMatrix")) {
-        inputs <- tryCatch(
-          BPCells::all_matrix_inputs(layer),
-          error = function(error) NULL
-        )
-        input_classes <- if (is.null(inputs)) {
-          character()
-        } else {
-          vapply(inputs, function(input) class(input)[[1L]], character(1))
-        }
-        disk_inputs <- input_classes %in% c("MatrixDir", "MatrixH5")
-        memory_inputs <- grepl("MatrixMem", input_classes, fixed = TRUE)
-        if (
-          !length(input_classes) ||
-            any(!disk_inputs & !memory_inputs) ||
-            (any(disk_inputs) && !all(disk_inputs))
-        ) {
-          .builder_adapter_abort(paste0(
-            "Layer `",
-            assay,
-            "/",
-            layer_name,
-            "` contains an unsupported ",
-            "BPCells queued operation. Materialize it before snapshotting."
-          ))
-        }
-        if (all(disk_inputs)) {
-          signature <- .builder_bpcells_layer_signature(layer)
-          if (is.null(signature)) {
-            .builder_adapter_abort(paste0(
-              "Layer `",
-              assay,
-              "/",
-              layer_name,
-              "` contains an unsupported ",
-              "BPCells queued operation. Materialize it before snapshotting."
-            ))
-          }
-        }
+        .builder_adapter_abort(paste0(
+          "Layer `",
+          assay,
+          "/",
+          layer_name,
+          "` is a BPCells matrix, which Builder does not snapshot. ",
+          "Convert it to a regular matrix before importing."
+        ))
       } else if (inherits(layer, "DelayedMatrix")) {
         backing_paths <- tryCatch(
           DelayedArray::path(layer),
@@ -1583,9 +1388,7 @@ builder_adapter_inspect <- function(adapter) {
       object[[contract$assay]],
       layer = contract$layer
     ))
-    signature <- if (inherits(layer, "IterableMatrix")) {
-      .builder_bpcells_layer_signature(layer)
-    } else if (.builder_hdf5_layer_safe(layer)) {
+    signature <- if (.builder_hdf5_layer_safe(layer)) {
       "HDF5Matrix"
     } else {
       NULL
