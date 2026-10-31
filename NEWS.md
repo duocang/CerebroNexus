@@ -16,8 +16,16 @@
 
 - External SVG images given as `spatial_images` are drawn as Spatial and Linked
   views backgrounds. The export accepted them and the page offered them, but the
-  Viewer dropped them without a message. An SVG with a script, `foreignObject`,
-  event handler, `javascript:` URL or entity declaration is still refused.
+  Viewer dropped them without a message. An SVG with an obvious script,
+  `foreignObject`, event handler, `javascript:` URL or entity declaration is
+  refused, and the image response carries a sandboxing
+  `Content-Security-Policy`, so an SVG opened as a document cannot run script.
+- `createShinyApp()` no longer refuses two `cerebro_data` entries that name
+  the same CRB: the file is reused under both labels and the bundle holds one
+  copy of the CRB and its H5 file per label.
+- Copying a directory into the bundle on Linux and macOS follows symbolic links
+  inside it, so the App stays self-contained, and a copy that must not
+  overwrite leaves an existing target alone.
 - `saveCerebro()` of a read CRB with spatial molecule sidecars to another
   directory no longer looks for the sidecar next to the output file.
 - Spatial tables whose coordinate columns are called `X`, `Y` or `ID` are read

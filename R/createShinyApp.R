@@ -1373,10 +1373,16 @@
     length(to) == 1L &&
     !is.na(to)
   command_args <- if (scalar && identical(.sysname, "Darwin")) {
-    c("-c", if (isTRUE(recursive)) "-R", "--", shQuote(from), shQuote(to))
+    c(
+      "-c",
+      if (isTRUE(recursive)) c("-R", "-L"),
+      "--",
+      shQuote(from),
+      shQuote(to)
+    )
   } else if (scalar && identical(.sysname, "Linux")) {
     c(
-      if (isTRUE(recursive)) "-R",
+      if (isTRUE(recursive)) c("-R", "-L"),
       "--reflink=auto",
       "--",
       shQuote(from),
@@ -1391,8 +1397,10 @@
   } else {
     to
   }
+  ## Sys.readlink() is NA for a path that does not exist, and nzchar(NA) is TRUE.
   destination_existed <- scalar &&
-    (file.exists(destination) || nzchar(Sys.readlink(destination)))
+    (file.exists(destination) ||
+      isTRUE(nzchar(Sys.readlink(destination), keepNA = TRUE)))
   if (
     scalar &&
       identical(.sysname, "Windows") &&
@@ -1421,6 +1429,10 @@
         copy.date = copy.date
       ))
     }
+  }
+  ## file.copy() leaves an existing target alone unless overwrite is TRUE.
+  if (scalar && !isTRUE(overwrite) && destination_existed) {
+    return(FALSE)
   }
   if (length(command_args) && nzchar(copy_command)) {
     status <- suppressWarnings(tryCatch(
@@ -2125,8 +2137,8 @@
 #' from an older release that is no longer read (see
 #' \code{\link{convertCerebro}}) is rejected, as is an object containing only
 #' one of field and getter.
-#' Dataset labels and canonical CRB sources are both unique: two labels cannot
-#' select the same resolved input file.
+#' Dataset labels are unique. Two labels may name the same input file; the
+#' bundle then holds one copy of it per label.
 #' Generated bundles follow the standard deployment model of one app per R
 #' process; process-global \code{Cerebro.options} does not provide same-process
 #' isolation between separately sourced apps.

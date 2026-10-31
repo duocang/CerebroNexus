@@ -72,7 +72,6 @@ Suggests:
   cachem,
   callr,
   chromote,
-  codetools,
   DelayedArray,
   ggdendro,
   HDF5Array (>= 1.18.1),

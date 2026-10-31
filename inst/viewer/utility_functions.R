@@ -5895,9 +5895,10 @@ trajectorySelectionValid <- function(
   name %in% names_for_method
 }
 
-## An SVG is drawn as an image, which cannot run script, but the session route
-## also serves it as a document: only a plain SVG (no script, foreignObject,
-## event handler, javascript: URL or entity declaration) is accepted.
+## An SVG is drawn as an image, which cannot run script. The session route also
+## serves it as a document, so it carries a sandboxing Content-Security-Policy;
+## this check only turns away the obvious cases (script, foreignObject, event
+## handler, javascript: URL, entity declaration) and is not the guard.
 viewerSvgIsPlain <- function(path, maximum_bytes = 20 * 1024^2) {
   size <- file.size(path)
   if (is.na(size) || size < 1 || size > maximum_bytes) {
@@ -6107,7 +6108,12 @@ viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
         headers = list(
           "Cache-Control" = "private, max-age=31536000, immutable",
           "ETag" = paste0('"', data$md5, '"'),
-          "X-Content-Type-Options" = "nosniff"
+          "X-Content-Type-Options" = "nosniff",
+          ## An SVG opened as a document must not run script, whatever its
+          ## markup; as an image it is unaffected.
+          "Content-Security-Policy" = paste(
+            "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+          )
         )
       )
     }

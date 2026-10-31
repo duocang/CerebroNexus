@@ -68,6 +68,77 @@ test_that("bundle copies use platform clones with a portable fallback", {
   expect_identical(fallbacks, 1L)
 })
 
+test_that("recursive bundle copies follow links and honour overwrite = FALSE", {
+  args <- NULL
+  command <- function(command, args_, stdout, stderr) {
+    args <<- args_
+    0L
+  }
+  for (sysname in c("Linux", "Darwin")) {
+    .bundleCopyPath(
+      "source",
+      "target",
+      recursive = TRUE,
+      .sysname = sysname,
+      .command = command,
+      .fallback = function(...) TRUE
+    )
+    expect_true(all(c("-R", "-L") %in% args))
+  }
+  .bundleCopyPath(
+    "source",
+    "target",
+    .sysname = "Linux",
+    .command = command,
+    .fallback = function(...) TRUE
+  )
+  expect_false("-L" %in% args)
+
+  target <- withr::local_tempfile(fileext = ".txt")
+  source <- withr::local_tempfile(fileext = ".txt")
+  writeLines("source", source)
+  writeLines("target", target)
+  called <- FALSE
+  expect_false(.bundleCopyPath(
+    source,
+    target,
+    overwrite = FALSE,
+    .sysname = "Linux",
+    .command = function(...) {
+      called <<- TRUE
+      0L
+    },
+    .fallback = function(...) TRUE
+  ))
+  expect_false(called)
+  expect_identical(readLines(target), "target")
+  expect_true(.bundleCopyPath(source, target, overwrite = TRUE))
+  expect_identical(readLines(target), "source")
+})
+
+test_that("a link inside a copied directory is copied as its content", {
+  skip_on_os("windows")
+  outside <- withr::local_tempdir()
+  writeLines("data", file.path(outside, "part.parquet"))
+  from <- withr::local_tempdir()
+  dir.create(file.path(from, "sidecar"))
+  file.symlink(
+    file.path(outside, "part.parquet"),
+    file.path(from, "sidecar", "part.parquet")
+  )
+  to <- file.path(withr::local_tempdir(), "copy")
+  expect_true(.bundleCopyPath(
+    file.path(from, "sidecar"),
+    to,
+    recursive = TRUE
+  ))
+  copied <- file.path(to, "part.parquet")
+  expect_true(file.exists(copied))
+  expect_identical(unname(Sys.readlink(copied)), "")
+  unlink(outside, recursive = TRUE)
+  expect_identical(readLines(copied), "data")
+})
+
 test_that("Windows bundle copies use extended-length filesystem paths", {
   expect_identical(
     .bundleWindowsExtendedPath("C:/source/image.jpg", os_type = "windows"),

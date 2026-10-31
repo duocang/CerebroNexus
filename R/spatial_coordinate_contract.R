@@ -1,6 +1,6 @@
 ##----------------------------------------------------------------------------##
-## Bundle-safe coordinate and barcode-column recognition shared by the Seurat
-## exporter and the Builder. Keep the copy under inst/.../core byte-identical.
+## Bundle-safe coordinate and barcode-column recognition used by the Seurat
+## exporter.
 ##----------------------------------------------------------------------------##
 
 .spx_coordinate_contract <- function() {

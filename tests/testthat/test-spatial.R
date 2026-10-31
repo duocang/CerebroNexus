@@ -738,6 +738,22 @@ test_that("external SVG spatial images are served, unless they could run script"
   withr::defer(unlink(not_svg))
   writeLines("<html></html>", not_svg)
   expect_null(renderer$viewerImageMime(not_svg))
+
+  ## The check turns away only the obvious cases; the response is the guard.
+  callback <- NULL
+  session <- new.env(parent = emptyenv())
+  session$userData <- new.env(parent = emptyenv())
+  session$registerDataObj <- function(name, data, handler) {
+    callback <<- function() handler(data, NULL)
+    paste0("session/", name)
+  }
+  renderer$viewerPrivateImageUrl(plain, session)
+  response <- callback()
+  expect_identical(response$content_type, "image/svg+xml")
+  expect_match(
+    response$headers[["Content-Security-Policy"]],
+    "default-src 'none'.*sandbox"
+  )
 })
 
 test_that("spatial first frames replace only exact flat geometry with an asset", {
