@@ -155,8 +155,10 @@ builder_async_schedule <- function() {
         builder_async_evaluate,
         list(task$expr, task$args),
         supervise = TRUE,
-        stdout = "|",
-        stderr = "|"
+        ## Nothing reads the task's output; an undrained pipe blocks the child
+        ## once it has written about 64 KB.
+        stdout = NULL,
+        stderr = NULL
       ),
       error = identity
     )
