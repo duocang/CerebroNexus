@@ -430,6 +430,17 @@
     }
     ## Assigned in place: passing `flat` to a function copied the whole array
     ## once per chunk (27 s for one 28 M-value array of a Visium store).
+    if (length(shape) == 1L) {
+      ## a chunk of a 1-d array is one contiguous run: no index vectors
+      first <- index * chunk_shape
+      n <- min(chunk_shape, shape - first)
+      flat[(first + 1):(first + n)] <- if (n < length(values)) {
+        values[seq_len(n)]
+      } else {
+        values
+      }
+      next
+    }
     place <- .zarrPlacement(shape, index * chunk_shape, chunk_shape)
     flat[place$target] <- values[place$source]
   }
