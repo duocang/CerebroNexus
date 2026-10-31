@@ -7,9 +7,16 @@
 ## and `.h5adRead()` / `.h5adAttrs()` dispatch to the functions below.
 ##
 ## Zarr v3 (what zarr-python 3 and SpatialData 0.7 write) and v2 (zarr-python 2,
-## anndata before 0.12) are read, with the codecs bytes, zstd, gzip, crc32c and
-## transpose, and the variable-length string codec. Blosc compression and
-## sharding are not supported and say so.
+## anndata before 0.12) are read, with the codecs bytes, zstd, gzip, crc32c,
+## sharding and transpose, the variable-length string codec, and Blosc chunks
+## compressed with lz4, zstd or zlib (plain or byte-shuffled; blosclz, snappy
+## and the bit shuffle say so). Any other codec stops with its name.
+##
+## Why not anndataR (the scverse reader)? Tried on the fixtures of this package
+## and on a 300,000 cell h5ad: it cannot read AIRR (awkward) arrays or `.h5mu`,
+## returns nothing for sharded Zarr v3 stores (and so for the SpatialData
+## tables), and read the large h5ad about 2.2 times slower than the reader in
+## h5ad.R at the same memory. Revisit once anndataR reads sharded Zarr.
 ##
 ## Arrays are returned the way rhdf5 returns HDF5 datasets: a C-order array of
 ## shape (n_obs, n_dims) comes back as an R array of dim (n_dims, n_obs), which is
@@ -165,6 +172,14 @@
     b1 = "bool",
     O = "string"
   )
+  fixed <- regmatches(code, regexec("^([US])([0-9]+)$", code))[[1L]]
+  if (length(fixed)) {
+    ## numpy fixed-width strings: U = UTF-32, S = bytes
+    result <- "string"
+    attr(result, "big") <- big
+    attr(result, "fixed") <- c(kind = fixed[[2L]], width = fixed[[3L]])
+    return(result)
+  }
   if (!code %in% names(names)) {
     stop("Unsupported Zarr data type `", dtype, "`.", call. = FALSE)
   }
@@ -220,11 +235,7 @@
         zstd = qs2::zstd_decompress_raw(bytes),
         gzip = memDecompress(bytes, type = "gzip"),
         crc32c = bytes[seq_len(length(bytes) - 4L)],
-        blosc = stop(
-          "This Zarr store uses Blosc compression, which is not supported. ",
-          "Re-save it with zstd or gzip, or convert it to .h5ad.",
-          call. = FALSE
-        ),
+        blosc = .zarrBlosc(bytes),
         stop("Unsupported Zarr codec `", name, "`.", call. = FALSE)
       )
     }
@@ -239,11 +250,7 @@
         zstd = qs2::zstd_decompress_raw(bytes),
         gzip = ,
         zlib = memDecompress(bytes, type = "gzip"),
-        blosc = stop(
-          "This Zarr store uses Blosc compression, which is not supported. ",
-          "Re-save it with zstd or gzip, or convert it to .h5ad.",
-          call. = FALSE
-        ),
+        blosc = .zarrBlosc(bytes),
         stop(
           "Unsupported Zarr compressor `",
           compressor$id,
@@ -254,9 +261,234 @@
     }
   }
   if (string) {
+    fixed <- attr(dtype, "fixed")
+    if (!is.null(fixed)) {
+      return(.zarrFixedStrings(
+        bytes,
+        n,
+        kind = fixed[["kind"]],
+        width = as.integer(fixed[["width"]]),
+        endian = endian
+      ))
+    }
     return(.zarrVlenStrings(bytes, n))
   }
   .zarrBytesToVector(bytes, dtype, endian, n)
+}
+
+#' numpy fixed-width strings (`<U7`, `|S5`): n items of `width` UTF-32 code
+#' points or bytes, padded with zeros.
+#' @keywords internal
+#' @noRd
+.zarrFixedStrings <- function(bytes, n, kind, width, endian = "little") {
+  if (n == 0L || width == 0L) {
+    return(rep("", n))
+  }
+  if (identical(kind, "U")) {
+    codes <- readBin(
+      bytes,
+      "integer",
+      n = n * width,
+      size = 4L,
+      endian = endian
+    )
+    codes <- matrix(codes, nrow = width)
+    return(vapply(
+      seq_len(n),
+      function(i) {
+        code <- codes[, i]
+        stop_at <- match(0L, code, nomatch = width + 1L) - 1L
+        intToUtf8(code[seq_len(stop_at)])
+      },
+      character(1)
+    ))
+  }
+  letters <- matrix(bytes[seq_len(n * width)], nrow = width)
+  result <- vapply(
+    seq_len(n),
+    function(i) {
+      item <- letters[, i]
+      keep <- which(item != as.raw(0L))
+      if (length(keep)) rawToChar(item[seq_len(max(keep))]) else ""
+    },
+    character(1)
+  )
+  Encoding(result) <- "UTF-8"
+  result
+}
+
+#' LZ4 block format (what Blosc stores): sequences of a literal run and a match.
+#' @keywords internal
+#' @noRd
+.zarrLz4Block <- function(source, size) {
+  out <- raw(size)
+  last <- length(source)
+  ip <- 1L
+  op <- 1L
+  extend <- function(value) {
+    repeat {
+      extra <- as.integer(source[[ip]])
+      ip <<- ip + 1L
+      value <- value + extra
+      if (extra != 255L) {
+        return(value)
+      }
+    }
+  }
+  while (ip <= last) {
+    token <- as.integer(source[[ip]])
+    ip <- ip + 1L
+    literals <- bitwShiftR(token, 4L)
+    if (literals == 15L) {
+      literals <- extend(literals)
+    }
+    if (literals > 0L) {
+      out[op:(op + literals - 1L)] <- source[ip:(ip + literals - 1L)]
+      ip <- ip + literals
+      op <- op + literals
+    }
+    if (ip > last) {
+      break
+    }
+    offset <- as.integer(source[[ip]]) + 256L * as.integer(source[[ip + 1L]])
+    ip <- ip + 2L
+    length <- bitwAnd(token, 15L)
+    if (length == 15L) {
+      length <- extend(length)
+    }
+    length <- length + 4L
+    from <- op - offset
+    out[op:(op + length - 1L)] <- if (offset >= length) {
+      out[from:(from + length - 1L)]
+    } else {
+      rep_len(out[from:(op - 1L)], length)
+    }
+    op <- op + length
+  }
+  out
+}
+
+#' Decode one Blosc chunk (a c-blosc 1 frame, what numcodecs and the Zarr v3
+#' blosc codec write): a 16-byte header, the start of every block, and per block
+#' one or more compressed streams. The frame describes itself, so the codec's
+#' own configuration is not needed. Streams compressed with lz4, zstd or zlib,
+#' with no shuffle or the byte shuffle, are read; anything else stops with its
+#' name.
+#' @keywords internal
+#' @noRd
+.zarrBlosc <- function(bytes) {
+  if (length(bytes) < 16L) {
+    stop("A Blosc chunk is shorter than its header.", call. = FALSE)
+  }
+  if (as.integer(bytes[[1L]]) != 2L) {
+    stop(
+      "Unsupported Blosc format version ",
+      as.integer(bytes[[1L]]),
+      " (only the c-blosc 1 format is read).",
+      call. = FALSE
+    )
+  }
+  flags <- as.integer(bytes[[3L]])
+  typesize <- as.integer(bytes[[4L]])
+  sizes <- readBin(bytes[5:16], "integer", n = 3L, size = 4L, endian = "little")
+  nbytes <- sizes[[1L]]
+  blocksize <- sizes[[2L]]
+  if (nbytes == 0L) {
+    return(raw())
+  }
+  if (bitwAnd(flags, 2L)) {
+    return(bytes[17:(16L + nbytes)])
+  }
+  compressor <- c("blosclz", "lz4", "snappy", "zlib", "zstd")[
+    bitwAnd(bitwShiftR(flags, 5L), 7L) + 1L
+  ]
+  if (!compressor %in% c("lz4", "zlib", "zstd")) {
+    stop(
+      "This Zarr store uses Blosc with the `",
+      compressor,
+      "` compressor, which is not supported (lz4, zstd and zlib are).",
+      call. = FALSE
+    )
+  }
+  if (bitwAnd(flags, 4L)) {
+    stop(
+      "This Zarr store uses Blosc with the bit shuffle, which is not ",
+      "supported (no shuffle and the byte shuffle are).",
+      call. = FALSE
+    )
+  }
+  if (bitwAnd(flags, 8L)) {
+    stop(
+      "This Zarr store uses Blosc with the delta filter, which is not ",
+      "supported.",
+      call. = FALSE
+    )
+  }
+  shuffled <- bitwAnd(flags, 1L) > 0L && typesize > 1L
+  dont_split <- bitwAnd(flags, 16L) > 0L
+  nblocks <- as.integer(ceiling(nbytes / blocksize))
+  starts <- readBin(
+    bytes[17:(16L + 4L * nblocks)],
+    "integer",
+    n = nblocks,
+    size = 4L,
+    endian = "little"
+  )
+  out <- raw(nbytes)
+  written <- 0L
+  for (block in seq_len(nblocks)) {
+    size <- if (block == nblocks) {
+      nbytes - blocksize * (nblocks - 1L)
+    } else {
+      blocksize
+    }
+    leftover <- size != blocksize
+    splits <- if (
+      !dont_split &&
+        typesize <= 16L &&
+        blocksize %/% typesize >= 128L &&
+        !leftover
+    ) {
+      typesize
+    } else {
+      1L
+    }
+    stream_size <- size %/% splits
+    position <- starts[[block]] + 1L
+    pieces <- vector("list", splits)
+    for (split in seq_len(splits)) {
+      compressed <- readBin(
+        bytes[position:(position + 3L)],
+        "integer",
+        n = 1L,
+        size = 4L,
+        endian = "little"
+      )
+      position <- position + 4L
+      stream <- bytes[position:(position + compressed - 1L)]
+      position <- position + compressed
+      pieces[[split]] <- if (compressed == stream_size) {
+        stream
+      } else {
+        switch(
+          compressor,
+          lz4 = .zarrLz4Block(stream, stream_size),
+          zstd = qs2::zstd_decompress_raw(stream),
+          zlib = memDecompress(stream, type = "gzip")
+        )
+      }
+    }
+    decoded <- unlist(pieces, use.names = FALSE)
+    if (shuffled && size >= typesize) {
+      count <- size %/% typesize
+      main <- count * typesize
+      planes <- matrix(decoded[seq_len(main)], nrow = count)
+      decoded <- c(as.vector(t(planes)), decoded[-seq_len(main)])
+    }
+    out[(written + 1L):(written + size)] <- decoded
+    written <- written + size
+  }
+  out
 }
 
 #' Numcodecs' variable-length string layout: uint32 count, then (uint32 length,

@@ -400,8 +400,9 @@
 #' extent worked out from the transformations. Points, labels, other shapes and
 #' single-channel images are not read.
 #'
-#' Zarr v2 and v3 stores are read; Blosc compression and sharding are not
-#' supported (a clear error says so).
+#' Zarr v2 and v3 stores are read (including sharded arrays) with zstd, gzip,
+#' Blosc (lz4, zstd or zlib) or no compression; any other codec stops with its
+#' name.
 #'
 #' @param path A SpatialData \code{.zarr} directory, or a \code{.zip} of one (as the
 #'   SpatialData sample datasets are distributed).

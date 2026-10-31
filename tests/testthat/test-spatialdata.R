@@ -52,7 +52,7 @@ test_that("a Zarr store converts to a .crb", {
   expect_equal(length(crb$getGeneNames()), 30)
 })
 
-test_that("unsupported Zarr layouts say so", {
+test_that("a Blosc chunk of another format version says so", {
   store <- withr::local_tempdir()
   dir.create(file.path(store, "x"))
   writeLines(
@@ -66,7 +66,7 @@ test_that("unsupported Zarr layouts say so", {
     file.path(store, "zarr.json")
   )
   ctx <- CerebroNexus:::.zarrContext(store)
-  expect_error(CerebroNexus:::.zarrRead(ctx, "x"), "Blosc")
+  expect_error(CerebroNexus:::.zarrRead(ctx, "x"), "Blosc format version 1")
 })
 
 ## ---------------------------------------------------------------------------

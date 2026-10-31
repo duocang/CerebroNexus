@@ -89,8 +89,9 @@ crb <- convertSpatialDataToCerebro(
 The cell table, the coordinates and the tissue pictures are read from the
 `.zarr` directory, with one spatial section per region. Coordinates come from
 `obsm["spatial"]` when the table has them (Visium) and from the shapes the
-table annotates otherwise (MERFISH, Xenium). Stores written with Blosc
-compression are not supported; re-save them with zstd.
+table annotates otherwise (MERFISH, Xenium). Stores compressed with Blosc
+(lz4, zstd or zlib), zstd or gzip are read; a store that needs another codec
+stops with the codec's name.
 
 # Back to scanpy
 

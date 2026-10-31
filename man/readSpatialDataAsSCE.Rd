@@ -46,8 +46,9 @@ system they are placed in, as \code{metadata(sce)$spatial_images}, with their
 extent worked out from the transformations. Points, labels, other shapes and
 single-channel images are not read.
 
-Zarr v2 and v3 stores are read (including sharded arrays) with zstd, gzip or
-no compression; Blosc compression is not supported and a clear error says so.
+Zarr v2 and v3 stores are read (including sharded arrays) with zstd, gzip,
+Blosc (lz4, zstd or zlib) or no compression; any other codec stops with its
+name.
 }
 \seealso{
 \code{\link{convertSpatialDataToCerebro}}, \code{\link{readH5adAsSCE}}
