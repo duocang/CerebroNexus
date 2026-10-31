@@ -1,4 +1,4 @@
-# CerebroNexus 5.6.0
+# CerebroNexus 6.0.0
 
 ## New
 
