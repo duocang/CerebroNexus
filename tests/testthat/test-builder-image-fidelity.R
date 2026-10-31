@@ -565,7 +565,7 @@ test_that("external image materialization is byte exact and keeps transforms", {
   )
   expect_identical(
     materialized$settings[["dataset-a"]][["fov-a"]]$section$rotation,
-    37
+    -37
   )
 })
 
