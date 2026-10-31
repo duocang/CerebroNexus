@@ -20,7 +20,7 @@ exportFromSCE(
   use_delayed_array = FALSE,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
-  viewer_binary_threshold = 500000L,
+  viewer_binary_threshold = 100000L,
   verbose = FALSE
 )
 ```
@@ -130,19 +130,19 @@ exportFromSCE(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [21:25:30] Initializing Cerebro object...
-#> [21:25:30] Collecting available meta data...
-#> [21:25:30] Extracting all meta data columns...
-#> [21:25:30] Extracting dimensional reductions...
-#> [21:25:30] Will export the following dimensional reductions: UMAP
-#> [21:25:30] No trajectories to extract...
-#> [21:25:30] Overview of Cerebro object:
+#> [10:28:06] Initializing Cerebro object...
+#> [10:28:06] Collecting available meta data...
+#> [10:28:06] Extracting all meta data columns...
+#> [10:28:06] Extracting dimensional reductions...
+#> [10:28:06] Will export the following dimensional reductions: UMAP
+#> [10:28:06] No trajectories to extract...
+#> [10:28:06] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 5.4.0
+#> exporter package version: 5.5.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-10-30
+#> date of export: 2026-10-31
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, cluster
@@ -157,6 +157,6 @@ exportFromSCE(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [21:25:30] Saving Cerebro object to: /tmp/nix-shell-4455-826536120/Rtmpwi16HU/pbmc_SCE.crb
-#> [21:25:30] Done!
+#> [10:28:06] Saving Cerebro object to: /tmp/nix-shell-4247-1737617929/RtmpfihAOC/pbmc_SCE.crb
+#> [10:28:06] Done!
 ```
