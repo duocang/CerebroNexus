@@ -25,6 +25,8 @@
   `CEREBRO_PACKAGE_SOURCE` is documented and ignored unless it names a
   CerebroNexus checkout.
 
+# CerebroNexus 5.6.0
+
 ## Changes
 
 - `createShinyApp()` exports faster and with less memory. Validating a Viewer
