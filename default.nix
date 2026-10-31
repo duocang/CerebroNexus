@@ -19,6 +19,7 @@
 #  > "Seurat",
 #  > "SeuratObject",
 #  > "shinymanager",
+#  > "anndataR",
 #  > "arrow",
 #  > "base64enc",
 #  > "biomaRt",
@@ -72,6 +73,7 @@ let
  
   rpkgs = builtins.attrValues {
     inherit (pkgs.rPackages) 
+      anndataR
       arrow
       base64enc
       biomaRt
