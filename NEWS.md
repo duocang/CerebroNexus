@@ -1,4 +1,4 @@
-# CerebroNexus 5.6.0
+# CerebroNexus 6.0.0
 
 ## New
 
@@ -24,6 +24,8 @@
   maximum, tells 0-255 pixels from 0-1 ones); the environment variable
   `CEREBRO_PACKAGE_SOURCE` is documented and ignored unless it names a
   CerebroNexus checkout.
+
+# CerebroNexus 5.6.0
 
 ## Changes
 
