@@ -1,5 +1,21 @@
 # CerebroNexus 5.6.0
 
+## New
+
+- AnnData (`.h5ad`, `.h5mu`, `.zarr`) and SpatialData (`.zarr`) files are read
+  natively, without Python: `readH5adAsSCE()`, `readSpatialDataAsSCE()`,
+  `convertH5adToCerebro()` and `convertSpatialDataToCerebro()`;
+  `exportToH5ad()` writes a CRB back as `.h5ad`. The readers are written here
+  and not on anndataR, because anndataR 1.2.2 cannot read AIRR (awkward)
+  arrays, `.h5mu` files or sharded Zarr v3 stores (nor the SpatialData tables
+  in them), and read a 300,000 cell h5ad about 2.2 times slower at the same
+  memory. A test compares the h5ad reader with anndataR (skipped where it is
+  not installed); to be revisited once anndataR reads sharded Zarr.
+- Zarr stores compressed with Blosc (lz4, zstd or zlib, with or without the
+  byte shuffle) and arrays of numpy fixed-width strings (`<U`, `|S`) are read.
+  Blosc with blosclz, snappy, the bit shuffle or the delta filter, and any
+  other codec, stop with their name.
+
 ## Changes
 
 - `createShinyApp()` exports faster and with less memory. Validating a Viewer

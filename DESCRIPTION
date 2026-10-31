@@ -69,6 +69,7 @@ Imports:
   tidyselect(>= 1.1.0),
   utils
 Suggests:
+  anndataR,
   arrow,
   cachem,
   callr,
