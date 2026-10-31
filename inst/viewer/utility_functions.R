@@ -5895,13 +5895,42 @@ trajectorySelectionValid <- function(
   name %in% names_for_method
 }
 
+## An SVG is drawn as an image, which cannot run script. The session route also
+## serves it as a document, so it carries a sandboxing Content-Security-Policy;
+## this check only turns away the obvious cases (script, foreignObject, event
+## handler, javascript: URL, entity declaration) and is not the guard.
+viewerSvgIsPlain <- function(path, maximum_bytes = 20 * 1024^2) {
+  size <- file.size(path)
+  if (is.na(size) || size < 1 || size > maximum_bytes) {
+    return(FALSE)
+  }
+  text <- tryCatch(
+    rawToChar(readBin(path, what = "raw", n = size)),
+    error = function(error) NA_character_
+  )
+  if (is.na(text)) {
+    return(FALSE)
+  }
+  grepl("<svg[[:space:]>/]", substr(text, 1L, 4096L), useBytes = TRUE) &&
+    !grepl(
+      "<script|<foreignObject|<!ENTITY|javascript:|[[:space:]\"']on[a-z]+[[:space:]]*=",
+      text,
+      ignore.case = TRUE,
+      perl = TRUE,
+      useBytes = TRUE
+    )
+}
+
 viewerImageMime <- function(path) {
   if (!isTRUE(file_test("-f", path))) {
     return(NULL)
   }
   ext <- tolower(tools::file_ext(path))
-  if (!ext %in% c("png", "jpg", "jpeg")) {
+  if (!ext %in% c("png", "jpg", "jpeg", "svg")) {
     return(NULL)
+  }
+  if (identical(ext, "svg")) {
+    return(if (viewerSvgIsPlain(path)) "image/svg+xml" else NULL)
   }
   bytes <- tryCatch(
     readBin(path, what = "raw", n = 8L),
@@ -6079,7 +6108,12 @@ viewerPrivateImageUrl <- function(path, session = NULL, expected_md5 = NULL) {
         headers = list(
           "Cache-Control" = "private, max-age=31536000, immutable",
           "ETag" = paste0('"', data$md5, '"'),
-          "X-Content-Type-Options" = "nosniff"
+          "X-Content-Type-Options" = "nosniff",
+          ## An SVG opened as a document must not run script, whatever its
+          ## markup; as an image it is unaffected.
+          "Content-Security-Policy" = paste(
+            "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+          )
         )
       )
     }

@@ -709,6 +709,53 @@ test_that("external spatial images are streamed from session-private files", {
   expect_identical(changed$status, 404L)
 })
 
+test_that("external SVG spatial images are served, unless they could run script", {
+  renderer <- viewer_runtime_env()
+  write_svg <- function(body) {
+    path <- tempfile(fileext = ".svg")
+    writeLines(
+      paste0(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>",
+        body,
+        "</svg>"
+      ),
+      path
+    )
+    withr::defer(unlink(path), envir = parent.frame())
+    path
+  }
+  plain <- write_svg("<rect width='10' height='10' fill='red'/>")
+  expect_identical(renderer$viewerImageMime(plain), "image/svg+xml")
+  for (unsafe in c(
+    "<script>alert(1)</script>",
+    "<rect width='1' height='1' onload='alert(1)'/>",
+    "<foreignObject><div/></foreignObject>",
+    "<a href='javascript:alert(1)'><rect width='1' height='1'/></a>"
+  )) {
+    expect_null(renderer$viewerImageMime(write_svg(unsafe)))
+  }
+  not_svg <- tempfile(fileext = ".svg")
+  withr::defer(unlink(not_svg))
+  writeLines("<html></html>", not_svg)
+  expect_null(renderer$viewerImageMime(not_svg))
+
+  ## The check turns away only the obvious cases; the response is the guard.
+  callback <- NULL
+  session <- new.env(parent = emptyenv())
+  session$userData <- new.env(parent = emptyenv())
+  session$registerDataObj <- function(name, data, handler) {
+    callback <<- function() handler(data, NULL)
+    paste0("session/", name)
+  }
+  renderer$viewerPrivateImageUrl(plain, session)
+  response <- callback()
+  expect_identical(response$content_type, "image/svg+xml")
+  expect_match(
+    response$headers[["Content-Security-Policy"]],
+    "default-src 'none'.*sandbox"
+  )
+})
+
 test_that("spatial first frames replace only exact flat geometry with an asset", {
   renderer <- viewer_runtime_env()
   sys.source(

@@ -2403,7 +2403,7 @@ cv_asset_data_uri <- function(asset) {
       !is.character(mime) ||
       length(mime) != 1L ||
       is.na(mime) ||
-      !(mime %in% c("image/png", "image/jpeg")) ||
+      !(mime %in% c("image/png", "image/jpeg", "image/svg+xml")) ||
       !requireNamespace("base64enc", quietly = TRUE)
   ) {
     return(NULL)
@@ -2435,7 +2435,7 @@ cv_defer_assets <- function(value) {
           is.character(image$asset_mime) &&
           length(image$asset_mime) == 1L &&
           !is.na(image$asset_mime) &&
-          image$asset_mime %in% c("image/png", "image/jpeg")
+          image$asset_mime %in% c("image/png", "image/jpeg", "image/svg+xml")
       ) {
         list(path = image$asset_path, mime = image$asset_mime)
       } else {
