@@ -507,20 +507,25 @@ builder_activity_message <- function(
   )
 }
 
+## The activity depends on the import queue, which changes about ten times a
+## second while data load; the browser sweeps its controls for every message.
+builder_activity_sent <- new.env(parent = emptyenv())
 observe({
   activity <- builder_activity()
   if (identical(activity$project_phase, "restoring")) {
     shiny::invalidateLater(1000, session)
   }
-  session$sendCustomMessage(
-    "builder_activity_state",
-    builder_activity_message(
-      activity,
-      builder_project_restore_progress(),
-      builder_build_overlay(),
-      builder_project_picker_kind()
-    )
+  message <- builder_activity_message(
+    activity,
+    builder_project_restore_progress(),
+    builder_build_overlay(),
+    builder_project_picker_kind()
   )
+  if (identical(message, builder_activity_sent$message)) {
+    return()
+  }
+  builder_activity_sent$message <- message
+  session$sendCustomMessage("builder_activity_state", message)
 })
 
 observe({
@@ -662,7 +667,6 @@ builder_project_registration_runtime_files <- function() {
     file.path(builder_dir, "inspect.R"),
     file.path(builder_dir, "adapters.R"),
     file.path(builder_dir, "preview.R"),
-    file.path(builder_dir, "stats.R"),
     file.path(builder_dir, "extras.R"),
     file.path(builder_dir, "analysis.R"),
     file.path(builder_dir, "marker_import.R"),

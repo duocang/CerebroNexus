@@ -24,6 +24,7 @@
 
   var statusTimer = null;
   var lastAnnouncement = "";
+  var statusSemanticsAnnounced = false;
   var observedPrimaryAction = null;
   var buildDialogHandlerRegistered = false;
   var viewerGroupHandlerRegistered = false;
@@ -3957,7 +3958,15 @@
       })
       .filter(Boolean)
       .join(". ");
-    scheduleStatusAnnouncement(status);
+    // An empty status clears only what this function announced, not an
+    // announcement another part of the page has just queued.
+    if (status) {
+      statusSemanticsAnnounced = true;
+      scheduleStatusAnnouncement(status);
+    } else if (statusSemanticsAnnounced) {
+      statusSemanticsAnnounced = false;
+      scheduleStatusAnnouncement("");
+    }
   }
 
   function updatePipelines(roots) {
@@ -4926,8 +4935,12 @@
       }
     );
     if (isSelfManagedRailMutation) return;
+    // The canvas tooltip changes on every pointer move and the build clock every
+    // second; neither needs the document re-enhanced.
     var ignoredSelector =
-      ".selectize-control, .builder-icon-slot, .shiny-notification-panel";
+      ".selectize-control, .builder-icon-slot, .shiny-notification-panel, " +
+      ".builder-spatial-canvas-tooltip, .builder-spatial-canvas-summary, " +
+      "[data-build-progress-detail]";
     var affectedSelector =
       ".shiny-html-output, .modal, .builder-dialog, " +
       "[data-workflow-stage], #build-stage-status, #builder-operation-overlay";
