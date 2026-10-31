@@ -135,6 +135,7 @@ test_that("summaries wait for visibility without recomputing on scroll alone", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
+      sys.source(viewer_test_path("plotting_functions.R"), scope)
       reads <- 0L
       expression_projection_summary_ready <- function() TRUE
       expression_projection_data <- function() data.frame(cluster = c("a", "b"))
@@ -143,9 +144,10 @@ test_that("summaries wait for visibility without recomputing on scroll alone", {
         list(series = list(list(values = c(0, 1))))
       })
       reactive_colors <- function() list(cluster = c(a = "red", b = "blue"))
+      expression_projection_shown_rows <- function() NULL
       plotExpressionSummary <- function(...) {
         reads <<- reads + 1L
-        plotly::plot_ly(x = 1:2, y = 1:2)
+        list(type = "violin", groups = I(c("a", "b")))
       }
       viewer_server_load(
         viewer_server_statements("gene_expression", "UI_expression_by_group.R"),

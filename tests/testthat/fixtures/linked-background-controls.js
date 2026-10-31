@@ -71,7 +71,7 @@ console.log('PASS linked background visibility, ROI isolation and deferred image
 const layers = {spaceById: {}};
 vm.createContext(layers);
 vm.runInContext(extract('needsUnderlay', 'updateGpuSelection'), layers);
-for (const space of [{image:{id:'embedded'}}, {images:[{id:'external',deferred:true}]},
+for (const space of [{samples:[{images:[{id:'embedded'}]}]}, {images:[{id:'external',deferred:true}]},
   {background_scope:'roi'}, {trajectory:true}, {hulls:[{}]}]) {
   layers.spaceById.s = space;
   assert.equal(layers.needsUnderlay({spaceId:'s'}), true);

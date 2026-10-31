@@ -1,6 +1,5 @@
 # test-trajectory.R — Tests for trajectory module
 
-shiny_root <- system.file("viewer", package = "CerebroNexus")
 # The full T+B demo now carries the monocle2 B-cell trajectory (the former
 # standalone trajectory-only demo was consolidated into it).
 trajectory_crb <- system.file(
@@ -8,46 +7,17 @@ trajectory_crb <- system.file(
   package = "CerebroNexus"
 )
 
-test_that("all trajectory module files parse without errors", {
-  mod_files <- c(
-    "UI.R",
-    "server.R",
-    "projection.R",
-    "projection_plot.R",
-    "distribution_along_pseudotime.R",
-    "expression_metrics.R",
-    "select_method_and_name.R",
-    "selected_cells_table.R",
-    "states_by_group.R"
-  )
-  for (f in mod_files) {
-    fpath <- file.path(shiny_root, "trajectory", f)
-    skip_if_not(file.exists(fpath), message = paste("Missing:", f))
-    expect_no_error(parse(file = fpath))
-  }
-})
-
-test_that("trajectory UI defines correct tabName", {
-  scope <- viewer_ui_test_env()
-  sys.source(viewer_test_path("trajectory", "UI.R"), scope)
-  page <- htmltools::tagQuery(scope$tab_trajectory)
-  expect_equal(page$filter("#shiny-tab-trajectory")$length(), 1L)
-})
-
-test_that("full T+B demo trajectory class methods work", {
-  skip_if_not(file.exists(trajectory_crb))
-  crb <- readCerebro(trajectory_crb)
-  methods <- crb$getMethodsForTrajectories()
-  expect_true(is.character(methods))
-  expect_true(length(methods) > 0)
-  expect_true("monocle2" %in% methods)
+## The other trajectory module files are sourced or parsed by the page tests.
+test_that("trajectory method selector parses without errors", {
+  expect_no_error(parse(
+    file = viewer_test_path("trajectory", "select_method_and_name.R")
+  ))
 })
 
 test_that("full T+B demo trajectory data is accessible and complete", {
-  skip_if_not(file.exists(trajectory_crb))
   crb <- readCerebro(trajectory_crb)
   methods <- crb$getMethodsForTrajectories()
-  skip_if(length(methods) == 0)
+  expect_true("monocle2" %in% methods)
   names <- crb$getNamesOfTrajectories(methods[1])
   expect_true(is.character(names))
   expect_true(length(names) > 0)
@@ -60,13 +30,6 @@ test_that("full T+B demo trajectory data is accessible and complete", {
   expect_true("pseudotime" %in% colnames(traj$meta))
   expect_true("state" %in% colnames(traj$meta))
   expect_true("B_cell_maturation" %in% crb$getNamesOfTrajectories("monocle2"))
-})
-
-test_that("utility wrappers for trajectory exist", {
-  crb <- readCerebro(trajectory_crb)
-  expect_true(is.function(crb$getMethodsForTrajectories))
-  expect_true(is.function(crb$getNamesOfTrajectories))
-  expect_true(is.function(crb$getTrajectory))
 })
 
 test_that("getTrajectory bug is fixed in class definition", {
@@ -84,6 +47,7 @@ test_that("getTrajectory bug is fixed in class definition", {
 
 test_that("trajectory helper utilities are defined in the app scope", {
   scope <- viewer_runtime_env()
+  scope$data_set <- function() NULL
   metadata <- data.frame(
     cell_barcode = "c1",
     group = "A",

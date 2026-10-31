@@ -145,7 +145,6 @@ test_that("large specialist views send their first frame before hover data", {
   skip_if_not_installed("jsonlite")
   runtime <- viewer_runtime_env()
   sent <- list()
-  runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$viewerDatasetIdentity <- function() {
     list(
       cell_count = 4096L,
@@ -229,7 +228,6 @@ test_that("deferred specialist IDs can declare trace lengths without placeholder
   skip_if_not_installed("jsonlite")
   runtime <- viewer_runtime_env()
   sent <- list()
-  runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$viewerDatasetIdentity <- function() {
     list(
       cell_count = 4096L,
@@ -352,10 +350,7 @@ test_that("specialist views can reference validated shared coordinates", {
   ))
 
   sent <- list()
-  runtime$input <- list(
-    coordviews_wire_supported = TRUE,
-    coordviews_shared_base = shared
-  )
+  runtime$input <- list(coordviews_shared_base = shared)
   runtime$viewerDatasetIdentity <- function() identity
   runtime$session <- list(sendBinaryMessage = function(type, payload) {
     sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
@@ -490,7 +485,6 @@ test_that("renders with delivered cells name the barcodes the browser holds", {
   skip_if_not_installed("jsonlite")
   runtime <- viewer_runtime_env()
   sent <- list()
-  runtime$input <- list(coordviews_wire_supported = TRUE)
   runtime$session <- list(
     sendBinaryMessage = function(type, payload) {
       sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
@@ -538,4 +532,52 @@ test_that("renders with delivered cells name the barcodes the browser holds", {
   expect_null(render("#abcdef", rev(seq_along(keys)))$aux_reuse)
   context <- runtime$viewerDatasetContext("wire-test", "dataset-a", 2L)
   expect_null(render("#abcdef", seq_along(keys))$aux_reuse)
+})
+
+test_that("auxiliary data delivered at once is named by renders of the same cells", {
+  skip_if_not_installed("jsonlite")
+  runtime <- viewer_runtime_env()
+  sent <- list()
+  runtime$session <- list(
+    sendBinaryMessage = function(type, payload) {
+      sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
+    },
+    sendCustomMessage = function(type, payload) NULL
+  )
+  context <- runtime$viewerDatasetContext("wire-test", "dataset-a", 1L)
+  runtime$viewer_loaded_dataset_context <- function() context
+  n <- 4096L
+  render <- function(color) {
+    runtime$cerebroCellViewRender(
+      "spatial_projection",
+      meta = list(color_type = "categorical", traces = "A"),
+      data = list(
+        x = list(I(as.numeric(seq_len(n)))),
+        y = list(I(as.numeric(seq_len(n)))),
+        color = list(color),
+        deferred_selection_lengths = n
+      ),
+      ## Spatial sends canonical rows named through the cell-name resource.
+      deferred_aux = function() {
+        list(
+          selection_index = seq_len(n) - 1L,
+          cell_names_resource = list(url = "names"),
+          hover = list(hoverinfo = "skip", columns = list())
+        )
+      },
+      dataset_context = context,
+      aux_key = list(cells = seq_len(n), hover = FALSE)
+    )
+    wire_header(tail(sent, 1L)[[1L]]$payload)$data
+  }
+  expect_null(render("#123456")$aux_reuse)
+  token <- runtime$.cerebro_cell_view_wire_serial
+  expect_true(runtime$cerebroCellViewAuxRequest(list(
+    id = "spatial_projection",
+    wire_token = token,
+    dataset_context = context
+  )))
+  ## The key stays on the server: the browser never reads it.
+  expect_null(wire_header(tail(sent, 1L)[[1L]]$payload)$aux_key)
+  expect_identical(render("#abcdef")$aux_reuse, token)
 })

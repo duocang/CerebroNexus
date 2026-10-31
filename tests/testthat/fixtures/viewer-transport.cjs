@@ -31,21 +31,6 @@ async function rejected(data,overrides={}) {
   return t;
 }
 const scenarios={
-  async motion() {
-    const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-    const t=setup(), actions={}, calls=[], preference={matches:false};
-    const button=action=>({dataset:{act:action},addEventListener(name,fn){actions[action]=fn;},
-      classList:{toggle(){}},setAttribute(){}});
-    const buttons=['reset','zoomin','zoomout'].map(button);
-    t.hosts['hla-modebar']={querySelectorAll:()=>buttons};
-    t.scope.matchMedia=()=>preference;
-    t.scope.HTMLWidgets={find:()=>({network:{getScale:()=>1,fit:value=>calls.push(value),moveTo:value=>calls.push(value)}})};
-    vm.runInContext(fs.readFileSync(path.join(root,'hla_motifs.js'),'utf8'),t.scope,{filename:'hla_motifs.js'});
-    actions.reset();assert.equal(calls.at(-1).animation.duration,300);
-    actions.zoomin();assert.equal(calls.at(-1).scale,1.3);assert.equal(calls.at(-1).animation.duration,200);
-    preference.matches=true;actions.reset();assert.equal(calls.at(-1).animation,false);
-    actions.zoomout();assert.equal(calls.at(-1).animation,false);assert.equal(calls.at(-1).scale,1/1.3);
-  },
   async identity() {
     const t=setup();await t.deliver(t.frame());assert.equal(t.summary().ready,true);
     assert.equal(t.summary().xExtent.min,1);assert.equal(t.summary().xExtent.max,3);
@@ -107,22 +92,22 @@ const scenarios={
   },
   async lifecycle() {
     const t=setup();const first=t.frame({x:[1,2,3],y:[4,5,6],projection_resource:null,wire_token:7});
-    t.send('cell_view_render',first);assert(t.summary().ready);
+    await t.deliver(first);assert(t.summary().ready);
     t.scope.cerebroCellViews.applyState(first.id,{selection:{cells:['a']}});
     assert.equal(t.scope.cerebroCellViews.captureState(first.id).cells[0],'a');
     t.dataset('B',2);assert(!t.summary().ready);assert.equal(t.scope.cerebroCellViews.captureState(first.id),null);
     for(const context of [null,first.dataset_context,{...t.context,epoch:'other'},{...t.context,dataset_key:'A'}]) {
       const stale={...first,dataset_context:context,render_token:99};
-      t.send('cell_view_render',stale);t.binary('cell_view_binary',stale);
+      t.binary('cell_view_binary',stale);
       t.binary('cell_view_aux_binary',{...stale,selection_key:['wrong']});
-      t.send('cell_view_recolor',{...stale,data:{color:[99]}});
+      t.binary('cell_view_recolor_binary',{...stale,data:{color:[99]}});
       t.send('cell_view_background',{...stale,background_identity:'old',values:{opacity:0}});
     }
     await t.settle();assert(!t.summary().ready);
     await t.deliver(t.frame());assert(t.summary().ready);assert.equal(t.summary().datasetKey,'B');
-    t.send('cell_view_render',{...t.frame({x:[99],y:[99],projection_resource:null}),render_token:1});
+    await t.deliver({...t.frame({x:[99],y:[99],projection_resource:null}),render_token:1});
     assert.equal(t.summary().xExtent.max,3,'Older render token cannot overwrite fresh geometry');
-    t.dataset('A',3);assert(!t.summary().ready);t.send('cell_view_render',first);assert(!t.summary().ready);
+    t.dataset('A',3);assert(!t.summary().ready);await t.deliver(first);assert(!t.summary().ready);
   },
   async caches() {
     const t=setup();

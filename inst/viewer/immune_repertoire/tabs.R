@@ -1,5 +1,5 @@
 ## ---- Remember the last selected tab ----------------------------------- ##
-## The visualizations tabsetPanel is rebuilt by renderUI whenever ir_data()
+## The visualizations tabsetPanel is rebuilt by renderUI when the data set
 ## changes. Without this, the rebuild resets the selection to the first tab
 ## (Abundance). We remember the user's current tab so the rebuild can restore
 ## it (see visualizations.R).
@@ -8,6 +8,16 @@ observeEvent(input$ir_tabs, {
   if (!is.null(input$ir_tabs) && nzchar(input$ir_tabs)) {
     ir_last_tab(input$ir_tabs)
   }
+})
+
+## The tab the strip opens on (see visualizations.R): the remembered tab, else
+## the first one, Clonal projection. The clonal projection reads it through
+## viewerControlValue() and is drawn before the strip reaches the browser.
+ir_tab <- viewerControlValue(input, "ir_tabs", function() {
+  if (!has_scRepertoire() || !ir_repertoire_available()) {
+    return(NULL)
+  }
+  isolate(ir_last_tab()) %||% "Clonal UMAP"
 })
 
 ## ---- Attach tooltips to tab links via JS ------------------------------ ##

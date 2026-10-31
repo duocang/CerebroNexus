@@ -43,6 +43,7 @@
 
 .recognizedCerebroObject <- function(object) {
   is.environment(object) &&
+    inherits(object, "R6") &&
     any(startsWith(class(object), "Cerebro")) &&
     environmentIsLocked(object)
 }
@@ -90,10 +91,7 @@
 
 ## A sidecar is addressed by one file name that sits next to the CRB.
 .cerebroSiblingName <- function(name) {
-  is.character(name) &&
-    length(name) == 1L &&
-    !is.na(name) &&
-    nzchar(name) &&
+  .isString(name) &&
     !name %in% c(".", "..") &&
     !grepl("[/\\\\]", name)
 }
@@ -153,6 +151,83 @@
     !anyNA(cells) &&
     all(nzchar(cells)) &&
     !anyDuplicated(cells)
+}
+
+## ---- Barcodes stored by cell index (thin CRB schema version 4) ------------- ##
+## A thin CRB keeps the cell names once, in the H5 file. Version 4 also stores
+## the barcodes of repertoire samples whose barcodes are all cells as metadata
+## rows (the column named by the attribute "cerebro_cell_index_column" holds
+## integers). Reading restores the barcodes from the cell names in memory, which
+## costs a vector of pointers instead of decoding every barcode again.
+
+.validCellIndex <- function(index, n, n_cells) {
+  is.integer(index) &&
+    length(index) == n &&
+    !anyNA(index) &&
+    all(index >= 1L & index <= n_cells)
+}
+
+## Repertoire samples whose barcodes are all cells keep metadata rows instead.
+.indexRepertoireByCell <- function(repertoire, cells) {
+  lapply(repertoire, function(sample) {
+    barcodes <- if (is.data.frame(sample)) sample[["barcode"]]
+    if (!is.character(barcodes)) {
+      return(sample)
+    }
+    index <- match(barcodes, cells)
+    if (anyNA(index)) {
+      return(sample)
+    }
+    sample[["barcode"]] <- index
+    attr(sample, "cerebro_cell_index_column") <- "barcode"
+    sample
+  })
+}
+
+.restoreRepertoireByCell <- function(repertoire, cells) {
+  lapply(repertoire, function(sample) {
+    column <- attr(sample, "cerebro_cell_index_column", exact = TRUE)
+    if (is.null(column)) {
+      return(sample)
+    }
+    index <- sample[[column]]
+    if (
+      !identical(column, "barcode") ||
+        !.validCellIndex(index, nrow(sample), length(cells))
+    ) {
+      stop(
+        "The thin CRB stores an invalid repertoire cell index.",
+        call. = FALSE
+      )
+    }
+    attr(sample, "cerebro_cell_index_column") <- NULL
+    sample[[column]] <- cells[index]
+    sample
+  })
+}
+
+## The repertoire samples of a thin payload stored by cell index where their
+## barcodes allow it. Returns the names of the fields that changed.
+.indexThinPayloadByCell <- function(payload, cells) {
+  indexed <- character()
+  repertoire <- payload$immune_repertoire
+  if (is.list(repertoire) && length(repertoire)) {
+    compact <- .indexRepertoireByCell(repertoire, cells)
+    if (!identical(compact, repertoire)) {
+      payload$immune_repertoire <- compact
+      indexed <- union(indexed, "immune_repertoire")
+    }
+  }
+  indexed
+}
+
+## The reverse, for a payload read with its cell names.
+.restoreThinPayloadByCell <- function(object, cells) {
+  repertoire <- object$immune_repertoire
+  if (is.list(repertoire) && length(repertoire)) {
+    object$immune_repertoire <- .restoreRepertoireByCell(repertoire, cells)
+  }
+  object
 }
 
 ## ---- Immune repertoire sidecar -------------------------------------------- ##
@@ -314,12 +389,19 @@
   }
   payload$meta_data <- metadata
   payload$cell_fingerprint <- .cerebroCellFingerprint(cells)
+  indexed <- .indexThinPayloadByCell(payload, cells)
   payload$crb_schema <- list(
     version = 3L,
     cell_names_hash = .cerebroCellNamesHash(cells),
     projection_rownames = compact_projections,
     n_cells = length(cells)
   )
+  ## Version 4 only when something is stored by cell index, so that a release
+  ## that reads version 3 refuses it instead of showing rows without names.
+  if (length(indexed)) {
+    payload$crb_schema$version <- 4L
+    payload$crb_schema$cell_indexed <- indexed
+  }
   payload
 }
 
@@ -328,10 +410,17 @@
     return(object)
   }
   sidecar <- .cerebroSidecar(file, backend)
-  if (!requireNamespace("HDF5Array", quietly = TRUE)) {
+  ## Check the installation without loading the namespace: loading HDF5Array
+  ## and its S4 methods, then reading every cell name for the TENxMatrix, takes
+  ## seconds. The matrix is attached on first use of `expression`.
+  if (!nzchar(system.file(package = "HDF5Array"))) {
     stop("An H5-backed CRB requires the HDF5Array package.", call. = FALSE)
   }
-  object$expression <- t(HDF5Array::TENxMatrix(sidecar, group = "expression"))
+  delayedAssign(
+    "expression",
+    t(HDF5Array::TENxMatrix(sidecar, group = "expression")),
+    assign.env = object
+  )
   object
 }
 
@@ -342,7 +431,9 @@
   if (!identical(backend$type, "h5")) {
     stop("A thin CRB requires an H5 expression backend.", call. = FALSE)
   }
-  cells <- colnames(object$expression)
+  ## The H5 file's cell names, read with rhdf5 so that the expression matrix
+  ## stays unattached.
+  cells <- .h5CellNames(.cerebroSidecar(file, backend))
   if (!identical(.cerebroCellNamesHash(cells), schema$cell_names_hash)) {
     stop(
       "The H5 cell names do not match CRB '",
@@ -392,7 +483,9 @@
         call. = FALSE
       )
     }
-    rownames(projection) <- cells
+    ## `cells` passed .validCellNames() above; rownames<- would look for
+    ## duplicates again for every projection.
+    attr(projection, "row.names") <- cells
     object$projections[[name]] <- projection
   }
   rownames(metadata) <- NULL
@@ -402,6 +495,10 @@
     check.names = FALSE,
     stringsAsFactors = FALSE
   )
+  ## A repertoire in its sidecar gets its barcodes back when it is read.
+  if (length(schema$cell_indexed)) {
+    object <- .restoreThinPayloadByCell(object, cells)
+  }
   object
 }
 
@@ -439,19 +536,14 @@
   }
   valid <- is.list(backend) &&
     identical(backend$type, "directory") &&
-    is.character(backend$location) &&
-    length(backend$location) == 1L &&
-    !is.na(backend$location) &&
-    nzchar(backend$location) &&
+    .isString(backend$location) &&
     !backend$location %in% c(".", "..") &&
     !grepl("[/\\\\]", backend$location)
   if (!valid) {
     stop("The spatial molecule backend descriptor is invalid.", call. = FALSE)
   }
   root <- backend$root
-  if (
-    !is.character(root) || length(root) != 1L || is.na(root) || !nzchar(root)
-  ) {
+  if (!.isString(root)) {
     root <- file.path(
       dirname(normalizePath(file, mustWork = FALSE)),
       backend$location
@@ -795,7 +887,7 @@ saveCerebro <- function(
   file,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
-  viewer_binary_threshold = 500000L,
+  viewer_binary_threshold = 100000L,
   immune_sidecar = c("auto", "always", "never"),
   immune_sidecar_threshold = 100000L
 ) {
@@ -805,9 +897,7 @@ saveCerebro <- function(
     match.arg(immune_sidecar),
     immune_sidecar_threshold
   )
-  if (
-    !is.character(file) || length(file) != 1L || is.na(file) || !nzchar(file)
-  ) {
+  if (!.isString(file)) {
     stop("`file` must be one non-empty output path.", call. = FALSE)
   }
   if (dir.exists(file)) {
@@ -995,7 +1085,10 @@ readCerebro <- function(file) {
     !(is.character(backend$type) &&
       length(backend$type) == 1L &&
       backend$type %in% .crbContract()$.runtimeBackendTypes)) ||
-    (is.list(schema) && !identical(schema$version, 3L)) ||
+    (is.list(schema) &&
+      !(is.integer(schema$version) &&
+        length(schema$version) == 1L &&
+        schema$version %in% .crbContract()$.runtimeThinSchemaVersions)) ||
     (is.list(immune) && !identical(immune$type, "file"))
   if (unrepairable) {
     stop(
@@ -1066,10 +1159,7 @@ convertCerebro <- function(input, output = input, codec = c("qs2", "rds")) {
   codec <- match.arg(codec)
   input <- normalizePath(input, mustWork = TRUE)
   valid_output <-
-    is.character(output) &&
-    length(output) == 1L &&
-    !is.na(output) &&
-    nzchar(output)
+    .isString(output)
   if (
     valid_output &&
       !identical(

@@ -83,6 +83,13 @@ test_that("deferred pages only call eager or same-page functions", {
       pattern = "\\.R$",
       full.names = TRUE
     )
+    ## A file of another page that this page's server sources is its own too.
+    server_lines <- readLines(file.path(viewer, page, "server.R"), warn = FALSE)
+    sourced <- unlist(regmatches(
+      server_lines,
+      gregexpr("/viewer/[a-z_]+/[A-Za-z_]+\\.R", server_lines)
+    ))
+    files <- c(files, file.path(viewer, sub("^/viewer/", "", sourced)))
     files[!normalizePath(files) %in% normalizePath(eager_files)]
   })
   names(page_files) <- pages

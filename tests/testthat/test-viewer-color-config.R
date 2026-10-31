@@ -204,3 +204,25 @@ test_that("manual colours are isolated by loaded data set", {
     )
   })
 })
+
+test_that("colour input ids are the hex bytes of data set, variable and level", {
+  scope <- new.env(parent = globalenv())
+  scope$viewer_requested_dataset_context <- function() {
+    list(dataset_key = "A data set")
+  }
+  sys.source(viewer_test_path("color_setup.R"), envir = scope)
+  hex <- function(value) {
+    paste(format(charToRaw(enc2utf8(as.character(value)))), collapse = "")
+  }
+  levels <- c("a", "", "N/A", "克隆 1", "Ünï", "x_y")
+  expected <- paste0("color_", hex("A data set"), "_", hex("group"), "_")
+  expect_identical(
+    scope$color_input_ids("group", levels),
+    paste0(expected, vapply(levels, hex, character(1), USE.NAMES = FALSE))
+  )
+  expect_identical(
+    scope$color_input_id("group", "克隆 1"),
+    paste0(expected, hex("克隆 1"))
+  )
+  expect_identical(scope$color_input_ids("group", character()), character())
+})

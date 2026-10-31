@@ -49,6 +49,27 @@ viewer_node_test <- function(scenario) {
   ))
 }
 
+## The Linked views page and the single-view hosts every browser scenario
+## starts from. Building it sources the Viewer UI (about 2.5 s) and gives the
+## same HTML each time, so each test worker builds it once.
+viewer_browser_page <- local({
+  html <- NULL
+  function() {
+    if (is.null(html)) {
+      scope <- viewer_ui_test_env()
+      sys.source(viewer_test_path("coordinated_views", "UI.R"), scope)
+      ids <- c("overview", "expression", "spatial", "trajectory", "trekker")
+      html <<- as.character(htmltools::tagList(
+        scope$tab_coordinated_views,
+        lapply(ids, function(id) {
+          scope$cerebroCellViewOutput(paste0(id, "_projection"))
+        })
+      ))
+    }
+    html
+  }
+})
+
 viewer_browser_test <- function(scenario) {
   skip_if_no_chrome()
   browser <- chromote::ChromoteSession$new()
@@ -71,18 +92,9 @@ viewer_browser_test <- function(scenario) {
   read_js <- function(path) {
     paste(readLines(path, warn = FALSE), collapse = "\n")
   }
-  scope <- viewer_ui_test_env()
-  sys.source(viewer_test_path("coordinated_views", "UI.R"), scope)
-  ids <- c("overview", "expression", "spatial", "trajectory", "trekker")
-  html <- as.character(htmltools::tagList(
-    scope$tab_coordinated_views,
-    lapply(ids, function(id) {
-      scope$cerebroCellViewOutput(paste0(id, "_projection"))
-    })
-  ))
   evaluate(sprintf(
     "document.body.innerHTML = %s",
-    jsonlite::toJSON(html, auto_unbox = TRUE)
+    jsonlite::toJSON(viewer_browser_page(), auto_unbox = TRUE)
   ))
   css <- paste(
     readLines(viewer_test_path("www", "coordviews.css")),
@@ -93,12 +105,17 @@ viewer_browser_test <- function(scenario) {
     jsonlite::toJSON(
       paste(
         css,
-        ".coordviews-page{width:1000px}.cv-panes{height:500px}.cv-pane{height:460px}.cerebro-cell-view-host{display:none}"
+        ".coordviews-page{width:1000px}.cv-panes{height:500px}.cerebro-cell-view-host{display:none}"
       ),
       auto_unbox = TRUE
     )
   ))
   evaluate(read_js(system.file("www/shared/jquery.js", package = "shiny")))
+  ## The Linked views page always has selectize: its pickers rely on it.
+  evaluate(read_js(system.file(
+    "www/shared/selectize/js/selectize.min.js",
+    package = "shiny"
+  )))
   evaluate(read_js(test_path("fixtures", "viewer-browser.js")))
   if (identical(scenario, "cloneCache")) {
     evaluate("delete window.CerebroPointRenderer")

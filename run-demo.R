@@ -1,5 +1,14 @@
 #!/usr/bin/env Rscript
 
+## Prepares the large demo data sets and opens them in this checkout's Viewer.
+##
+##   Rscript run-demo.R [--data=1m,ren,cosmx,tcell] [--prepare-only]
+##
+## --data names the data sets to prepare (default: 1m, the mouse brain). Each
+## prepared data set also gets a compressed twin of its H5 file, listed in the
+## menu as "<name> [compressed]". --prepare-only downloads and converts without
+## starting the Viewer.
+
 script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
 repo_root <- if (length(script_arg)) {
   script <- normalizePath(
@@ -13,10 +22,48 @@ repo_root <- if (length(script_arg)) {
   normalizePath(".", mustWork = TRUE)
 }
 
+## Each demo: its preparation function, the variable the Viewer reads and the
+## version stamp (rebuilt when it changes).
+demos <- list(
+  "1m" = list(
+    prepare = function() prepareViewer1mBenchmarkData(),
+    variable = "CEREBRO_1M_DEMO_CRB",
+    version = function() .viewer1mVersion
+  ),
+  ren = list(
+    prepare = function() prepareViewerRenDemoData(),
+    variable = "CEREBRO_REN_DEMO_CRB",
+    version = function() .viewerRenVersion
+  ),
+  cosmx = list(
+    prepare = function() prepareViewerCosMxDemoData(),
+    variable = "CEREBRO_COSMX_DEMO_CRB",
+    version = function() .viewerCosMxVersion
+  ),
+  tcell = list(
+    prepare = function() prepareViewerTcellDemoData(),
+    variable = "CEREBRO_TCELL_DEMO_CRB",
+    version = function() .viewerTcellVersion
+  )
+)
+
 args <- commandArgs(trailingOnly = TRUE)
-supported <- c("--ren-only", "--prepare-only", "--no-browser")
-if (any(!args %in% supported)) {
-  stop("Supported options: ", paste(supported, collapse = ", "), call. = FALSE)
+data_arg <- grep("^--data=", args, value = TRUE)
+selected <- if (length(data_arg)) {
+  strsplit(sub("^--data=", "", data_arg[[1L]]), ",", fixed = TRUE)[[1L]]
+} else {
+  "1m"
+}
+if (
+  length(setdiff(args, c(data_arg, "--prepare-only"))) ||
+    length(data_arg) > 1L ||
+    !length(selected) ||
+    !all(selected %in% names(demos))
+) {
+  stop(
+    "Usage: Rscript run-demo.R [--data=1m,ren,cosmx,tcell] [--prepare-only]",
+    call. = FALSE
+  )
 }
 if (!requireNamespace("pkgload", quietly = TRUE)) {
   stop("Install pkgload first: install.packages('pkgload')", call. = FALSE)
@@ -25,34 +72,34 @@ if (!requireNamespace("pkgload", quietly = TRUE)) {
 ## package from an earlier PR must not supply the data/backend implementation.
 pkgload::load_all(repo_root, export_all = FALSE, quiet = TRUE, helpers = FALSE)
 message("Viewer source: ", repo_root)
-source(
-  file.path(repo_root, "data-raw", "large-demo", "h5_transposed_write.R"),
-  local = TRUE
-)
-source(
-  file.path(repo_root, "data-raw", "large-demo", "prepare_viewer_1m_data.R"),
-  local = TRUE
-)
-source(
-  file.path(repo_root, "data-raw", "large-demo", "prepare_viewer_ren_data.R"),
-  local = TRUE
-)
-source(
-  file.path(repo_root, "data-raw", "large-demo", "prepare_viewer_pack.R"),
-  local = TRUE
-)
-
-if (!"--ren-only" %in% args) {
-  crb <- prepareViewer1mBenchmarkData()
-  prepareDemoViewerPack(crb)
-  Sys.setenv(CEREBRO_1M_DEMO_CRB = normalizePath(crb, mustWork = TRUE))
-} else {
-  Sys.unsetenv("CEREBRO_1M_DEMO_CRB")
+for (script in c(
+  "h5_transposed_write.R",
+  "prepare_viewer_1m_data.R",
+  "download_helpers.R",
+  "prepare_viewer_ren_data.R",
+  "prepare_viewer_cosmx_data.R",
+  "prepare_viewer_tcell_data.R",
+  "prepare_viewer_pack.R",
+  "h5_compressed_variant.R"
+)) {
+  source(file.path(repo_root, "data-raw", "large-demo", script), local = TRUE)
 }
-ren_crb <- prepareViewerRenDemoData()
-prepareDemoViewerPack(ren_crb)
-Sys.setenv(CEREBRO_REN_DEMO_CRB = normalizePath(ren_crb, mustWork = TRUE))
-message("Ren data version: ", .viewerRenVersion, "; file: ", ren_crb)
+
+for (name in names(demos)) {
+  demo <- demos[[name]]
+  if (!name %in% selected) {
+    Sys.unsetenv(demo$variable)
+    next
+  }
+  crb <- demo$prepare()
+  prepareDemoViewerPack(crb)
+  prepareDemoViewerPack(prepareCompressedDemoVariant(crb))
+  do.call(
+    Sys.setenv,
+    stats::setNames(list(normalizePath(crb, mustWork = TRUE)), demo$variable)
+  )
+  message(name, " data version ", demo$version(), ": ", crb)
+}
 if ("--prepare-only" %in% args) {
   quit(save = "no", status = 0)
 }
@@ -67,5 +114,5 @@ shiny::runApp(
   file.path(repo_root, "inst"),
   host = "127.0.0.1",
   port = port,
-  launch.browser = !"--no-browser" %in% args
+  launch.browser = TRUE
 )

@@ -12,10 +12,9 @@ test_that("new viewer defaults match unsorted, unlabelled Seurat plots", {
     ))$gene_plotting_order,
     "Highest expression on top"
   )
-  # "Random" never shuffled cells; it is rejected rather than reinterpreted.
   expect_error(
     builderViewerDisplayDefaults(list(gene_plotting_order = "Random")),
-    "Input order"
+    "Viewer display settings are invalid"
   )
   expect_identical(
     builderViewerDisplayDefaults(list(group_labels = TRUE))$group_labels,

@@ -97,6 +97,7 @@ test_that("HLA network renders only on its requested subtab with a current conte
       hla_first_frame_graph_matches <- function() FALSE
       hla_ready_latch <- function() isTRUE(input$ready)
       hla_min_nodes_debounced <- function() 2L
+      hla_node_scale_factor <- function() 1.5
       available_crb_files <- list(selected = "tiny")
       hla_visnet <- function() {
         reads <<- reads + 1L
@@ -174,6 +175,8 @@ test_that("HLA network renders only on its requested subtab with a current conte
       expect_identical(scope$sent[[1]]$data$selection_key, c("a", "b"))
       expect_identical(scope$sent[[1]]$data$x, c(1, 2))
       expect_identical(scope$sent[[1]]$data$point_sizes, c(4, 6))
+      # Base sizes plus the node-size factor the browser applies.
+      expect_identical(scope$sent[[1]]$data$point_scale, 1.5)
       expect_false(scope$sent[[1]]$data$reset_axes)
       expect_identical(scope$sent[[1]]$extra$edges, list(from = 1L, to = 2L))
       expect_identical(scope$sent[[1]]$hover$columns$CDR3, c("AAA", "AAT"))

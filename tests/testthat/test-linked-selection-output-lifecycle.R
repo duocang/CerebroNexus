@@ -1,7 +1,7 @@
 test_that("hidden Linked selection UI drops selection and dataset dependencies", {
   target <- viewer_r_assignment(
     viewer_test_path("coordinated_views", "server.R"),
-    "output.coordviews_selected_cells_UI"
+    "coordviews_selected_cells_ui"
   )
   shiny::testServer(
     function(input, output, session) {
@@ -9,16 +9,17 @@ test_that("hidden Linked selection UI drops selection and dataset dependencies",
       req <- shiny::req
       work <- new.env(parent = emptyenv())
       work$selection_reads <- work$metadata_reads <- 0L
-      coordviews_selected_barcodes <- shiny::reactive({
+      coordviews_selection_present <- shiny::reactive({
         input$generation
         work$selection_reads <- work$selection_reads + 1L
-        character()
+        FALSE
       })
-      getMetaData <- function() {
+      getMetaData <- viewerProjectionFirstFrameMetadata <- function() {
         work$metadata_reads <- work$metadata_reads + 1L
         stop("Empty or hidden selections must not prepare metadata")
       }
       eval(target, environment())
+      output$coordviews_selected_cells_UI <- coordviews_selected_cells_ui
       shiny::outputOptions(
         output,
         "coordviews_selected_cells_UI",

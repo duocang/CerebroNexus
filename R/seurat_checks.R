@@ -1,7 +1,7 @@
 ## Argument checks shared by the functions that read a Seurat object. Their
 ## messages are user-facing; keep them unchanged.
 
-## Seurat is a Suggests dependency and must be at least v3.0.
+## Seurat is a Suggests dependency and must be at least v5.0.
 .checkSeuratAvailable <- function() {
   if (!requireNamespace("Seurat", quietly = TRUE)) {
     stop(
@@ -9,12 +9,12 @@
       call. = FALSE
     )
   }
-  if (utils::packageVersion('Seurat') < "3") {
+  if (utils::packageVersion("Seurat") < "5.0.0") {
     stop(
       paste0(
         "The installed Seurat package is of version `",
-        utils::packageVersion('Seurat'),
-        "`, but at least v3.0 is required."
+        utils::packageVersion("Seurat"),
+        "`, but at least v5.0 is required."
       ),
       call. = FALSE
     )

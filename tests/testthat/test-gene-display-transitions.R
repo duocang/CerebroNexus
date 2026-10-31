@@ -73,6 +73,10 @@ test_that("RGB layout changes reuse expression rows while producing a new paint 
   shiny::testServer(
     function(input, output, session) {
       viewer_runtime_env(environment())
+      ## Server code reads the display mode through viewerControlValue().
+      expression_projection_display_mode <- function() {
+        input[["expression_projection_genes_in_separate_panels"]]
+      }
       sys.source(
         viewer_test_path("gene_expression", "func_expression_summary.R"),
         environment()
@@ -201,7 +205,7 @@ test_that("four selected genes survive RGB layout and display-mode round trips",
     app$wait_for_js(
       sprintf(
         paste0(
-          "(() => {const key=Shiny.shinyapp.$inputValues.expression_projection_rendered_key||'';",
+          "(() => {const key=Shiny.shinyapp.$inputValues.expression_projection_rendered_state?.render_key||'';",
           "const panes=Array.from(document.querySelectorAll(",
           "'#expression_projection_cell_view_host .cv-pane:not(.cv-hidden)'));",
           "return key.startsWith(%s) && %s && panes.length===%d && panes.every(p=>",
@@ -318,7 +322,7 @@ test_that("genes chosen in RGB channels carry over to the gene list", {
   app$wait_for_js(
     paste0(
       "!!document.getElementById('expression_projection_genes_in_separate_panels') && ",
-      "typeof document.getElementById('expression_genes_input')?.selectize?.settings.load === 'function'"
+      "window.CerebroGeneSelector?.ready(document.getElementById('expression_genes_input')?.selectize)"
     ),
     timeout = 30000
   )
@@ -357,4 +361,46 @@ test_that("genes chosen in RGB channels carry over to the gene list", {
   mode("rgb")
   Sys.sleep(2)
   expect_identical(channels(), c("CD3E", "CD3D", "CD79A"))
+})
+
+test_that("the gene status does not resize the projection while a gene loads", {
+  skip_on_cran()
+  skip_if_not_installed("shinytest2")
+  app <- gene_display_app()
+  app$click(selector = 'a[href="#shiny-tab-geneExpression"]')
+  app$set_inputs(
+    expression_projection_genes_in_separate_panels = "combined",
+    wait_ = FALSE
+  )
+  rendered <- function(gene) {
+    app$wait_for_js(
+      sprintf(
+        paste0(
+          "(() => {const key=Shiny.shinyapp.$inputValues.expression_projection_rendered_state?.render_key||'';",
+          "const status=document.getElementById('expression_feedback');",
+          "return key.split('\u001d')[1]===%s && status && !status.classList.contains('is-pending');})()"
+        ),
+        jsonlite::toJSON(gene, auto_unbox = TRUE)
+      ),
+      timeout = 30000
+    )
+  }
+  viewer_set_selectize(app, "expression_genes_input", "")
+  rendered("")
+  app$run_js(paste0(
+    "window.hostHeights=[];window.statusShown=false;",
+    "const host=document.getElementById('expression_projection_cell_view_host');",
+    "new ResizeObserver(es=>es.forEach(e=>hostHeights.push(Math.round(e.contentRect.height)))).observe(host);",
+    "const status=document.getElementById('expression_feedback');",
+    "new MutationObserver(()=>{if(!status.hidden)statusShown=true;})",
+    ".observe(status,{attributes:true,childList:true,characterData:true,subtree:true});"
+  ))
+  viewer_set_selectize(app, "expression_genes_input", "CD3D")
+  rendered("CD3D")
+  expect_true(app$get_js("statusShown"))
+  heights <- unlist(app$get_js("hostHeights"))
+  expect_gt(length(heights), 0L)
+  ## No dip below the final height: the status used to shrink the plot by its own
+  ## height until the frame painted, then the plot grew back and drew again.
+  expect_gte(min(heights), heights[[length(heights)]] - 2L)
 })

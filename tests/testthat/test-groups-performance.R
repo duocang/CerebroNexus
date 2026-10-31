@@ -3,6 +3,7 @@ test_that("Groups reads only the active columns after its viewport gate", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
+      sys.source(viewer_test_path("plotting_functions.R"), scope)
       reads <- list()
       colour_reads <- character()
       metadata <- data.frame(
@@ -12,6 +13,8 @@ test_that("Groups reads only the active columns after its viewport gate", {
         unused = 5:6
       )
       getGroups <- function() "sample"
+      current <- metadata
+      viewerProjectionFirstFrameMetadata <- function() current
       getMetaData <- reactive_colors <- function() {
         stop("full metadata or colour scan")
       }
@@ -26,9 +29,9 @@ test_that("Groups reads only the active columns after its viewport gate", {
         c(A = "red", B = "blue")
       }
       cachePlot <- function(x, ...) x
-      plotlyViolin <- function(table, colors, ...) {
+      cerebroViolinData <- function(table, colors, ...) {
         force(colors)
-        plotly::plot_ly(x = table[[1]], y = table[[2]], type = "bar")
+        list(type = "violin", groups = I(unique(table[[1]])))
       }
       available_crb_files <- list(selected = "tiny")
       cerebroRegisterInfo <- function(...) NULL
@@ -59,20 +62,23 @@ test_that("Groups reads only the active columns after its viewport gate", {
       session$setInputs(groups_selected_group = "old-dataset-group")
       expect_error(output$groups_nGene_plot, class = "shiny.silent.error")
       expect_length(scope$reads, 2L)
+      ## A data set without the metric shown: no read of a missing column.
+      scope$current <- metadata[c("sample", "nUMI")]
+      session$setInputs(groups_selected_group = "sample")
+      expect_error(output$groups_nGene_plot, class = "shiny.silent.error")
+      expect_length(scope$reads, 2L)
     }
   )
 })
 
 groups_test_function <- function(name) {
   assignment <- viewer_r_assignment(
-    viewer_test_path("groups", "composition.R"),
+    viewer_test_path("utility_functions.R"),
     name
   )
   scope <- new.env(parent = globalenv())
-  if (!identical(name, "groupsFormatComposition")) {
-    scope$groupsFormatComposition <- groups_test_function(
-      "groupsFormatComposition"
-    )
+  if (!identical(name, "formatTableAB")) {
+    scope$formatTableAB <- groups_test_function("formatTableAB")
   }
   eval(assignment, envir = scope)
   scope[[name]]
@@ -82,9 +88,13 @@ test_that("Groups builds its first-frame controls without a renderUI cascade", {
   scope <- viewer_ui_test_env()
   sys.source(viewer_test_path("groups", "UI.R"), scope)
   page <- htmltools::tagQuery(scope$tab_groups)
-  expect_equal(page$find("#groups_by_other_group_plot")$length(), 1L)
+  expect_equal(
+    page$find("#groups_by_other_group_plot.cerebro-chart")$length(),
+    1L
+  )
+  ## The charts are drawn by www/cerebro-charts.js; no Plotly bundle is needed.
   dependencies <- htmltools::renderTags(scope$tab_groups)$dependencies
-  expect_true(any(vapply(
+  expect_false(any(vapply(
     dependencies,
     function(x) grepl("plotly", x$name),
     logical(1)
@@ -108,7 +118,7 @@ test_that("Groups builds its first-frame controls without a renderUI cascade", {
   )
 })
 
-test_that("Groups reports passive request-bound Plotly readiness", {
+test_that("Groups charts report request-bound readiness after drawing", {
   skip_if_no_node()
   scope <- viewer_ui_test_env()
   sys.source(viewer_test_path("groups", "UI.R"), scope)
@@ -123,11 +133,15 @@ test_that("Groups reports passive request-bound Plotly readiness", {
     ),
     payload
   )
-  expect_node_fixture("groups-readiness.js", payload)
+  expect_node_fixture(
+    "groups-readiness.js",
+    payload,
+    viewer_test_path("www", "cerebro-charts.js")
+  )
 })
 
 test_that("Groups composition counts factors without sorting every cell", {
-  calculate <- groups_test_function("groupsCalculateTableAB")
+  calculate <- groups_test_function("calculateTableAB")
   metadata <- data.frame(
     major = factor(c("A", "A", "B", "B", NA), levels = c("A", "B")),
     subtype = factor(
@@ -196,16 +210,10 @@ test_that("single-group controls keep expression metrics usable across dataset c
         groups_expression_metrics_render_request = 1,
         groups_expression_metrics_tabs = "Number of transcripts"
       )
-      rendered <- jsonlite::fromJSON(
-        output$groups_nUMI_plot,
-        simplifyVector = FALSE
-      )
-      boxes <- Filter(
-        function(trace) identical(trace$type, "box"),
-        rendered$x$data
-      )
-      expect_length(boxes, 1)
-      expect_equal(unlist(boxes[[1L]]$median), c(2, 7))
+      rendered <- output$groups_nUMI_plot
+      expect_identical(rendered$type, "violin")
+      expect_equal(as.vector(rendered$groups), c("A", "B"))
+      expect_equal(as.vector(rendered$median), c(2, 7))
       groups(character())
       session$flushReact()
       expect_match(output$groups_controls_UI$html, "No grouping variables")

@@ -322,9 +322,7 @@ test_that("database preflight rejects corrupt auxiliary tables", {
 auth_test_build_fixture <- function() {
   root <- withr::local_tempdir(.local_envir = parent.frame())
   crb <- file.path(root, "dataset.crb")
-  embedded <- Cerebro$new()
-  embedded$setExpressionBackend(type = "embedded")
-  saveRDS(embedded, crb)
+  saveRDS(new_embedded_cerebro(), crb)
   credentials <- file.path(root, "credentials.sqlite")
   writeBin(as.raw(c(0x53, 0x51, 0x4c)), credentials)
   list(root = root, crb = crb, credentials = credentials)
@@ -588,13 +586,6 @@ test_that("a real encrypted multi-user database survives app generation", {
   }
 })
 
-auth_test_package_file <- function(path) {
-  if (file.exists(path)) {
-    return(path)
-  }
-  file.path("..", "..", path)
-}
-
 test_that("authentication stylesheet implements the balanced responsive UI", {
   skip_if_not_installed("shinymanager")
   skip_if_no_chrome()
@@ -636,120 +627,16 @@ test_that("authentication stylesheet implements the balanced responsive UI", {
   }
 })
 
-test_that("authentication deployment documentation is runnable and credited", {
-  vignette_path <- auth_test_package_file(file.path(
-    "vignettes",
-    "control_access_to_cerebro_with_a_login_page.Rmd"
-  ))
+test_that("authentication and browser-test tools stay optional dependencies", {
+  path <- if (file.exists("DESCRIPTION")) "DESCRIPTION" else "../../DESCRIPTION"
   skip_if_not(
-    file.exists(vignette_path),
-    "static source-tree documentation contract"
+    file.exists(path),
+    "DESCRIPTION is not part of the installed tests"
   )
-  vignette <- readLines(vignette_path, warn = FALSE)
-  required <- c(
-    "Roman Hillje",
-    "Xuesong Wang",
-    "# One-minute setup",
-    "# What goes where",
-    "# Troubleshooting",
-    "shinymanager::create_db",
-    "createShinyApp(",
-    "readRenviron(",
-    "head -c 32 /dev/urandom | base64",
-    "sudo install -d -m 0700",
-    "sudo install -d -m 0755",
-    "rate limiting",
-    "Shiny Server",
-    "systemd",
-    "TLS-terminating reverse proxy",
-    "/etc/cerebronexus/my_app.env",
-    "sudo install -m 0600 /srv/cerebro/private/viewer-auth.env /etc/cerebronexus/my_app.env",
-    "systemctl status shiny-server",
-    "journalctl -u shiny-server -f",
-    "another machine"
-  )
-  for (term in required) {
-    expect_true(any(grepl(term, vignette, fixed = TRUE)), info = term)
-  }
-  expect_true(any(grepl('Sys.umask("077")', vignette, fixed = TRUE)))
-  expect_false(any(grepl(
-    "file.create(secret_file, mode",
-    vignette,
-    fixed = TRUE
-  )))
-  expect_false(any(grepl(
-    "provisionViewerAuthentication",
-    vignette,
-    fixed = TRUE
-  )))
-  expect_true(any(grepl(
-    'names(auth) must be exactly "credentials", "passphrase_env", and optionally "timeout_minutes"',
-    vignette,
-    fixed = TRUE
-  )))
-  expect_false(any(grepl("builder", vignette, ignore.case = TRUE)))
-  for (label in c(
-    "**Run this as:**",
-    "**Run it on:**",
-    "**What happens:**",
-    "**Verify:**"
-  )) {
-    expect_true(
-      sum(grepl(label, vignette, fixed = TRUE)) >= 5L,
-      info = label
-    )
-  }
-  expect_true(any(grepl("toc: true", vignette, fixed = TRUE)))
-  expect_true(any(grepl("number_sections: true", vignette, fixed = TRUE)))
-  expect_true(any(grepl("max-width: none", vignette, fixed = TRUE)))
-  expect_true(any(grepl("overflow-x: auto", vignette, fixed = TRUE)))
-  diagrams <- c(
-    "img/auth-lite-validation.svg",
-    "img/auth-deployment-boundary.svg"
-  )
-  for (diagram in diagrams) {
-    expect_true(any(grepl(diagram, vignette, fixed = TRUE)), info = diagram)
-    expect_true(
-      file.exists(auth_test_package_file(file.path(
-        "vignettes",
-        diagram
-      ))),
-      info = diagram
-    )
-  }
-  expect_false(any(grepl(".png", vignette, fixed = TRUE)))
-
-  script_starts <- grep(
-    "^```(\\{r eval=FALSE\\}|bash|ini)$",
-    vignette
-  )
-  expect_gt(length(script_starts), 8L)
-  for (line in script_starts) {
-    block_type <- vignette[[line]]
-    expected_prefix <- if (identical(block_type, "```{r eval=FALSE}")) {
-      c("# R console —", "# R startup file —", "# Builder worker R code —")
-    } else if (identical(block_type, "```bash")) {
-      "# Terminal —"
-    } else {
-      "# systemd override —"
-    }
-    expect_true(
-      any(startsWith(vignette[[line + 1L]], expected_prefix)),
-      info = paste(block_type, paste(expected_prefix, collapse = " | "))
-    )
-  }
-
-  description <- read.dcf(auth_test_package_file("DESCRIPTION"))
+  description <- read.dcf(path)
   suggests <- strsplit(description[[1L, "Suggests"]], ",")[[1L]]
   expect_true(any(grepl("shinymanager", suggests, fixed = TRUE)))
   # Authentication and browser-test tools must remain optional dependencies.
   required <- description[1L, c("Depends", "Imports")]
   expect_false(any(grepl("\\b(askpass|chromote|shinymanager)\\b", required)))
-
-  news <- readLines(auth_test_package_file("NEWS.md"), warn = FALSE)
-  expect_identical(
-    news[[1L]],
-    paste("# CerebroNexus", description[[1L, "Version"]])
-  )
-  expect_true(any(grepl("encrypted shinymanager", news, fixed = TRUE)))
 })

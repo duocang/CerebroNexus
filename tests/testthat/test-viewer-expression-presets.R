@@ -14,7 +14,7 @@ test_that("expression presets have consistent direction and fill missing fields"
     expressionColorSettings(list(palette = NA_character_)),
     defaults
   )
-  expect_false(expressionColorSettingsValid(list(palette = "blue")))
+  expect_identical(expressionColorSettings(list(palette = "blue")), defaults)
   for (palette in unname(expressionPaletteChoices())) {
     scale <- expressionColorScale(palette)
     expect_identical(scale[[1L]][[1L]], 0)

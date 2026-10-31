@@ -96,23 +96,47 @@ observe({
     trajectory_update_appearance(field, appearance[[field]])
   }
 })
+## Border and square layout are browser patches, as on Projection: the frame
+## keeps its cells and the drawn view changes in place.
+trajectory_send_display_patch <- function(name) {
+  session$sendCustomMessage(
+    "cell_view_appearance",
+    list(
+      id = "trajectory_projection",
+      dataset_context = viewer_loaded_dataset_context(),
+      dataset_fingerprint = viewerDatasetIdentity()$fingerprint,
+      values = stats::setNames(
+        list(trajectory_projection_appearance[[name]]),
+        name
+      )
+    )
+  )
+}
 observeEvent(
   input[["trajectory_projection_point_border"]],
   {
-    trajectory_update_appearance(
-      "draw_border",
-      isTRUE(input[["trajectory_projection_point_border"]])
-    )
+    if (
+      trajectory_update_appearance(
+        "draw_border",
+        isTRUE(input[["trajectory_projection_point_border"]])
+      )
+    ) {
+      trajectory_send_display_patch("draw_border")
+    }
   },
   ignoreNULL = TRUE
 )
 observeEvent(
   input[["trajectory_projection_keep_square"]],
   {
-    trajectory_update_appearance(
-      "keep_square",
-      isTRUE(input[["trajectory_projection_keep_square"]])
-    )
+    if (
+      trajectory_update_appearance(
+        "keep_square",
+        isTRUE(input[["trajectory_projection_keep_square"]])
+      )
+    ) {
+      trajectory_send_display_patch("keep_square")
+    }
   },
   ignoreNULL = TRUE
 )

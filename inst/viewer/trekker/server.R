@@ -230,7 +230,8 @@ observe({
     spatial_panel$from_y <- as.numeric(tk$uy)
     spatial_panel$to_x <- as.numeric(tk$x)
     spatial_panel$to_y <- as.numeric(tk$y)
-    spatial_panel$transition <- input[["trekker_morph"]] %||% 0
+    ## The browser moves the points as the slider moves: no new frame.
+    spatial_panel$transition <- isolate(input[["trekker_morph"]]) %||% 0
   }
   umap_panel <- list(
     id = "umap",
@@ -248,7 +249,9 @@ observe({
     list(spatial_panel, umap_panel)
   )
   levels <- if (categorical) sort(unique(group)) else character()
-  appearance <- current_scatter_defaults()
+  ## The browser applies point size, opacity and "% of cells" itself; an edit
+  ## must not rebuild and resend the frame.
+  appearance <- isolate(current_scatter_defaults())
   cerebroCellViewRender(
     "trekker_projection",
     meta = list(
@@ -272,31 +275,14 @@ observe({
 })
 
 output[["trekker_number_of_selected_cells"]] <- renderUI({
-  selected <- input[["trekker_projection_persistent_selection"]] %||%
-    character()
-  if (
-    length(selected) &&
-      (!is.list(selected) ||
-        !viewerDatasetContextEqual(
-          selected[["dataset_context"]],
-          viewer_loaded_dataset_context()
-        ))
-  ) {
-    selected <- character()
+  selected <- input[["trekker_projection_persistent_selection"]]
+  selected <- if (is.list(selected)) {
+    viewerPersistentSelection(selected, viewer_loaded_dataset_context())
   }
   tags$span(
-    format(cerebroSelectionCount(selected), big.mark = ","),
+    format(NROW(selected), big.mark = ","),
     " cells selected"
   )
-})
-
-## Moran's I "Show in plot" link: switch to gene mode and select the gene. The
-## widget updates drive the observers above, which send the expression vector.
-observeEvent(input[["trekker_moran_gene"]], {
-  g <- input[["trekker_moran_gene"]]
-  req(g, nzchar(g))
-  updateSelectInput(session, "trekker_mode", selected = "gene")
-  updateSelectizeInput(session, "trekker_gene_pick", selected = g)
 })
 
 ##----------------------------------------------------------------------------##

@@ -10,6 +10,9 @@ field.paintOrder=true; _ordD=null;
 assert.deepStrictEqual(paintOrder({}),[5,1,3,4,2,0]); // NA first, exact values, stable ties
 field.paintOrder=false; _ordD=null;
 assert.strictEqual(paintOrder({}),null);
+// A paint-order patch flips the flag on the same data: the cached order follows.
+field.paintOrder=true; assert.deepStrictEqual(paintOrder({}),[5,1,3,4,2,0]);
+field.paintOrder=false; assert.strictEqual(paintOrder({}),null);
 // Exercise the actual Canvas fallback beyond its colour-batching threshold.
 var n=20001, pointsDrawn=false, p={ok:new Uint8Array(n)}, shownMask=new Uint8Array(n);
 for(let i=0;i<3;i++){p.ok[i]=1;shownMask[i]=1;}

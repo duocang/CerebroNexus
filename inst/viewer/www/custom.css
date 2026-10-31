@@ -2110,6 +2110,25 @@ body .shiny-spinner-output-container > .load-container {
   pointer-events: none;
 }
 .cerebro-local-feedback[hidden] { display: none; }
+/* The gene status also lives over the plot: in the flow, showing and hiding it
+   resized the projection after each gene change and drew it twice. */
+.cerebro-viz-col:has(> #expression_feedback) { position: relative; }
+#expression_feedback {
+  position: absolute;
+  z-index: 25;
+  top: 48px;
+  right: 27px;
+  max-width: min(440px, calc(100% - 54px));
+  min-height: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+#expression_feedback[hidden] { display: none; }
+body #expression_feedback.is-pending::before {
+  width: 12px; height: 12px; vertical-align: -2px; margin-right: 6px;
+}
 .cerebro-local-feedback.is-error { pointer-events: auto; }
 /* Nothing to draw: the message is the view, so it takes the plot's place. */
 .cerebro-local-feedback.is-empty {
@@ -2256,11 +2275,13 @@ body .shiny-progress-container .progress-detail {
   .cerebro-view-feedback { transition: none; }
 }
 
-/* Native Plotly charts use the same compact tool language as Linked views. */
+/* Native Plotly charts and the summary charts (www/cerebro-charts.js) use the
+   same compact tool language as Linked views. */
 body .js-plotly-plot {
   container-type: inline-size;
 }
-body .js-plotly-plot .plotly .modebar {
+body .js-plotly-plot .plotly .modebar,
+.cerebro-chart .cc-toolbar {
   display: flex;
   flex-direction: row;
   gap: 4px;
@@ -2274,7 +2295,8 @@ body .js-plotly-plot .plotly .modebar-group {
   gap: 4px;
   padding-left: 0 !important;
 }
-body .js-plotly-plot .plotly .modebar-btn {
+body .js-plotly-plot .plotly .modebar-btn,
+.cerebro-chart .cc-btn {
   float: none !important;
   box-sizing: border-box;
   width: 26px;
@@ -2325,7 +2347,9 @@ body .js-plotly-plot .plotly .modebar-btn[data-title="Zoom out"]::before { conte
 body .js-plotly-plot .plotly .modebar-btn[data-title="Reset axes"]::before { content: "\f015"; }
 body .js-plotly-plot .plotly .modebar-btn[data-title="Download plot as a png"]::before { content: "\f019"; }
 body .js-plotly-plot .plotly .modebar-btn:hover,
-body .js-plotly-plot .plotly .modebar-btn:focus-visible {
+body .js-plotly-plot .plotly .modebar-btn:focus-visible,
+.cerebro-chart .cc-btn:hover,
+.cerebro-chart .cc-btn:focus-visible {
   color: var(--c-amber-700) !important;
   background: var(--c-amber-50) !important;
   border-color: var(--c-amber-200);
@@ -3068,6 +3092,13 @@ body .shiny-bound-output.cerebro-output-waiting {
 .cerebro-viz-page-heading:has(.cerebro-page-feedback:not([hidden])) {
   flex-wrap: wrap;
 }
+/* The layout switch hides while a frame updates and returns once it is painted.
+   Reserve its height (28px buttons + 3px padding + 1px border, twice), or the
+   panes below move by 2px and every update is drawn twice. */
+.cerebro-viz-page-heading:has(> .cerebro-page-feedback) { min-height: 36px; }
+@media (pointer: coarse) {
+  .cerebro-viz-page-heading:has(> .cerebro-page-feedback) { min-height: 52px; }
+}
 .cerebro-viz-page-heading > .cerebro-page-feedback {
   flex: 0 0 auto; min-height: 0; max-width: 100%; margin: 0; padding: 0;
   border: 0; background: transparent; box-shadow: none;
@@ -3143,3 +3174,251 @@ body .shiny-bound-output.cerebro-output-waiting {
 .cerebro-resizing .content-wrapper {
   overflow-x: hidden;
 }
+
+/* Summary charts (www/cerebro-charts.js): SVG bars, Sankey, violins and lines;
+   scatter points on a canvas under the SVG. */
+.cerebro-chart {
+  position: relative;
+  display: flex;
+  height: 400px;
+  width: 100%;
+  color: var(--c-text);
+}
+.cerebro-chart .cc-plot {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+}
+.cerebro-chart .cc-svg { position: relative; display: block; }
+.cerebro-chart .cc-canvas { position: absolute; pointer-events: none; }
+.cerebro-chart .cc-hit:hover { fill: rgba(28, 28, 30, 0.04); }
+.cerebro-chart .cc-link:hover { fill-opacity: 0.6; }
+.cerebro-chart .cc-legend {
+  flex: 0 1 auto;
+  max-width: 30%;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 8px 4px 8px 8px;
+  font-size: 12px;
+}
+.cerebro-chart .cc-legend-title {
+  padding: 0 4px 4px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cerebro-chart .cc-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--c-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cerebro-chart .cc-legend-item:hover { background: var(--c-surface-2); }
+.cerebro-chart .cc-legend-item.is-hidden { color: var(--c-text-3); }
+.cerebro-chart .cc-legend-item.is-hidden .cc-legend-swatch { opacity: .25; }
+.cerebro-chart .cc-legend-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+.cerebro-chart .cc-legend-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Frame, button size and colours are shared with the Plotly modebar above. */
+.cerebro-chart .cc-toolbar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity .12s ease-out;
+}
+.cerebro-chart:hover .cc-toolbar,
+.cerebro-chart .cc-toolbar:focus-within { opacity: 1; }
+.cerebro-chart .cc-btn {
+  width: auto;
+  padding: 0 6px !important;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.cerebro-chart .cc-btn::before {
+  content: "\f019";
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+}
+.cerebro-chart .cc-tip {
+  position: absolute;
+  z-index: 3;
+  max-width: 320px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  color: var(--c-text);
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.cerebro-chart .cc-tip[hidden] { display: none; }
+.cerebro-chart .cc-tip-title { font-weight: 600; }
+.cerebro-chart .cc-tip-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 2px;
+}
+.cerebro-chart .cc-empty {
+  margin: auto;
+  color: var(--c-text-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cerebro-chart .cc-toolbar { transition: none; }
+}
+@media (pointer: coarse) {
+  .cerebro-chart .cc-toolbar { opacity: 1; }
+}
+
+/* Table of selected cells built in the browser (www/selection-table.js), in
+   the layout and look of the DT tables above. */
+.cerebro-selection-table .cst-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--c-text-2);
+  font-size: 13px;
+}
+.cerebro-selection-table .dt-buttons { margin-bottom: 8px; }
+.cerebro-selection-table .cst-close { float: right; }
+.cerebro-selection-table .cst-close,
+.cerebro-selection-table .cst-open {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-2);
+  color: var(--c-text);
+  border-radius: var(--r-sm);
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cerebro-selection-table .dt-buttons .buttons-collection::after {
+  content: "";
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-top: 4px solid currentColor;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+}
+.cerebro-selection-table .dataTables_scroll { overflow-x: auto; clear: both; }
+.cerebro-selection-table table.dataTable { width: 100%; margin: 0 !important; }
+.cerebro-selection-table table.dataTable thead th {
+  position: relative;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  padding-right: 26px !important;
+}
+.cerebro-selection-table table.dataTable thead th::before,
+.cerebro-selection-table table.dataTable thead th::after {
+  position: absolute;
+  right: 10px;
+  font-size: 8px;
+  line-height: 9px;
+  color: var(--c-border-2);
+}
+.cerebro-selection-table table.dataTable thead th::before { content: "\25B2"; top: calc(50% - 9px); }
+.cerebro-selection-table table.dataTable thead th::after { content: "\25BC"; top: 50%; }
+.cerebro-selection-table table.dataTable thead th.sorting_asc::before,
+.cerebro-selection-table table.dataTable thead th.sorting_desc::after { color: var(--c-text-2); }
+.cerebro-selection-table table.dataTable .cst-filters td {
+  padding: 6px 6px !important;
+  border-top: none !important;
+}
+.cerebro-selection-table table.dataTable .cst-filters input {
+  width: 100%;
+  min-width: 80px;
+  height: 32px;
+  font-size: 13px;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  cursor: pointer;
+}
+.cerebro-selection-table table.dataTable .cst-filters input[type="search"]:not([readonly]) { cursor: text; }
+.cerebro-selection-table table.dataTable tbody td { white-space: nowrap; }
+.cerebro-selection-table td.cst-text { font-family: courier, monospace; text-align: left; }
+.cerebro-selection-table td.cst-categorical { text-align: center; }
+.cerebro-selection-table td.cst-numeric { text-align: right; }
+.cerebro-selection-table td.dataTables_empty { text-align: center; color: var(--c-text-2); }
+.cerebro-selection-table .dataTables_length { margin-top: 10px; }
+.cerebro-selection-table .dataTables_length label {
+  display: inline-flex;
+  align-items: center;
+  font-weight: normal;
+  white-space: nowrap;
+}
+.cerebro-selection-table .dataTables_length select { width: 150px; margin: 0 4px; }
+.cerebro-selection-table .cst-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cerebro-selection-table .dataTables_paginate .pagination { margin: 6px 0; }
+.cerebro-selection-table .cst-menu {
+  position: absolute;
+  z-index: 30;
+  min-width: 160px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-sm);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+.cerebro-selection-table .cst-menu .dt-button {
+  display: block;
+  width: 100%;
+  margin: 2px 0;
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 13px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  color: var(--c-text-2);
+}
+.cerebro-selection-table .cst-menu .dt-button.active,
+.cerebro-selection-table .cst-menu .dt-button:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+.cerebro-selection-table .cst-menu .cst-levels label {
+  display: block;
+  margin: 2px 0;
+  font-weight: normal;
+  white-space: nowrap;
+}
+.cerebro-selection-table .cst-menu .cst-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cerebro-selection-table .cst-menu .cst-range input { width: 110px; }

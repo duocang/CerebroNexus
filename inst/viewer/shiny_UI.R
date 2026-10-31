@@ -621,7 +621,7 @@ ui <- dashboardPage(
     ##  - custom.css      : Console design language; overrides AdminLTE 2 chrome.
     ##  - fill_height.js  : sizes any .cerebro-fill element to the live viewport.
     ##  - trekker.css     : Trekker insight/QC presentation shared with Linked views.
-    ##  - hla_motifs.*    : modebar over the visNetwork motif network.
+    ##  - hla_motifs.*    : HLA association table and the node-size slider.
     tags$head(
       tags$style(HTML(
         "html, body { background: #f7f7f9; } .cerebro-starting .wrapper { visibility: hidden; } #cerebro-startup { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: center; background: #f7f7f9; color: #51545c; font: 16px Arial, sans-serif; transition: opacity .12s ease-out; } #cerebro-startup > div { text-align: center; } #cerebro-startup button { margin-top: 16px; } @media (prefers-reduced-motion: reduce) { #cerebro-startup { transition: none; } }"
@@ -646,6 +646,8 @@ ui <- dashboardPage(
       cerebro_js("viewer-shell.js", defer = TRUE),
       cerebro_js("gene-feedback.js", defer = TRUE),
       cerebro_js("view-feedback.js", defer = TRUE),
+      cerebro_js("cerebro-charts.js", defer = TRUE),
+      cerebro_js("selection-table.js", defer = TRUE),
       cerebro_js("multiselect.js", defer = TRUE),
       cerebro_js("gene-selector.js", defer = TRUE),
       cerebro_js("background-model.js"),

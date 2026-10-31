@@ -60,7 +60,7 @@ test_that("WebGL2 fallback submits a million points in one GPU draw", {
     "  linkProgram() {}, getProgramParameter: () => true,",
     "  getProgramInfoLog: () => '', deleteProgram() {},",
     "  getUniformLocation: (_program, name) => name, createBuffer: () => ({}),",
-    "  viewport() {}, bindBuffer() {}, bufferData() {},",
+    "  viewport() {}, bindBuffer() {}, bufferData() {}, bufferSubData() {},",
     "  enableVertexAttribArray() {}, vertexAttribIPointer() {},",
     "  vertexAttribPointer() {}, useProgram() {}, uniform1f() {},",
     "  uniform2f() {}, uniform3f() {}, uniform4f() {}, clearColor() {},",

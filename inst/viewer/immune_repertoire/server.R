@@ -85,6 +85,14 @@ req_plot_space <- function(output_id, min_px = 80L) {
   shiny::req(isTRUE(w >= min_px), isTRUE(h >= min_px))
 }
 
+## Set while a plot is drawn when it shows an error instead of a result; see
+## ir_bindCache().
+ir_plot_cache_state <- new.env(parent = emptyenv())
+ir_plot_failed <- function() {
+  ir_plot_cache_state$failed <- TRUE
+  invisible(NULL)
+}
+
 safeRenderPlot <- function(expr, plot_name = "unknown") {
   tryCatch(
     {
@@ -111,6 +119,7 @@ safeRenderPlot <- function(expr, plot_name = "unknown") {
         shiny::req(FALSE)
       }
       message("[IR ERROR] Plot '", plot_name, "' failed: ", e$message)
+      ir_plot_failed()
 
       # scRepertoire raises cryptic internal errors (e.g. "get1index",
       # "subscript out of bounds", "less than one element") when the current
@@ -163,48 +172,40 @@ safeRenderPlot <- function(expr, plot_name = "unknown") {
   )
 }
 
-## ---- BCR-specific helper: extract isotype ------------------------------- ##
-bcr_extract_isotype <- function(combined_BCR) {
-  sample_names <- names(combined_BCR)
-  dplyr::bind_rows(lapply(seq_along(combined_BCR), function(i) {
-    df <- combined_BCR[[i]]
-    if (is.null(df) || !"CTgene" %in% colnames(df)) {
-      return(NULL)
-    }
-    parts <- strsplit(as.character(df$CTgene), "_", fixed = TRUE)
-    part_lengths <- lengths(parts)
-    part_values <- unlist(parts, use.names = FALSE)
-    part_rows <- rep.int(seq_along(parts), part_lengths)
-    hits <- which(startsWith(part_values, "IGH"))
-    hits <- hits[!duplicated(part_rows[hits])]
-    igh <- rep(NA_character_, nrow(df))
-    igh[part_rows[hits]] <- part_values[hits]
-    isotype <- ifelse(
-      !is.na(igh) & grepl("\\.", igh),
-      sub("^.*\\.", "", igh),
-      NA_character_
-    )
-    isotype <- ifelse(grepl("^IGH[ADEGM]", isotype), isotype, NA_character_)
-    if (
-      !("sample" %in% colnames(df)) &&
-        !is.null(sample_names) &&
-        nzchar(sample_names[[i]])
-    ) {
-      df$sample <- sample_names[[i]]
-    }
-    tibble::add_column(tibble::as_tibble(df), isotype = isotype)
-  }))
-}
-
-## ---- BCR-specific: isotype distribution plot ---------------------------- ##
-bcr_isotype_plot <- function(combined, group_col = "sample") {
-  iso <- bcr_extract_isotype(combined)
-
-  if (is.null(iso) || nrow(iso) == 0L || !(group_col %in% colnames(iso))) {
+## Cells per (group, isotype), groups in the order they first appear: the
+## counts the isotype bars show. `groups` is the group of every repertoire
+## row. NULL when no cell has both.
+bcr_isotype_counts <- function(encoded, groups, group_col = "sample") {
+  isotype <- encoded$isotype
+  groups <- as.character(groups)
+  keep <- !is.na(isotype) & !is.na(groups)
+  if (!length(groups) || !any(keep)) {
     return(NULL)
   }
-  iso <- iso[!is.na(iso$isotype) & !is.na(iso[[group_col]]), , drop = FALSE]
-  if (nrow(iso) == 0L) {
+  pairs <- data.frame(
+    group = groups[keep],
+    isotype = encoded$isotype_levels[isotype[keep]]
+  )
+  groups <- unique(pairs$group)
+  isotypes <- unique(pairs$isotype)
+  key <- (match(pairs$group, groups) - 1L) *
+    length(isotypes) +
+    match(pairs$isotype, isotypes)
+  first <- !duplicated(key)
+  counts <- data.frame(
+    group = pairs$group[first],
+    isotype = pairs$isotype[first],
+    n = tabulate(key, nbins = length(groups) * length(isotypes))[key[first]]
+  )
+  names(counts)[[1L]] <- group_col
+  counts
+}
+
+
+## ---- BCR-specific: isotype distribution plot ---------------------------- ##
+bcr_isotype_plot <- function(encoded, groups, group_col = "sample") {
+  iso <- bcr_isotype_counts(encoded, groups, group_col)
+  if (is.null(iso)) {
     return(NULL)
   }
 
@@ -245,8 +246,11 @@ bcr_isotype_plot <- function(combined, group_col = "sample") {
     )
   )
 
-  ggplot2::ggplot(iso, ggplot2::aes(x = .data[[group_col]], fill = isotype)) +
-    ggplot2::geom_bar(position = "fill", colour = "white", linewidth = 0.1) +
+  ggplot2::ggplot(
+    iso,
+    ggplot2::aes(x = .data[[group_col]], y = n, fill = isotype)
+  ) +
+    ggplot2::geom_col(position = "fill", colour = "white", linewidth = 0.1) +
     ggplot2::scale_fill_manual(
       values = pal,
       na.value = "grey80",
@@ -261,73 +265,94 @@ bcr_isotype_plot <- function(combined, group_col = "sample") {
     )
 }
 
+
 ## ---- Helper: per-sample metadata (columns constant within each sample) -- ##
-sample_level_meta <- function(data) {
-  shared_cols <- Reduce(intersect, lapply(data, colnames))
-  meta_cols <- setdiff(shared_cols, ir_scr_cols)
-  constant <- vapply(
-    meta_cols,
-    function(col) {
-      all(vapply(
-        data,
-        function(df) {
-          length(unique(df[[col]])) == 1L
-        },
-        logical(1)
-      ))
-    },
-    logical(1)
-  )
-  meta_cols <- meta_cols[constant]
-  if (length(meta_cols) == 0L) {
+## The repertoire tables' own columns and the grouping column `group_by` that
+## hold one value within every sample, one row per sample.
+sample_level_meta <- function(encoded, metadata = NULL, group_by = NULL) {
+  shared <- Filter(function(v) is.null(attr(v, "samples")), encoded$columns)
+  candidates <- union(names(shared), group_by)
+  n_samples <- length(encoded$samples)
+  first <- match(seq_len(n_samples), encoded$sample)
+  values <- list()
+  for (col in candidates) {
+    v <- ir_row_values(encoded, col, metadata)
+    if (is.null(v)) {
+      next
+    }
+    code <- match(v, unique(v))
+    distinct <- !duplicated(encoded$sample + (code - 1) * n_samples)
+    if (all(tabulate(encoded$sample[distinct], n_samples) == 1L)) {
+      values[[col]] <- as.character(v[first])
+    }
+  }
+  if (length(values) == 0L) {
     return(NULL)
   }
-  meta <- data.frame(
-    .sample_name = names(data),
+  data.frame(
+    .sample_name = encoded$samples,
+    values,
+    check.names = FALSE,
     stringsAsFactors = FALSE
   )
-  for (col in meta_cols) {
-    meta[[col]] <- vapply(
-      data,
-      function(df) as.character(df[[col]][1]),
-      character(1)
-    )
-  }
-  meta
 }
 
-detect_chains <- function(data) {
-  if (is.null(data) || !is.list(data) || length(data) == 0) {
-    return(character(0))
+
+## The plots depend on the data set and their controls only (no session state:
+## palettes and the plot theme are constants), so sessions of the process that
+## open the same data set files share them: a new session, a reload or a
+## return to the data set used to redraw every plot (Clone Sharing 14 s on the
+## 187-sample T-cell atlas). The key carries the files' identity (ir_dataset_process_key());
+## a data set without a file on disk keeps a key private to its session.
+ir_dataset_cache_key <- reactive({
+  ds <- tryCatch(data_set(), error = function(e) NULL)
+  ir_dataset_process_key(ds) %||% list(session = session$token)
+})
+
+## The cache the plots are written to. An error, and a figure that shows one
+## (ir_plot_failed()), is this session's result and not the data set's: it is
+## not stored, so a transient failure or a container measured while hidden is
+## not replayed to every session. bindCache() reads a key, draws on a miss and
+## then writes it, all in one go.
+ir_plot_cache <- function(cache) {
+  resolve <- function() {
+    if (identical(cache, "app")) {
+      shiny::getShinyOption("cache", default = NULL)
+    } else if (identical(cache, "session")) {
+      session$cache
+    } else {
+      cache
+    }
   }
-  sample_dfs <- data[seq_len(min(length(data), 3))]
-  all_ct <- unlist(lapply(sample_dfs, function(df) {
-    if ("CTgene" %in% names(df)) as.character(df$CTgene) else character(0)
-  }))
-  chains <- c("TRA", "TRB", "TRG", "TRD", "IGH", "IGK", "IGL")
-  chains[vapply(
-    chains,
-    function(chain) any(grepl(chain, all_ct, fixed = TRUE)),
-    logical(1)
-  )]
+  list(
+    get = function(key, ...) {
+      ir_plot_cache_state$failed <- FALSE
+      resolve()$get(key, ...)
+    },
+    set = function(key, value) {
+      if (!isTRUE(value$error) && !isTRUE(ir_plot_cache_state$failed)) {
+        resolve()$set(key, value)
+      }
+      invisible(TRUE)
+    }
+  )
 }
 
-## cache = "session" ensures caches are NOT shared across users/sessions.
-## available_crb_files$selected is appended to every key so switching datasets
-## invalidates the cache (prevents stale plots from the previous dataset).
-ir_bindCache <- function(x, ..., cache = "session") {
+ir_bindCache <- function(x, ..., cache = "app") {
   # Keep only truly global plot state here. Plot-specific parameters belong
   # in each renderer's own bindCache call.
   shiny::bindCache(
     x,
     ...,
     available_crb_files$selected,
-    cache = cache
+    ir_dataset_cache_key(),
+    cache = ir_plot_cache(cache)
   )
 }
 
 for (module_file in c(
   "param_spec.R",
+  "encode.R",
   "data.R",
   "settings.R",
   "tabs.R",

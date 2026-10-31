@@ -1,7 +1,7 @@
 ## Version of the prepared mouse brain data, as for the Ren data. Version 1
 ## (folder `cerebro`) held 1,000,000 evenly spaced cells and was never stamped;
 ## a finished build of an earlier version must not be taken for this one.
-.viewer1mVersion <- 2L
+.viewer1mVersion <- 3L
 
 .viewer1mCacheDir <- function(path = NULL) {
   if (is.null(path)) {
@@ -425,35 +425,8 @@
   )
 }
 
-.viewer1mDropLegacyTrajectory <- function(object) {
-  methods <- tryCatch(
-    object$getMethodsForTrajectories(),
-    error = function(e) character()
-  )
-  if (!"illustrative" %in% methods) {
-    return(FALSE)
-  }
-  names_for_method <- tryCatch(
-    object$getNamesOfTrajectories("illustrative"),
-    error = function(e) character()
-  )
-  if (!"UMAP_cluster_path" %in% names_for_method) {
-    return(FALSE)
-  }
-  trajectories <- tryCatch(object$trajectories, error = function(e) NULL)
-  if (!is.list(trajectories)) {
-    return(FALSE)
-  }
-  trajectories[["illustrative"]][["UMAP_cluster_path"]] <- NULL
-  if (!length(trajectories[["illustrative"]])) {
-    trajectories[["illustrative"]] <- NULL
-  }
-  object$trajectories <- trajectories
-  TRUE
-}
-
 .viewer1mEnrichDemoObject <- function(object) {
-  changed <- .viewer1mDropLegacyTrajectory(object)
+  changed <- FALSE
   parameters <- tryCatch(object$getParameters(), error = function(e) list())
   if (!identical(parameters[["main_group"]], "seurat_clusters")) {
     object$addParameters("main_group", "seurat_clusters")

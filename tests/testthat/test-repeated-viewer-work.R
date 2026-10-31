@@ -11,7 +11,7 @@ repeat_definitions <- function(file, env) {
   }
 }
 
-test_that("IR joins and compact profiles follow semantic data changes only", {
+test_that("IR encoding and compact profiles follow semantic data changes only", {
   shiny::testServer(
     function(input, output, session) {
       data_set <- shiny::reactiveVal(1)
@@ -32,16 +32,21 @@ test_that("IR joins and compact profiles follow semantic data changes only", {
           patient = c("p", "p", "q", "q")
         )
       }
+      viewerPackCurrent <- function() NULL
       sys.source(viewer_test_path("clone_contract.R"), environment())
+      sys.source(
+        viewer_test_path("immune_repertoire", "encode.R"),
+        environment()
+      )
       sys.source(viewer_test_path("immune_repertoire", "data.R"), environment())
       counters <- new.env()
-      counters$joins <- 0L
+      counters$encodings <- 0L
       counters$preparations <- 0L
-      join_original <- ir_annotate_metadata
+      encode_original <- ir_encode_repertoire
       profile_original <- ir_clone_size_profiles
-      ir_annotate_metadata <- function(...) {
-        counters$joins <- counters$joins + 1L
-        join_original(...)
+      ir_encode_repertoire <- function(...) {
+        counters$encodings <- counters$encodings + 1L
+        encode_original(...)
       }
       ir_clone_size_profiles <- function(...) {
         counters$preparations <- counters$preparations + 1L
@@ -55,26 +60,29 @@ test_that("IR joins and compact profiles follow semantic data changes only", {
         ir_chain = "both",
         ir_p_sd_threshold = 1
       )
-      initial <- ir_data_annotated()
       profile <- ir_size_distribution_profile()
-      expect_equal(counters$joins, 1L)
+      expect_equal(counters$encodings, 1L)
       expect_equal(counters$preparations, 1L)
       expect_null(profile$clone_counts)
+      expect_identical(rownames(profile$profile), c("high", "low"))
       for (tab in c("Homeostasis", "Abundance", "Diversity")) {
         session$setInputs(
           ir_tabs = tab,
           ir_cloneCall = "aa",
           ir_p_sd_method = "average"
         )
-        expect_identical(ir_data_annotated(), initial)
         expect_identical(ir_size_distribution_profile(), profile)
       }
-      expect_equal(counters$joins, 1L)
+      expect_equal(counters$encodings, 1L)
       expect_equal(counters$preparations, 1L)
+      ## Another grouping reads its column at the rows' cells; the encoding
+      ## stays.
       session$setInputs(ir_groupBy = "patient")
-      expect_true("patient" %in% names(ir_data_annotated()[[1]]))
-      ir_size_distribution_profile()
-      expect_equal(counters$joins, 2L)
+      expect_identical(
+        rownames(ir_size_distribution_profile()$profile),
+        c("p", "q")
+      )
+      expect_equal(counters$encodings, 1L)
       expect_equal(counters$preparations, 2L)
       session$setInputs(ir_p_sd_threshold = 2)
       expect_equal(ir_size_distribution_profile()$threshold, 2L)
@@ -82,10 +90,8 @@ test_that("IR joins and compact profiles follow semantic data changes only", {
       data_set(2)
       session$flushReact()
       ir_size_distribution_profile()
-      expect_equal(counters$joins, 3L)
+      expect_equal(counters$encodings, 2L)
       expect_equal(counters$preparations, 4L)
-      session$setInputs(ir_tabs = "Clone Sharing", ir_sharing_unit = "severity")
-      expect_setequal(ir_requested_metadata_columns(), c("patient", "severity"))
     }
   )
 })
@@ -135,6 +141,12 @@ test_that("Groups shares counts across display forms but refreshes data", {
         viewer_test_path("groups", "composition.R"),
         environment()
       )
+      for (name in c("calculateTableAB", "formatTableAB")) {
+        eval(
+          viewer_r_assignment(viewer_test_path("utility_functions.R"), name),
+          environment()
+        )
+      }
       groupsMetadataColumns <- function(...) {
         generation()
         counter$calls <- counter$calls + 1L
@@ -173,12 +185,13 @@ test_that("Groups shares counts across display forms but refreshes data", {
 
 test_that("compact SizeDist renders the identical geometry", {
   env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("immune_repertoire", "encode.R"), env)
   repeat_definitions(viewer_test_path("immune_repertoire", "data.R"), env)
   raw <- list(
     A = data.frame(CTstrict = c("x", "x", "y")),
     B = data.frame(CTstrict = c("q", "r"))
   )
-  full_profiles <- env$ir_clone_size_profiles(raw)
+  full_profiles <- env$ir_clone_size_profiles(env$ir_encode_repertoire(raw))
   profiles <- full_profiles
   profiles$clone_counts <- NULL
   for (method in c("ward.D2", "complete", "average")) {
@@ -233,37 +246,40 @@ test_that("table classification is skipped only when neither feature uses it", {
   )
 })
 
-test_that("paired scatter retains a third dot-size sample", {
-  skip_if_not_installed("scRepertoire")
+test_that("the faceted paired scatter compares levels of the grouping column", {
   env <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("immune_repertoire", "encode.R"), env)
+  repeat_definitions(viewer_test_path("immune_repertoire", "data.R"), env)
   repeat_definitions(
     viewer_test_path("immune_repertoire", "visualizations.R"),
     env
   )
   env$IR_PALETTE <- "inferno"
-  env$ir_param <- function(name, default) {
-    if (name == "ir_p_dot_size") "C" else default
-  }
-  raw <- lapply(
-    list(
-      A = c("x", "x", "y"),
-      B = c("x", "z"),
-      C = c("y", "z", "z"),
-      D = "unused"
+  encoded <- env$ir_encode_repertoire(list(
+    s1 = data.frame(
+      barcode = c("a", "b", "c"),
+      CTgene = c("x", "x", "y"),
+      cell_type = c("T", "T", "B")
     ),
-    function(x) data.frame(CTgene = x)
+    s2 = data.frame(
+      barcode = c("d", "e"),
+      CTgene = c("x", "z"),
+      cell_type = c("B", "T")
+    )
+  ))
+  ## X and Y are cell types, not samples.
+  table <- env$ir_scatter_table(
+    encoded,
+    "CTgene",
+    "both",
+    env$ir_row_values(encoded, "cell_type", NULL),
+    "T",
+    "B"
   )
-  pars <- list(cloneCall = "gene", chain = "both")
-  full <- env$ir_paired_scatter_panel(raw, pars, "A", "B", "test")
-  subset <- env$ir_paired_scatter_panel(
-    raw[c("A", "B", "C")],
-    pars,
-    "A",
-    "B",
-    "test"
-  )
-  expect_equal(
-    ggplot2::ggplot_build(full)$data,
-    ggplot2::ggplot_build(subset)$data
-  )
+  expect_identical(table$x_n, c(2, 1, 0))
+  expect_identical(table$y_n, c(1, 0, 1))
+  plot <- env$ir_scatter_ggplot(table, "T", "B", "proportion", "T vs B")
+  points <- ggplot2::ggplot_build(plot)$data[[1]]
+  expect_identical(nrow(points), 3L)
+  expect_identical(plot$labels$title, "T vs B")
 })

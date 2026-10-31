@@ -837,3 +837,55 @@ test_that("lazy-load boundary: self-made plots stay unloaded, scRepertoire plots
     output = "ir_plot_clonalSizeDistribution"
   )))
 })
+
+test_that("a new grouping draws Paired scatter and Compare once, from its own groups", {
+  app <- shared_app()
+  activate_ir_tab(app)
+  count_outputs <- function() {
+    app$run_js(paste0(
+      "window.irValues={};window.irErrors={};",
+      "jQuery(document).off('.irCount')",
+      ".on('shiny:value.irCount',function(e){irValues[e.name]=(irValues[e.name]||0)+1;})",
+      ".on('shiny:error.irCount',function(e){irErrors[e.name]=(irErrors[e.name]||0)+1;});"
+    ))
+  }
+  counted <- function(kind, name) {
+    as.numeric(app$get_js(sprintf("(window.%s||{})['%s']||0", kind, name)))
+  }
+  ## Switch between no grouping and cell_type, whichever is not current.
+  regroup <- function() {
+    current <- app$get_js("document.querySelector('#ir_groupBy').value")
+    app$set_inputs(
+      ir_groupBy = if (identical(current, "cell_type")) "" else "cell_type",
+      wait_ = FALSE
+    )
+    app$wait_for_idle(duration = 1500, timeout = 60000)
+  }
+
+  app$set_inputs(ir_tabs = "Paired Scatter", wait_ = FALSE)
+  app$wait_for_js(
+    "document.querySelector('#ir_plot_pairedScatter .main-svg') !== null",
+    timeout = 60000
+  )
+  app$wait_for_idle(duration = 1500, timeout = 60000)
+  count_outputs()
+  regroup()
+  ## One plot from the new groups, no "Select an X group" step, and the
+  ## controls (and the plot container in them) kept: their choices are
+  ## updated in place, so the plot is not drawn again into a new container.
+  expect_identical(counted("irValues", "ir_plot_pairedScatter"), 1)
+  expect_identical(counted("irErrors", "ir_plot_pairedScatter"), 0)
+  expect_identical(counted("irValues", "ir_ui_pairedScatter"), 0)
+
+  app$set_inputs(ir_tabs = "Compare", wait_ = FALSE)
+  app$wait_for_js(
+    "document.querySelector('#ir_plot_clonalCompare .main-svg') !== null",
+    timeout = 60000
+  )
+  app$wait_for_idle(duration = 1500, timeout = 60000)
+  count_outputs()
+  regroup()
+  ## Not first from the previous grouping's samples, then from the new ones.
+  expect_identical(counted("irValues", "ir_plot_clonalCompare"), 1)
+  app$set_inputs(ir_tabs = "Clonal UMAP", wait_ = FALSE)
+})

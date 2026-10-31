@@ -4,23 +4,10 @@ help_demo_file <- viewer_test_path(
   "immune_repertoire",
   "help_demo_helpers.R"
 )
-help_demo_exists <- file.exists(help_demo_file)
-
-test_that("the bundled IR help-demo helper exists and parses", {
-  expect_true(help_demo_exists)
-  if (help_demo_exists) {
-    expect_no_error(parse(file = help_demo_file))
-  }
-})
-
 help_demo_env <- new.env(parent = globalenv())
-if (help_demo_exists) {
-  sys.source(help_demo_file, envir = help_demo_env)
-}
+sys.source(help_demo_file, envir = help_demo_env)
 
 test_that("help-demo routing separates local, backed, and absent examples", {
-  skip_if_not(help_demo_exists)
-
   expect_identical(help_demo_env$ir_help_demo_kind("Isotype"), "local_bcr")
   expect_identical(
     help_demo_env$ir_help_demo_kind("Clone Sharing"),
@@ -37,8 +24,6 @@ test_that("help-demo routing separates local, backed, and absent examples", {
 })
 
 test_that("synthetic help data is deterministic without changing caller RNG", {
-  skip_if_not(help_demo_exists)
-
   set.seed(123)
   expected <- stats::runif(3)
   set.seed(123)
@@ -67,8 +52,6 @@ test_that("synthetic help data is deterministic without changing caller RNG", {
 })
 
 test_that("local seeding restores an initially absent RNG state", {
-  skip_if_not(help_demo_exists)
-
   had_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
   old_seed <- if (had_seed) {
     get(".Random.seed", envir = globalenv(), inherits = FALSE)

@@ -123,9 +123,8 @@ test_that("thin CRB first frames do not force cell-barcode hydration", {
 })
 
 test_that("first-frame cache is optional outside a loaded dataset", {
-  scope <- new.env(parent = globalenv())
-  scope$data_set <- NULL
-  viewer_runtime_env(scope)
+  scope <- viewer_runtime_env()
+  scope$data_set <- function() NULL
 
   expect_null(scope$viewerProjectionFirstFrameCache())
 })
@@ -178,6 +177,46 @@ test_that("projection auxiliary rows preserve plotted group order", {
     lapply(auxiliary$hover$columns[[1L]]$values, as.integer),
     list(c(20L, 40L), c(10L, 30L))
   )
+})
+
+test_that("auxiliary rows refer to the cell-name resource when there is one", {
+  scope <- viewer_runtime_env()
+  resource <- list(protocol = "canonical-cell-names-v1", cells = 9L)
+  auxiliary <- scope$cerebroCellViewDeferredAux(
+    selection_rows = c(2L, 1L),
+    cell_barcodes = NULL,
+    hover = FALSE,
+    names_resource = resource,
+    cell_rows = c(7L, 3L)
+  )
+  expect_null(auxiliary$selection_key)
+  expect_identical(unclass(auxiliary$selection_index), c(2L, 6L))
+  expect_identical(auxiliary$cell_names_resource, resource)
+  expect_identical(auxiliary$hover$hoverinfo, "skip")
+})
+
+test_that("contiguous auxiliary rows travel as their range", {
+  scope <- viewer_runtime_env()
+  resource <- list(protocol = "canonical-cell-names-v1", cells = 9L)
+  auxiliary <- scope$cerebroCellViewDeferredAux(
+    selection_rows = 1:4,
+    cell_barcodes = NULL,
+    hover = FALSE,
+    names_resource = resource,
+    cell_rows = 3:6
+  )
+  expect_identical(
+    auxiliary$selection_index,
+    list(kind = "range", start = 2L, length = 4L)
+  )
+  grouped <- scope$cerebroCellViewDeferredAux(
+    selection_rows = list(1:2, 3:4),
+    cell_barcodes = NULL,
+    hover = FALSE,
+    names_resource = resource,
+    cell_rows = 3:6
+  )
+  expect_identical(lapply(grouped$selection_index, unclass), list(2:3, 4:5))
 })
 
 test_that("unmounted group filters preserve canonical rows without level scans", {
@@ -235,7 +274,8 @@ test_that("gene-expression deferred hover selects rows and columns first", {
     selection_rows,
     cell_barcodes,
     hover_columns,
-    hover
+    hover,
+    keys = TRUE
   ) {
     list(selection_rows = selection_rows, cell_barcodes = cell_barcodes)
   }
@@ -313,7 +353,7 @@ test_that("thin H5 first-frame cache includes its small gene index", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root, save = FALSE)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- new.env(parent = emptyenv())
   object$meta_data <- data.frame(group = factor(c("A", "B", "A", "B")))
   object$projections <- list(umap = data.frame(x = 1:4, y = 4:1))
@@ -371,9 +411,20 @@ test_that("a new projection mount redraws unchanged data", {
     viewerDatasetContextEqual <- function(a, b) identical(a, b)
     overview_projection_data_to_plot <- reactive({
       input[["late_bound_control"]]
-      list(value = 1L, dataset_context = context)
+      ## As in the page code: the flag is read without a dependency and is
+      ## cleared after the first frame, so a late binding sees FALSE.
+      list(
+        value = 1L,
+        dataset_context = context,
+        reset_axes = isolate(overview_projection_parameters_other[[
+          "reset_axes"
+        ]])
+      )
     })
     overview_projection_data_to_plot_raw <- overview_projection_data_to_plot
+    overview_projection_group_filters <- function() list()
+    cerebroFeedbackControls <- function(...) list()
+    cerebroSendViewFeedback <- function(...) invisible(NULL)
     overview_projection_update_plot <- function(data) {
       renders <<- renders + 1L
     }
@@ -417,6 +468,27 @@ test_that("a new projection mount redraws unchanged data", {
       )
     )
     expect_identical(session$userData$render_count(), 2L)
+  })
+})
+
+test_that("only another projection resets the Projection axes", {
+  server <- function(input, output, session) {
+    cerebroObserveLocalAppearance <- function(...) invisible(NULL)
+    sys.source(
+      viewer_test_path("overview", "obj_projection_parameters_plot.R"),
+      envir = environment()
+    )
+    session$userData$flags <- overview_projection_parameters_other
+  }
+
+  shiny::testServer(server, {
+    flags <- session$userData$flags
+    flags[["reset_axes"]] <- FALSE
+    ## The selector binding with its first value: the view stays as it is.
+    session$setInputs(overview_projection_to_display = "umap")
+    expect_false(isolate(flags[["reset_axes"]]))
+    session$setInputs(overview_projection_to_display = "tsne")
+    expect_true(isolate(flags[["reset_axes"]]))
   })
 })
 
@@ -473,7 +545,7 @@ test_that("thin CRBs discard duplicate metadata row names", {
   expect_identical(.row_names_info(restored$meta_data, 1L), -4L)
   expect_identical(restored$meta_data$cell_barcode, cells)
 
-  runtime <- viewer_runtime_scope()
+  runtime <- viewer_runtime_env()
   runtime_object <- runtime$read_cerebro_file(crb)
   runtime_object <- runtime$.attachExternalExpression(runtime_object, crb)
   expect_identical(.row_names_info(runtime_object$meta_data, 1L), -4L)
@@ -494,7 +566,7 @@ test_that("noncanonical thin projections cannot bypass barcode alignment", {
     ),
     save = FALSE
   )
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- new.env(parent = emptyenv())
   object$meta_data <- data.frame(group = c("A", "B", "C"))
   object$projections <- list(
@@ -520,7 +592,7 @@ test_that("thin CRB cell names come from the H5 file and stay lazy", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root, save = FALSE)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   schema <- list(
     version = 3L,
     n_cells = 4L,
@@ -587,7 +659,7 @@ test_that("attaching a thin H5 CRB reads the schema, not the matrix", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- scope$read_cerebro_file(fixture$crb)
   object <- scope$.attachExternalExpression(object, fixture$crb)
   scope$data_set <- function() object
@@ -648,11 +720,62 @@ test_that("attaching a thin H5 CRB does not load HDF5Array", {
   expect_true(state$after_expression)
 })
 
+test_that("H5 expression rows are read without loading HDF5Array", {
+  skip_if_not_installed("HDF5Array")
+  skip_if_not_installed("callr")
+  root <- withr::local_tempdir()
+  fixture <- viewer_h5_fixture(root)
+
+  state <- callr::r(
+    function(utility, crb) {
+      scope <- new.env(parent = globalenv())
+      sys.source(
+        file.path(dirname(utility), "core", "crb_contract.R"),
+        envir = scope
+      )
+      sys.source(utility, envir = scope)
+      object <- scope$.attachExternalExpression(
+        scope$read_cerebro_file(crb),
+        crb
+      )
+      state <- list(
+        count = scope$viewerExpressionCellCount(object),
+        row = scope$viewerExpressionRow(object, NULL, "g2"),
+        subset = scope$viewerExpressionRow(object, c(4L, 2L), "g3"),
+        values = scope$viewerExpressionValues(object, 2:3, c("g3", "g1")),
+        loaded = "HDF5Array" %in% loadedNamespaces(),
+        lazy = rlang::env_binding_are_lazy(object, "expression")
+      )
+      state$missing <- tryCatch(
+        scope$viewerExpressionRow(object, NULL, "absent"),
+        error = function(error) "error"
+      )
+      state
+    },
+    list(viewer_test_path("utility_functions.R"), fixture$crb)
+  )
+
+  expect_identical(state$count, 4L)
+  expect_identical(state$row, unname(fixture$values["g2", ]))
+  expect_identical(state$subset, unname(fixture$values["g3", c(4L, 2L)]))
+  expect_identical(
+    state$values,
+    list(
+      g3 = unname(fixture$values["g3", 2:3]),
+      g1 = unname(fixture$values["g1", 2:3])
+    )
+  )
+  expect_false(state$loaded)
+  expect_true(state$lazy)
+  ## A gene the file does not have still fails through the R6 accessor.
+  expect_identical(state$missing, "error")
+})
+
 test_that("a thin CRB without its H5 file names the recovery step", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- scope$read_cerebro_file(fixture$crb)
   unlink(fixture$h5)
 
@@ -666,7 +789,7 @@ test_that("thin CRB schemas other than version 3 are retired", {
   skip_if_not_installed("HDF5Array")
   root <- withr::local_tempdir()
   fixture <- viewer_h5_fixture(root)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   object <- scope$read_cerebro_file(fixture$crb)
   object$crb_schema$version <- 2L
 

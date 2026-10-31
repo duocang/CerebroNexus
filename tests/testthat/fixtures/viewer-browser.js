@@ -75,13 +75,19 @@ window.viewerTest = (() => {
       data:{selection_key:['a','b','c'],x:[0,10,20],y:[0,10,0],color:[0,1,2],...data},
       meta:{color_type:'continuous',color_variable:'GENE',...meta},...extra};
   }
-  async function render(data={},meta={},id='expression_projection',extra={},binary=false) {
-    visible(id);const frame=message(id,data,meta,extra);
-    send(binary?'cell_view_binary':'cell_view_render',binary?wire(frame):frame);
+  // Sends a binary frame and returns the message the viewer decoded from it.
+  function sendWire(name,frame) {
+    const real=window.CBViewWire;let decoded=frame;
+    window.CBViewWire={supported:real.supported,unpack:buffer=>(decoded=real.unpack(buffer))};
+    try {send(name,wire(frame));} finally {window.CBViewWire=real;}
+    return decoded;
+  }
+  async function render(data={},meta={},id='expression_projection',extra={}) {
+    visible(id);const frame=sendWire('cell_view_binary',message(id,data,meta,extra));
     await settle();return frame;
   }
   async function recolor(data,meta={},id='expression_projection') {
-    send('cell_view_recolor',{id,dataset_context:{...context},render_token:++token,
+    sendWire('cell_view_recolor_binary',{id,dataset_context:{...context},render_token:++token,
       data,meta:{color_type:'continuous',color_variable:'GENE',...meta}});await settle();
   }
   function arcs(id='cv-cv-a') {
@@ -107,8 +113,12 @@ window.viewerTest = (() => {
     send('coordviews_data',bundle);return bundle;
   }
   function change(id,value) {const el=document.getElementById(id);check(el,'Control '+id);
+    if(el.selectize){el.selectize.setValue(value);return el;}
     if(typeof value==='boolean')el.checked=value;else el.value=value;
     el.dispatchEvent(new Event('change',{bubbles:true}));return el;}
-  return {handlers,requests,paints,uploads,events,context,check,equal,settle,send,wire,dataset,
-    visible,message,render,recolor,arcs,resetPaint,hover,linked,change,get checks(){return checks;}};
+  // A selectized picker's choices, in order (its <select> keeps only the chosen).
+  function choices(id) {const s=document.getElementById(id).selectize;
+    return Object.values(s.options).sort((a,b)=>a.$order-b.$order);}
+  return {handlers,requests,paints,uploads,events,context,check,equal,settle,send,sendWire,wire,dataset,
+    visible,message,render,recolor,arcs,resetPaint,hover,linked,change,choices,get checks(){return checks;}};
 })();

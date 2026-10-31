@@ -47,11 +47,10 @@ spatial_projection_selected_cells <- reactive({
   )
 })
 
-observeEvent(spatial_projection_selected_cells(), {
-  if (
-    !is.null(spatial_projection_selected_cells()) &&
-      nrow(spatial_projection_selected_cells()) > 0
-  ) {
+## On whether there is a selection, not on each one: the selection is not
+## decoded for this.
+observeEvent(spatial_selection_present(), {
+  if (spatial_selection_present()) {
     shinyjs::js$showScrollDownIndicator("Charts generated below ↓")
   } else {
     shinyjs::js$hideScrollDownIndicator()

@@ -3,6 +3,10 @@ test_that("Gene progress closes when hidden and does not reopen painted keys", {
     function(input, output, session) {
       scope <- environment()
       viewer_runtime_env(scope)
+      ## Server code reads the display mode through viewerControlValue().
+      expression_projection_display_mode <- function() {
+        input[["expression_projection_genes_in_separate_panels"]]
+      }
       viewer_loaded_dataset_context <- reactiveVal(viewerDatasetContext(
         "session",
         "A",
@@ -66,7 +70,6 @@ test_that("Gene progress closes when hidden and does not reopen painted keys", {
       expression_projection_expression_levels()
       expect_identical(scope$reads, 1L)
       session$setInputs(
-        expression_projection_rendered_key = key,
         revision = 2,
         expression_projection_rendered_state = list(
           render_key = key,
@@ -107,8 +110,7 @@ test_that("Gene progress closes when hidden and does not reopen painted keys", {
       ## No request yet, or hidden recalculation, must never open global progress.
       session$setInputs(
         expression_projection_render_request = NULL,
-        revision = 3,
-        expression_projection_rendered_key = "obsolete"
+        revision = 3
       )
       expression_projection_expression_levels()
       expect_null(scope$expression_projection_progress_handle)
@@ -149,6 +151,7 @@ test_that("Gene rejects obsolete group columns and clears rather than retaining 
   }
   env$reactive_colors <- function() list(new_group = c(a = "red", b = "blue"))
   env$plotExpressionSummary <- function(series, groups, colors) groups
+  env$expression_projection_shown_rows <- function() NULL
   error <- tryCatch(eval(body, env), error = identity)
   expect_s3_class(error, "shiny.silent.error")
   expect_false(inherits(error, "shiny.output.cancel"))
@@ -165,6 +168,10 @@ test_that("plot parameter changes reuse expression values", {
     function(input, output, session) {
       scope <- environment()
       viewer_runtime_env(scope)
+      ## Server code reads the display mode through viewerControlValue().
+      expression_projection_display_mode <- function() {
+        input[["expression_projection_genes_in_separate_panels"]]
+      }
       viewer_loaded_dataset_context <- reactiveVal(viewerDatasetContext(
         "session",
         "A",

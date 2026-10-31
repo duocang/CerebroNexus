@@ -141,7 +141,7 @@ test_that("the 1M preparation keeps unique gene symbols", {
   expect_equal(sort(terminal_edges$target_dim_2), c(-1, 1))
 })
 
-test_that("the 1M demo replaces the illustrative path with marker guidance", {
+test_that("the 1M demo adds the marker-guided path and main group", {
   script <- testthat::test_path(
     "..",
     "..",
@@ -166,9 +166,7 @@ test_that("the 1M demo replaces the illustrative path with marker guidance", {
   rownames(projection) <- metadata$cell_barcode
   parameters <- list()
   object <- new.env(parent = emptyenv())
-  object$trajectories <- list(
-    illustrative = list(UMAP_cluster_path = list())
-  )
+  object$trajectories <- list()
   object$getParameters <- function() parameters
   object$addParameters <- function(field, content) {
     parameters[[field]] <<- content
@@ -200,7 +198,6 @@ test_that("the 1M demo replaces the illustrative path with marker guidance", {
 
   expect_true(env$.viewer1mEnrichDemoObject(object))
   expect_identical(parameters$main_group, "seurat_clusters")
-  expect_false("illustrative" %in% names(object$trajectories))
   expect_named(object$trajectories$marker_guided, "E18_neurogenesis")
   expect_false(env$.viewer1mEnrichDemoObject(object))
 })
@@ -209,9 +206,15 @@ test_that("the Viewer filters methods at trajectory selection boundaries", {
   utility <- viewer_runtime_env()
   expect_identical(
     utility$viewerSupportedTrajectoryMethods(
-      c("unsupported", "marker_guided", "monocle2", "illustrative")
+      c(
+        "unsupported",
+        "marker_guided",
+        "monocle2",
+        "illustrative",
+        "published_pseudotime"
+      )
     ),
-    c("marker_guided", "monocle2", "illustrative")
+    c("marker_guided", "monocle2", "illustrative", "published_pseudotime")
   )
 })
 
@@ -306,17 +309,14 @@ test_that("shared browser base reuses only matching dataset projections", {
   )
 })
 
-test_that("specialist lifecycle owns request, ready, and auxiliary state", {
+test_that("specialist lifecycle owns request and auxiliary state", {
   skip_if_no_node()
   source <- viewer_test_path("www", "cell_views_state.js")
   output <- run_node_script(c(
     "const fs = require('fs'); global.window = {};",
     js_eval_file(source),
     "const L = window.CBViewState.specialistLifecycle, timings = {};",
-    "const first = L.begin(timings, 'spatial', true); first.requestAtMs = 10;",
-    "L.update(timings, 'spatial', {bytes: 42});",
-    "L.activate(timings, 'spatial', 20);",
-    "const ready = L.ready(timings, 'spatial', 35);",
+    "L.begin(timings, 'spatial', true);",
     "const view = {data:{wire_token:7}};",
     "const requested = L.requestAux(view);",
     "const duplicate = L.requestAux(view);",
@@ -324,8 +324,7 @@ test_that("specialist lifecycle owns request, ready, and auxiliary state", {
     "const accepted = L.acceptAux(view, {wire_token:7});",
     "const cached = L.begin(timings, 'spatial', false);",
     "console.log(JSON.stringify({generation:cached.generation,",
-    "cached:cached.cached,bytes:ready.bytes,latency:ready.requestToReadyMs,",
-    "activation:ready.activationStartedAtMs,requested,duplicate,rejected,accepted,",
+    "cached:cached.cached,requested,duplicate,rejected,accepted,",
     "pending:view._auxPending,token:view._auxToken}));"
   ))
 
@@ -335,9 +334,6 @@ test_that("specialist lifecycle owns request, ready, and auxiliary state", {
     list(
       generation = 2L,
       cached = TRUE,
-      bytes = 42L,
-      latency = 25L,
-      activation = 20L,
       requested = 7L,
       duplicate = NULL,
       rejected = FALSE,
@@ -494,7 +490,8 @@ test_that("Gene projection delegates paint order without copying cell vectors", 
     selection_rows,
     cell_barcodes,
     hover_columns,
-    hover
+    hover,
+    keys = TRUE
   ) {
     list(selection_key = cell_barcodes[selection_rows])
   }
@@ -592,7 +589,8 @@ test_that("Gene no-gene primary frame defers metadata until auxiliary data", {
     selection_rows,
     cell_barcodes,
     hover_columns,
-    hover
+    hover,
+    keys = TRUE
   ) {
     list(selection_key = cell_barcodes[selection_rows])
   }
@@ -677,7 +675,7 @@ test_that("the 1M preparation uses CEREBRO_LARGE_CACHE like the Ren one", {
   withr::local_envvar(CEREBRO_LARGE_CACHE = "/data/large")
   expect_identical(
     env$.viewer1mPaths()$crb,
-    "/data/large/1m/cerebro-v2/cerebro_mouse_brain_1m.crb"
+    "/data/large/1m/cerebro-v3/cerebro_mouse_brain_1m.crb"
   )
   ## an explicit argument still wins
   expect_identical(

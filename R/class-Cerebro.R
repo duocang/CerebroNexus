@@ -1059,7 +1059,7 @@ Cerebro <- R6::R6Class(
     #' @return Named list of data.frames (one per sample), or empty list.
     getImmuneRepertoire = function() {
       if (length(self$immune_repertoire) > 0) {
-        return(self$immune_repertoire)
+        return(private$restoreRepertoireCells(self$immune_repertoire))
       }
       backend <- tryCatch(self$immune_repertoire_backend, error = function(e) {
         NULL
@@ -1096,6 +1096,7 @@ Cerebro <- R6::R6Class(
         if (!is.list(repertoire)) {
           stop("The immune repertoire sidecar is invalid.", call. = FALSE)
         }
+        repertoire <- private$restoreRepertoireCells(repertoire)
         self$immune_repertoire <- repertoire
         return(repertoire)
       }
@@ -1743,6 +1744,36 @@ Cerebro <- R6::R6Class(
 
   ## private fields and methods
   private = list(
+    ## Cell names of the metadata rows, for barcodes a thin CRB stores by cell
+    ## index (in the Viewer this hydrates the thin metadata).
+    storedCellNames = function() {
+      cells <- self$meta_data[["cell_barcode"]]
+      if (!is.character(cells)) {
+        stop("The cell names of the metadata are missing.", call. = FALSE)
+      }
+      cells
+    },
+
+    ## Repertoire barcodes stored as metadata rows get their names back, once.
+    restoreRepertoireCells = function(repertoire) {
+      indexed <- vapply(
+        repertoire,
+        function(sample) {
+          !is.null(attr(sample, "cerebro_cell_index_column", exact = TRUE))
+        },
+        logical(1)
+      )
+      if (!any(indexed)) {
+        return(repertoire)
+      }
+      repertoire <- .restoreRepertoireByCell(
+        repertoire,
+        private$storedCellNames()
+      )
+      self$immune_repertoire <- repertoire
+      repertoire
+    },
+
     ## Rows of the immune repertoire whose CTgene matches a receptor pattern.
     receptorRows = function(pattern) {
       repertoire <- self$getImmuneRepertoire()

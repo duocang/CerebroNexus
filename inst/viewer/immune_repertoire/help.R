@@ -408,7 +408,7 @@ output$ir_demo_plot <- renderPlot({
         tab,
         "Abundance" = scRepertoire::clonalAbundance(demo, cloneCall = "gene"),
         "Diversity" = ir_plot_clonal_diversity(
-          data = demo,
+          ir_encode_repertoire(demo),
           clone_call = "gene",
           chain = "TRB",
           group_by = NULL,
@@ -445,24 +445,22 @@ output$ir_demo_plot <- renderPlot({
           cloneCall = "gene",
           method = "ward.D2"
         ),
+        ## The demo tables are encoded in memory, as a data set without a
+        ## Viewer Pack is; "sample" is each table's name.
         "Clone Sharing" = ir_build_sharing_plot(
-          # Ensure a `sample` column (the sharing unit) on each demo frame,
-          # keyed by the list element name. scRepertoire 2.6.2's combineTCR()
-          # already adds one, so this is a defensive/idempotent guard that keeps
-          # the demo working regardless of the combineTCR version's behaviour.
-          Map(
-            function(df, nm) {
-              df$sample <- nm
-              df
-            },
-            demo,
-            names(demo)
-          ),
+          ir_encode_repertoire(demo),
           chain = "TRB",
           unit_col = "sample",
           group_by = NULL
         ),
-        "Isotype" = bcr_isotype_plot(demo, group_col = "sample"),
+        "Isotype" = local({
+          encoded <- ir_encode_repertoire(demo)
+          bcr_isotype_plot(
+            encoded,
+            ir_row_values(encoded, "sample", joined = FALSE),
+            group_col = "sample"
+          )
+        }),
         stop("No example renderer registered for: ", tab)
       )
       if (is.null(p)) {

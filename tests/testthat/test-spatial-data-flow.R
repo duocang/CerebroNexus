@@ -204,8 +204,12 @@ test_that("Spatial defaults and appearance updates do not repeat primary computa
       original
     )
     expect_length(spatial_projection_group_hulls(), 0L)
+    frames <- scope$frames
     session$setInputs(spatial_projection_show_region_outlines = TRUE)
-    expect_length(spatial_projection_data_to_plot_raw()$group_hulls, 1L)
+    ## Outlines are an overlay patched onto the drawn frame: they are built,
+    ## and the frame is not.
+    expect_length(spatial_projection_group_hulls(), 1L)
+    expect_identical(scope$frames, frames)
   })
 })
 
@@ -408,5 +412,55 @@ test_that("Spatial controls binding their defaults do not repeat the first frame
       "none"
     )
     expect_identical(scope$frames, 2L)
+  })
+})
+
+test_that("a Spatial frame draws the current region-outline switch", {
+  server <- function(input, output, session) {
+    context <- list(epoch = "test", dataset_key = "A", generation = 1L)
+    viewer_loaded_dataset_context <- function() context
+    viewerDatasetContextEqual <- function(a, b) identical(a, b)
+    viewerDatasetContextToken <- function(context) context$generation
+    cerebroFeedbackControls <- function(id, input) list()
+    cerebroSendViewFeedback <- function(...) invisible(NULL)
+    spatial_projection_group_filters <- function() list()
+    ## Plot parameters keep the value of their last rebuild; the switch has
+    ## been turned on since, and a filter rebuilt only the frame.
+    spatial_projection_region_outlines <- reactiveVal(TRUE)
+    frame <- list(
+      dataset_context = context,
+      plot_parameters = list(show_region_outlines = FALSE)
+    )
+    spatial_projection_data_to_plot_raw <- reactive(frame)
+    spatial_projection_data_to_plot <- spatial_projection_data_to_plot_raw
+    spatial_projection_controls <- function() list()
+    .cerebro_cell_view_render_serial <- 0L
+    drawn <- list()
+    spatial_projection_update_plot <- function(data) {
+      drawn[[length(drawn) + 1L]] <<- data$plot_parameters
+      .cerebro_cell_view_render_serial <<- .cerebro_cell_view_render_serial + 1L
+    }
+    sys.source(
+      viewer_test_path("spatial", "event_projection_update_plot.R"),
+      envir = environment()
+    )
+    session$userData$state <- function() list(drawn = drawn)
+  }
+  shiny::testServer(server, {
+    request <- function(nonce) {
+      list(
+        nonce = nonce,
+        dataset_context = list(
+          epoch = "test",
+          dataset_key = "A",
+          generation = 1L
+        )
+      )
+    }
+    session$setInputs(sidebar = "spatial")
+    session$setInputs(spatial_projection_render_request = request(1))
+    state <- session$userData$state()
+    expect_length(state$drawn, 1L)
+    expect_true(state$drawn[[1]]$show_region_outlines)
   })
 })

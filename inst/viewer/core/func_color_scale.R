@@ -39,12 +39,6 @@ expressionColorSettings <- function(value = NULL) {
   defaults
 }
 
-expressionColorSettingsValid <- function(value) {
-  is.list(value) &&
-    !is.object(value) &&
-    identical(value, expressionColorSettings(value))
-}
-
 expressionColorScale <- function(name) {
   aliases <- expressionPaletteChoices()
   if (name %in% names(aliases)) {

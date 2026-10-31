@@ -242,14 +242,55 @@ test_that("catalog Data info decides loading with the request and loads once", {
   )
 })
 
+test_that("Data info copies the published CRB a second later, without progress", {
+  shiny::testServer(
+    function(input, output, session) {
+      scope <- environment()
+      viewer_runtime_env(scope)
+      sent <- character()
+      session$sendCustomMessage <- function(type, message) {
+        sent <<- c(sent, type)
+      }
+      crb <- tempfile(fileext = ".crb")
+      writeLines("crb", crb)
+      key <- normalizePath(crb, winslash = "/", mustWork = FALSE)
+      context <- list(epoch = "session", dataset_key = "a", generation = 1L)
+      viewer_dataset_request <- reactiveVal(
+        list(target = crb, dataset_context = context)
+      )
+      dataset_load_requested <- reactiveVal(FALSE)
+      .crb_process_cache <- new.env()
+      crb_prefetch_tasks <- new.env()
+      crb_prefetch_tasks[[key]] <- "running"
+      viewer_server_load(
+        viewer_server_statements("shiny_server.R", server = TRUE),
+        scope,
+        names = c("datasetLoadProgress", "viewer_quiet_load_armed"),
+        events = "viewer_quiet_load_armed"
+      )
+    },
+    {
+      session$setInputs(sidebar = "loadData")
+      session$elapse(1000)
+      ## The background read has not published the CRB yet.
+      expect_false(dataset_load_requested())
+      .crb_process_cache[[key]] <- list()
+      session$elapse(1000)
+      expect_true(dataset_load_requested())
+      datasetLoadProgress("a", 50, "Opening")
+      expect_false("cerebro_dataset_load" %in% sent)
+    }
+  )
+})
+
 test_that("cell fingerprints are computed once per CRB file version", {
   scope <- new.env()
+  sys.source(viewer_test_path("core", "viewer_pack.R"), envir = scope)
   viewer_server_load(
     viewer_server_statements("shiny_server.R"),
     scope,
     names = c(
       ".viewer_cell_fingerprint_cache",
-      ".viewerFileVersionKey",
       ".viewerCellFingerprintCached"
     )
   )
@@ -369,6 +410,32 @@ test_that("a background task sees the Viewer's run-time library paths", {
       expect_identical(Sys.getenv("R_LIBS", unset = NA_character_), previous)
     })
   }
+
+  ## A job given as a quoted expression through do.call() runs the same way.
+  task <- do.call(
+    cache$.viewerMirai,
+    list(.expr = quote(list(paths = .libPaths(), value = value)), value = 8L)
+  )
+  child <- mirai::call_mirai(task)$data
+  expect_true(runtime_lib %in% normalizePath(child$paths, winslash = "/"))
+  expect_identical(child$value, 8L)
+})
+
+test_that("every Viewer background task starts through .viewerMirai()", {
+  files <- list.files(
+    viewer_test_path(),
+    pattern = "[.]R$",
+    recursive = TRUE,
+    full.names = TRUE
+  )
+  direct <- unlist(lapply(files, function(file) {
+    lines <- readLines(file, warn = FALSE)
+    hits <- grep("mirai::mirai\\b", lines)
+    hits <- hits[!grepl("^\\s*#", lines[hits])]
+    if (length(hits)) paste0(basename(file), ": ", trimws(lines[hits]))
+  }))
+  ## The one direct call is the one inside .viewerMirai() itself.
+  expect_identical(direct, "crb_cache.R: mirai::mirai(expr, ...)")
 })
 
 test_that("a user who left and came back starts a new wait", {

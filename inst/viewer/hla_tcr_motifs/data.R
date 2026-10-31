@@ -8,12 +8,11 @@
 ##----------------------------------------------------------------------------##
 
 ## ---- Optional-dependency gate ----------------------------------------- ##
-## visNetwork + stringdist are Imports, so they are present in a normal install.
+## stringdist + igraph are Imports, so they are present in a normal install.
 ## The gate stays as a defensive guard for unusual environments.
 hla_has_deps <- function() {
   requireNamespace("stringdist", quietly = TRUE) &&
-    requireNamespace("igraph", quietly = TRUE) &&
-    requireNamespace("visNetwork", quietly = TRUE)
+    requireNamespace("igraph", quietly = TRUE)
 }
 
 ## ---- Per-session cache wrapper (module-local, no cross-module coupling) ##
@@ -222,8 +221,17 @@ hla_tcr_chains <- reactive({
 })
 
 ## ---- Active chain (default TRB when present) --------------------------- ##
+## The picked chain, kept only when it differs from the active one: the picker
+## reporting the chain it was rendered with must not invalidate every reader.
+hla_chain_pick <- reactiveVal(NULL)
+observeEvent(input$hla_chain, {
+  if (!identical(input$hla_chain, isolate(hla_active_chain()))) {
+    hla_chain_pick(input$hla_chain)
+  }
+})
+
 hla_active_chain <- reactive({
-  ch <- input$hla_chain
+  ch <- hla_chain_pick()
   chains <- hla_tcr_chains()
   if (!is.null(ch) && nzchar(ch) && ch %in% chains) {
     return(ch)
@@ -237,9 +245,9 @@ hla_active_chain <- reactive({
   "TRB"
 })
 
-## Optional deterministic first frame. It contains no canonical cell indices;
-## dataset identity and the asset checksum are sufficient for this graph-only
-## payload, while the complete chain retains the stricter cell-order guard.
+## Optional deterministic first frame. Dataset identity and the asset checksum
+## are sufficient for this graph payload; its segments' canonical cell rows
+## (cell_index) are used only once the pack's cell order is validated.
 hla_first_frame <- reactive({
   viewerPackHlaFirstFrame(viewerPackCurrent(), hla_active_chain())
 }) %>%
@@ -418,7 +426,10 @@ hla_default_min_nodes <- reactive({
   if (!is.null(first) && hla_motif_graph_ok(first$graph_raw)) {
     n_cdr3 <- igraph::vcount(first$graph_raw)
   } else {
-    seg <- hla_segments()
+    ## The data set's size, not the filtered cohort's: the slider is built
+    ## from this default, so a filter change would rebuild it and override the
+    ## chosen size, and then build the graph again.
+    seg <- hla_unfiltered_segments()
     if (is.null(seg) || nrow(seg) == 0) {
       return(2L)
     }
@@ -1248,6 +1259,12 @@ hla_global_motif_graph <- reactive({
 ## Only used to explain the suppressed legend, so it reads the built graph
 ## rather than re-deriving anything.
 hla_motif_n_clusters <- reactive({
+  ## The note under a first frame drawn from the snapshot reads it from there,
+  ## not from a full graph built only to count its motifs.
+  snapshot <- hla_first_frame_graph_snapshot()
+  if (!is.null(snapshot)) {
+    return(length(unique(snapshot$vertex_attrs$cluster)))
+  }
   g <- hla_motif_graph()
   if (!hla_motif_graph_ok(g)) {
     return(0L)

@@ -7,43 +7,9 @@
 skip_if_not_installed("shinytest2")
 library(shinytest2)
 
-## All three tests below run against the same default data set and navigate to
-## the tab they assert on, so they share one driver.
+## Both tests below run against the same default data set and navigate to the
+## tab they assert on, so they share one driver.
 shared_app <- viewer_shared_app("trajectory_shared")
-
-test_that("Trajectory tab is present on the default (full T+B) data set", {
-  app <- shared_app()
-
-  # Default data set now carries trajectory data -> tab present immediately.
-  tab_present <- app$get_js(
-    'document.querySelector(\'a[href="#shiny-tab-trajectory"]\') !== null;'
-  )
-  expect_true(tab_present)
-})
-
-test_that("trajectory module loads without breaking the main app", {
-  app <- shared_app()
-
-  # Read the Data info tab explicitly rather than assuming the app is still on
-  # its landing tab, so this assertion does not depend on test order.
-  app$set_inputs(sidebar = "loadData")
-  app$wait_for_idle(timeout = 10000)
-
-  # The default data set carries the trajectory; confirm the Data info tab
-  # still renders its cell count normally alongside it.
-  cells <- ncol(
-    readCerebro(system.file(
-      "extdata/examples/demo_full_tcr_bcr.crb",
-      package = "CerebroNexus"
-    ))$expression
-  )
-  cells_box <- app$get_value(output = "load_data_overview")
-  expect_true(grepl(
-    format(cells, big.mark = ","),
-    cells_box$html,
-    fixed = TRUE
-  ))
-})
 
 test_that("trajectory projection fits the viewport with selectors in the top bar", {
   app <- shared_app()
@@ -181,4 +147,38 @@ test_that("trajectory projection fits the viewport with selectors in the top bar
     "'#trajectory_projection_cell_view_host .cv-tbtn[data-act=\"reset\"]'",
     ").click()"
   ))
+})
+
+test_that("opening the Trajectory settings sends no new frame", {
+  app <- shared_app()
+  app$run_js(paste0(
+    "window.trajectoryTokens=[];",
+    "window.addEventListener('cerebro:cell-view-ready',function(e){",
+    "var d=e.detail||{};if(d.id==='trajectory_projection'&&d.painted)",
+    "trajectoryTokens.push(Number(d.renderToken));});"
+  ))
+  app$click(selector = 'a[href="#shiny-tab-trajectory"]')
+  app$wait_for_js(
+    paste0(
+      "(function(){var c=document.querySelector(",
+      "'#trajectory_projection_cell_view_host .cv-canvas-wrap > canvas:not(.cv-mini)');",
+      "return !!c && Number(c.dataset.pointCount) > 0;})()"
+    ),
+    timeout = 60000
+  )
+  app$wait_for_idle(duration = 1500, timeout = 60000)
+  drawn <- max(unlist(app$get_js("window.trajectoryTokens")), 0)
+  app$click(
+    selector = '[data-cerebro-drawer-target="trajectory_projection_more"]'
+  )
+  ## The drawer's group filters bind with every level: no filter.
+  app$wait_for_js(
+    "document.querySelector('#trajectory_projection_group_filters_UI .cv-filt') !== null",
+    timeout = 30000
+  )
+  app$wait_for_idle(duration = 1500, timeout = 60000)
+  expect_lte(max(c(unlist(app$get_js("window.trajectoryTokens")), 0)), drawn)
+  app$click(
+    selector = '[data-cerebro-drawer-target="trajectory_projection_more"]'
+  )
 })

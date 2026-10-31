@@ -1,6 +1,6 @@
 Package: CerebroNexus
 Title: Interactive visualization of single cell transcriptomics
-Version: 5.4.0
+Version: 5.5.0
 Authors@R: c(
   person("Michael", "Heming", email = "mihem@mailbox.org", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-9568-2790")),
   person("Roman", "Hillje", email = "roman.hillje@googlemail.com", role = c("aut")),
@@ -67,9 +67,9 @@ Imports:
   tibble (>= 3.0.0),
   tidyr (>= 1.1.0),
   tidyselect(>= 1.1.0),
-  utils,
-  visNetwork
+  utils
 Suggests:
+  cachem,
   callr,
   chromote,
   DelayedArray,
@@ -84,8 +84,9 @@ Suggests:
   readxl,
   rhdf5,
   rmarkdown,
-  Seurat (>= 3.0.0),
-  SeuratObject,
+  S4Vectors,
+  Seurat (>= 5.0.0),
+  SeuratObject (>= 5.0.0),
   shinymanager (>= 1.1.0),
   SingleCellExperiment,
   SummarizedExperiment,

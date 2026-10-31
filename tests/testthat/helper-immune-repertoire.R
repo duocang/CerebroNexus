@@ -82,3 +82,31 @@ export_ir <- function(object, file = tempfile(fileext = ".crb"), ...) {
   )
   invisible(file)
 }
+
+## A scope holding the Immune repertoire encoder (immune_repertoire/encode.R),
+## the viewer files in `sources`, then the definitions `names` taken from
+## immune_repertoire/<file>. Pass `scope` to add definitions to an existing one.
+ir_scope <- function(
+  names = character(),
+  file = "data.R",
+  scope = NULL,
+  sources = character()
+) {
+  if (is.null(scope)) {
+    scope <- new.env(parent = asNamespace("shiny"))
+    scope$`%||%` <- function(a, b) if (is.null(a)) b else a
+    sys.source(
+      viewer_test_path("immune_repertoire", "encode.R"),
+      envir = scope,
+      keep.source = FALSE
+    )
+  }
+  for (path in sources) {
+    sys.source(viewer_test_path(path), envir = scope)
+  }
+  path <- viewer_test_path("immune_repertoire", file)
+  for (name in names) {
+    eval(viewer_r_assignment(path, name), scope)
+  }
+  scope
+}

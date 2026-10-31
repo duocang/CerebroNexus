@@ -85,7 +85,7 @@ test_that("Viewer H5 reads preserve values and canonical cell order", {
     dimnames = list(c("g1", "g2", "g3"), c("c1", "c2", "c3", "c4"))
   )
   fixture <- viewer_h5_fixture(withr::local_tempdir(), values = source)
-  scope <- viewer_runtime_scope()
+  scope <- viewer_runtime_env()
   dataset <- scope$read_cerebro_file(fixture$crb)
   dataset <- scope$.attachExternalExpression(dataset, fixture$crb)
 
@@ -119,6 +119,34 @@ test_that("Viewer H5 reads preserve values and canonical cell order", {
   )
 })
 
+test_that("Viewer H5 gene means read rows without attaching the matrix", {
+  skip_if_not_installed("HDF5Array")
+  source <- matrix(
+    c(0, 1.25, -2, 4, 0, 5.5, 3, 6, 0.5, 7, 8, 9),
+    nrow = 3L,
+    dimnames = list(c("g1", "g2", "g3"), c("c1", "c2", "c3", "c4"))
+  )
+  fixture <- viewer_h5_fixture(withr::local_tempdir(), values = source)
+  scope <- viewer_runtime_env()
+  dataset <- scope$read_cerebro_file(fixture$crb)
+  dataset <- scope$.attachExternalExpression(dataset, fixture$crb)
+
+  genes <- c("g3", "g1", "g2")
+  for (cells in list(NULL, 1:4, c(4L, 1L, 3L), 2L)) {
+    expect_equal(
+      scope$viewerH5ExpressionMean(dataset, cells, genes),
+      unname(colMeans(source[
+        genes,
+        if (is.null(cells)) TRUE else cells,
+        drop = FALSE
+      ]))
+    )
+  }
+  expect_true(rlang::env_binding_are_lazy(dataset, "expression"))
+  expect_null(scope$viewerH5ExpressionMean(dataset, 1:4, c("g1", "missing")))
+  expect_null(scope$viewerH5ExpressionMean(dataset, c("c1", "c2"), genes))
+})
+
 test_that("RGB expression reads all channels in one backend call", {
   scope <- new.env(parent = globalenv())
   scope$reactive <- shiny::reactive
@@ -129,6 +157,10 @@ test_that("RGB expression reads all channels in one backend call", {
   scope$input <- shiny::reactiveValues(
     expression_projection_genes_in_separate_panels = "rgb"
   )
+  ## Server code reads the display mode through viewerControlValue().
+  scope$expression_projection_display_mode <- function() {
+    scope$input[["expression_projection_genes_in_separate_panels"]]
+  }
 
   values <- matrix(
     c(1, 2, 3, 4, 5, 6),
@@ -192,9 +224,8 @@ test_that("RGB violin outliers use the channel color", {
     factor(rep("sample_1", 5)),
     c(sample_1 = "#f59e0b")
   )
-  trace <- plotly::plotly_build(plot)$x$data[[1]]
-
-  expect_identical(trace$marker$color, "#dc2626")
+  expect_identical(plot$type, "violin")
+  expect_identical(as.character(plot$colors), "#dc2626")
 })
 
 test_that("gene summary hosts change only when their layout changes", {
@@ -214,6 +245,7 @@ test_that("gene summary hosts change only when their layout changes", {
       boxTitle <- function(x) x
       cerebroInfoButton <- function(...) NULL
       scope <- environment()
+      sys.source(viewer_test_path("plotting_functions.R"), scope)
       sys.source(
         viewer_test_path("gene_expression", "UI_expression_by_group.R"),
         scope
@@ -322,7 +354,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
   app$wait_for_js(
     paste0(
       "String(window.Shiny?.shinyapp?.$inputValues?",
-      ".expression_projection_rendered_key || '').includes('MS4A1')"
+      ".expression_projection_rendered_state?.render_key || '').includes('MS4A1')"
     ),
     timeout = 60000
   )
@@ -402,7 +434,7 @@ test_that("gene expression panels follow gene, selection, and display mode", {
       "return panes.length === 2 && panes.every(p => ",
       "Number(p.querySelector('.cv-canvas-wrap > canvas:not(.cv-mini)')",
       "?.dataset.pointCount) > 0) && ",
-      "String(Shiny.shinyapp.$inputValues.expression_projection_rendered_key)",
+      "String(Shiny.shinyapp.$inputValues.expression_projection_rendered_state?.render_key)",
       ".startsWith('separate');})()"
     ),
     timeout = 20000

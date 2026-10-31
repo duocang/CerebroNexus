@@ -81,30 +81,25 @@ cell_cycle_colorset <- setNames(
 ##----------------------------------------------------------------------------##
 ## Assign colors to groups.
 ##----------------------------------------------------------------------------##
-color_input_id <- function(variable, level) {
-  configured_files <- if (exists("Cerebro.options")) {
-    Cerebro.options[["crb_file_to_load"]]
-  } else {
-    NULL
+## The ids of the colour inputs of `variable`'s `levels`: the data set and the
+## variable are encoded once, not once per level (a data set's palettes have
+## hundreds of levels).
+color_input_ids <- function(variable, levels) {
+  if (!length(levels)) {
+    return(character())
   }
-  dataset <- if (
-    exists("viewer_requested_dataset_context", mode = "function")
-  ) {
-    tryCatch(
-      viewer_requested_dataset_context()$dataset_key,
-      error = function(error) NULL
-    )
-  } else {
-    NULL
-  }
+  dataset <- tryCatch(
+    viewer_requested_dataset_context()$dataset_key,
+    error = function(error) NULL
+  )
   dataset <- dataset %||%
     viewerDatasetName(
-      configured_files,
+      Cerebro.options[["crb_file_to_load"]],
       available_crb_files$selected
     ) %||%
     "__single__"
   encode <- function(value) {
-    paste(format(charToRaw(enc2utf8(as.character(value)))), collapse = "")
+    paste(as.character(charToRaw(enc2utf8(as.character(value)))), collapse = "")
   }
   paste0(
     "color_",
@@ -112,34 +107,51 @@ color_input_id <- function(variable, level) {
     "_",
     encode(variable),
     "_",
-    encode(level)
+    vapply(as.character(levels), encode, character(1), USE.NAMES = FALSE)
   )
+}
+
+color_input_id <- function(variable, level) {
+  color_input_ids(variable, level)
 }
 
 configured_colors_for_current_dataset <- function() {
   resolve_configured_colors(
-    color_config = if (exists("Cerebro.options")) {
-      Cerebro.options[["colors"]]
-    } else {
-      NULL
-    },
+    color_config = Cerebro.options[["colors"]],
     selected_path = available_crb_files$selected,
-    configured_files = if (exists("Cerebro.options")) {
-      Cerebro.options[["crb_file_to_load"]]
-    } else {
-      NULL
-    }
+    configured_files = Cerebro.options[["crb_file_to_load"]]
   )
 }
+
+## The ids of the colour inputs the session has (Color management's pickers).
+## Palettes read only these: reading one input per level registered a
+## dependency each, about half a millisecond, and a data set's palettes have
+## hundreds of levels. Changes only when a picker appears or goes away.
+color_picker_ids <- reactiveVal(character(0))
+observe(
+  {
+    ids <- grep("^color_", names(input), value = TRUE)
+    if (!setequal(ids, isolate(color_picker_ids()))) {
+      color_picker_ids(ids)
+    }
+  },
+  priority = 1000
+)
 
 resolve_reactive_palette <- function(variable, levels, defaults) {
   configured <- configured_colors_for_current_dataset()
   names(defaults) <- levels
   defaults <- apply_configured_colors(defaults, configured[[variable]])
-  for (level in levels) {
-    picked <- input[[color_input_id(variable, level)]]
+  pickers <- color_picker_ids()
+  if (!length(pickers)) {
+    return(defaults)
+  }
+  levels <- as.character(levels)
+  ids <- color_input_ids(variable, levels)
+  for (index in which(ids %in% pickers)) {
+    picked <- input[[ids[[index]]]]
     if (!is.null(picked)) {
-      defaults[level] <- picked
+      defaults[levels[[index]]] <- picked
     }
   }
   defaults

@@ -1,31 +1,10 @@
 ##----------------------------------------------------------------------------##
-## Text showing the number of selected cells.
+## Number and composition of the selected cells.
 ##----------------------------------------------------------------------------##
-output[["overview_number_of_selected_cells"]] <- renderUI({
-  selection <- overview_projection_selected_cells()
-  cerebroSelectionSummary(
-    selection,
-    input[["overview_projection_to_display"]],
-    input[["overview_projection_point_color"]],
-    metadata = if (is.null(selection)) {
-      viewerProjectionFirstFrameMetadata()
-    } else {
-      getMetaData()
-    }
-  )
-})
-
-output[["overview_projection_composition"]] <- renderUI({
-  selection <- overview_projection_selected_cells()
-  cerebroSelectionSummary(
-    selection,
-    input[["overview_projection_to_display"]],
-    input[["overview_projection_point_color"]],
-    metadata = if (is.null(selection)) {
-      viewerProjectionFirstFrameMetadata()
-    } else {
-      getMetaData()
-    },
-    composition = TRUE
-  )
-})
+viewerSelectionSummaryOutputs(
+  "overview_projection",
+  "overview_number_of_selected_cells",
+  function() overview_projection_selected_cells(),
+  source = function() input[["overview_projection_to_display"]],
+  color = function() input[["overview_projection_point_color"]]
+)

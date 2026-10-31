@@ -19,6 +19,7 @@ function session() {
   const c = {D: base, linkedBundle: base, linkedState: {selection: [42]},
     singleActive: null, singleSpaceIds: [], singleSpaceModes: {},
     lastVis: null, page: 'linked', surfaceHome: {panes: {}}, rebuildingBase: false,
+    drawAllDeferred: false,
     deferredLinkedSupplements: [], pendingCloneSupplement: null, transportMetrics: {},
     linkedRequestTiming: {}, singleTiming: {}, saved: {}, restored: [], hydrated: [],
     frames: [], fallbacks: 0, performance: {now: () => 1},
@@ -39,7 +40,8 @@ function session() {
     restoreLinkedSurface: () => {}, showUnavailable: () => {c.D = null;},
     setLinkedPresentationReady: value => {c.presented = value;},
     workspaceSummary: () => ({primaryReady: true}), reportWorkspaceReady: () => {},
-    onData: bundle => {c.D = bundle;}, restoreWorkspace: state => c.restored.push(state),
+    onData: bundle => {c.D = bundle;},
+    restoreWorkspace: state => {c.restored.push(state); c.restoredDeferred = c.drawAllDeferred;},
     datasetMessageFresh: extra => !!extra && extra.dataset_context === 'generation-1',
     sameDatasetContext: (a, b) => a === b, configFingerprint: () => 'fp',
     hydrateLinkedGeometry: extra => {assert.strictEqual(c.D, c.linkedBundle); c.hydrated.push(extra); return extra;},
@@ -54,7 +56,8 @@ function session() {
     requestAnimationFrame: callback => c.frames.push(callback), setTimeout: callback => callback()};
   vm.createContext(c);
   vm.runInContext(['leaveSingle', 'activateLinked', 'holdSupplement', 'mergeSupplementAttrs',
-    'linkedSupplementFresh', 'applyHydratedSupplement', 'onBinarySupplement', 'fallbackCurrent']
+    'linkedSupplementFresh', 'applyHydratedSupplement', 'onBinarySupplement', 'fallbackCurrent',
+    'linkedSpatialScenes', 'hydrateSpatialScenes']
     .map(fn).join('\n') + visibility, c);
   c.go = page => {c.page = page; c.reportVisibility();};
   c.extra = overrides => Object.assign({dataset_id: 'ds1', dataset_context: 'generation-1',
@@ -74,6 +77,8 @@ for (const from of ids) {
         assert.strictEqual(s.D, s.linkedBundle, `${from} -> ${via} -> Linked`);
         assert.strictEqual(s.singleActive, null);
         assert.deepStrictEqual(s.restored[0], {selection: [42]});
+        assert.strictEqual(s.restoredDeferred, true, 'Linked restore paints once, afterwards');
+        assert.strictEqual(s.drawAllDeferred, false);
       } else {
         assert.strictEqual(s.singleActive, to);
         assert.strictEqual(s.D.id, to);
@@ -213,6 +218,25 @@ for (const via of ['direct', 'groups', 'loadData']) {
   assert.strictEqual(c.pendingSavedState, null);
 }
 
+// Compact spatial scenes expand to arrays over every cell, NaN elsewhere.
+{
+  const s = session();
+  s.D = {n: 6};
+  const sample = {rows: [0], x: [7], y: [8]};
+  const space = {id: 'spatial', rows: new Int32Array([2, 5]), x: [1, 2], y: [3, 4],
+    samples: [sample, {name: 'dense', x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0]}]};
+  s.hydrateSpatialScenes({spaces: [space, {id: 'umap', rows: [1]}]});
+  assert.strictEqual(space.x.length, 6);
+  assert.deepStrictEqual([space.x[2], space.x[5], space.y[5]], [1, 2, 4]);
+  assert(Number.isNaN(space.x[0]) && Number.isNaN(space.y[3]));
+  assert.strictEqual(space.rows, undefined);
+  assert.deepStrictEqual([sample.x[0], sample.y[0]], [7, 8]);
+  assert(Number.isNaN(sample.x[1]));
+  assert.strictEqual(space.samples[1].x.length, 6, 'a dense scene is left alone');
+  assert.throws(() => s.hydrateSpatialScenes({spaces: [{id: 'spatial', rows: [6], x: [1], y: [1]}]}));
+  assert.throws(() => s.hydrateSpatialScenes({spaces: [{id: 'spatial', rows: [0, 1], x: [1], y: [1]}]}));
+}
+
 // An emptied selection takes its outline with it, and a filter or subsample
 // change (applyActiveChange) is not the user's selection: it leaves a restored
 // view waiting for its render.
@@ -225,7 +249,7 @@ for (const via of ['direct', 'groups', 'loadData']) {
     singleView: () => ({set pendingSavedState(v) { c.pending = v; }, get pendingSavedState() { return c.pending; }}),
     shown: i => c.visibleCells.has(i), leaveFocus: () => {}, rebuildNiche: () => {},
     updateSelActions: () => {}, updateZselButtons: () => {}, renderSelbar: () => {},
-    renderReadout: () => {}, reportSelection: () => {}, drawAll: () => { c.draws++; },
+    renderReadout: () => {}, reportSelection: () => {}, renderLegend: () => {}, drawAll: () => { c.draws++; },
     selectionSourceLabel: x => x
   };
   vm.createContext(c);

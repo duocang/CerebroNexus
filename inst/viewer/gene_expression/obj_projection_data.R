@@ -1,12 +1,15 @@
 ##----------------------------------------------------------------------------##
 ## Cell meta data and position in projection.
 ##----------------------------------------------------------------------------##
+## Only the grouping variables "Expression by group" can show; the table of
+## selected cells reads its rows' metadata itself.
 expression_projection_data <- reactive({
   req(expression_projection_cells_to_show())
+  metadata <- viewerProjectionFirstFrameMetadata()
   cells_df <- viewerProjectionSubsetRows(
-    viewerProjectionFirstFrameMetadata(),
+    metadata,
     expression_projection_cells_to_show(),
-    columns = NULL
+    columns = intersect(getGroups(), colnames(metadata))
   )
   return(cells_df)
 })
@@ -36,7 +39,9 @@ expression_projection_trajectory <- reactive({
       selection[1],
       selection[2]
     )
-    trajectory_data[['meta']] <- trajectory_data[['meta']][cells_to_show, ]
+    trajectory_data[['meta']] <- expression_projection_trajectory_meta(
+      trajectory_data[['meta']]
+    )
   }
   return(trajectory_data)
 })

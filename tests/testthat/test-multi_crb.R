@@ -6,10 +6,13 @@
 
 ir_utils <- viewer_test_path("utility_functions.R")
 
-# Load a parsed declaration, independent of layout and braces in comments.
+# Load a parsed declaration, independent of layout and braces in comments,
+# with the CRB contract helpers it calls.
+contract <- new.env(parent = globalenv())
+sys.source(viewer_test_path("core", "crb_contract.R"), contract)
 match_dataset_id_by_url <- eval(
   viewer_r_assignment(ir_utils, "match_dataset_id_by_url")[[3]],
-  new.env(parent = globalenv())
+  contract
 )
 
 viewerDatasetIdsValid <- eval(

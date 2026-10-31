@@ -133,7 +133,7 @@ for (trajectory_metric in names(trajectory_expression_metric_specs)) {
 
     output[[paste0(output_id, "_UI")]] <- renderUI({
       if (spec$available()) {
-        plotly::plotlyOutput(paste0(output_id, "_plot"))
+        cerebroChartOutput(paste0(output_id, "_plot"))
       } else {
         textOutput(paste0(output_id, "_text"))
       }
@@ -143,7 +143,7 @@ for (trajectory_metric in names(trajectory_expression_metric_specs)) {
       spec$missing
     })
 
-    output[[paste0(output_id, "_plot")]] <- plotly::renderPlotly({
+    output[[paste0(output_id, "_plot")]] <- renderCerebroChart({
       ##
       req(trajectory_selection_ok())
 
@@ -160,7 +160,7 @@ for (trajectory_metric in names(trajectory_expression_metric_specs)) {
       )
 
       ##
-      plotlyViolin(
+      cerebroViolinData(
         table = trajectory_cells_reactive(column),
         metric = column,
         coloring_variable = "state",

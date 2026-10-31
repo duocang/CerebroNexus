@@ -6,6 +6,11 @@
 ## the Viewer.
 .runtimeBackendTypes <- c("embedded", "h5")
 
+## TRUE for one string that is neither missing nor empty.
+.runtimeIsString <- function(x) {
+  is.character(x) && length(x) == 1L && !is.na(x) && nzchar(x)
+}
+
 .runtimeWindowsPathSegmentInvalid <- function(parts) {
   grepl("[[:cntrl:]<>:\"|?*]", parts) |
     grepl("[. ]$", parts) |
@@ -21,10 +26,7 @@
   context,
   requirement = "must be a portable relative path."
 ) {
-  valid <- is.character(path) &&
-    length(path) == 1L &&
-    !is.na(path) &&
-    nzchar(path) &&
+  valid <- .runtimeIsString(path) &&
     !grepl("/$", path) &&
     !grepl("\\\\", path) &&
     !grepl("^(/|~|[A-Za-z]:)", path)
@@ -46,6 +48,12 @@
   }
   paste(parts, collapse = "/")
 }
+
+## Thin-CRB schema versions the readers open: 3 keeps the cell names once, in
+## the H5 file; 4 also stores repertoire barcodes by cell index
+## (`cell_indexed` names which fields). A release that reads only 3 refuses 4.
+.runtimeThinSchemaVersions <- c(3L, 4L)
+.runtimeCellIndexedFields <- "immune_repertoire"
 
 .readRuntimeCrbSchema <- function(obj, crb_path) {
   field <- "crb_schema"
@@ -75,15 +83,24 @@
     "version",
     "cell_names_hash",
     "projection_rownames",
-    "n_cells"
+    "n_cells",
+    if (is.list(schema) && identical(schema$version, 4L)) "cell_indexed"
   )
+  indexed <- if (is.list(schema)) schema$cell_indexed
   valid <- is.list(schema) &&
     !is.data.frame(schema) &&
     length(schema) == length(expected_names) &&
     !is.null(schema_names) &&
     !anyDuplicated(schema_names) &&
     setequal(schema_names, expected_names) &&
-    identical(schema$version, 3L) &&
+    is.integer(schema$version) &&
+    length(schema$version) == 1L &&
+    schema$version %in% .runtimeThinSchemaVersions &&
+    (is.null(indexed) ||
+      (is.character(indexed) &&
+        length(indexed) > 0L &&
+        !anyDuplicated(indexed) &&
+        all(indexed %in% .runtimeCellIndexedFields))) &&
     is.character(schema$cell_names_hash) &&
     length(schema$cell_names_hash) == 1L &&
     !is.na(schema$cell_names_hash) &&
@@ -124,7 +141,12 @@
     return(if (is_stored("expression_backend")) no_backend)
   }
   schema <- stored("crb_schema")
-  if (is.list(schema) && !identical(schema$version, 3L)) {
+  if (
+    is.list(schema) &&
+      !(is.integer(schema$version) &&
+        length(schema$version) == 1L &&
+        schema$version %in% .runtimeThinSchemaVersions)
+  ) {
     return(structure(
       paste0("it uses thin-CRB schema version ", schema$version[1L]),
       repairable = FALSE
@@ -292,10 +314,7 @@
     if (identical(backend$type, "embedded")) {
       is.null(backend$location)
     } else {
-      is.character(backend$location) &&
-        length(backend$location) == 1L &&
-        !is.na(backend$location) &&
-        nzchar(backend$location)
+      .runtimeIsString(backend$location)
     }
   if (!valid_type || !valid_location) {
     unsupported()

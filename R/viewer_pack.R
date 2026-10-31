@@ -18,7 +18,8 @@
         c(
           "monocle2",
           "marker_guided",
-          "illustrative"
+          "illustrative",
+          "published_pseudotime"
         )
     ),
     spatial = available(object$availableSpatial()),
@@ -28,7 +29,7 @@
 
 .viewerPackOptions <- function(
   viewer_binary = c("auto", "always", "never"),
-  viewer_binary_threshold = 500000L
+  viewer_binary_threshold = 100000L
 ) {
   mode <- match.arg(viewer_binary)
   threshold <- suppressWarnings(as.integer(viewer_binary_threshold))
@@ -200,53 +201,71 @@
   )
 }
 
-.viewerPackImmuneAbundance <- function(repertoire, drop_empty = TRUE) {
-  columns <- intersect(
-    c("CTgene", "CTnt", "CTaa", "CTstrict"),
-    unique(unlist(lapply(repertoire, colnames)))
-  )
-  stats::setNames(
-    lapply(columns, function(column) {
-      samples <- names(repertoire)
-      if (is.null(samples)) {
-        samples <- as.character(seq_along(repertoire))
-      }
-      rows <- Map(
-        function(frame, sample) {
-          if (is.null(frame) || !(column %in% colnames(frame))) {
-            return(NULL)
-          }
-          clones <- as.character(frame[[column]])
-          clones <- clones[!is.na(clones) & (!drop_empty | nzchar(clones))]
-          if (!length(clones)) {
-            return(NULL)
-          }
-          abundance <- tabulate(match(clones, unique(clones)))
-          bins <- table(abundance)
-          data.frame(
-            sample = sample,
-            abundance = as.integer(names(bins)),
-            n_clones = as.integer(bins),
-            stringsAsFactors = FALSE
-          )
-        },
-        repertoire,
-        samples
+## TRUE for a Pack of a data set with a repertoire whose integer encoding is
+## missing or of another version than this release's: its Immune repertoire
+## page would encode the repertoire in memory at every start.
+.viewerPackImmuneOutdated <- function(manifest) {
+  length(manifest$immune_receptors) > 0L &&
+    !identical(
+      as.integer(manifest$immune_encoding %||% 0L)[[1L]],
+      .viewerPackImmuneEncoder()$IR_ENCODING_VERSION
+    )
+}
+
+## The repertoire's integer columns (inst/viewer/immune_repertoire/encode.R,
+## which the Viewer also runs for a data set without a Pack).
+.viewerPackImmuneEncoder <- local({
+  scope <- NULL
+  function() {
+    if (is.null(scope)) {
+      scope <<- new.env(parent = baseenv())
+      sys.source(
+        system.file(
+          "viewer",
+          "immune_repertoire",
+          "encode.R",
+          package = "CerebroNexus",
+          mustWork = TRUE
+        ),
+        envir = scope
       )
-      rows <- rows[!vapply(rows, is.null, logical(1))]
-      out <- if (length(rows)) {
-        do.call(rbind, rows)
-      } else {
-        data.frame(
-          sample = character(),
-          abundance = integer(),
-          n_clones = integer()
-        )
-      }
-      rownames(out) <- NULL
-      out
-    }),
-    columns
+    }
+    scope
+  }
+})
+
+## Each chain's clone names in blocks of `size`, each block serialized on its
+## own, so the Viewer reads the few names it labels instead of every clone.
+## `offsets` are each chain's block boundaries in the file.
+.viewerPackWriteNameBlocks <- function(root, path, names, size) {
+  target <- file.path(root, path)
+  dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+  con <- file(target, "wb")
+  position <- 0
+  offsets <- list()
+  for (chain in names(names)) {
+    values <- names[[chain]]
+    bounds <- position
+    for (start in seq_len(ceiling(length(values) / size)) * size - size + 1L) {
+      block <- values[start:min(start + size - 1L, length(values))]
+      block <- qs2::qs_serialize(block)
+      writeBin(block, con)
+      position <- position + length(block)
+      bounds <- c(bounds, position)
+    }
+    offsets[[chain]] <- bounds
+  }
+  close(con)
+  list(
+    asset = data.frame(
+      path = path,
+      dtype = "immune-clone-name-blocks",
+      dimensions = "",
+      bytes = as.numeric(file.info(target)$size),
+      checksum = .viewerPackMd5(target),
+      stringsAsFactors = FALSE
+    ),
+    offsets = offsets
   )
 }
 
@@ -901,28 +920,34 @@
         )
       }
     }
-    abundance <- .viewerPackImmuneAbundance(repertoire)
-    # Homeostasis counts empty strings as clone identities, unlike Abundance.
-    # Store separate exact bins; the Viewer reads them in place of the raw data.
-    homeostasis <- .viewerPackImmuneAbundance(repertoire, drop_empty = FALSE)
-    assets <- rbind(
-      assets,
-      .viewerPackWriteAsset(
-        stage,
-        file.path("immune", "abundance.qs2"),
-        abundance,
-        "table-list",
-        sum(vapply(abundance, nrow, integer(1)))
-      )
+    ## Every Immune repertoire tab reads these instead of the repertoire. The
+    ## clone names are only read to label clones (Compare), one clone column
+    ## at a time.
+    encoded <- .viewerPackImmuneEncoder()$ir_encode_repertoire(
+      repertoire,
+      cells
     )
+    clone_names <- encoded$names
+    encoded$names <- NULL
+    encoded$name_blocks <- list(size = 4096L, offsets = list())
+    for (column in names(clone_names)) {
+      written <- .viewerPackWriteNameBlocks(
+        stage,
+        file.path("immune", "names", paste0(column, ".bin")),
+        clone_names[[column]],
+        encoded$name_blocks$size
+      )
+      assets <- rbind(assets, written$asset)
+      encoded$name_blocks$offsets[[column]] <- written$offsets
+    }
     assets <- rbind(
       assets,
       .viewerPackWriteAsset(
         stage,
-        file.path("immune", "homeostasis.qs2"),
-        homeostasis,
-        "table-list",
-        sum(vapply(homeostasis, nrow, integer(1)))
+        file.path("immune", "encoded.qs2"),
+        encoded,
+        "immune-encoded",
+        length(encoded$sample)
       )
     )
   }
@@ -933,6 +958,16 @@
     for (chain in chains) {
       value <- hla_parse_ir_segments(annotated, chain)
       if (!is.null(value) && nrow(value)) {
+        ## Canonical rows, so the Viewer reads a motif selection's cells by
+        ## position rather than matching every cell name.
+        value$cell_index <- match(as.character(value$barcode), cells)
+        ## The scRepertoire strings the segments were parsed from: the HLA
+        ## page never reads them, and they were most of the asset (Ren TRB
+        ## 17.9 MB -> 3.9 MB).
+        value <- value[setdiff(
+          names(value),
+          c("CTgene", "CTnt", "CTaa", "CTstrict", "clone_vjc")
+        )]
         assets <- rbind(
           assets,
           .viewerPackWriteAsset(
@@ -962,6 +997,11 @@
     trajectory_frames = trajectory$frames,
     spatial_frames = spatial$frames,
     immune_receptors = receptors,
+    immune_encoding = if (length(receptors)) {
+      .viewerPackImmuneEncoder()$IR_ENCODING_VERSION
+    } else {
+      0L
+    },
     hla_chains = chains
   )
 }
@@ -1070,7 +1110,7 @@ readViewerPack <- function(file, pack = .viewerPackPath(file)) {
 buildViewerPack <- function(
   file,
   viewer_binary = c("auto", "always", "never"),
-  viewer_binary_threshold = 500000L,
+  viewer_binary_threshold = 100000L,
   overwrite = FALSE
 ) {
   options <- .viewerPackOptions(viewer_binary, viewer_binary_threshold)
@@ -1124,6 +1164,7 @@ buildViewerPack <- function(
     trajectory_frames = built$trajectory_frames,
     spatial_frames = built$spatial_frames,
     immune_receptors = built$immune_receptors,
+    immune_encoding = built$immune_encoding,
     hla_chains = built$hla_chains,
     assets = built$assets
   )

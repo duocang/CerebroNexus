@@ -5,10 +5,14 @@
 ##----------------------------------------------------------------------------##
 ## UI element for plot.
 ##----------------------------------------------------------------------------##
+expression_selection_present <- viewerSelectionPresence(
+  "expression_projection"
+)
+
 output[["expression_in_selected_cells_UI"]] <- renderUI({
   req(
     expression_projection_summary_ready(),
-    expression_projection_selected_cells()
+    expression_selection_present()
   )
   summary <- expression_summary_data()
   fluidRow(
@@ -17,7 +21,7 @@ output[["expression_in_selected_cells_UI"]] <- renderUI({
         boxTitle("Expression levels in selected cells"),
         cerebroInfoButton("expression_in_selected_cells_info")
       ),
-      plotly::plotlyOutput(
+      cerebroChartOutput(
         "expression_in_selected_cells",
         height = paste0(
           max(400, ceiling(length(summary$series) / 3) * 300),
@@ -31,7 +35,11 @@ output[["expression_in_selected_cells_UI"]] <- renderUI({
 ##----------------------------------------------------------------------------##
 ## Violin/box plot.
 ##----------------------------------------------------------------------------##
-output[["expression_in_selected_cells"]] <- plotly::renderPlotly({
+output[["expression_in_selected_cells"]] <- renderCerebroChart({
+  ## The browser draws it from the frame's expression values.
+  if (viewerClientSelection("expression_projection", "expression")) {
+    return(NULL)
+  }
   req(
     expression_projection_summary_ready(),
     expression_projection_data(),
@@ -39,41 +47,26 @@ output[["expression_in_selected_cells"]] <- plotly::renderPlotly({
     expression_summary_data(),
     expression_projection_selected_cells()
   )
-  selected_cells <- expression_projection_selected_cells()
-  cells_df <- bind_cols(
-    expression_projection_coordinates(),
-    expression_projection_data()
-  )
-  cells_df <- cells_df %>%
-    dplyr::rename(X1 = 1, X2 = 2)
-  ## Stable selection is published only after deferred identity is available.
-  ## First-frame metadata can contain compact row numbers, not real barcodes.
-  cells_df[["selection_key"]] <- as.character(
-    getMetaData()[["cell_barcode"]][expression_projection_cells_to_show()]
-  )
-  stable_selection <- "selection_key" %in%
-    colnames(selected_cells) &&
-    any(
-      !is.na(selected_cells[["selection_key"]]) &
-        nzchar(as.character(selected_cells[["selection_key"]]))
-    )
-  identifier <- if (!stable_selection) {
-    paste0(cells_df[["X1"]], "-", cells_df[["X2"]])
-  } else {
-    NULL
+  series <- expression_summary_data()$series
+  selected <- logical(length(expression_projection_cells_to_show()))
+  selected[expression_projection_selected_rows()] <- TRUE
+  ## Group filters applied in the browser leave every cell in the frame; the
+  ## cells they hide are neither selected nor shown as "not selected".
+  rows <- expression_projection_shown_rows()
+  if (!is.null(rows)) {
+    series <- lapply(series, function(entry) {
+      entry$values <- entry$values[rows]
+      entry
+    })
+    selected <- selected[rows]
   }
-  groups <- ifelse(
-    selectedCellMask(
-      cells_df[["selection_key"]],
-      identifier,
-      selected_cells
-    ),
-    "selected",
-    "not selected"
+  groups <- structure(
+    2L - selected,
+    levels = c("selected", "not selected"),
+    class = "factor"
   )
-  groups <- factor(groups, levels = c("selected", "not selected"))
   plotExpressionSummary(
-    expression_summary_data()$series,
+    series,
     groups,
     setNames(c("#e74c3c", "#7f8c8d"), levels(groups))
   )

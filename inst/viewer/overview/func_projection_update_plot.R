@@ -56,28 +56,58 @@ overview_projection_update_plot <- function(input) {
     NULL
   }
   core_aux <- function() {
-    metadata <- if (is.null(data_snapshot)) {
-      getMetaData()
-    } else {
-      data_snapshot$getMetaData()
+    hover <- isTRUE(plot_parameters[["hover_info"]])
+    names_resource <- viewerCellNamesResourceFor(cell_indices)
+    ## Every cell in canonical order: the rows would be 0..n-1, so the browser
+    ## takes the names as they are.
+    if (
+      is.list(names_resource) &&
+        !is.list(selection_rows) &&
+        length(cell_indices) == names_resource$cells &&
+        identical(as.integer(selection_rows), seq_along(cell_indices)) &&
+        identical(as.integer(cell_indices), seq_along(cell_indices))
+    ) {
+      return(list(
+        selection_index_all = TRUE,
+        cell_names_resource = names_resource,
+        hover = list(
+          hoverinfo = if (hover) "text" else "skip",
+          columns = list(),
+          pending = hover
+        )
+      ))
+    }
+    ## With the cell-name resource the canonical rows of the points are sent
+    ## and the browser takes their names from it: the metadata is not read.
+    cell_barcodes <- if (!is.list(names_resource)) {
+      metadata <- if (is.null(data_snapshot)) {
+        getMetaData()
+      } else {
+        data_snapshot$getMetaData()
+      }
+      metadata[["cell_barcode"]][cell_indices]
     }
     core <- cerebroCellViewDeferredAux(
       selection_rows = selection_rows,
-      cell_barcodes = metadata[["cell_barcode"]][cell_indices],
-      hover = isTRUE(plot_parameters[["hover_info"]])
+      cell_barcodes = cell_barcodes,
+      hover = hover,
+      names_resource = names_resource,
+      cell_rows = cell_indices
     )
-    core$hover$pending <- isTRUE(plot_parameters[["hover_info"]])
+    core$hover$pending <- hover
     core
   }
-  deferred_aux <- function() {
-    metadata <- getMetaData()
-    groups <- getGroups()
+  ## `keys = FALSE` after core_aux() named the cells: only the hover columns
+  ## are built. They come from the first-frame metadata, so a thin CRB is not
+  ## hydrated (its cell names read from the H5 file) just for them.
+  deferred_aux <- function(keys = TRUE) {
     hover_columns <- if (isTRUE(plot_parameters[["hover_info"]])) {
+      metadata <- viewerProjectionFirstFrameMetadata()
       columns <- viewerProjectionMetadataColumns(
         metadata,
         color_variable,
         hover_info = TRUE,
-        groups = groups
+        groups = getGroups()
       )
       cerebroProjectionHoverColumns(
         viewerProjectionSubsetRows(metadata, cell_indices, columns)
@@ -87,9 +117,10 @@ overview_projection_update_plot <- function(input) {
     }
     cerebroCellViewDeferredAux(
       selection_rows = selection_rows,
-      cell_barcodes = metadata[["cell_barcode"]][cell_indices],
+      cell_barcodes = if (keys) getMetaData()[["cell_barcode"]][cell_indices],
       hover_columns = hover_columns,
-      hover = plot_parameters[["hover_info"]]
+      hover = plot_parameters[["hover_info"]],
+      keys = keys
     )
   }
 

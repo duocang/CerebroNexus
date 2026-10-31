@@ -11,6 +11,7 @@ test_that("gene means reuse canonical rows and retain full-dataset semantics", {
     scope
   )
   scope$expressionProjectionDatasetKey <- function() "summary-test"
+  scope$viewerExpressionCellCount <- function(data) ncol(data$expression)
   reads <- 0L
   scope$viewerExpressionValues <- function(data, cells, genes) {
     reads <<- reads + 1L
@@ -41,7 +42,6 @@ test_that("gene means reuse canonical rows and retain full-dataset semantics", {
 })
 
 test_that("many-group density payload stays bounded with exact full-data summaries", {
-  skip_if_not_installed("plotly")
   scope <- new.env(parent = globalenv())
   sys.source(viewer_test_path("plotting_functions.R"), scope)
   sys.source(
@@ -55,10 +55,6 @@ test_that("many-group density payload stays bounded with exact full-data summari
     tables[[length(tables) + 1L]] <<- result
     result
   }
-  scope$cerebro_plotly_axis <- function(...) list(...)
-  scope$cerebro_plotly_hoverlabel <- function() list()
-  scope$cerebro_plotly_theme <- function() list(transparent = "transparent")
-  scope$cerebro_plotly_toolbar <- function(plot) plot
   groups <- rep(sprintf("sample-%03d", 1:100), each = 1000)
   values <- rep(0:999, 100)
   series <- lapply(1:3, function(i) {

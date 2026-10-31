@@ -43,10 +43,8 @@ output$ir_visualizations_UI <- renderUI({
   if (!has_scRepertoire()) {
     return(ir_scRepertoire_missing_ui())
   }
-  # Building the tab strip only needs to know whether repertoire data exists.
-  # Do not depend on ir_data(): that reactive follows the active grouping
-  # controls so it can join only requested metadata. Rebuilding the whole
-  # tabset on every grouping change resets the selected tab before the
+  # Building the tab strip only needs to know whether repertoire data exists:
+  # rebuilding the whole tabset resets the selected tab before the
   # corresponding controls/output can update.
   if (!ir_repertoire_available()) {
     return(div(
@@ -167,6 +165,10 @@ IR_EXPANSION_COLORS <- stats::setNames(
 ## facet/bootstrap renderers) keep renderPlot.
 ir_render_ggplotly <- function(expr, plot_name, tooltip = NULL) {
   p <- safeRenderPlot(expr, plot_name)
+  ## Plots built as Plotly traces directly only need the shared toolbar.
+  if (inherits(p, "plotly")) {
+    return(cerebro_plotly_toolbar(p))
+  }
   if (!inherits(p, "ggplot")) {
     return(ir_empty_plotly("This plot is not available for the current view."))
   }
@@ -197,6 +199,7 @@ ir_render_ggplotly <- function(expr, plot_name, tooltip = NULL) {
       cerebro_plotly_toolbar(fig)
     },
     error = function(e) {
+      ir_plot_failed()
       ir_empty_plotly(paste("Plot conversion error:", conditionMessage(e)))
     }
   )
@@ -219,25 +222,43 @@ ir_umap_grouped_data <- function(df, group_by) {
   if (is.null(group_by) || !nzchar(group_by)) {
     return(df)
   }
-  md <- tryCatch(getMetaData(), error = function(e) NULL)
+  ## Cells named by canonical row read their group from the first-frame
+  ## metadata instead of hydrating the full table; their barcodes are looked
+  ## up only when the frame has to carry them (the Clonal projection observer).
+  first <- if ("cell_index" %in% colnames(df)) {
+    tryCatch(viewerProjectionFirstFrameMetadata(), error = function(e) NULL)
+  }
   if (
-    is.null(md) ||
-      !("cell_barcode" %in% colnames(md)) ||
-      !(group_by %in% colnames(md))
+    is.data.frame(first) &&
+      group_by %in% colnames(first) &&
+      isTRUE(all(df$cell_index >= 1L & df$cell_index <= nrow(first)))
   ) {
-    return(NULL)
-  }
-  idx <- if (
-    "cell_index" %in%
-      colnames(df) &&
-      all(df$cell_index >= 1L & df$cell_index <= nrow(md))
-  ) {
-    as.integer(df$cell_index)
+    idx <- as.integer(df$cell_index)
+    group_values <- as.character(first[[group_by]][idx])
   } else {
-    match(df$barcode, md$cell_barcode)
+    md <- tryCatch(getMetaData(), error = function(e) NULL)
+    if (
+      is.null(md) ||
+        !("cell_barcode" %in% colnames(md)) ||
+        !(group_by %in% colnames(md))
+    ) {
+      return(NULL)
+    }
+    idx <- if (
+      "cell_index" %in%
+        colnames(df) &&
+        all(df$cell_index >= 1L & df$cell_index <= nrow(md))
+    ) {
+      as.integer(df$cell_index)
+    } else {
+      match(df$barcode, md$cell_barcode)
+    }
+    df$barcode <- as.character(md$cell_barcode[idx])
+    group_values <- as.character(md[[group_by]][idx])
   }
-  df$barcode <- as.character(md$cell_barcode[idx])
-  group_values <- as.character(md[[group_by]][idx])
+  ## Canonical (metadata) row of each cell: the grouped frame can name cells by
+  ## row against the cell-name resource instead of carrying every barcode.
+  df$.cell_row <- as.integer(idx)
   group_levels <- tryCatch(getGroupLevels(group_by), error = function(e) NULL)
   if (is.null(group_levels) || length(group_levels) == 0) {
     group_levels <- unique(group_values)
@@ -247,7 +268,9 @@ ir_umap_grouped_data <- function(df, group_by) {
   ]
   df$.umap_group <- factor(group_values, levels = group_levels)
   ungrouped <- sum(is.na(df$.umap_group))
-  df <- df[!is.na(df$.umap_group), , drop = FALSE]
+  if (ungrouped > 0L) {
+    df <- df[!is.na(df$.umap_group), , drop = FALSE]
+  }
   if (nrow(df) == 0) {
     return(NULL)
   }
@@ -374,19 +397,26 @@ output[["ir_selection_status_UI"]] <- renderUI({
 ## One panel per group, all drawn by the same engine view. `df` has one row per
 ## cell (x, y, expansion, barcode and the group in `.umap_group`), so every cell
 ## belongs to exactly one panel and a brush selects the barcodes drawn inside it.
-## Cells without the receptor come first and the most expanded clones last, so
-## they are painted on top. Panels share axis ranges and are titled with their
-## group and the number of cells that carry the receptor.
+## Rows are ordered by group, so each panel is one slice (`start`, 0-based, and
+## `count`) of the frame's x, y and keys; the frame carries every cell once.
+## Within a panel, cells without the receptor come first and the most expanded
+## clones last, so they are painted on top. Panels share axis ranges and are
+## titled with their group and the number of cells that carry the receptor.
 ir_clonal_umap_panels <- function(df, projection) {
-  present <- as.character(df$expansion)
-  present[is.na(present)] <- "Other cells"
+  groups <- df$.umap_group
   order_rows <- order(
+    as.integer(groups),
     !is.na(df$expansion),
     as.integer(df$expansion),
     na.last = FALSE
   )
-  df <- df[order_rows, , drop = FALSE]
-  label <- present[order_rows]
+  ## Only the vectors the frame sends are put in panel order, not the frame.
+  groups <- groups[order_rows]
+  expansion <- df$expansion[order_rows]
+  label <- as.character(expansion)
+  label[is.na(label)] <- "Other cells"
+  x <- as.numeric(df$x[order_rows])
+  y <- as.numeric(df$y[order_rows])
   levels <- c(
     if (any(label == "Other cells")) "Other cells",
     intersect(IR_CLONE_LABELS, label)
@@ -399,17 +429,16 @@ ir_clonal_umap_panels <- function(df, projection) {
     span <- diff(range(values, na.rm = TRUE))
     range(values, na.rm = TRUE) + c(-1, 1) * max(span, 1e-6) * 0.04
   }
-  x_range <- pad(df$x)
-  y_range <- pad(df$y)
-  axes <- ir_projection_axis_names(projection)
-  keys <- as.character(df$barcode)
-  groups <- df$.umap_group
+  x_range <- pad(x)
+  y_range <- pad(y)
+  counts <- tabulate(as.integer(groups), nbins = nlevels(groups))
+  starts <- cumsum(c(0L, counts))[seq_along(counts)]
   panels <- lapply(seq_along(levels(groups)), function(index) {
-    rows <- which(groups == levels(groups)[[index]])
-    if (!length(rows)) {
+    if (!counts[[index]]) {
       return(NULL)
     }
-    carriers <- sum(!is.na(df$expansion[rows]))
+    rows <- starts[[index]] + seq_len(counts[[index]])
+    carriers <- sum(!is.na(expansion[rows]))
     list(
       id = paste0("group", index),
       label = paste0(
@@ -419,29 +448,19 @@ ir_clonal_umap_panels <- function(df, projection) {
         if (carriers == 1L) " cell" else " cells",
         " with receptor"
       ),
-      selection_key = keys[rows],
-      x = as.numeric(df$x[rows]),
-      y = as.numeric(df$y[rows]),
+      start = as.integer(starts[[index]]),
+      count = as.integer(counts[[index]]),
       x_range = x_range,
-      y_range = y_range,
-      hover = paste0(
-        keys[rows],
-        "<br>",
-        label[rows],
-        "<br>",
-        axes[[1]],
-        ": ",
-        formatC(df$x[rows], format = "f", digits = 2),
-        "<br>",
-        axes[[2]],
-        ": ",
-        formatC(df$y[rows], format = "f", digits = 2)
-      )
+      y_range = y_range
     )
   })
   list(
-    keys = keys,
-    group = label,
+    ## NULL when the cells are named by canonical row only.
+    keys = if ("barcode" %in% names(df)) as.character(df$barcode[order_rows]),
+    rows = if (".cell_row" %in% names(df)) as.integer(df$.cell_row[order_rows]),
+    x = x,
+    y = y,
+    group_code = match(label, levels) - 1L,
     levels = levels,
     colors = colors,
     panels = panels[!vapply(panels, is.null, logical(1))]
@@ -449,6 +468,54 @@ ir_clonal_umap_panels <- function(df, projection) {
 }
 
 ir_clonal_umap_last_request <- reactiveVal(NULL)
+## Labels, border and square layout of the drawn frame. They are browser
+## patches, as on Projection: a change redraws the frame in place instead of
+## building and sending it again.
+ir_clonal_umap_drawn_appearance <- reactiveVal(NULL)
+ir_clonal_umap_appearance <- function(grouped) {
+  display <- current_page_display_defaults("ir")
+  list(
+    group_labels = !grouped &&
+      isTRUE(input[["ir_clonalUMAP_group_labels"]] %||% display$group_labels),
+    draw_border = isTRUE(
+      input[["ir_clonalUMAP_point_border"]] %||% display$draw_border
+    ),
+    keep_square = isTRUE(
+      input[["ir_clonalUMAP_keep_square"]] %||% display$keep_square
+    )
+  )
+}
+observeEvent(
+  list(
+    input[["ir_clonalUMAP_group_labels"]],
+    input[["ir_clonalUMAP_point_border"]],
+    input[["ir_clonalUMAP_keep_square"]]
+  ),
+  {
+    drawn <- ir_clonal_umap_drawn_appearance()
+    req(!is.null(drawn), identical(input[["sidebar"]], "immune_repertoire"))
+    values <- ir_clonal_umap_appearance(isTRUE(drawn$grouped))
+    if (identical(values, drawn$values)) {
+      return()
+    }
+    identity <- viewerDatasetIdentity()
+    req(identity$fingerprint)
+    session$sendCustomMessage(
+      "cell_view_appearance",
+      list(
+        id = "ir_clonalUMAP_projection",
+        dataset_context = viewer_loaded_dataset_context(),
+        dataset_fingerprint = identity$fingerprint,
+        values = values
+      )
+    )
+    ir_clonal_umap_drawn_appearance(utils::modifyList(
+      drawn,
+      list(values = values)
+    ))
+  },
+  ignoreInit = TRUE
+)
 ir_clonal_umap_data_memo <- viewerMemoOne()
 
 observe(
@@ -462,7 +529,7 @@ observe(
     req(render_request)
     req(
       identical(input[["sidebar"]], "immune_repertoire"),
-      identical(input[["ir_tabs"]], "Clonal UMAP")
+      identical(ir_tab(), "Clonal UMAP")
     )
     group_by <- ir_param("ir_p_umap_group_by", "")
     grouped <- !is.null(group_by) && nzchar(group_by)
@@ -482,23 +549,18 @@ observe(
     })
     show_all <- ir_param("ir_p_umap_show_all", TRUE)
     req(receptor, projection)
-    group_labels <- input[["ir_clonalUMAP_group_labels"]]
-    display <- current_page_display_defaults("ir")
-    if (is.null(group_labels)) {
-      group_labels <- display$group_labels
-    }
-    point_border <- isTRUE(
-      input[["ir_clonalUMAP_point_border"]] %||% display$draw_border
-    )
-    keep_square <- isTRUE(
-      input[["ir_clonalUMAP_keep_square"]] %||% display$keep_square
-    )
+    ## Appearance is read without a dependency: labels, border and square are
+    ## patched by the observer above, point size and opacity by the browser.
+    display_values <- isolate(ir_clonal_umap_appearance(FALSE))
+    group_labels <- display_values$group_labels
+    point_border <- display_values$draw_border
+    keep_square <- display_values$keep_square
     clone_call <- "gene"
     show_all <- isTRUE(show_all)
     cells <- ir_umap_cells_to_show()
     appearance <- current_scatter_defaults()
-    point_size <- appearance$point_size
-    alpha <- appearance$point_opacity
+    point_size <- isolate(appearance$point_size)
+    alpha <- isolate(appearance$point_opacity)
     percentage <- appearance$percentage_cells_to_show
     identity <- tryCatch(viewerDatasetIdentity(), error = function(e) list())
     request_signature <- list(
@@ -509,12 +571,7 @@ observe(
       projection = as.character(projection),
       show_all = show_all,
       cells = cells,
-      point_size = point_size,
-      alpha = alpha,
       percentage = percentage,
-      group_labels = isTRUE(group_labels),
-      point_border = point_border,
-      keep_square = keep_square,
       group_by = if (grouped) as.character(group_by) else ""
     )
     previous_signature <- ir_clonal_umap_last_request()
@@ -551,6 +608,20 @@ observe(
     if (grouped) {
       df <- grouping$df
       grouped_view <- ir_clonal_umap_panels(df, projection)
+      ## Name cells by canonical row when the browser can resolve the rows from
+      ## the cell-name resource; otherwise the frame carries the barcodes.
+      names_resource <- viewerCellNamesResourceFor(grouped_view$rows)
+      cell_names <- if (is.list(names_resource)) {
+        list(
+          selection_index = grouped_view$rows - 1L,
+          cell_names_resource = names_resource
+        )
+      } else {
+        list(
+          selection_key = grouped_view$keys %||%
+            as.character(getMetaData()$cell_barcode[grouped_view$rows])
+        )
+      }
       isolate(
         cerebroCellViewRender(
           "ir_clonalUMAP_projection",
@@ -569,33 +640,39 @@ observe(
               keep_square = keep_square
             )
           ),
-          list(
-            selection_key = grouped_view$keys,
-            group = grouped_view$group,
-            panels = grouped_view$panels,
-            point_size = point_size,
-            point_opacity = alpha,
-            point_line = if (point_border) {
-              list(color = "rgb(196,196,196)", width = 1)
-            } else {
-              list()
-            },
-            reset_axes = TRUE
+          c(
+            cell_names,
+            list(
+              group_code = grouped_view$group_code,
+              x = grouped_view$x,
+              y = grouped_view$y,
+              panels = grouped_view$panels,
+              point_size = point_size,
+              point_opacity = alpha,
+              point_line = if (point_border) {
+                list(color = "rgb(196,196,196)", width = 1)
+              } else {
+                list()
+              },
+              reset_axes = TRUE
+            )
           ),
           list(hoverinfo = "text"),
           dataset_context = dataset_context
         )
       )
       ir_clonal_umap_last_request(request_signature)
+      ir_clonal_umap_drawn_appearance(list(
+        grouped = TRUE,
+        values = isolate(ir_clonal_umap_appearance(TRUE))
+      ))
       return()
     }
     ## Appearance-only changes (labels, border, square, point size/opacity)
     ## reuse the coordinates built for the same data request. The memo stores
-    ## only usable results: a failed req() leaves it untouched. The repertoire
-    ## table is part of the key so this observer keeps depending on it even
-    ## when the memo answers (identical() on the same object is immediate).
+    ## only usable results: a failed req() leaves it untouched.
     data_key <- c(
-      list(dataset_context = dataset_context, data = ir_data_annotated()),
+      list(dataset_context = dataset_context),
       request_signature[c(
         "dataset_fingerprint",
         "cell_order_fingerprint",
@@ -634,7 +711,6 @@ observe(
       unname(IR_EXPANSION_COLORS[IR_CLONE_LABELS[trace_codes]])
     )
     trace_lengths <- lengths(render_data$x)
-    axes <- ir_projection_axis_names(projection)
     req(length(traces) > 0)
     deferred_aux <- function() {
       data_keys <- c(
@@ -648,50 +724,32 @@ observe(
           function(rows) render_data$coloured_key[rows]
         )
       )
-      uses_cell_index <- identical(render_data$key_type, "cell_index")
       key_lengths <- lengths(data_keys)
-      if (isTRUE(uses_cell_index)) {
-        flat_barcodes <- ir_clonal_umap_barcodes(data.frame(
-          cell_index = unlist(data_keys, use.names = FALSE)
+      ## The single-view tooltip shows the cell name and the expansion level
+      ## from the frame; per-cell hover text would never be displayed.
+      hover <- list(
+        hoverinfo = as.list(ifelse(traces == "Other cells", "skip", "text"))
+      )
+      names_resource <- viewerCellNamesResource()
+      if (is.list(names_resource)) {
+        ## Canonical rows (0-based); the browser has the names.
+        return(list(
+          selection_index = lapply(data_keys, function(keys) {
+            I(as.integer(keys) - 1L)
+          }),
+          cell_names_resource = names_resource,
+          hover = hover
         ))
-        req(length(flat_barcodes) == sum(key_lengths))
-        barcodes_by_trace <- unname(split(
-          flat_barcodes,
-          rep(seq_along(key_lengths), key_lengths)
-        ))
-      } else {
-        barcodes_by_trace <- lapply(data_keys, as.character)
       }
-      req(identical(lengths(barcodes_by_trace), key_lengths))
-      hover_info <- ifelse(traces == "Other cells", "skip", "text")
-      hover_text <- Map(
-        function(barcodes, x, y, label) {
-          if (identical(label, "Other cells")) {
-            return("")
-          }
-          paste0(
-            barcodes,
-            "<br>",
-            label,
-            "<br>",
-            axes[[1]],
-            ": ",
-            formatC(x, format = "f", digits = 2),
-            "<br>",
-            axes[[2]],
-            ": ",
-            formatC(y, format = "f", digits = 2)
-          )
-        },
-        barcodes_by_trace,
-        render_data$x,
-        render_data$y,
-        traces
-      )
-      list(
-        selection_key = barcodes_by_trace,
-        hover = list(hoverinfo = as.list(hover_info), text = hover_text)
-      )
+      flat_barcodes <- ir_clonal_umap_barcodes(data.frame(
+        cell_index = unlist(data_keys, use.names = FALSE)
+      ))
+      req(length(flat_barcodes) == sum(key_lengths))
+      barcodes_by_trace <- unname(split(
+        flat_barcodes,
+        rep(seq_along(key_lengths), key_lengths)
+      ))
+      list(selection_key = barcodes_by_trace, hover = hover)
     }
 
     output_meta <- list(
@@ -732,49 +790,41 @@ observe(
       )
     )
     ir_clonal_umap_last_request(request_signature)
+    ir_clonal_umap_drawn_appearance(list(
+      grouped = FALSE,
+      values = display_values
+    ))
   },
-  priority = 1000
+  ## Ahead of the page's controls (priority 0), after the dataset's ready
+  ## message (priority 1000) that the browser must see before the frame.
+  priority = 100
 )
 
 ## ---- Clonal UMAP selection summaries ----------------------------------- ##
-output[["ir_clonalUMAP_number_of_selected_cells"]] <- renderUI({
-  sel <- input[["ir_clonalUMAP_projection_persistent_selection"]]
-  if (
-    !is.null(sel) &&
-      (!is.list(sel) ||
-        !viewerDatasetContextEqual(
-          sel[["dataset_context"]],
-          viewer_loaded_dataset_context()
-        ))
-  ) {
-    sel <- NULL
-  }
-  cerebroSelectionSummary(sel, "Clonal projection")
-})
-
-output[["ir_clonalUMAP_projection_composition"]] <- renderUI({
-  sel <- input[["ir_clonalUMAP_projection_persistent_selection"]]
-  if (
-    !is.null(sel) &&
-      (!is.list(sel) ||
-        !viewerDatasetContextEqual(
-          sel[["dataset_context"]],
-          viewer_loaded_dataset_context()
-        ))
-  ) {
-    sel <- NULL
-  }
-  cerebroSelectionSummary(sel, "Clonal projection", composition = TRUE)
-})
+viewerSelectionSummaryOutputs(
+  "ir_clonalUMAP_projection",
+  "ir_clonalUMAP_number_of_selected_cells",
+  function() {
+    selection <- input[["ir_clonalUMAP_projection_persistent_selection"]]
+    if (is.list(selection)) {
+      viewerPersistentSelection(selection, viewer_loaded_dataset_context())
+    }
+  },
+  source = function() "Clonal projection"
+)
 
 ## ---- BCR-specific renderers --------------------------------------------- ##
 output$ir_plot_isotype <- plotly::renderPlotly({
   req_plot_space("ir_plot_isotype")
-  data <- ir_data()
-  req(!is.null(data))
+  encoded <- ir_encoded()
+  req(!is.null(encoded))
   gb <- ir_params()$groupBy
   group_col <- if (is.null(gb)) "sample" else gb
-  p <- bcr_isotype_plot(data, group_col = group_col)
+  p <- bcr_isotype_plot(
+    encoded,
+    ir_row_values(encoded, group_col, joined = !is.null(gb)),
+    group_col = group_col
+  )
   if (is.null(p)) {
     return(ir_empty_plotly(
       "No BCR isotype data available. Requires BCR data with CTgene column."
@@ -782,38 +832,118 @@ output$ir_plot_isotype <- plotly::renderPlotly({
   }
   ir_render_ggplotly(p, "isotype")
 }) %>%
-  ir_bindCache(
-    input$ir_cloneCall,
-    input$ir_chain,
-    input$ir_groupBy
-  )
+  ## Isotypes come from CTgene alone: clone call and chain do not change them.
+  ir_bindCache(input$ir_groupBy)
 
 ## ---- Paired Scatter (generic) ------------------------------------------- ##
 ir_sample_meta <- reactive({
-  data <- ir_data_annotated()
-  if (is.null(data) || length(data) < 2) {
+  encoded <- ir_encoded()
+  if (is.null(encoded) || length(encoded$samples) < 2) {
     return(NULL)
   }
-  sample_level_meta(data)
+  sample_level_meta(encoded, ir_cell_metadata(), ir_params()$groupBy)
 })
 
+## The group names and sample metadata below read the whole repertoire (seconds
+## on a million cells). Only the tabs that compare groups need them, so the
+## observers wait for those tabs instead of reading it when the page opens.
+ir_pair_tab_shown <- reactive({
+  isTRUE(input$ir_tabs %in% c("Paired Scatter", "Compare"))
+})
+
+## Whether there are two groups to compare, published on change only: another
+## grouping updates the choices of the controls in place (below) instead of
+## rebuilding them and the plot container, which drew the plot a second time.
+ir_paired_scatter_ready <- reactiveVal(NULL)
+observe({
+  req(ir_pair_tab_shown())
+  viewerPublishChanged(
+    ir_paired_scatter_ready,
+    length(ir_compare_groups()) >= 2
+  )
+})
+observeEvent(
+  if (ir_pair_tab_shown()) ir_sample_meta(),
+  {
+    choices <- ir_paired_scatter_choices(ir_sample_meta())
+    pair_choices <- c(
+      "Manual group comparison" = "",
+      choices$compare_candidates
+    )
+    pair_mode <- isolate(input$ir_pair_compare)
+    req(!is.null(pair_mode))
+    if (!(pair_mode %in% pair_choices)) {
+      pair_mode <- ""
+    }
+    updateSelectInput(
+      session,
+      "ir_pair_compare",
+      choices = pair_choices,
+      selected = pair_mode
+    )
+    facet <- isolate(input$ir_pair_facet)
+    if (!is.null(facet)) {
+      updateSelectInput(
+        session,
+        "ir_pair_facet",
+        choices = c("(none)" = "", choices$facet_candidates),
+        selected = if (facet %in% choices$facet_candidates) facet else ""
+      )
+    }
+  },
+  ignoreInit = TRUE
+)
+observeEvent(
+  if (ir_pair_tab_shown()) ir_compare_groups(),
+  {
+    groups <- ir_compare_groups()
+    req(length(groups) >= 2)
+    x <- isolate(input$ir_pair_x_group)
+    y <- isolate(input$ir_pair_y_group)
+    req(!is.null(x), !is.null(y))
+    if (!(x %in% groups)) {
+      x <- groups[1]
+    }
+    if (!(y %in% groups) || identical(y, x)) {
+      y <- setdiff(groups, x)[[1]]
+    }
+    updateSelectInput(
+      session,
+      "ir_pair_x_group",
+      choices = groups,
+      selected = x
+    )
+    updateSelectInput(
+      session,
+      "ir_pair_y_group",
+      choices = groups,
+      selected = y
+    )
+  },
+  ignoreInit = TRUE
+)
+
 output$ir_ui_pairedScatter <- renderUI({
-  groups <- ir_compare_groups()
-  if (length(groups) < 2) {
+  ready <- ir_paired_scatter_ready()
+  req(!is.null(ready))
+  groups <- isolate(ir_compare_groups())
+  if (!isTRUE(ready)) {
     return(div(
       class = "alert alert-info",
       "Paired scatter needs at least two groups. Choose a multi-group column in Compare by."
     ))
   }
-  meta <- ir_sample_meta()
+  meta <- isolate(ir_sample_meta())
   choices <- ir_paired_scatter_choices(meta)
   pair_choices <- c("Manual group comparison" = "", choices$compare_candidates)
   pair_mode <- input$ir_pair_compare
   if (is.null(pair_mode) || !(pair_mode %in% pair_choices)) {
     pair_mode <- ""
   }
-  x <- input$ir_pair_x_group
-  y <- input$ir_pair_y_group
+  ## The groups only preselect the controls: choosing another group must not
+  ## rebuild them, and the plot output with them.
+  x <- isolate(input$ir_pair_x_group)
+  y <- isolate(input$ir_pair_y_group)
   if (is.null(x) || !(x %in% groups)) {
     x <- groups[1]
   }
@@ -898,6 +1028,23 @@ ir_paired_plotly_output <- function() {
   )
 }
 
+## Picking the X group as the Y group moves Y to another group, as rebuilding
+## the controls used to.
+observeEvent(list(input$ir_pair_x_group, input$ir_pair_y_group), {
+  x <- input$ir_pair_x_group
+  y <- input$ir_pair_y_group
+  ## The event list is never NULL, so this runs when the page opens: decide
+  ## before reading the groups, which reads the whole repertoire.
+  req(!is.null(x), identical(x, y))
+  groups <- ir_compare_groups()
+  req(length(groups) >= 2)
+  updateSelectInput(
+    session,
+    "ir_pair_y_group",
+    selected = setdiff(groups, x)[[1]]
+  )
+})
+
 output$ir_ui_pairedScatter_plot <- renderUI({
   pair_mode <- input$ir_pair_compare
   # Single-plot case (no compare mode): fill the viewport like every other tab.
@@ -922,104 +1069,281 @@ output$ir_ui_pairedScatter_plot <- renderUI({
   plotOutput("ir_plot_pairedScatter_facet", height = paste0(h, "px"))
 })
 
-## Build one clonalScatter panel. clonalScatter returns a table with a Var1
-## clonotype column, the two group columns, a `class` column (shared / expanded)
-## and a `size` column; the point layer maps x/y to internal `x`/`y` columns.
-ir_paired_scatter_panel <- function(
-  data,
-  pars,
-  x_axis,
-  y_axis,
-  title,
-  show_title = TRUE
-) {
-  dot_size <- ir_param("ir_p_dot_size", "total")
-  needed <- unique(c(
-    x_axis,
-    y_axis,
-    if (!identical(dot_size, "total")) dot_size
-  ))
-  if (length(needed) && all(needed %in% names(data))) {
-    data <- data[needed]
-  }
-  p <- scRepertoire::clonalScatter(
-    data,
-    cloneCall = pars$cloneCall,
-    chain = pars$chain,
-    x.axis = x_axis,
-    y.axis = y_axis,
-    dot.size = dot_size,
-    graph = ir_param("ir_p_graph", "proportion"),
-    exportTable = FALSE,
-    palette = IR_PALETTE
-  )
-  # clonalScatter draws two legends (fill = clone class, size = "Total n").
-  # ggplotly cannot lay them out side by side and merges the titles into one
-  # unreadable "classTotal n" block. Drop the size legend (the dot area still
-  # encodes total n) and keep a single, clearly named clone-class legend.
-  p <- p +
+## One panel of the faceted paired scatter, drawn as clonalScatter draws it
+## (square-root axes and a dashed diagonal for proportions, one fill per
+## class, dot area for the total cells) from ir_scatter_table().
+ir_scatter_ggplot <- function(table, x, y, graph = "proportion", title = NULL) {
+  proportion <- !identical(graph, "count")
+  table$x_value <- if (proportion) table$x_fraction else table$x_n
+  table$y_value <- if (proportion) table$y_fraction else table$y_n
+  classes <- sort(unique(table$class))
+  p <- ggplot2::ggplot(
+    table,
+    ggplot2::aes(x = x_value, y = y_value, fill = class)
+  ) +
+    ggplot2::geom_point(
+      ggplot2::aes(size = size),
+      shape = 21,
+      stroke = 0.25
+    ) +
+    ggplot2::scale_fill_manual(
+      values = grDevices::hcl.colors(length(classes), IR_PALETTE, fixup = TRUE)
+    ) +
     ggplot2::guides(size = "none") +
-    ggplot2::labs(fill = "Clone class")
-  # The title only labels the faceted patchwork panels. On the single-panel
-  # interactive plotly the x/y axes already name the two groups, and ggplotly
-  # crams the title into the legend area where it overlaps the entries, so the
-  # interactive caller passes show_title = FALSE.
-  if (show_title) {
-    p <- p + ggplot2::ggtitle(title)
+    ggplot2::labs(x = x, y = y, fill = "Clone class", title = title) +
+    ggplot2::theme_classic()
+  if (proportion) {
+    p <- p +
+      ggplot2::geom_abline(slope = 1, intercept = 0, alpha = 0.4, lty = 2) +
+      ggplot2::scale_x_sqrt() +
+      ggplot2::scale_y_sqrt()
   }
   p
 }
 
-## Single-panel paired scatter -> interactive plotly. The default ggplotly hover
-## already shows the x/y group values and the clone class.
+## clonalScatter(exportTable = TRUE) for two compared units without
+## scRepertoire: per clone its cells in X and in Y, their fractions, its class
+## and its dot size (cells in both, or in the X or Y group alone). `groups`
+## are the grouping values of the rows (NULL: X and Y are samples); clones are
+## named by `clone_names(ids)`, else by their ids.
+ir_scatter_table <- function(
+  encoded,
+  clone_col,
+  chain,
+  groups,
+  x,
+  y,
+  dot_size = "total",
+  clone_names = NULL
+) {
+  counts <- ir_compare_table(
+    encoded,
+    clone_col,
+    chain,
+    groups,
+    units = c(x, y),
+    proportion = FALSE,
+    clone_names = clone_names
+  )
+  clones <- unique(counts$clones)
+  cells_in <- function(unit) {
+    rows <- counts$Sample == unit
+    n <- counts$Count[rows][match(clones, counts$clones[rows])]
+    n[is.na(n)] <- 0
+    n
+  }
+  x_n <- cells_in(x)
+  y_n <- cells_in(y)
+  class <- rep(NA_character_, length(clones))
+  class[x_n == 1 & y_n == 0] <- paste0(x, ".singlet")
+  class[x_n > 1 & y_n == 0] <- paste0(x, ".expanded")
+  class[y_n == 1 & x_n == 0] <- paste0(y, ".singlet")
+  class[y_n > 1 & x_n == 0] <- paste0(y, ".expanded")
+  class[x_n >= 1 & y_n >= 1] <- "dual.expanded"
+  data.frame(
+    clone = clones,
+    x_n = x_n,
+    y_n = y_n,
+    x_fraction = x_n / sum(x_n),
+    y_fraction = y_n / sum(y_n),
+    class = class,
+    size = switch(dot_size, x = x_n, y = y_n, x_n + y_n),
+    stringsAsFactors = FALSE
+  )
+}
+
+## The paired scatter drawn as clonalScatter draws it (square-root axes for
+## proportions, a dashed diagonal, one colour per class), with one point per
+## distinct (x, y, class, size): clones that fall on the same spot are drawn
+## once and their number is in the hover.
+ir_scatter_plotly <- function(table, x, y, graph = "proportion") {
+  proportion <- !identical(graph, "count")
+  x_value <- if (proportion) table$x_fraction else table$x_n
+  y_value <- if (proportion) table$y_fraction else table$y_n
+  ## A spot is fixed by the cells in X, in Y and the dot size (the fractions
+  ## and the class follow from them): one integer key per clone.
+  code <- function(v) match(v, unique(v))
+  x_code <- code(table$x_n)
+  y_code <- code(table$y_n)
+  key <- x_code +
+    (y_code - 1) * max(x_code, 0L) +
+    (code(table$size) - 1) * max(x_code, 0L) * max(y_code, 0L)
+  first <- !duplicated(key)
+  clones <- tabulate(match(key, key[first]))
+  points <- data.frame(
+    x = x_value[first],
+    y = y_value[first],
+    class = table$class[first],
+    size = table$size[first],
+    clones = clones,
+    stringsAsFactors = FALSE
+  )
+  classes <- sort(unique(points$class))
+  colours <- grDevices::hcl.colors(length(classes), IR_PALETTE, fixup = TRUE)
+  axis_max <- max(points$x, points$y)
+  scale <- if (proportion) sqrt else identity
+  ticks <- pretty(c(0, axis_max))
+  ticks <- ticks[ticks <= axis_max * 1.05]
+  span <- range(points$size)
+  diameter <- if (diff(span) > 0) {
+    6 + 14 * sqrt((points$size - span[[1L]]) / diff(span))
+  } else {
+    rep(10, nrow(points))
+  }
+  fmt <- function(v) {
+    if (proportion) formatC(v, format = "g", digits = 3) else format(v)
+  }
+  traces <- Map(
+    function(class, colour) {
+      index <- which(points$class == class)
+      list(
+        type = "scatter",
+        mode = "markers",
+        x = scale(points$x[index]),
+        y = scale(points$y[index]),
+        name = class,
+        marker = list(
+          color = colour,
+          size = diameter[index],
+          line = list(color = "black", width = 0.5)
+        ),
+        text = paste0(
+          "<b>",
+          class,
+          "</b><br>",
+          x,
+          ": ",
+          fmt(points$x[index]),
+          "<br>",
+          y,
+          ": ",
+          fmt(points$y[index]),
+          "<br>Total n: ",
+          points$size[index],
+          "<br>Clones: ",
+          points$clones[index]
+        ),
+        hoverinfo = "text"
+      )
+    },
+    classes,
+    colours
+  )
+  axis <- function(title) {
+    cerebro_plotly_axis(
+      title,
+      mirror = FALSE,
+      range = scale(c(0, axis_max * 1.05)),
+      tickvals = scale(ticks),
+      ticktext = fmt(ticks)
+    )
+  }
+  plot <- plotly::plot_ly()
+  plot$x$attrs <- list()
+  plot$x$data <- unname(traces)
+  plot <- plot %>%
+    plotly::layout(
+      xaxis = axis(x),
+      yaxis = axis(y),
+      shapes = if (proportion) {
+        list(list(
+          type = "line",
+          x0 = 0,
+          y0 = 0,
+          x1 = scale(axis_max * 1.05),
+          y1 = scale(axis_max * 1.05),
+          line = list(color = "rgba(0,0,0,0.4)", dash = "dash", width = 1)
+        ))
+      },
+      hoverlabel = cerebro_plotly_hoverlabel(),
+      plot_bgcolor = cerebro_plotly_theme()$transparent,
+      paper_bgcolor = cerebro_plotly_theme()$transparent,
+      legend = list(title = list(text = "Clone class"))
+    )
+  plot
+}
+
+## "Point size" (a factor on the total-n diameter) and "Point opacity" of the
+## display panel, applied in the browser as the sliders move: no R render, and
+## the cached plot stays valid. `look` holds the defaults while no slider exists.
+ir_paired_scatter_look_js <- "function (el, x, look) {
+  var base = x.data.map(function (t) { return t.marker && t.marker.size; });
+  var value = function (id, fallback) {
+    var e = document.getElementById(id), v = e ? Number(e.value) : NaN;
+    return isFinite(v) && v > 0 ? v : fallback;
+  };
+  el.__irLook = function () {
+    var size = value('ir_d_point_size', look.size);
+    Plotly.restyle(el, {
+      'marker.size': base.map(function (b) {
+        if (b == null) return b;
+        return Array.isArray(b) ? b.map(function (v) { return v * size; }) : b * size;
+      }),
+      'marker.opacity': value('ir_d_alpha', look.opacity)
+    });
+  };
+  el.__irLook();
+  if (!window.__irPairedLook) {
+    window.__irPairedLook = true;
+    $(document).on('change', '#ir_d_point_size, #ir_d_alpha', function () {
+      var plot = document.getElementById('ir_plot_pairedScatter');
+      if (plot && plot.__irLook) plot.__irLook();
+    });
+  }
+}"
+
+## Single-panel paired scatter -> interactive plotly, counted in the app for
+## the two compared groups only.
 output$ir_plot_pairedScatter <- plotly::renderPlotly({
-  req_scRepertoire()
   req_plot_space("ir_plot_pairedScatter")
-  data <- ir_data_annotated()
-  req(!is.null(data))
-  meta <- ir_sample_meta()
+  encoded <- ir_encoded()
+  req(!is.null(encoded))
   pars <- ir_params()
   groups <- ir_compare_groups()
   req(length(groups) >= 2)
   pair_mode <- input$ir_pair_compare
-
+  if (is.null(pair_mode) || !nzchar(pair_mode)) {
+    ## Groups of the previous grouping, before its controls are rebuilt: keep
+    ## the drawn plot until the controls send the new groups.
+    x <- input$ir_pair_x_group
+    y <- input$ir_pair_y_group
+    req(isTRUE(x %in% groups), isTRUE(y %in% groups), cancelOutput = TRUE)
+    validate(need(x != y, "Select two different groups."))
+    ## X and Y are levels of the grouping column, not samples.
+    group_by <- pars$groupBy
+  } else {
+    meta <- ir_sample_meta()
+    req(!is.null(meta))
+    lvls <- sort(unique(meta[[pair_mode]]))
+    req(length(lvls) == 2L)
+    x <- meta$.sample_name[meta[[pair_mode]] == lvls[1]][1]
+    y <- meta$.sample_name[meta[[pair_mode]] == lvls[2]][1]
+    group_by <- NULL
+  }
   ir_render_ggplotly(
-    {
-      if (is.null(pair_mode) || !nzchar(pair_mode)) {
-        x <- input$ir_pair_x_group
-        y <- input$ir_pair_y_group
-        validate(
-          need(x %in% groups, "Select an X group."),
-          need(y %in% groups, "Select a Y group."),
-          need(x != y, "Select two different groups.")
-        )
-        ir_paired_scatter_panel(
-          data,
-          pars,
-          x,
-          y,
-          paste(x, "vs", y),
-          show_title = FALSE
-        )
-      } else {
-        req(!is.null(meta))
-        compare_col <- pair_mode
-        lvls <- sort(unique(meta[[compare_col]]))
-        req(length(lvls) == 2L)
-        s_a <- meta$.sample_name[meta[[compare_col]] == lvls[1]][1]
-        s_b <- meta$.sample_name[meta[[compare_col]] == lvls[2]][1]
-        ir_paired_scatter_panel(
-          data,
-          pars,
-          s_a,
-          s_b,
-          paste(lvls[1], "vs", lvls[2]),
-          show_title = FALSE
-        )
-      }
-    },
+    ir_scatter_plotly(
+      ir_scatter_table(
+        encoded,
+        ir_clonecall_col(pars$cloneCall),
+        pars$chain,
+        ir_row_values(encoded, group_by),
+        x,
+        y,
+        ir_param("ir_p_dot_size", "total")
+      ),
+      x,
+      y,
+      ir_param("ir_p_graph", "proportion")
+    ),
     "pairedScatter"
-  )
+  ) %>%
+    htmlwidgets::onRender(
+      ir_paired_scatter_look_js,
+      data = with(
+        current_page_display_defaults("ir"),
+        list(size = scatter_point_size, opacity = scatter_opacity)
+      )
+    )
 }) %>%
   ir_bindCache(
     input$ir_cloneCall,
@@ -1035,10 +1359,9 @@ output$ir_plot_pairedScatter <- plotly::renderPlotly({
 ## Faceted paired scatter -> static patchwork grid (plotly cannot lay out the
 ## multi-panel grid cleanly, so this variant stays a ggplot).
 output$ir_plot_pairedScatter_facet <- renderPlot({
-  req_scRepertoire()
   req_plot_space("ir_plot_pairedScatter_facet")
-  data <- ir_data_annotated()
-  req(!is.null(data))
+  encoded <- ir_encoded()
+  req(!is.null(encoded))
   meta <- ir_sample_meta()
   req(!is.null(meta))
   pars <- ir_params()
@@ -1064,11 +1387,19 @@ output$ir_plot_pairedScatter_facet <- renderPlot({
         }
         tryCatch(
           {
-            panels[[length(panels) + 1L]] <- ir_paired_scatter_panel(
-              data,
-              pars,
+            panels[[length(panels) + 1L]] <- ir_scatter_ggplot(
+              ir_scatter_table(
+                encoded,
+                ir_clonecall_col(pars$cloneCall),
+                pars$chain,
+                NULL,
+                s_a[1],
+                s_b[1],
+                ir_param("ir_p_dot_size", "total")
+              ),
               s_a[1],
               s_b[1],
+              ir_param("ir_p_graph", "proportion"),
               paste0(fl, ": ", lvls[1], " vs ", lvls[2])
             )
           },
@@ -1107,78 +1438,182 @@ output$ir_plot_pairedScatter_facet <- renderPlot({
     input$ir_p_dot_size
   )
 
-ir_clonal_abundance_plotly <- function(counts) {
+## Units in clonalAbundance()'s order: sorted, or with order.by = "alphanumeric"
+## by their letters, then by their number.
+ir_abundance_units <- function(units, order_by = NULL) {
+  units <- sort(unique(as.character(units)))
+  if (identical(order_by, "alphanumeric")) {
+    units <- units[order(
+      gsub("[0-9]", "", units),
+      suppressWarnings(as.numeric(gsub("[^0-9]", "", units)))
+    )]
+  }
+  units
+}
+
+## clonalAbundance()'s scale = TRUE: the density of log10(abundance) over the
+## clones of a unit (bandwidth 0.5, 512 points across every unit's range),
+## scaled to a maximum of 1.
+ir_abundance_density <- function(counts, units) {
+  x <- log10(counts$abundance)
+  range <- range(x)
+  if (diff(range) == 0) {
+    range <- range + c(-0.5, 0.5)
+  }
+  lapply(units, function(unit) {
+    index <- which(counts$sample == unit)
+    weights <- counts$n_clones[index]
+    density <- stats::density(
+      x[index],
+      weights = weights / sum(weights),
+      bw = 0.5,
+      from = range[[1L]],
+      to = range[[2L]],
+      n = 512L
+    )
+    list(x = 10^density$x, y = density$y / max(density$y))
+  })
+}
+
+ir_clonal_abundance_plotly <- function(
+  counts,
+  scale = FALSE,
+  order_by = NULL,
+  legend = "Samples",
+  prebuild = TRUE
+) {
   if (!nrow(counts)) {
     return(ir_empty_plotly("No clonotypes are available for this selection."))
   }
-  counts$hover <- paste0(
-    "<b>",
-    counts$sample,
-    "</b><br>",
-    "Abundance: ",
-    formatC(counts$abundance, format = "d"),
-    "<br>",
-    "Clones: ",
-    formatC(counts$n_clones, format = "d")
+  ## One line per unit, coloured as plot_ly(split = ~sample, color = ~sample)
+  ## would: Set2 (RColorBrewer::brewer.pal(max(n, 3), "Set2")) interpolated
+  ## over the units. Lines only, as clonalAbundance() draws them: a marker
+  ## attribute makes plotly add markers to the mode (19,000 more SVG points
+  ## on 187 samples, 0.2 s in the browser). Building the traces directly takes 0.2 s for 187 samples
+  ## instead of 1.4 s in plotly_build's attribute mapping.
+  samples <- ir_abundance_units(counts$sample, order_by)
+  set2 <- c(
+    "#66C2A5",
+    "#FC8D62",
+    "#8DA0CB",
+    "#E78AC3",
+    "#A6D854",
+    "#FFD92F",
+    "#E5C494",
+    "#B3B3B3"
   )
-  plot <- plotly::plot_ly(
-    counts,
-    x = ~abundance,
-    y = ~n_clones,
-    split = ~sample,
-    color = ~sample,
-    type = "scatter",
-    mode = "lines",
-    text = ~hover,
-    hoverinfo = "text"
-  ) %>%
+  palette <- set2[seq_len(min(max(length(samples), 3L), length(set2)))]
+  colours <- plotly::toRGB(scales::col_factor(palette, levels = samples)(
+    samples
+  ))
+  if (isTRUE(scale)) {
+    curves <- ir_abundance_density(counts, samples)
+    traces <- Map(
+      function(curve, sample, colour) {
+        list(
+          type = "scatter",
+          mode = "lines",
+          x = curve$x,
+          y = curve$y,
+          fill = "tozeroy",
+          fillcolor = plotly::toRGB(colour, 0.5),
+          line = list(color = "black", width = 0.5),
+          text = paste0(
+            "<b>",
+            sample,
+            "</b><br>Abundance: ",
+            formatC(curve$x, format = "g", digits = 3),
+            "<br>Scaled density: ",
+            formatC(curve$y, format = "f", digits = 3)
+          ),
+          hoverinfo = "text",
+          name = sample
+        )
+      },
+      curves,
+      samples,
+      colours
+    )
+    y_title <- "Density of clones"
+  } else {
+    hover <- paste0(
+      "<b>",
+      counts$sample,
+      "</b><br>",
+      "Abundance: ",
+      formatC(counts$abundance, format = "d"),
+      "<br>",
+      "Clones: ",
+      formatC(counts$n_clones, format = "d")
+    )
+    rows <- split(
+      seq_len(nrow(counts)),
+      factor(counts$sample, levels = samples)
+    )
+    traces <- Map(
+      function(index, sample, colour) {
+        index <- index[order(counts$abundance[index])]
+        list(
+          type = "scatter",
+          mode = "lines",
+          x = counts$abundance[index],
+          y = counts$n_clones[index],
+          text = hover[index],
+          hoverinfo = "text",
+          name = sample,
+          line = list(color = colour)
+        )
+      },
+      rows,
+      samples,
+      colours
+    )
+    y_title <- "Number of clones"
+  }
+  plot <- plotly::plot_ly()
+  plot$x$attrs <- list()
+  plot$x$data <- unname(traces)
+  plot <- plot %>%
     plotly::layout(
       xaxis = cerebro_plotly_axis("Abundance", mirror = FALSE, type = "log"),
       yaxis = cerebro_plotly_axis(
-        "Number of clones",
+        y_title,
         mirror = FALSE,
         rangemode = "tozero"
       ),
       hoverlabel = cerebro_plotly_hoverlabel(),
       plot_bgcolor = cerebro_plotly_theme()$transparent,
       paper_bgcolor = cerebro_plotly_theme()$transparent,
-      legend = list(title = list(text = "Samples"))
+      legend = list(title = list(text = legend))
     )
-  cerebro_plotly_toolbar(plot)
+  plot <- cerebro_plotly_toolbar(plot)
+  if (prebuild) cerebro_plotly_prebuilt(plot) else plot
 }
+
+## The clone-size histogram depends on the clones only; scale and order are
+## drawn from it, so changing them does not count the clones again.
+ir_abundance_counts <- reactive({
+  pars <- ir_params()
+  req(pars$chain, pars$cloneCall)
+  ir_abundance_counts_for(pars, ir_encoded())
+}) %>%
+  ir_bindCache(
+    input$ir_cloneCall,
+    input$ir_chain,
+    input$ir_groupBy
+  )
 
 output$ir_plot_clonalAbundance <- plotly::renderPlotly({
   req_plot_space("ir_plot_clonalAbundance")
   pars <- ir_params()
   ## Tab navigation can reach this output before renderUI has bound its
-  ## controls. Do not pass NULL chain/cloneCall into scRepertoire during that gap.
+  ## controls. Do not count clones for a NULL chain/cloneCall during that gap.
   req(pars$chain, pars$cloneCall)
-  scale <- isTRUE(ir_param("ir_p_scale", FALSE))
-  order_by <- ir_order_by()
-  if (
-    identical(pars$chain, "both") &&
-      is.null(pars$groupBy) &&
-      !scale &&
-      is.null(order_by)
-  ) {
-    return(ir_clonal_abundance_plotly(ir_clonal_abundance_counts(
-      ir_data(),
-      ir_clonecall_col(pars$cloneCall)
-    )))
-  }
-  data <- ir_data()
-  req(!is.null(data))
-  req_scRepertoire()
-  ir_render_ggplotly(
-    scRepertoire::clonalAbundance(
-      data,
-      cloneCall = pars$cloneCall,
-      chain = pars$chain,
-      group.by = pars$groupBy,
-      order.by = order_by,
-      scale = scale
-    ),
-    "clonalAbundance"
+  ir_clonal_abundance_plotly(
+    ir_abundance_counts(),
+    scale = isTRUE(ir_param("ir_p_scale", FALSE)),
+    order_by = ir_order_by(),
+    legend = pars$groupBy %||% "Samples"
   )
 }) %>%
   ir_bindCache(
@@ -1196,27 +1631,35 @@ output$ir_plot_clonalAbundance <- plotly::renderPlotly({
 ## graph mode was dropped: Compare is about tracking clones across groups, which
 ## is the alluvial, and mixing a plotOutput/plotlyOutput per mode is not worth it.
 output$ir_plot_clonalCompare <- plotly::renderPlotly({
-  req_scRepertoire()
   req_plot_space("ir_plot_clonalCompare")
   samples <- input$ir_compare_samples
   req(!is.null(samples) && length(samples) >= 2)
-  data <- ir_data()
-  req(!is.null(data))
+  ## Samples of the previous grouping, before its selector is rebuilt: keep the
+  ## drawn plot until the selector sends the new groups.
+  req(all(samples %in% ir_compare_groups()), cancelOutput = TRUE)
+  encoded <- ir_encoded()
+  req(!is.null(encoded))
   pars <- ir_params()
   proportion <- isTRUE(ir_param("ir_p_compare_prop", TRUE))
 
   tryCatch(
     {
-      tab <- scRepertoire::clonalCompare(
-        data,
-        cloneCall = pars$cloneCall,
+      ## clonalCompare(exportTable = TRUE), counted for the compared groups
+      ## only. The alluvial below follows the selection order, so order.by
+      ## does not change it.
+      clone_col <- ir_clonecall_col(pars$cloneCall)
+      tab <- ir_compare_table(
+        encoded,
+        clone_col,
         chain = pars$chain,
-        group.by = pars$groupBy,
-        order.by = ir_order_by(),
-        samples = samples,
-        top.clones = as.numeric(ir_param("ir_p_top_clones", 10)),
+        groups = ir_row_values(encoded, pars$groupBy),
+        units = samples,
+        top_clones = as.numeric(ir_param("ir_p_top_clones", 10)),
         proportion = proportion,
-        exportTable = TRUE
+        clone_rank = ir_clone_rank(encoded, clone_col, pars$chain),
+        clone_names = function(ids) {
+          ir_clone_names(encoded, clone_col, pars$chain, ids)
+        }
       )
       prep <- ir_prepare_compare_alluvial(tab, samples, proportion = proportion)
       if (!isTRUE(prep$ok)) {
@@ -1230,6 +1673,11 @@ output$ir_plot_clonalCompare <- plotly::renderPlotly({
       )
     },
     error = function(e) {
+      ## validate()/req() keep their usual placeholder.
+      if (inherits(e, "shiny.silent.error")) {
+        stop(e)
+      }
+      ir_plot_failed()
       ir_empty_plotly(paste("Compare plot error:", conditionMessage(e)))
     }
   )
@@ -1244,56 +1692,139 @@ output$ir_plot_clonalCompare <- plotly::renderPlotly({
     input$ir_p_order_by
   )
 
+## The diversity plot as Plotly traces, without ggplotly: one box per x level
+## (quartiles and 1.5 IQR whiskers computed here, as geom_boxplot does) and the
+## bootstrap values as points, jittered by a fixed sequence, one trace per group.
+ir_diversity_plotly <- function(
+  table,
+  x_col,
+  group_col,
+  x_label,
+  y_label,
+  fills
+) {
+  levels <- levels(table[[x_col]])
+  value <- as.numeric(table[["value"]])
+  position <- as.integer(table[[x_col]])
+  boxes <- lapply(seq_along(levels), function(i) {
+    v <- value[position == i & !is.na(value)]
+    if (!length(v)) {
+      return(NULL)
+    }
+    q <- stats::quantile(v, c(0.25, 0.5, 0.75), names = FALSE)
+    reach <- 1.5 * (q[[3L]] - q[[1L]])
+    c(
+      x = i,
+      q1 = q[[1L]],
+      median = q[[2L]],
+      q3 = q[[3L]],
+      lower = min(v[v >= q[[1L]] - reach]),
+      upper = max(v[v <= q[[3L]] + reach])
+    )
+  })
+  boxes <- do.call(rbind, Filter(Negate(is.null), boxes))
+  box_trace <- list(
+    type = "box",
+    x = boxes[, "x"],
+    q1 = boxes[, "q1"],
+    median = boxes[, "median"],
+    q3 = boxes[, "q3"],
+    lowerfence = boxes[, "lower"],
+    upperfence = boxes[, "upper"],
+    width = 0.75,
+    boxpoints = FALSE,
+    fillcolor = "white",
+    line = list(color = "#666666"),
+    hoverinfo = "y",
+    showlegend = FALSE
+  )
+  ## Low-discrepancy offsets in [-0.18, 0.18], stable between redraws.
+  jitter <- ((seq_along(value) * 0.6180339887) %% 1 - 0.5) * 0.36
+  groups <- as.character(table[[group_col]])
+  point_traces <- Map(
+    function(group, colour) {
+      index <- which(groups == group & !is.na(value) & !is.na(position))
+      list(
+        type = "scatter",
+        mode = "markers",
+        x = position[index] + jitter[index],
+        y = value[index],
+        name = group,
+        marker = list(
+          color = colour,
+          size = 9,
+          line = list(color = "black", width = 0.5)
+        ),
+        text = paste0(
+          "<b>",
+          group,
+          "</b><br>",
+          levels[position[index]],
+          "<br>",
+          y_label,
+          ": ",
+          formatC(value[index], format = "g", digits = 4)
+        ),
+        hoverinfo = "text"
+      )
+    },
+    names(fills),
+    unname(fills)
+  )
+  plot <- plotly::plot_ly()
+  plot$x$attrs <- list()
+  plot$x$data <- c(list(box_trace), unname(point_traces))
+  plot %>%
+    plotly::layout(
+      xaxis = cerebro_plotly_axis(
+        x_label,
+        mirror = FALSE,
+        tickvals = seq_along(levels),
+        ticktext = levels,
+        range = c(0.4, length(levels) + 0.6)
+      ),
+      yaxis = cerebro_plotly_axis(y_label, mirror = FALSE),
+      hoverlabel = cerebro_plotly_hoverlabel(),
+      plot_bgcolor = cerebro_plotly_theme()$transparent,
+      paper_bgcolor = cerebro_plotly_theme()$transparent,
+      legend = list(title = list(text = "Group"))
+    )
+}
+
+## `groups` and `x_values` are the grouping and x-axis values of the rows.
 ir_plot_clonal_diversity <- function(
-  data,
+  encoded,
   clone_call,
   chain,
   group_by,
   metric,
   x_axis,
   n_boots,
-  palette = IR_PALETTE
+  palette = IR_PALETTE,
+  plotly = FALSE,
+  order_by = NULL,
+  groups = NULL,
+  x_values = NULL
 ) {
-  # scRepertoire 2.6.x can coerce factor x.axis values to numeric positions and
-  # its boxplot layer does not explicitly group by x.axis. Use its bootstrap
-  # table and redraw the x-axis summary so each metadata level gets its own box.
-  # When x_axis is NULL, scRepertoire groups by list element (sample) names and
-  # returns a table without an x.axis column — we use the group column itself as
-  # the effective x-axis so the plot stays consistent with the non-NULL path.
-  plot_data <- lapply(data, function(df) {
-    for (col in unique(c(group_by, x_axis))) {
-      if (!is.null(col) && col %in% colnames(df)) {
-        df[[col]] <- as.character(df[[col]])
-      }
-    }
-    df
-  })
-
-  # Build scRepertoire call, omitting x.axis when NULL
-  scr_args <- list(
-    plot_data,
-    cloneCall = clone_call,
-    chain = chain,
-    group.by = group_by,
-    metric = metric,
-    n.boots = n_boots,
-    return.boots = TRUE,
-    exportTable = TRUE,
-    palette = palette
+  # The bootstrap table as clonalDiversity(return.boots = TRUE) returns it,
+  # redrawn so each x-axis level gets its own box. Without x_axis the units
+  # (samples, or the levels of group_by) are the x-axis.
+  output_df <- ir_diversity_table(
+    encoded,
+    ir_clonecall_col(clone_call),
+    chain,
+    group_by,
+    x_axis,
+    metric,
+    n_boots,
+    groups,
+    x_values
   )
-  if (!is.null(x_axis)) {
-    scr_args[["x.axis"]] <- x_axis
-  }
-  ob <- ir_order_by()
-  if (!is.null(ob)) {
-    scr_args[["order.by"]] <- ob
-  }
-  output_df <- do.call(scRepertoire::clonalDiversity, scr_args)
 
   group_col <- if (is.null(group_by)) "Group" else group_by
 
-  # When x_axis is NULL, scRepertoire returns a table keyed by the group column
-  # alone (no x.axis column). Use the group column as the effective x-axis.
+  # When x_axis is NULL, the table is keyed by the group column
+  # alone. Use the group column as the effective x-axis.
   eff_x_axis <- if (is.null(x_axis)) group_col else x_axis
   x_label <- if (is.null(x_axis)) {
     if (is.null(group_by)) "Group" else group_by
@@ -1312,31 +1843,28 @@ ir_plot_clonal_diversity <- function(
     )
   )
 
-  # Build x-axis levels. When x_axis is NULL, the level order comes from the
-  # output table (scRepertoire's natural ordering by list element names).
+  # Build x-axis levels: sorted samples or groups (or x_axis levels), or with
+  # order.by = "alphanumeric" by their letters, then by their number.
   if (is.null(x_axis)) {
-    x_levels <- unique(as.character(output_df[[group_col]]))
+    x_levels <- sort(unique(as.character(output_df[[group_col]])))
   } else {
-    x_levels <- sort(unique(unlist(
-      lapply(plot_data, function(df) {
-        if (x_axis %in% colnames(df)) {
-          as.character(df[[x_axis]])
-        } else {
-          character(0)
-        }
-      }),
-      use.names = FALSE
-    )))
+    x_levels <- sort(unique(as.character(x_values)))
   }
   x_levels <- x_levels[!is.na(x_levels)]
   if (length(x_levels) == 0) {
     x_levels <- unique(as.character(output_df[[eff_x_axis]]))
   }
+  if (identical(order_by, "alphanumeric")) {
+    x_levels <- ir_abundance_units(x_levels, order_by)
+  }
   output_df[[eff_x_axis]] <- factor(
     as.character(output_df[[eff_x_axis]]),
     levels = x_levels
   )
-  output_df[[group_col]] <- factor(as.character(output_df[[group_col]]))
+  ## Without x_axis the group column is the x-axis: keep its order.
+  if (!identical(group_col, eff_x_axis)) {
+    output_df[[group_col]] <- factor(as.character(output_df[[group_col]]))
+  }
 
   metric_name <- gsub(
     "(^|[[:space:]])([[:alpha:]])",
@@ -1350,6 +1878,16 @@ ir_plot_clonal_diversity <- function(
   )
   names(fills) <- levels(output_df[[group_col]])
 
+  if (isTRUE(plotly)) {
+    return(ir_diversity_plotly(
+      output_df,
+      eff_x_axis,
+      group_col,
+      x_label,
+      paste(metric_name, "Index Score"),
+      fills
+    ))
+  }
   ggplot2::ggplot(
     output_df,
     ggplot2::aes(
@@ -1384,10 +1922,9 @@ ir_plot_clonal_diversity <- function(
 }
 
 output$ir_plot_clonalDiversity <- plotly::renderPlotly({
-  req_scRepertoire()
   req_plot_space("ir_plot_clonalDiversity")
-  data <- ir_data()
-  req(!is.null(data))
+  encoded <- ir_encoded()
+  req(!is.null(encoded))
   pars <- ir_params()
   metric <- ir_param("ir_p_metric", "shannon")
   x_axis <- ir_param("ir_p_x_axis", "")
@@ -1398,14 +1935,18 @@ output$ir_plot_clonalDiversity <- plotly::renderPlotly({
   }
   ir_render_ggplotly(
     ir_plot_clonal_diversity(
-      data = data,
+      encoded,
       clone_call = pars$cloneCall,
       chain = pars$chain,
       group_by = pars$groupBy,
       metric = metric,
       x_axis = x_axis,
       n_boots = n_boots,
-      palette = IR_PALETTE
+      palette = IR_PALETTE,
+      plotly = TRUE,
+      order_by = ir_order_by(),
+      groups = ir_row_values(encoded, pars$groupBy),
+      x_values = ir_row_values(encoded, x_axis)
     ),
     "clonalDiversity"
   )
@@ -1428,37 +1969,18 @@ output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
   if (!is.null(pars$groupBy)) {
     req(pars$groupBy %in% getGroups())
   }
-  if (identical(pars$chain, "both") && is.null(ir_order_by())) {
-    return(ir_render_ggplotly(
-      {
-        counts <- if (is.null(pars$groupBy)) {
-          ir_homeostasis_counts(ir_data(), ir_clonecall_col(pars$cloneCall))
-        } else {
-          ir_grouped_homeostasis_counts(
-            ir_data(),
-            ir_clonecall_col(pars$cloneCall),
-            pars$groupBy
-          )
-        }
-        ir_homeostasis_plot(counts, ir_clone_size(), IR_PALETTE)
-      },
-      "clonalHomeostasis"
-    ))
-  }
-  req_scRepertoire()
-  data <- ir_data()
-  req(!is.null(data))
   ir_render_ggplotly(
-    scRepertoire::clonalHomeostasis(
-      data,
-      cloneCall = pars$cloneCall,
-      chain = pars$chain,
-      cloneSize = ir_clone_size(),
-      group.by = pars$groupBy,
-      order.by = ir_order_by(),
-      exportTable = FALSE,
-      palette = IR_PALETTE
-    ),
+    {
+      encoded <- ir_encoded()
+      req(!is.null(encoded))
+      counts <- ir_homeostasis_counts(
+        encoded,
+        ir_clonecall_col(pars$cloneCall),
+        pars$chain,
+        ir_row_values(encoded, pars$groupBy)
+      )
+      ir_homeostasis_plot(counts, ir_clone_size(), IR_PALETTE, ir_order_by())
+    },
     "clonalHomeostasis"
   )
 }) %>%
@@ -1470,48 +1992,19 @@ output$ir_plot_clonalHomeostasis <- plotly::renderPlotly({
     input$ir_p_order_by
   )
 
+## Exact empirical clone-size profiles of the strict clones, clustered.
+## scRepertoire::clonalSizeDistribution() expands a dense clonotype-by-sample
+## matrix before fitting its model, which kept the Shiny R process busy for
+## close to a minute on Ren's 194 samples; this is linear in the rows and
+## keeps the same group, linkage and threshold controls.
 output$ir_plot_clonalSizeDistribution <- plotly::renderPlotly({
   req_plot_space("ir_plot_clonalSizeDistribution")
   req(input$ir_chain, !is.null(input$ir_groupBy))
-  data <- ir_data()
-  req(!is.null(data))
-  pars <- ir_params()
-  # clonalSizeDistribution fits a distribution per group (MLE); on the gene/nt/aa
-  # clone definitions the fit fails ("initial parameter values are invalid" /
-  # "NA/NaN ... sigmau"). The strict clone definition is the stable choice and
-  # is also the most appropriate for a clone-size distribution, so enforce it.
-  threshold <- as.numeric(ir_param("ir_p_sd_threshold", 1))
-  if (is.na(threshold) || threshold < 1) {
-    threshold <- 1
-  }
-  row_count <- sum(vapply(data, nrow, integer(1)))
   ir_render_ggplotly(
-    if (row_count >= 100000L) {
-      # The upstream implementation creates a dense clonotype-by-sample
-      # matrix. On the Ren atlas that blocked the only Shiny R process for
-      # close to a minute and made every subsequently selected tab appear
-      # broken. Cluster exact empirical clone-size profiles instead; this path
-      # is linear in repertoire rows and keeps the same group/linkage controls.
-      ir_size_profile_plot(
-        ir_size_distribution_profile(),
-        method = ir_param("ir_p_sd_method", "ward.D2")
-      )
-    } else {
-      req_scRepertoire()
-      p <- scRepertoire::clonalSizeDistribution(
-        data,
-        cloneCall = "strict",
-        chain = pars$chain,
-        group.by = pars$groupBy,
-        method = ir_param("ir_p_sd_method", "ward.D2"),
-        threshold = threshold,
-        exportTable = FALSE
-      )
-      # clonalSizeDistribution maps color = as.factor(label) internally, so the
-      # colour legend title comes through as the raw "as.factor(label)". Rename
-      # it to what it actually is (the grouping variable).
-      p + ggplot2::labs(colour = "Group")
-    },
+    ir_size_profile_plot(
+      ir_size_distribution_profile(),
+      method = ir_param("ir_p_sd_method", "ward.D2")
+    ),
     "clonalSizeDistribution"
   )
 }) %>%
@@ -1533,12 +2026,15 @@ output$ir_plot_cloneSharing <- plotly::renderPlotly({
   req(has_scRepertoire())
   req_plot_space("ir_plot_cloneSharing")
   req(input$ir_chain, input$ir_sharing_unit, !is.null(input$ir_groupBy))
+  encoded <- ir_encoded()
+  req(!is.null(encoded))
   fig <- ir_render_ggplotly(
     ir_build_sharing_plot(
-      ir_data_annotated(),
+      encoded,
       specific_chain(),
       ir_param("ir_sharing_unit", "sample"),
-      ir_params()$groupBy
+      ir_params()$groupBy,
+      ir_cell_metadata()
     ),
     "ir_plot_cloneSharing",
     tooltip = "text"

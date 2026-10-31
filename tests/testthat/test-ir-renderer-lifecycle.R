@@ -1,11 +1,7 @@
 test_that("IR error handling preserves validation and renders useful failures", {
-  scope <- new.env(parent = asNamespace("shiny"))
-  eval(
-    viewer_r_assignment(
-      viewer_test_path("immune_repertoire", "server.R"),
-      "safeRenderPlot"
-    ),
-    scope
+  scope <- ir_scope(
+    c("ir_plot_cache_state", "ir_plot_failed", "safeRenderPlot"),
+    "server.R"
   )
   expect_error(
     scope$safeRenderPlot(shiny::req(FALSE)),
@@ -72,12 +68,20 @@ test_that("IR renderers update parameters and isolate their session caches", {
     viewer_server_load(
       viewer_server_statements("immune_repertoire", "server.R"),
       scope,
-      names = c("ir_bindCache", "safeRenderPlot")
+      names = c(
+        "ir_dataset_cache_key",
+        "ir_plot_cache_state",
+        "ir_plot_failed",
+        "ir_plot_cache",
+        "ir_bindCache",
+        "safeRenderPlot"
+      )
     )
     viewer_server_load(
       viewer_server_statements("immune_repertoire", "data.R"),
       scope,
       names = c(
+        "ir_dataset_process_key",
         "ir_params",
         "ir_param",
         "ir_order_by",
@@ -89,16 +93,59 @@ test_that("IR renderers update parameters and isolate their session caches", {
     req_plot_space <- function(...) NULL
     req_scRepertoire <- function() NULL
     getGroups <- function() "sample"
-    ir_data <- function() {
-      list(
-        sample = data.frame(barcode = paste0(available_crb_files$selected, 1:2))
-      )
+    ir_encoded <- function() {
+      list(samples = paste0(available_crb_files$selected, 1:2))
     }
+    ir_row_values <- function(encoded, name, ...) name
     ir_render_ggplotly <- function(expr, ...) expr
+    ## Abundance counts the clones in the app: record what it counts from and
+    ## what it draws.
+    ir_abundance_counts_for <- function(pars, encoded) {
+      calls[[length(calls) + 1L]] <<- list(
+        name = "abundance_counts",
+        args = c(pars, list(data = encoded))
+      )
+      data.frame(sample = "s", abundance = 1L, n_clones = 1L)
+    }
+    ## Homeostasis is counted in the app: record the clone sizes it draws.
+    ir_clonecall_col <- function(x) x
+    ir_homeostasis_counts <- function(...) {
+      data.frame(sample = "s", abundance = 1L, n_clones = 1L)
+    }
+    ## SizeDist clusters the exact profiles: record the linkage it draws.
+    ir_size_distribution_profile <- function() {
+      list(threshold = input$ir_p_sd_threshold)
+    }
+    ir_size_profile_plot <- function(profiles, method) {
+      calls[[length(calls) + 1L]] <<- list(
+        name = "size_profile_plot",
+        args = c(profiles, list(method = method))
+      )
+      profiles
+    }
+    ir_homeostasis_plot <- function(counts, clone_size, ...) {
+      calls[[length(calls) + 1L]] <<- list(
+        name = "homeostasis_plot",
+        args = list(cloneSize = clone_size)
+      )
+      counts
+    }
+    ir_clonal_abundance_plotly <- function(counts, ...) {
+      force(counts)
+      calls[[length(calls) + 1L]] <<- list(
+        name = "abundance_plot",
+        args = list(...)
+      )
+      counts
+    }
     viewer_server_load(
       viewer_server_statements("immune_repertoire", "visualizations.R"),
       scope,
-      names = c("IR_PALETTE", paste0("output$ir_plot_", functions))
+      names = c(
+        "IR_PALETTE",
+        "ir_abundance_counts",
+        paste0("output$ir_plot_", functions)
+      )
     )
   }
   exercise <- function() {
@@ -111,9 +158,13 @@ test_that("IR renderers update parameters and isolate their session caches", {
       )
       value <- function(name) scope$output[[paste0("ir_plot_", name)]]()
       latest <- function() tail(calls, 1)[[1]]$args
+      named <- function(name) {
+        Filter(function(call) identical(call$name, name), calls)
+      }
+      last_counts <- function() tail(named("abundance_counts"), 1)[[1]]$args
       value("clonalAbundance")
-      expect_identical(latest()$chain, "TRB")
-      expect_null(latest()$group.by)
+      expect_identical(last_counts()$chain, "TRB")
+      expect_null(last_counts()$groupBy)
       baseline <- length(calls)
       session$setInputs(
         ir_p_clone_size = "0.01,0.05,0.1,0.5,1",
@@ -128,20 +179,27 @@ test_that("IR renderers update parameters and isolate their session caches", {
         ir_p_order_by = "alphanumeric"
       )
       value("clonalAbundance")
-      expect_identical(latest()$chain, "TRA")
-      expect_identical(latest()$group.by, "sample")
+      expect_identical(last_counts()$chain, "TRA")
+      expect_identical(last_counts()$groupBy, "sample")
       expect_true(latest()$scale)
-      expect_identical(latest()$order.by, "alphanumeric")
+      expect_identical(latest()$order_by, "alphanumeric")
+      expect_identical(latest()$legend, "sample")
+      ## Scale and order redraw the same counts.
+      counted <- length(named("abundance_counts"))
+      session$setInputs(ir_p_scale = FALSE, ir_p_order_by = "")
+      value("clonalAbundance")
+      expect_false(latest()$scale)
+      expect_length(named("abundance_counts"), counted)
       scope$available_crb_files$selected <- "B"
       session$flushReact()
       value("clonalAbundance")
-      expect_identical(latest()[[1]][[1]]$barcode, c("B1", "B2"))
+      expect_identical(last_counts()$data$samples, c("B1", "B2"))
       value("clonalHomeostasis")
       expect_equal(unname(latest()$cloneSize), c(.01, .05, .1, .5, 1))
       session$setInputs(ir_p_sd_threshold = -10)
       value("clonalSizeDistribution")
-      expect_identical(latest()$cloneCall, "strict")
-      expect_equal(latest()$threshold, 1)
+      expect_identical(latest()$method, "ward.D2")
+      expect_equal(latest()$threshold, -10)
       session$setInputs(ir_p_sd_threshold = 3, ir_p_sd_method = "complete")
       value("clonalSizeDistribution")
       expect_equal(latest()$threshold, 3)
@@ -154,109 +212,121 @@ test_that("IR renderers update parameters and isolate their session caches", {
   expect_equal(length(calls), first_session * 2L)
 })
 
-test_that("IR metadata joins preserve samples and only hydrate requested columns", {
+test_that("Paired Scatter readiness reads the repertoire only on its tabs", {
   shiny::testServer(
     function(input, output, session) {
       scope <- environment()
       reads <- 0L
-      ir_data_raw <- function() {
-        list(
-          s1 = data.frame(barcode = c("c2", "c1")),
-          s2 = data.frame(barcode = "c3")
-        )
-      }
-      getMetaData <- function() {
+      ir_compare_groups <- reactive({
         reads <<- reads + 1L
-        data.frame(
-          cell_barcode = c("c1", "c2", "c3"),
-          condition = c("X", "Y", "X"),
-          unused = 1:3
-        )
+        c("a", "b")
+      })
+      ir_sample_meta <- reactive({
+        reads <<- reads + 1L
+        NULL
+      })
+      viewerPublishChanged <- function(value, current) {
+        if (!identical(isolate(value()), current)) value(current)
       }
+      ## The readiness observer and the two that update the pair controls.
       viewer_server_load(
-        viewer_server_statements("immune_repertoire", "data.R"),
+        viewer_server_statements("immune_repertoire", "visualizations.R"),
         scope,
-        names = c("ir_annotate_metadata", "ir_data_annotated", "ir_data")
+        names = c("ir_pair_tab_shown", "ir_paired_scatter_ready"),
+        ## ... and the one that moves Y off the X group.
+        events = c("ir_pair_tab_shown", "ir_pair_x_group")
       )
-      ir_requested_metadata_columns <- reactive(input$fields %||% character())
     },
     {
-      expect_identical(ir_data(), ir_data_raw())
+      session$setInputs(ir_tabs = "Clonal UMAP")
+      session$flushReact()
       expect_equal(scope$reads, 0)
-      session$setInputs(fields = "condition")
-      result <- ir_data()
-      expect_named(result, c("s1", "s2"))
-      expect_named(result$s1, c("barcode", "condition"))
-      expect_identical(result$s1$condition, c("Y", "X"))
-      expect_equal(scope$reads, 1)
-      session$setInputs(fields = character())
-      expect_identical(ir_data(), ir_data_raw())
-      expect_equal(scope$reads, 1)
+      expect_null(ir_paired_scatter_ready())
+      session$setInputs(ir_tabs = "Paired Scatter")
+      session$flushReact()
+      expect_true(scope$reads > 0)
+      expect_true(ir_paired_scatter_ready())
     }
   )
 })
 
+## Server scope for the clonal projection observer.
+clonal_projection_server <- function(names_resource = NULL) {
+  function(input, output, session) {
+    scope <- environment()
+    viewer_runtime_env(scope)
+    sys.source(viewer_test_path("clone_contract.R"), scope)
+    context <- list(epoch = "s", dataset_key = "A", generation = 1)
+    viewer_loaded_dataset_context <- function() context
+    ir_receptor_types <- function() "TCR"
+    availableProjections <- function() "umap"
+    ir_umap_cells_to_show <- function() NULL
+    current_scatter_defaults <- function() {
+      list(point_size = 7, point_opacity = .6, percentage_cells_to_show = 100)
+    }
+    ## The clonal renderer reads the author display defaults through a
+    ## server-level helper; this harness answers "no configured defaults".
+    current_page_display_defaults <- function(page) list()
+    ## The renderer reads the tab through viewerControlValue() (tabs.R).
+    ir_tab <- function() input[["ir_tabs"]]
+    viewerDatasetIdentity <- function() list(fingerprint = "A")
+    builds <- barcode_reads <- 0L
+    viewerCellNamesResource <- function() names_resource
+    ir_clonal_umap_data <- function(projection, receptor, clone_call, ...) {
+      builds <<- builds + 1L
+      stopifnot(projection == "umap", receptor == "TCR", clone_call == "gene")
+      list(
+        x = list(c(1, 2)),
+        y = list(c(3, 4)),
+        trace_codes = 1L,
+        coloured_key = c(2L, 1L),
+        coloured_rows = list(1:2),
+        key_type = "cell_index"
+      )
+    }
+    ir_clonal_umap_barcodes <- function(data) {
+      barcode_reads <<- barcode_reads + 1L
+      c("c1", "c2")[data$cell_index]
+    }
+    sent <- list()
+    cerebroCellViewRender <- function(id, meta, data, hover, ...) {
+      sent[[length(sent) + 1L]] <<- c(
+        list(id = id, meta = meta, data = data, hover = hover),
+        list(...)
+      )
+    }
+    viewer_server_load(
+      viewer_server_statements("immune_repertoire", "data.R"),
+      scope,
+      names = c(
+        "ir_param",
+        "IR_CLONE_LABELS",
+        "ir_clonecall_col"
+      )
+    )
+    viewer_server_load(
+      viewer_server_statements("immune_repertoire", "visualizations.R"),
+      scope,
+      names = c(
+        "IR_EXPANSION_COLORS",
+        "ir_projection_axis_names",
+        "ir_projection_display_name",
+        "ir_clonal_umap_last_request",
+        "ir_clonal_umap_drawn_appearance",
+        "ir_clonal_umap_appearance",
+        "ir_clonal_umap_data_memo"
+      ),
+      events = c(
+        "ir_clonalUMAP_projection_render_request",
+        "ir_clonalUMAP_point_border"
+      )
+    )
+  }
+}
+
 test_that("Clonal projection paints before drawer binding and defers cell identities", {
   shiny::testServer(
-    function(input, output, session) {
-      scope <- environment()
-      viewer_runtime_env(scope)
-      sys.source(viewer_test_path("clone_contract.R"), scope)
-      context <- list(epoch = "s", dataset_key = "A", generation = 1)
-      viewer_loaded_dataset_context <- function() context
-      ir_receptor_types <- function() "TCR"
-      availableProjections <- function() "umap"
-      ir_umap_cells_to_show <- function() NULL
-      current_scatter_defaults <- function() {
-        list(point_size = 7, point_opacity = .6, percentage_cells_to_show = 100)
-      }
-      ## The clonal renderer reads the author display defaults through a
-      ## server-level helper; this harness answers "no configured defaults".
-      current_page_display_defaults <- function(page) list()
-      viewerDatasetIdentity <- function() list(fingerprint = "A")
-      builds <- barcode_reads <- 0L
-      ir_data_annotated <- function() NULL
-      ir_clonal_umap_data <- function(projection, receptor, clone_call, ...) {
-        builds <<- builds + 1L
-        stopifnot(projection == "umap", receptor == "TCR", clone_call == "gene")
-        list(
-          x = list(c(1, 2)),
-          y = list(c(3, 4)),
-          trace_codes = 1L,
-          coloured_key = c(2L, 1L),
-          coloured_rows = list(1:2),
-          key_type = "cell_index"
-        )
-      }
-      ir_clonal_umap_barcodes <- function(data) {
-        barcode_reads <<- barcode_reads + 1L
-        c("c1", "c2")[data$cell_index]
-      }
-      sent <- list()
-      cerebroCellViewRender <- function(id, meta, data, hover, ...) {
-        sent[[length(sent) + 1L]] <<- c(
-          list(id = id, meta = meta, data = data, hover = hover),
-          list(...)
-        )
-      }
-      viewer_server_load(
-        viewer_server_statements("immune_repertoire", "data.R"),
-        scope,
-        names = c("ir_param", "IR_CLONE_LABELS")
-      )
-      viewer_server_load(
-        viewer_server_statements("immune_repertoire", "visualizations.R"),
-        scope,
-        names = c(
-          "IR_EXPANSION_COLORS",
-          "ir_projection_axis_names",
-          "ir_projection_display_name",
-          "ir_clonal_umap_last_request",
-          "ir_clonal_umap_data_memo"
-        ),
-        events = "ir_clonalUMAP_projection_render_request"
-      )
-    },
+    clonal_projection_server(),
     {
       session$setInputs(
         sidebar = "overview",
@@ -283,11 +353,36 @@ test_that("Clonal projection paints before drawer binding and defers cell identi
         ir_clonalUMAP_group_labels = FALSE,
         ir_clonalUMAP_point_border = TRUE
       )
-      expect_length(scope$sent, 2)
-      expect_true(scope$sent[[2]]$meta$appearance$draw_border)
-      expect_false(scope$sent[[2]]$meta$appearance$group_labels)
-      ## Appearance-only changes repaint without rebuilding the coordinates.
+      ## Appearance is a browser patch: no new frame, no rebuilt coordinates.
+      expect_length(scope$sent, 1)
+      drawn <- ir_clonal_umap_drawn_appearance()$values
+      expect_true(drawn$draw_border)
+      expect_false(drawn$group_labels)
       expect_equal(scope$builds, 1)
+    }
+  )
+})
+
+test_that("Clonal projection sends canonical rows when the cell names are a resource", {
+  resource <- list(protocol = "canonical-cell-names-v1", url = "names.bin.gz")
+  shiny::testServer(
+    clonal_projection_server(names_resource = resource),
+    {
+      session$setInputs(
+        sidebar = "immune_repertoire",
+        ir_tabs = "Clonal UMAP",
+        ir_clonalUMAP_projection_render_request = list(
+          nonce = 1,
+          dataset_context = context
+        )
+      )
+      aux <- scope$sent[[1]]$deferred_aux()
+      ## cell_index keys 2 and 1, sent 0-based; no names are looked up.
+      expect_identical(unclass(aux$selection_index[[1]]), c(1L, 0L))
+      expect_identical(aux$cell_names_resource, resource)
+      expect_null(aux$selection_key)
+      expect_null(aux$hover$text)
+      expect_equal(scope$barcode_reads, 0)
     }
   )
 })

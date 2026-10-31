@@ -111,12 +111,7 @@
       call. = FALSE
     )
   }
-  if (
-    !is.character(host) ||
-      length(host) != 1L ||
-      is.na(host) ||
-      !nzchar(host)
-  ) {
+  if (!.isString(host)) {
     stop(
       "'host' must be one non-empty, non-missing character value.",
       call. = FALSE
@@ -647,13 +642,6 @@
   "getTrajectory"
 )
 
-.isRecognizedCerebroObject <- function(object) {
-  is.environment(object) &&
-    inherits(object, "R6") &&
-    any(startsWith(class(object), "Cerebro")) &&
-    environmentIsLocked(object)
-}
-
 ## Treat the ordinary field as data. The getter binding is checked only as a
 ## format marker and is never invoked during preflight. Callers check the
 ## location's portability with their own message.
@@ -661,7 +649,7 @@
   crb_path,
   object = .readCerebroPayload(crb_path)
 ) {
-  recognized <- .isRecognizedCerebroObject(object)
+  recognized <- .recognizedCerebroObject(object)
   if (recognized) {
     for (method in .bundleRequiredCerebroMethods) {
       if (
@@ -784,7 +772,7 @@
 }
 
 .readBundleDatasetInfo <- function(object, label, path) {
-  if (!.isRecognizedCerebroObject(object)) {
+  if (!.recognizedCerebroObject(object)) {
     stop(
       "Dataset information requires a recognized Cerebro object.",
       call. = FALSE
@@ -916,7 +904,7 @@
     tryCatch(
       {
         backends[[index]] <- inspect_backend(cerebro_data[[index]], object)
-        if (.isRecognizedCerebroObject(object)) {
+        if (.recognizedCerebroObject(object)) {
           dataset_catalog[index] <- list(.readBundleDatasetInfo(
             object,
             names(cerebro_data)[[index]],
@@ -975,12 +963,7 @@
 ## beneath the app's staging directory, and the whole path must fit the
 ## 260-character MAX_PATH limit unless long paths are enabled system-wide.
 .spatialImageBundlePathComponent <- function(value, maximum_bytes = 24L) {
-  if (
-    !is.character(value) ||
-      length(value) != 1L ||
-      is.na(value) ||
-      !nzchar(value)
-  ) {
+  if (!.isString(value)) {
     stop(
       "Spatial image bundle path components must be non-empty strings.",
       call. = FALSE
@@ -1029,12 +1012,7 @@
 }
 
 .datasetBundleTarget <- function(dataset_id) {
-  if (
-    !is.character(dataset_id) ||
-      length(dataset_id) != 1L ||
-      is.na(dataset_id) ||
-      !nzchar(dataset_id)
-  ) {
+  if (!.isString(dataset_id)) {
     stop("A non-empty dataset identity is required.", call. = FALSE)
   }
   digest <- .bundlePathDigest(charToRaw(enc2utf8(dataset_id)))
@@ -2014,10 +1992,7 @@ createShinyApp <- function(
     valid_entries <- vapply(
       cerebro_data,
       function(path) {
-        is.character(path) &&
-          length(path) == 1L &&
-          !is.na(path) &&
-          nzchar(path)
+        .isString(path)
       },
       logical(1)
     )
@@ -2305,10 +2280,7 @@ createShinyApp <- function(
   }
   if (
     is.null(result_dir) ||
-      !is.character(result_dir) ||
-      length(result_dir) != 1L ||
-      is.na(result_dir) ||
-      !nzchar(result_dir)
+      !.isString(result_dir)
   ) {
     stop("'result_dir' must be provided.", call. = FALSE)
   }

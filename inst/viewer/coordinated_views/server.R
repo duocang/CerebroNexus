@@ -32,7 +32,6 @@ source(cerebro_root_path("viewer/coordinated_views/bundle.R"), local = TRUE)
 coordviews_build_log <- new.env(parent = emptyenv())
 coordviews_build_log$n <- 0L
 coordviews_build_log$primary_n <- 0L
-coordviews_build_log$sent_n <- 0L
 coordviews_build_log$sent_palette <- NULL
 coordviews_build_log$sent_primary_n <- 0L
 coordviews_build_log$supplemented_primary_n <- 0L
@@ -55,7 +54,7 @@ cv_async_clone_spec <- function(crb, primary) {
     character()
   }
   if (
-    !isTRUE(pack$canonical_order) ||
+    !viewerPackCanonical(pack) ||
       !length(receptors) ||
       !identical(as.integer(pack$cell_count), as.integer(primary$n))
   ) {
@@ -99,7 +98,6 @@ coordviews_clone_task <- shiny::ExtendedTask$new(function(
       pack <- list(
         path = spec$pack_path,
         manifest = spec$manifest,
-        cells = NULL,
         cell_count = spec$n,
         canonical_order = TRUE,
         cache = new.env(parent = emptyenv())
@@ -300,7 +298,7 @@ cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
     NULL
   }
   projection_names <- tryCatch(
-    data_set()$availableProjections(),
+    availableProjections() %||% character(),
     error = function(error) character()
   )
   projection_resources <- Filter(
@@ -333,11 +331,6 @@ cv_prepare_progressive_supplement <- function(primary, primary_n, modalities) {
   if (is.null(supplement)) {
     return(NULL)
   }
-  supplement <- cv_reference_trajectory_geometry(
-    supplement,
-    primary,
-    data_set()
-  )
   attr(supplement, "server_prepare_ms") <-
     (proc.time()[["elapsed"]] - started) * 1000
   list(primary_n = primary_n, value = supplement, clone_spec = clone_spec)
@@ -394,8 +387,7 @@ observe({
     is.list(target),
     is.list(clone),
     is.list(source),
-    is.list(pack),
-    isTRUE(pack$canonical_order),
+    viewerPackCanonical(pack),
     identical(
       as.character(target$key),
       cv_clone_task_key(list(
@@ -863,113 +855,90 @@ observeEvent(input[["coordviews_visible"]], {
 observe(
   {
     req(coordviews_visible())
-    progressive <- isTRUE(input[["coordviews_wire_supported"]])
-    if (progressive) {
-      primary <- coordviews_primary_bundle()
-      primary_n <- coordviews_build_log$primary_n
-      if (identical(coordviews_build_log$sent_primary_n, primary_n)) {
-        return()
+    primary <- coordviews_primary_bundle()
+    primary_n <- coordviews_build_log$primary_n
+    if (identical(coordviews_build_log$sent_primary_n, primary_n)) {
+      return()
+    }
+    if (!is.null(primary$error)) {
+      session$sendCustomMessage("coordviews_data", primary)
+      coordviews_background_ready(TRUE)
+      coordviews_build_log$sent_primary_n <- primary_n
+      return()
+    }
+    shared <- input[["coordviews_shared_base"]]
+    if (
+      is.list(shared) &&
+        viewerDatasetContextEqual(
+          shared$dataset_context,
+          primary$dataset_context
+        ) &&
+        identical(
+          as.character(shared$dataset_fingerprint %||% ""),
+          primary$dataset_fingerprint
+        ) &&
+        identical(as.integer(shared$cell_count), as.integer(primary$n)) &&
+        nzchar(primary$canonical_order_id %||% "") &&
+        identical(
+          as.character(shared$canonical_order_id %||% ""),
+          primary$canonical_order_id
+        ) &&
+        as.character(shared$projection %||% "") %in%
+          names(primary$projections)
+    ) {
+      projection <- as.character(shared$projection)
+      primary$shared_projection <- projection
+      primary$projections[[projection]]$x <- NULL
+      primary$projections[[projection]]$y <- NULL
+      primary$projections[[projection]]$z <- NULL
+      primary$projections[[projection]]$projection_resource <- NULL
+    }
+    if (is.null(primary$shared_projection)) {
+      projection <- primary$default_projection
+      resource <- primary$projections[[projection]]$projection_resource
+      if (is.null(resource)) {
+        resource <- viewerProjectionAsset(projection, primary$cells)
       }
-      if (!is.null(primary$error)) {
-        session$sendCustomMessage("coordviews_data", primary)
-        coordviews_background_ready(TRUE)
-        coordviews_build_log$sent_primary_n <- primary_n
-        return()
-      }
-      shared <- input[["coordviews_shared_base"]]
       if (
-        is.list(shared) &&
-          viewerDatasetContextEqual(
-            shared$dataset_context,
-            primary$dataset_context
-          ) &&
-          identical(
-            as.character(shared$dataset_fingerprint %||% ""),
-            primary$dataset_fingerprint
-          ) &&
-          identical(as.integer(shared$cell_count), as.integer(primary$n)) &&
-          nzchar(primary$canonical_order_id %||% "") &&
-          identical(
-            as.character(shared$canonical_order_id %||% ""),
-            primary$canonical_order_id
-          ) &&
-          as.character(shared$projection %||% "") %in%
-            names(primary$projections)
+        is.list(resource) &&
+          projection %in% names(primary$projections)
       ) {
-        projection <- as.character(shared$projection)
-        primary$shared_projection <- projection
+        primary$projections[[projection]]$projection_resource <- resource
         primary$projections[[projection]]$x <- NULL
         primary$projections[[projection]]$y <- NULL
         primary$projections[[projection]]$z <- NULL
-        primary$projections[[projection]]$projection_resource <- NULL
       }
-      if (is.null(primary$shared_projection)) {
-        projection <- primary$default_projection
-        resource <- primary$projections[[projection]]$projection_resource
-        if (is.null(resource)) {
-          resource <- viewerProjectionAsset(projection, primary$cells)
-        }
-        if (
-          is.list(resource) &&
-            projection %in% names(primary$projections)
-        ) {
-          primary$projections[[projection]]$projection_resource <- resource
-          primary$projections[[projection]]$x <- NULL
-          primary$projections[[projection]]$y <- NULL
-          primary$projections[[projection]]$z <- NULL
-        }
-      }
-      coordviews_background_ready(FALSE)
-      coordviews_image_spaces(NULL)
-      coordviews_assets(list())
-      coordviews_clone_details(NULL)
-      coordviews_sent_primary(0L)
-      coordviews_requested_modalities(character())
-      coordviews_color_source(primary)
-      coordviews_build_log$sent_palette <- list(
-        context = viewer_loaded_dataset_context(),
-        patch = isolate(coordviews_color_patch())
-      )
-      ## The first frame paints with the configured palette, not the defaults.
-      primary <- cv_apply_color_patch(
-        primary,
-        coordviews_build_log$sent_palette$patch
-      )
-      primary$progressive <- TRUE
-      primary$progressive_token <- primary_n
-      primary$transport_profile <- list(
-        server_prepare_ms = attr(primary, "server_prepare_ms") %||% NA_real_,
-        server_resource_ms = attr(primary, "server_resource_ms") %||% NA_real_,
-        server_bundle_ms = attr(primary, "server_bundle_ms") %||% NA_real_,
-        sent_at_ms = as.numeric(Sys.time()) * 1000
-      )
-      session$sendBinaryMessage(
-        "coordviews_binary",
-        cv_wire_pack_bundle(primary, include_cells = FALSE)
-      )
-      coordviews_build_log$sent_primary_n <- primary_n
-      coordviews_sent_primary(primary_n)
-    } else {
-      colors <- tryCatch(reactive_colors(), error = function(e) NULL)
-      bundle <- coordviews_bundle()
-      bundle_n <- coordviews_build_log$n
-      if (identical(coordviews_build_log$sent_n, bundle_n)) {
-        return()
-      }
-      if (is.null(bundle$error)) {
-        bundle <- cv_apply_color_patch(bundle, cv_color_patch(bundle, colors))
-      }
-      session$sendCustomMessage("coordviews_data", bundle)
-      coordviews_image_spaces(bundle$spaces %||% list())
-      coordviews_assets(list())
-      coordviews_color_source(bundle)
-      coordviews_build_log$sent_palette <- list(
-        context = viewer_loaded_dataset_context(),
-        patch = isolate(coordviews_color_patch())
-      )
-      coordviews_background_ready(TRUE)
-      coordviews_build_log$sent_n <- bundle_n
     }
+    coordviews_background_ready(FALSE)
+    coordviews_image_spaces(NULL)
+    coordviews_assets(list())
+    coordviews_clone_details(NULL)
+    coordviews_sent_primary(0L)
+    coordviews_requested_modalities(character())
+    coordviews_color_source(primary)
+    coordviews_build_log$sent_palette <- list(
+      context = viewer_loaded_dataset_context(),
+      patch = isolate(coordviews_color_patch())
+    )
+    ## The first frame paints with the configured palette, not the defaults.
+    primary <- cv_apply_color_patch(
+      primary,
+      coordviews_build_log$sent_palette$patch
+    )
+    primary$progressive <- TRUE
+    primary$progressive_token <- primary_n
+    primary$transport_profile <- list(
+      server_prepare_ms = attr(primary, "server_prepare_ms") %||% NA_real_,
+      server_resource_ms = attr(primary, "server_resource_ms") %||% NA_real_,
+      server_bundle_ms = attr(primary, "server_bundle_ms") %||% NA_real_,
+      sent_at_ms = as.numeric(Sys.time()) * 1000
+    )
+    session$sendBinaryMessage(
+      "coordviews_binary",
+      cv_wire_pack_bundle(primary, include_cells = FALSE)
+    )
+    coordviews_build_log$sent_primary_n <- primary_n
+    coordviews_sent_primary(primary_n)
     if (!isTRUE(coordviews_build_log$color_observer_started)) {
       coordviews_build_log$color_observer_started <- TRUE
       observe({
@@ -1186,14 +1155,20 @@ observeEvent(input[["coordviews_wire_fallback"]], {
 ## "Table of selected cells" (their meta data), exactly like the Projection tab.
 ## The client-side composition + top-clonotype readout is unaffected and stays.
 ##----------------------------------------------------------------------------##
-coordviews_selected_barcodes <- reactive({
+## The selection as canonical metadata rows (1-based). The panels hold the
+## cells in metadata order, so a panel index is a row: the plot and table read
+## the selected rows by position, without the million cell names.
+coordviews_selected_rows <- reactive({
   indices <- input[["coordviews_selection_indices"]]
   current <- viewer_loaded_dataset_context()
+  n <- nrow(viewerProjectionFirstFrameMetadata())
   if (
     is.list(indices) &&
       viewerDatasetContextEqual(indices$dataset_context, current)
   ) {
-    return(cv_cells_at_indices(cv_saved_view_cells(), indices$indices))
+    rows <- viewerDecodeRowBits(indices$indices_bits)
+    rows <- rows[!is.na(rows) & rows >= 1L & rows <= n]
+    return(if (length(rows)) rows else NULL)
   }
   selection <- input[["coordviews_selection"]]
   if (
@@ -1203,7 +1178,11 @@ coordviews_selected_barcodes <- reactive({
     return(NULL)
   }
   sel <- selection$cells
-  if (is.null(sel) || !length(sel)) NULL else as.character(sel)
+  if (is.null(sel) || !length(sel)) {
+    return(NULL)
+  }
+  rows <- which(cv_saved_view_cells() %in% as.character(sel))
+  if (length(rows)) rows else NULL
 })
 
 ## Boxes appear only while a selection exists (same gating as the Overview tab).
@@ -1217,14 +1196,21 @@ coordviews_selected_barcodes <- reactive({
 ## CSS animation rather than a transition because Shiny rebuilds these two from
 ## scratch on every selection change — a new element has nothing to transition
 ## from. Definition: www/coordviews.css, @keyframes cvRise.
-output[["coordviews_selected_cells_UI"]] <- renderUI({
+coordviews_selection_present <- viewerSelectionPresence(
+  "coordviews",
+  "coordviews_selection_indices"
+)
+
+coordviews_selected_cells_ui <- renderUI({
   ## Drop dataset/selection dependencies as soon as this page is left. The
   ## small visibility gate must still run while hidden (see outputOptions
   ## below), so a pending result cannot be invalidated and then suspended
   ## before Shiny flushes it during a dataset transition.
   req(identical(input[["sidebar"]], "coordinated_views"))
-  req(coordviews_selected_barcodes())
-  meta_cols <- colnames(getMetaData())
+  ## On whether there is a selection, not on each one: the boxes are not
+  ## rebuilt (nor the selection decoded) for every new selection.
+  req(coordviews_selection_present())
+  meta_cols <- colnames(viewerProjectionFirstFrameMetadata())
   tagList(
     fluidRow(
       class = "cv-rise",
@@ -1243,7 +1229,7 @@ output[["coordviews_selected_cells_UI"]] <- renderUI({
               "coordviews_selected_cells_plot_variable"
             ]])
           ),
-          plotly::plotlyOutput("coordviews_selected_cells_plot")
+          cerebroChartOutput("coordviews_selected_cells_plot")
         )
       )
     ),
@@ -1279,114 +1265,58 @@ output[["coordviews_selected_cells_UI"]] <- renderUI({
 
 ## Deliberately bypass the page-scoped outputOptions wrapper: only the gate
 ## above stays awake; metadata and the plot/table outputs remain demand-driven.
-shiny::outputOptions(
-  output,
-  "coordviews_selected_cells_UI",
-  suspendWhenHidden = FALSE
+## Registered at the first selection: until then it would only run (twice on
+## the first open) to stop at its gate.
+observeEvent(
+  if (isTRUE(coordviews_selection_present())) TRUE,
+  once = TRUE,
+  {
+    output[["coordviews_selected_cells_UI"]] <- coordviews_selected_cells_ui
+    shiny::outputOptions(
+      output,
+      "coordviews_selected_cells_UI",
+      suspendWhenHidden = FALSE
+    )
+  }
 )
 
 ## Plot: categorical variable -> bar of selected-cell counts per group (coloured
 ## by the SAME assignColorsToGroups() the Projection tab uses); numeric variable
 ## -> violin/box of selected vs. not-selected. Barcode-keyed, so it needs no
 ## projection coordinates.
-output[["coordviews_selected_cells_plot"]] <- plotly::renderPlotly({
-  sel <- coordviews_selected_barcodes()
-  req(sel, input[["coordviews_selected_cells_plot_variable"]])
-  cells_df <- cv_canonical_metadata(getMetaData())
-  var <- input[["coordviews_selected_cells_plot_variable"]]
-  req(var %in% colnames(cells_df))
-  is_selected <- cells_df[["cell_barcode"]] %in% sel
-  ## categorical -> bar chart of counts within the selection
-  if (is.factor(cells_df[[var]]) || is.character(cells_df[[var]])) {
-    sub <- cells_df[is_selected, , drop = FALSE]
-    if (nrow(sub) > 0) {
-      counts <- sub %>%
-        dplyr::group_by(dplyr::across(dplyr::all_of(var))) %>%
-        dplyr::tally() %>%
-        dplyr::ungroup()
-    } else {
-      lv <- if (var %in% getGroups()) {
-        getGroupLevels(var)
-      } else {
-        unique(cells_df[[var]])
-      }
-      counts <- data.frame(x = lv, n = 0L)
-      colnames(counts)[1] <- var
-    }
-    colors_for_groups <- assignColorsToGroups(counts, var)
-    x_vals <- as.character(counts[[1]])
-    plot <- plotly::plot_ly(
-      x = x_vals,
-      y = counts[[2]],
-      type = "bar",
-      color = x_vals,
-      colors = colors_for_groups,
-      showlegend = FALSE,
-      hoverinfo = "y"
-    )
-    y_axis_title <- "Number of cells"
-    ## numeric -> violin/box of selected vs. not selected
-  } else if (is.numeric(cells_df[[var]])) {
-    grp <- factor(
-      ifelse(is_selected, "selected", "not selected"),
-      levels = c("selected", "not selected")
-    )
-    violin_data <- compactViolinData(
-      data.frame(group = grp, value = cells_df[[var]]),
-      "value",
-      "group"
-    )
-    plot <- plotly::plot_ly(
-      x = violin_data[["group"]],
-      y = violin_data[["value"]],
-      type = "violin",
-      box = list(visible = FALSE),
-      meanline = list(visible = FALSE),
-      color = violin_data[["group"]],
-      colors = setNames(
-        c("#e74c3c", "#7f8c8d"),
-        c("selected", "not selected")
-      ),
-      showlegend = FALSE,
-      hoverinfo = "y",
-      marker = list(size = 5)
-    )
-    plot <- addExactViolinSummary(plot, violin_data)
-    y_axis_title <- var
-  } else {
+output[["coordviews_selected_cells_plot"]] <- renderCerebroChart({
+  ## The browser draws it for a selection it reported by row.
+  if (
+    viewerClientSelection("coordviews", "plot", "coordviews_selection_indices")
+  ) {
     return(NULL)
   }
-  plot %>%
-    plotly::layout(
-      title = "",
-      xaxis = list(title = "", mirror = TRUE, showline = TRUE),
-      yaxis = list(
-        title = y_axis_title,
-        tickformat = ",.0f",
-        hoverformat = ",.0f",
-        mirror = TRUE,
-        showline = TRUE
-      ),
-      hovermode = "compare"
-    ) %>%
-    cerebro_plotly_toolbar()
+  rows <- coordviews_selected_rows()
+  req(rows, input[["coordviews_selected_cells_plot_variable"]])
+  var <- input[["coordviews_selected_cells_plot_variable"]]
+  values <- viewerProjectionFirstFrameMetadata()[[var]]
+  req(!is.null(values))
+  if (!(is.factor(values) || is.character(values) || is.numeric(values))) {
+    return(NULL)
+  }
+  cerebroSelectedCellsPlot(NULL, data.frame(row = rows), var)
 })
 
 ## Table: meta data of the selected cells (same prettifyTable options as the
 ## Projection tab's table). Filtered by barcode; empty skeleton when nothing hit.
 output[["coordviews_selected_cells_table"]] <- DT::renderDataTable({
-  sel <- coordviews_selected_barcodes()
-  if (is.null(sel)) {
-    return(
-      cv_canonical_metadata(getMetaData()) %>%
-        dplyr::slice(0) %>%
-        prepareEmptyTable()
+  ## The browser lists a selection it reported by row.
+  req(
+    !viewerClientSelection(
+      "coordviews",
+      "table",
+      "coordviews_selection_indices"
     )
-  }
-  cells_df <- cv_selected_metadata(getMetaData(), sel) %>%
-    dplyr::select(cell_barcode, dplyr::everything())
-  if (nrow(cells_df) == 0) {
-    cv_canonical_metadata(getMetaData()) %>%
+  )
+  rows <- coordviews_selected_rows()
+  cells_df <- if (!is.null(rows)) viewerSelectedRowsMetadata(rows)
+  if (is.null(cells_df) || nrow(cells_df) == 0) {
+    viewerProjectionFirstFrameMetadata() %>%
       dplyr::slice(0) %>%
       prepareEmptyTable()
   } else {
@@ -1408,13 +1338,12 @@ output[["coordviews_selected_cells_table"]] <- DT::renderDataTable({
 })
 
 ## Info modals for the two panels.
-observeEvent(input[["coordviews_selected_cells_plot_info"]], {
-  showModal(modalDialog(
+cerebroRegisterInfo(
+  input,
+  "coordviews_selected_cells_plot_info",
+  list(
     title = "Plot of selected cells",
-    easyClose = TRUE,
-    footer = NULL,
-    size = "l",
-    p(
+    text = p(
       "Depending on the variable chosen, this plot summarises the cells you ",
       "selected across the linked panels. A categorical variable (e.g. ",
       "'cluster' or 'sample') gives a bar chart of how many selected cells fall ",
@@ -1422,21 +1351,20 @@ observeEvent(input[["coordviews_selected_cells_plot_info"]], {
       "(e.g. number of transcripts) gives a violin/box plot comparing its ",
       "distribution in the selected vs. non-selected cells."
     )
-  ))
-})
-observeEvent(input[["coordviews_selected_cells_table_info"]], {
-  showModal(modalDialog(
+  )
+)
+cerebroRegisterInfo(
+  input,
+  "coordviews_selected_cells_table_info",
+  list(
     title = "Table of selected cells",
-    easyClose = TRUE,
-    footer = NULL,
-    size = "l",
-    p(
+    text = p(
       "Meta data for the cells selected across the linked panels (some columns ",
       "may be hidden — check the 'Column visibility' button). The table can be ",
       "downloaded as CSV or Excel for further analysis."
     )
-  ))
-})
+  )
+)
 
 ##----------------------------------------------------------------------------##
 ## Gene-expression colouring (the richer "Colour by"). The gene pickers are
@@ -1444,8 +1372,20 @@ observeEvent(input[["coordviews_selected_cells_table_info"]], {
 ## use); on change the server returns a 0-255 vector aligned to the bundle's
 ## cell order, and the client colours the points (viridis, or RGB blend).
 ##----------------------------------------------------------------------------##
+## A thin CRB's gene names, else the H5 file's cell count: neither attaches the
+## lazy HDF5Array backend (seconds) that nrow(data_set()$expression) forces.
 cv_has_expression <- function() {
-  isTRUE(tryCatch(nrow(data_set()$expression) > 0, error = function(e) FALSE))
+  isTRUE(tryCatch(
+    {
+      genes <- viewerProjectionFirstFrameCache()$gene_names
+      if (!is.null(genes)) {
+        length(genes) > 0L
+      } else {
+        viewerExpressionCellCount(data_set()) > 0L
+      }
+    },
+    error = function(e) FALSE
+  ))
 }
 
 cv_expression_cells <- function() {
@@ -1463,6 +1403,17 @@ cv_gene_values <- function(gene, cells = NULL, n = NULL) {
   }
   if (!is.null(cells)) {
     cells <- as.character(cells)
+  } else {
+    ## Every cell: one row straight from an H5 file, without attaching the
+    ## HDF5Array backend; anything else takes the matrix path below.
+    v <- tryCatch(
+      as.numeric(viewerExpressionRow(data_set(), NULL, gene)),
+      error = function(e) NULL
+    )
+    if (length(v) && (is.null(n) || length(v) == as.integer(n))) {
+      v[is.na(v)] <- 0
+      return(v)
+    }
   }
   m <- tryCatch(
     data_set()$getExpressionMatrix(cells = cells, genes = gene),
@@ -1694,8 +1645,8 @@ output[["coordviews_image_ui"]] <- renderUI({
   req(!is.null(spaces))
   ## Two separate questions, and conflating them is what went wrong before.
   ##
-  ## DOES a bar exist? Any section carrying an image is enough. A space's own
-  ## `image` is its FIRST section's, so a data set whose first section has no
+  ## DOES a bar exist? Any section carrying an image is enough. A space's
+  ## default image is its FIRST section's, so a data set whose first section has no
   ## histology used to render no bar at all, and switching to one that does
   ## revealed an empty box.
   ##
@@ -1703,19 +1654,18 @@ output[["coordviews_image_ui"]] <- renderUI({
   ## first one. Scanning for "any image" and keeping the last one found seeded
   ## the controls -- values, and the slider ranges built from the coordinate
   ## span -- from a section the user is not looking at.
+  first_image <- function(x) if (length(x$images)) x$images[[1L]]
   img <- NULL
   seed <- NULL
   for (s in spaces) {
-    if (!is.null(s$image)) {
-      img <- s$image
-      if (is.null(seed)) {
-        seed <- s$image
-      }
+    own <- first_image(s) %||%
+      (if (length(s$samples)) first_image(s$samples[[1L]]))
+    if (!is.null(own)) {
+      img <- own
+      seed <- seed %||% own
     }
     for (smp in (s$samples %||% list())) {
-      if (!is.null(smp$image)) {
-        img <- smp$image
-      }
+      img <- first_image(smp) %||% img
     }
   }
   if (is.null(img)) {

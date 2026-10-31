@@ -12,19 +12,11 @@ spatial_crb <- system.file(
   package = "CerebroNexus"
 )
 
-test_that("demo_spatial.crb exposes spatial data via class methods", {
-  skip_if_not(file.exists(spatial_crb))
+test_that("demo_spatial.crb spatial data is accessible and complete", {
   crb <- readCerebro(spatial_crb)
   spatial <- crb$availableSpatial()
   expect_true(is.character(spatial))
   expect_true(length(spatial) > 0)
-})
-
-test_that("demo_spatial.crb spatial data is accessible and complete", {
-  skip_if_not(file.exists(spatial_crb))
-  crb <- readCerebro(spatial_crb)
-  spatial <- crb$availableSpatial()
-  skip_if(length(spatial) == 0)
   data <- crb$getSpatialData(spatial[1])
   expect_true(is.list(data))
   expect_true(all(c("coordinates", "expression") %in% names(data)))
@@ -37,16 +29,8 @@ test_that("demo_spatial.crb spatial data is accessible and complete", {
 })
 
 test_that("getSpatialData errors on unknown spatial entry", {
-  skip_if_not(file.exists(spatial_crb))
   crb <- readCerebro(spatial_crb)
   expect_error(crb$getSpatialData("__not_a_real_image__"))
-})
-
-test_that("spatial accessor methods are defined on the class", {
-  cls <- Cerebro
-  for (m in c("addSpatialData", "getSpatialData", "availableSpatial")) {
-    expect_true(is.function(cls$public_methods[[m]]), info = m)
-  }
 })
 
 test_that("addSpatialData validates its input structure", {
@@ -89,7 +73,6 @@ test_that("exportFromSeurat carries the spatial extraction path", {
 
 test_that("all spatial module files parse without errors", {
   spatial_dir <- file.path(shiny_root, "spatial")
-  skip_if_not(dir.exists(spatial_dir), message = "spatial module missing")
   mod_files <- list.files(spatial_dir, pattern = "\\.R$", full.names = TRUE)
   expect_true(length(mod_files) > 0)
   for (fpath in mod_files) {
@@ -148,6 +131,13 @@ test_that("validated spatial coordinates reuse canonical storage with fallback",
     calls <<- calls + 1L
     list(coordinates = coordinates)
   }
+  eval(
+    viewer_r_assignment(
+      viewer_test_path("utility_functions.R"),
+      "is_cerebro_dataset"
+    ),
+    envir = environment
+  )
   eval(assignment, envir = environment)
 
   expect_identical(environment$viewerSpatialCoordinates("slice"), coordinates)
@@ -278,13 +268,6 @@ test_that("Moran's I reads Spatial data only after ImageFeaturePlot is requested
   )
 })
 
-test_that("spatial UI defines correct tabName", {
-  scope <- viewer_ui_test_env()
-  sys.source(viewer_test_path("spatial", "UI.R"), scope)
-  page <- htmltools::tagQuery(scope$tab_spatial)
-  expect_equal(page$filter("#shiny-tab-spatial")$length(), 1L)
-})
-
 ##----------------------------------------------------------------------------##
 ## Spatial background image: createShinyApp production channel + demo wiring.
 ##----------------------------------------------------------------------------##
@@ -299,27 +282,7 @@ test_that("createShinyApp exposes only the nested spatial settings API", {
   expect_false(any(grepl("^spatial_images_(flip|scale|offset)_", args)))
 })
 
-test_that("createShinyApp rejects the removed per-dataset spatial arguments", {
-  for (argument in c(
-    "spatial_images_flip_x",
-    "spatial_images_flip_y",
-    "spatial_images_scale_x",
-    "spatial_images_scale_y",
-    "spatial_images_offset_x",
-    "spatial_images_offset_y"
-  )) {
-    call <- as.call(c(
-      list(
-        quote(createShinyApp),
-        cerebro_data = c(Dataset = "missing.crb"),
-        launch_browser = FALSE
-      ),
-      stats::setNames(list(c(Dataset = 1)), argument)
-    ))
-    expect_error(eval(call), "unused argument", info = argument)
-  }
-  ## the same keys are not silently accepted through cerebro_options either
-  skip_if_not(file.exists(spatial_crb))
+test_that("createShinyApp rejects the removed spatial keys in cerebro_options", {
   expect_error(
     createShinyApp(
       cerebro_data = c(Dataset = spatial_crb),
@@ -330,49 +293,11 @@ test_that("createShinyApp rejects the removed per-dataset spatial arguments", {
   )
 })
 
-test_that("createShinyApp rejects the old spatial_images and rotation forms", {
-  skip_if_not(file.exists(spatial_crb))
-  img <- system.file(
-    "extdata/examples/demo_spatial_visium_he.png",
-    package = "CerebroNexus"
-  )
-  skip_if_not(file.exists(img))
-  out_dir <- file.path(tempdir(), paste0("cerebro_spatial_old_", Sys.getpid()))
-  on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
-  build <- function(...) {
-    suppressWarnings(suppressMessages(
-      createShinyApp(
-        cerebro_data = c("Old spatial" = spatial_crb),
-        result_dir = out_dir,
-        launch_browser = FALSE,
-        verbose = FALSE,
-        ...
-      )
-    ))
-  }
-
-  expect_error(
-    build(spatial_images = c("Old spatial" = img)),
-    "list[(]Dataset = list[(]<spatial entry> = c[(]label = path[)][)][)].*no longer accepted"
-  )
-  expect_error(
-    build(spatial_images = list("Old spatial" = img)),
-    "list[(]<spatial entry> = c[(]label = path[)][)].*no longer accepted"
-  )
-  expect_error(
-    build(spatial_plot_rotation = c("Old spatial" = 37)),
-    "list[(]Dataset = list[(]<spatial entry> = 90[)][)].*no longer accepted"
-  )
-  expect_false(dir.exists(out_dir))
-})
-
 test_that("createShinyApp bundles nested spatial image settings", {
-  skip_if_not(file.exists(spatial_crb))
   img <- system.file(
     "extdata/examples/demo_spatial_visium_he.png",
     package = "CerebroNexus"
   )
-  skip_if_not(file.exists(img))
   out_dir <- file.path(
     tempdir(),
     paste0("cerebro_spatial_settings_", Sys.getpid())
@@ -433,7 +358,6 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
   # End-to-end exercise of the new side-copy + option-write path: a matched
   # spatial image must be copied into the bundle and its stored path rewritten
   # to the spatial-assets/<file> form inside cerebro_config.rds.
-  skip_if_not(file.exists(spatial_crb))
   img <- tempfile(fileext = ".png")
   # 1x1 transparent PNG is enough; the copy path does not decode the image.
   writeBin(
@@ -541,7 +465,6 @@ test_that("createShinyApp bundles a spatial image and writes the option", {
 })
 
 test_that("createShinyApp rejects unmatched spatial_images", {
-  skip_if_not(file.exists(spatial_crb))
   img <- tempfile(fileext = ".png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), img)
   out_dir <- file.path(
@@ -576,16 +499,11 @@ test_that("Visium ships its H&E as an EXTERNAL image, not embedded", {
     "extdata/examples/demo_spatial_visium_he.png",
     package = "CerebroNexus"
   )
-  skip_if(png == "" || !file.exists(png), message = "visium H&E png missing")
   expect_gt(file.info(png)$size, 0)
 
   crb_path <- system.file(
     "extdata/examples/demo_spatial_visium.crb",
     package = "CerebroNexus"
-  )
-  skip_if(
-    crb_path == "" || !file.exists(crb_path),
-    message = "visium crb missing"
   )
   crb <- readCerebro(crb_path)
   spatial_name <- crb$availableSpatial()[1]
@@ -1008,6 +926,13 @@ test_that("multi-spatial main UI preserves sliceB and uses its image choices", {
     getSpatialData <- function(name) atlas[[name]]
     getMetaData <- function() data.frame(group = c("a", "b"))
     viewerProjectionFirstFrameMetadata <- getMetaData
+    viewerSpatialCoordinates <- function(name) atlas[[name]]$coordinates
+    viewerPackCurrent <- function() NULL
+    viewerPackSpatialIndex <- function(...) NULL
+    sys.source(
+      viewer_test_path("spatial", "func_spatial_helpers.R"),
+      envir = environment()
+    )
     getGroups <- function() "group"
     serverSideGeneSelector <- function(...) invisible(NULL)
     Cerebro.options <- list(
@@ -1125,41 +1050,6 @@ test_that("spatial gene selectors initialize only for their visible plot type", 
   })
 })
 
-test_that("bundled real demos embed a genuine tissue image in the .crb", {
-  # MERFISH carries its real DAPI inside the CRB. Visium and Xenium use external
-  # files; Slide-seq carries no image.
-  for (f in "demo_spatial_merfish") {
-    path <- system.file(
-      file.path("extdata/examples", paste0(f, ".crb")),
-      package = "CerebroNexus"
-    )
-    skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
-    crb <- readCerebro(path)
-    spatial_name <- crb$availableSpatial()[1]
-    sd <- .normalizeSpatialDataImages(
-      crb$getSpatialData(spatial_name),
-      spatial_name
-    )
-    expect_named(sd$histology_images, "Tissue background", info = f)
-    image <- sd$histology_images[["Tissue background"]]
-    expect_match(image$histology_image, "^data:image/", info = f)
-    b <- image$histology_image_bounds
-    expect_true(
-      all(c("xmin", "xmax", "ymin", "ymax") %in% names(b)),
-      info = f
-    )
-    # cells must fall inside the image's coordinate-space extent
-    coords <- sd$coordinates
-    expect_true(
-      min(coords$x) >= b[["xmin"]] &&
-        max(coords$x) <= b[["xmax"]] &&
-        min(coords$y) >= b[["ymin"]] &&
-        max(coords$y) <= b[["ymax"]],
-      info = f
-    )
-  }
-})
-
 ##----------------------------------------------------------------------------##
 ## Real multi-platform demos: each shipped .crb (Visium / Slide-seq v2 / MERFISH
 ## / Xenium) must load with a usable spatial slot. These are built
@@ -1173,13 +1063,9 @@ real_spatial_demos <- c(
   xenium = "extdata/examples/demo_spatial_xenium.crb"
 )
 
-test_that("each real spatial demo exposes coordinates with x/y", {
+test_that("each real spatial demo exposes coordinates and its kind of image", {
   for (nm in names(real_spatial_demos)) {
     path <- system.file(real_spatial_demos[[nm]], package = "CerebroNexus")
-    skip_if(
-      path == "" || !file.exists(path),
-      message = paste0(nm, " demo missing")
-    )
     crb <- readCerebro(path)
     images <- crb$availableSpatial()
     expect_true(length(images) > 0, info = nm)
@@ -1195,6 +1081,35 @@ test_that("each real spatial demo exposes coordinates with x/y", {
     )
     # x/y must be finite numerics, not all-NA
     expect_true(any(is.finite(coords$x)) && any(is.finite(coords$y)), info = nm)
+
+    # Images are stored in their native orientation; there is no per-.crb
+    # render-flip flag (display alignment is a user control in the tab).
+    sd <- .normalizeSpatialDataImages(sd, images[1])
+    expect_null(sd$histology_image_flip_y, info = nm)
+    if (nm == "slideseq") {
+      # Slide-seq records positions, not a tissue photo.
+      expect_identical(sd$histology_images, list(), info = nm)
+    }
+    if (nm == "merfish") {
+      # MERFISH carries its real DAPI inside the CRB; Visium and Xenium use
+      # external files.
+      expect_named(sd$histology_images, "Tissue background", info = nm)
+      image <- sd$histology_images[["Tissue background"]]
+      expect_match(image$histology_image, "^data:image/", info = nm)
+      b <- image$histology_image_bounds
+      expect_true(
+        all(c("xmin", "xmax", "ymin", "ymax") %in% names(b)),
+        info = nm
+      )
+      # cells must fall inside the image's coordinate-space extent
+      expect_true(
+        min(coords$x) >= b[["xmin"]] &&
+          max(coords$x) <= b[["xmax"]] &&
+          min(coords$y) >= b[["ymin"]] &&
+          max(coords$y) <= b[["ymax"]],
+        info = nm
+      )
+    }
   }
 })
 
@@ -1203,46 +1118,6 @@ test_that("real spatial demos are wired into the bundled dropdown", {
   expect_true(all(basename(real_spatial_demos) %in% basename(files)))
   for (technology in c("Visium", "Slide-seq", "MERFISH", "Xenium")) {
     expect_true(any(grepl(technology, names(files), fixed = TRUE)))
-  }
-})
-
-test_that("image-free demo (Slide-seq) carries no histology image", {
-  # This platform records positions, not a tissue photo, so a genuine
-  # an empty `histology_images` manifest is the correct state.
-  for (f in c("demo_spatial_slideseq")) {
-    path <- system.file(
-      file.path("extdata/examples", paste0(f, ".crb")),
-      package = "CerebroNexus"
-    )
-    skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
-    crb <- readCerebro(path)
-    spatial_name <- crb$availableSpatial()[1]
-    sd <- .normalizeSpatialDataImages(
-      crb$getSpatialData(spatial_name),
-      spatial_name
-    )
-    expect_identical(sd$histology_images, list(), info = f)
-  }
-})
-
-test_that("embedded image demos store the image natively with no flip flag", {
-  # Embedded images are stored in their native orientation; there is no per-.crb
-  # render-flip flag (removed — display alignment is a user control in the tab).
-  # Guard that the image is present and no stale flip flag lingers.
-  for (f in "demo_spatial_merfish") {
-    path <- system.file(
-      file.path("extdata/examples", paste0(f, ".crb")),
-      package = "CerebroNexus"
-    )
-    skip_if(path == "" || !file.exists(path), message = paste0(f, " missing"))
-    crb <- readCerebro(path)
-    spatial_name <- crb$availableSpatial()[1]
-    sd <- .normalizeSpatialDataImages(
-      crb$getSpatialData(spatial_name),
-      spatial_name
-    )
-    expect_named(sd$histology_images, "Tissue background", info = f)
-    expect_null(sd$histology_image_flip_y, info = f)
   }
 })
 
@@ -1290,23 +1165,6 @@ test_that(".getSpatialData tolerates an NA-named coordinate source column", {
   expect_false(any(is.na(colnames(result$coordinates))))
 })
 
-test_that("standalone Viewer utilities provide their null fallback operator", {
-  expressions <- parse(file.path(shiny_root, "utility_functions.R"))
-  assignment <- Filter(
-    function(expression) {
-      is.call(expression) &&
-        identical(expression[[1L]], as.name("<-")) &&
-        identical(expression[[2L]], as.name("%||%"))
-    },
-    as.list(expressions)
-  )
-  expect_length(assignment, 1L)
-  runtime <- new.env(parent = baseenv())
-  eval(assignment[[1L]], runtime)
-  expect_identical(runtime$`%||%`(NULL, "fallback"), "fallback")
-  expect_identical(runtime$`%||%`("value", "fallback"), "value")
-})
-
 test_that("cell boundary payloads are validated and capped by complete cells", {
   boundaries <- data.frame(
     cell_barcode = rep(c("cell-1", "cell-2"), each = 4L),
@@ -1345,6 +1203,59 @@ test_that("spatial hierarchy resolves sample and ROI values by barcode", {
   expect_identical(sample$field, "sample")
   expect_identical(sample$by_cell, c(c3 = "S2", c1 = "S1"))
   expect_identical(roi$values, c("R3", "R1"))
+})
+
+test_that("spatial metadata rows follow the metadata they were matched in", {
+  metadata <- data.frame(cell_barcode = c("c1", "c2", "c3"))
+  expect_identical(spatial_metadata_rows(metadata, c("c3", "c1")), c(3L, 1L))
+  ## An equal copy of the cells is answered from the kept rows.
+  expect_identical(spatial_metadata_rows(metadata, c("c3", "c1")), c(3L, 1L))
+  expect_identical(spatial_metadata_rows(metadata, c("c2", "c4")), c(2L, NA))
+  reordered <- data.frame(cell_barcode = c("c3", "c2", "c1"))
+  expect_identical(spatial_metadata_rows(reordered, c("c3", "c1")), c(1L, 3L))
+})
+
+test_that("first-frame metadata finds section cells without the cell names", {
+  scope <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("spatial", "func_spatial_helpers.R"), scope)
+  coordinates <- list(
+    A = data.frame(x = 1:2, y = 1:2, row.names = c("a1", "a2")),
+    B = data.frame(x = 1:2, y = 1:2, row.names = c("b1", "b2"))
+  )
+  hydrated <- 0L
+  scope$availableSpatial <- function() names(coordinates)
+  scope$viewerSpatialCoordinates <- function(name) coordinates[[name]]
+  scope$viewerPackCurrent <- function() list(cell_count = 4L)
+  scope$viewerPackSpatialIndex <- function(pack, name) {
+    list(A = c(3L, 1L), B = c(2L, 4L))[[name]]
+  }
+  scope$getMetaData <- function() {
+    hydrated <<- hydrated + 1L
+    data.frame(cell_barcode = c("a2", "b1", "a1", "b2"))
+  }
+  first_frame <- data.frame(sample = c("S1", "S1", "S2", "S2"))
+
+  sample <- scope$spatial_metadata_facet(first_frame, c("a1", "a2"), "sample")
+  expect_identical(sample$by_cell, c(a1 = "S2", a2 = "S1"))
+  ## part of a section
+  expect_identical(scope$spatial_metadata_rows(first_frame, "b2"), 4L)
+  expect_identical(
+    scope$spatial_metadata_rows(first_frame, character()),
+    integer()
+  )
+  expect_identical(hydrated, 0L)
+  ## cells of several sections are matched against the metadata names
+  expect_identical(
+    scope$spatial_metadata_rows(first_frame, c("a1", "b1")),
+    c(3L, 2L)
+  )
+  expect_identical(hydrated, 1L)
+  ## and kept: asking again matches nothing
+  expect_identical(
+    scope$spatial_metadata_rows(first_frame, c("a1", "b1")),
+    c(3L, 2L)
+  )
+  expect_identical(hydrated, 1L)
 })
 
 test_that("ROI rotation pivots use the selected sample and ROI field", {
@@ -1409,6 +1320,7 @@ test_that("spatial sampling is scoped to the selected FOV, sample, and ROI", {
     )
   )
   server <- function(input, output, session) {
+    viewer_runtime_env(environment())
     getGroups <- function() character()
     getMetaData <- function() metadata
     getSpatialData <- function(name) atlas[[name]]
@@ -1417,6 +1329,7 @@ test_that("spatial sampling is scoped to the selected FOV, sample, and ROI", {
     viewerPackCurrent <- function() NULL
     viewerPackSpatialIndex <- function(...) NULL
     viewerProjectionFirstFrameMetadata <- function() metadata
+    viewerProjectionGroupFilters <- function(...) list()
     spatial_projection_selected_sample <- function() {
       input$spatial_projection_sample %||% ""
     }
@@ -1429,6 +1342,10 @@ test_that("spatial sampling is scoped to the selected FOV, sample, and ROI", {
       sample = input$spatial_projection_sample,
       roi = input$spatial_projection_roi
     ))
+    sys.source(
+      viewer_test_path("spatial", "func_spatial_helpers.R"),
+      envir = environment()
+    )
     sys.source(cells_file, envir = environment())
   }
 

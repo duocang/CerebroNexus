@@ -375,6 +375,7 @@ test_that("a drawn network states area encoding; an undrawn one says why", {
       hla_segments <- function() data.frame(cdr3 = c("AAA", "AAB"))
       graph <- reactiveVal(igraph::make_ring(2))
       hla_motif_graph <- function() graph()
+      hla_first_frame_graph_snapshot <- function() NULL
       hla_unit_noun <- function() "cell"
       hla_param <- function(name, default) default
       hla_motif_n_clusters <- function() 1L
@@ -411,8 +412,47 @@ test_that("a drawn network states area encoding; an undrawn one says why", {
   )
 })
 
+test_that("a first frame drawn from the graph snapshot builds no graph to check it", {
+  shiny::testServer(
+    function(input, output, session) {
+      hla_has_deps <- function() TRUE
+      hla_segments <- function() stop("segments were built")
+      hla_motif_graph <- function() stop("the motif graph was built")
+      snapshot <- reactiveVal(list(
+        version = 1L,
+        vertex_attrs = list(name = c("AAA", "AAB"), cluster = c(1L, 1L))
+      ))
+      hla_first_frame_graph_snapshot <- function() snapshot()
+      viewer_server_load(
+        viewer_server_statements("hla_tcr_motifs", "visualizations.R"),
+        environment(),
+        names = "hla_motif_blocked"
+      )
+      viewer_server_load(
+        viewer_server_statements("hla_tcr_motifs", "data.R"),
+        environment(),
+        names = "hla_motif_n_clusters"
+      )
+    },
+    {
+      expect_null(hla_motif_blocked())
+      expect_identical(hla_motif_n_clusters(), 1L)
+      ## A snapshot past the render cap still says why nothing is drawn.
+      snapshot(list(
+        version = 1L,
+        vertex_attrs = list(
+          name = sprintf("N%05d", seq_len(HLA_MOTIF_MAX_RENDER + 1L))
+        )
+      ))
+      session$flushReact()
+      expect_identical(hla_motif_blocked()$kind, "error")
+      expect_match(hla_motif_blocked()$text, "interactive rendering is capped")
+    }
+  )
+})
+
 test_that("the page's nav gate scans every sample, like the core does", {
-  # The IR module's detect_chains() stops after three samples. The HLA page is
+  # Scanning only the first three samples is not enough here. The HLA page is
   # gated on chains being present, and it is also the only route to its own
   # Data & QC tab -- so a cohort whose TCR happens to start at sample four would
   # be locked out of a page that could analyse it.

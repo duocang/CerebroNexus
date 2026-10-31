@@ -75,11 +75,38 @@ test_that("coordinate-only selection keeps its legacy fallback", {
   )
 })
 
+test_that("process-shared helpers call only other process-shared helpers", {
+  ## A shared helper is evaluated once in a process environment, so a
+  ## session-local helper it calls is not found there (e.g. selectedCellMask()
+  ## calling viewerSelectionRows() from the Trajectory selected-cells table).
+  cache <- new.env(parent = globalenv())
+  sys.source(viewer_test_path("source_cache.R"), cache)
+  shared <- cache$.viewer_process_function_names
+  definitions <- list()
+  for (expression in parse(viewer_test_path("utility_functions.R"))) {
+    name <- cache$.viewerSourceAssignment(expression)
+    if (!is.na(name)) {
+      definitions[[name]] <- expression[[3L]]
+    }
+  }
+  for (name in intersect(shared, names(definitions))) {
+    called <- intersect(all.names(definitions[[name]]), names(definitions))
+    expect_identical(setdiff(called, c(shared, name)), character(), info = name)
+  }
+  session <- new.env(parent = globalenv())
+  cache$viewerSource(viewer_test_path("utility_functions.R"), session)
+  expect_identical(
+    session$selectedCellMask("a", NULL, data.frame(row = 2L), rows = 1:3),
+    c(FALSE, TRUE, FALSE)
+  )
+})
+
 test_that("cached module loading resolves selection context in each session", {
   cache <- new.env(parent = globalenv())
   sys.source(viewer_test_path("source_cache.R"), cache)
   sessions <- list(new.env(parent = globalenv()), new.env(parent = globalenv()))
   for (session in sessions) {
+    sys.source(viewer_test_path("core", "crb_contract.R"), session)
     cache$viewerSource(viewer_test_path("utility_functions.R"), session)
     context <- session$viewerDatasetContext("session", "dataset", 1)
     message <- list(x = 1, y = 2, ids = "cell", dataset_context = context)
@@ -122,12 +149,15 @@ test_that("shared distribution keeps category counts and registered empty levels
     sample = c("A", "A", "B"),
     group = c("selected", "selected", "not selected")
   )
-  plot <- suppressWarnings(plotly::plotly_build(renderer(data, "sample")))
-  expect_equal(sum(unlist(lapply(plot$x$data, `[[`, "y"))), 2)
+  plot <- renderer(data, "sample")
+  expect_identical(plot$type, "bar")
+  expect_equal(sum(unlist(plot$values)), 2)
+  expect_identical(as.character(plot$categories), "A")
+  expect_identical(as.character(plot$category_colors), "#ff8000")
   data$group <- "not selected"
-  empty <- suppressWarnings(plotly::plotly_build(renderer(data, "sample")))
-  expect_equal(sum(unlist(lapply(empty$x$data, `[[`, "y"))), 0)
-  expect_setequal(unlist(lapply(empty$x$data, `[[`, "x")), c("A", "B"))
+  empty <- renderer(data, "sample")
+  expect_equal(sum(unlist(empty$values)), 0)
+  expect_setequal(as.character(empty$categories), c("A", "B"))
 })
 
 test_that("coordinate frames preserve identity checks and coordinate-only fallback", {

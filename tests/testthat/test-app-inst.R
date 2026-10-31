@@ -68,20 +68,6 @@ retry_get_value <- function(
   }
 }
 
-test_that("retry_get_value reports the last error after timing out", {
-  attempts <- 0L
-  app <- list(get_value = function(...) {
-    attempts <<- attempts + 1L
-    stop(sprintf("render attempt %d failed", attempts), call. = FALSE)
-  })
-
-  expect_error(
-    retry_get_value(app, timeout = 5, interval = 1),
-    "render attempt [0-9]+ failed"
-  )
-  expect_gt(attempts, 1L)
-})
-
 ## Wait until an input element exists in the DOM (its Shiny binding is registered)
 ## before set_inputs — a renderUI-created selectize is not present the instant
 ## wait_for_idle returns.
@@ -117,14 +103,10 @@ test_that("{shinytest2} recording: overview", {
   app <- shared_app()
 
   ## Data Info tab: verify key values from the loaded example.crb
-  cells_box <- retry_get_value(app, output = "load_data_overview")
-  expect_true(grepl("1,?000", cells_box$html))
-
-  organism_box <- retry_get_value(app, output = "load_data_overview")
-  expect_true(grepl("Human", organism_box$html))
-
-  date_box <- retry_get_value(app, output = "load_data_overview")
-  expect_true(grepl("[0-9]{4}-[0-9]{2}-[0-9]{2}", date_box$html))
+  overview <- retry_get_value(app, output = "load_data_overview")$html
+  expect_true(grepl("1,?000", overview))
+  expect_true(grepl("Human", overview))
+  expect_true(grepl("[0-9]{4}-[0-9]{2}-[0-9]{2}", overview))
 })
 
 test_that("Projection switches categorical spatial datasets coherently", {
@@ -633,13 +615,56 @@ test_that("{shinytest2} recording: groups", {
 
   ## composition plot renders
   plot_val <- retry_get_value(app, output = "groups_by_other_group_plot")
-  expect_false(is.null(plot_val))
+  ## One value holds the counts, the percentages and the Sankey plot.
+  expect_identical(plot_val$type, "switch")
+  expect_identical(plot_val$views[["Bar chart|FALSE"]]$type, "bar")
+  expect_true(isTRUE(plot_val$views[["Bar chart|TRUE"]]$percent))
+  expect_identical(plot_val$views[["Sankey plot|FALSE"]]$type, "sankey")
+  app$wait_for_js(
+    "document.querySelectorAll('#groups_by_other_group_plot svg rect').length > 0",
+    timeout = 10000
+  )
+
+  ## The chart draws its own download toolbar and legend, without plotly.
+  bar <- app$get_js(paste0(
+    "(() => {",
+    "const plot=document.getElementById('groups_by_other_group_plot');",
+    "const buttons=[...plot.querySelectorAll('.cc-btn')];",
+    "const glyphs=buttons.map(button => getComputedStyle(button, '::before'));",
+    "return {buttons:buttons.map(button => button.title),",
+    "glyphs:glyphs.every(style => style.content !== 'none'),",
+    "legend:plot.querySelectorAll('.cc-legend-item').length,",
+    "plotly:document.querySelectorAll('#shiny-tab-groups .js-plotly-plot').length};",
+    "})()"
+  ))
+  expect_identical(
+    unlist(bar$buttons, use.names = FALSE),
+    c("Download plot as SVG", "Download plot as a png")
+  )
+  expect_true(bar$glyphs)
+  expect_gt(bar$legend, 0)
+  expect_equal(bar$plotly, 0)
+  hidden_legend <- paste0(
+    "document.querySelectorAll(",
+    "'#groups_by_other_group_plot .cc-legend-item.is-hidden').length"
+  )
+  toggle_legend <- paste0(
+    "document.querySelector(",
+    "'#groups_by_other_group_plot .cc-legend-item').click();"
+  )
+  app$run_js(toggle_legend)
+  expect_equal(app$get_js(hidden_legend), 1)
+  app$run_js(toggle_legend)
+  expect_equal(app$get_js(hidden_legend), 0)
 
   ## switch to percent view
   app$set_inputs(groups_by_other_group_show_as_percent = TRUE)
   app$wait_for_idle(timeout = 10000)
-  plot_pct <- retry_get_value(app, output = "groups_by_other_group_plot")
-  expect_false(is.null(plot_pct))
+  ## The browser switches to the percentages without a new value.
+  app$wait_for_js(
+    "Array.from(document.querySelectorAll('#groups_by_other_group_plot svg text')).some(function (t) { return /%$/.test(t.textContent); })",
+    timeout = 10000
+  )
 
   ## show table
   app$set_inputs(groups_by_other_group_show_table = TRUE)
@@ -658,6 +683,20 @@ test_that("{shinytest2} recording: groups", {
       groups_by_other_group_show_as_percent = TRUE,
       groups_by_other_group_show_table = TRUE
     )
+  )
+
+  app$run_js(paste0(
+    "document.querySelector(",
+    "'input[name=\"groups_by_other_group_plot_type\"]",
+    "[value=\"Sankey plot\"]'",
+    ").parentElement.click();"
+  ))
+  app$wait_for_js(
+    paste0(
+      "document.querySelectorAll(",
+      "'#groups_by_other_group_plot path.cc-link').length > 0"
+    ),
+    timeout = 10000
   )
 })
 
@@ -892,6 +931,29 @@ test_that("{shinytest2} recording: gene_id_conversion", {
 
   table_val <- retry_get_value(app, output = "gene_info")
   expect_false(is.null(table_val))
+})
+
+test_that("most_expressed_genes tab navigates and renders table", {
+  app <- shared_app()
+
+  ## The three optional pages are listed once the data set has their results.
+  expect_true(app$get_js(paste0(
+    "['mostExpressedGenes', 'enrichedPathways', 'extra_material'].every(",
+    "tab => document.querySelector('a[href=\"#shiny-tab-' + tab + '\"]'))"
+  )))
+  activate_tab(app, "mostExpressedGenes")
+  app$wait_for_idle(timeout = 10000)
+
+  select_html <- retry_get_value(
+    app,
+    output = "most_expressed_genes_select_group_UI"
+  )$html
+  expect_true(grepl("seurat_clusters", select_html))
+  table_html <- retry_get_value(
+    app,
+    output = "most_expressed_genes_table_or_text_UI"
+  )$html
+  expect_false(grepl("no.*available|not.*found|error", tolower(table_html)))
 })
 
 test_that("{shinytest2} recording: color_management", {

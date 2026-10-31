@@ -7,17 +7,11 @@
 
 shiny_root <- viewer_test_path()
 example_crb <- inst_test_path("extdata", "examples", "example.crb")
-
-test_that("immune_repertoire UI defines correct tabName", {
-  scope <- viewer_ui_test_env()
-  sys.source(viewer_test_path("immune_repertoire", "UI.R"), scope)
-  page <- htmltools::tagQuery(scope$tab_immune_repertoire)
-  expect_equal(page$filter("#shiny-tab-immune_repertoire")$length(), 1L)
-})
+## The data-set tests below only read it, so they share one copy.
+example <- readCerebro(example_crb)
 
 test_that("example.crb contains real immune repertoire data", {
-  skip_if_not(file.exists(example_crb))
-  crb <- readCerebro(example_crb)
+  crb <- example
   ir <- crb$getImmuneRepertoire()
   expect_true(is.list(ir))
   expect_true(length(ir) > 0)
@@ -33,10 +27,10 @@ test_that("example.crb contains real immune repertoire data", {
 })
 
 test_that("example.crb IR barcodes align with cell metadata", {
-  skip_if_not(file.exists(example_crb))
-  crb <- readCerebro(example_crb)
+  crb <- example
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
+  expect_false(is.null(crb$experiment))
   ir_bc <- unlist(lapply(ir, function(df) df$barcode), use.names = FALSE)
   overlap <- length(intersect(ir_bc, md$cell_barcode))
   expect_true(overlap > 0)
@@ -50,8 +44,7 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
   # onto the IR rows by barcode at runtime. This verifies that join is possible
   # for the example data set, so the Group by dropdown is populated regardless
   # of which columns a producer embedded in the IR table.
-  skip_if_not(file.exists(example_crb))
-  crb <- readCerebro(example_crb)
+  crb <- example
   ir <- crb$getImmuneRepertoire()
   md <- crb$getMetaData()
   groups <- crb$getGroups()
@@ -74,21 +67,11 @@ test_that("IR grouping variables are recoverable from cell metadata by barcode",
 })
 
 test_that("example.crb IR contains both TCR and BCR clonotypes", {
-  skip_if_not(file.exists(example_crb))
-  crb <- readCerebro(example_crb)
+  crb <- example
   ir <- crb$getImmuneRepertoire()
   all_ct <- paste(unlist(lapply(ir, function(df) df$CTgene)), collapse = ";")
   expect_true(grepl("TR[AB]", all_ct)) # TCR present
   expect_true(grepl("IG[HKL]", all_ct)) # BCR present
-})
-
-test_that("example.crb IR has TCR chains detectable from CTgene", {
-  skip_if_not(file.exists(example_crb))
-  crb <- readCerebro(example_crb)
-  ir <- crb$getImmuneRepertoire()
-  all_ct <- paste(unlist(lapply(ir, function(df) df$CTgene)), collapse = ";")
-  has_tcr <- grepl("TRA", all_ct) || grepl("TRB", all_ct)
-  expect_true(has_tcr)
 })
 
 test_that("paired scatter falls back to manual sample selection", {
@@ -114,17 +97,8 @@ test_that("paired scatter falls back to manual sample selection", {
   expect_equal(choices$sample_choices, meta$.sample_name)
 })
 
-test_that("example.crb preserves core data fields", {
-  skip_if_not(file.exists(example_crb))
-  crb <- readCerebro(example_crb)
-  expect_true(!is.null(crb$getMetaData()))
-  expect_true(nrow(crb$getMetaData()) > 0)
-  expect_true(!is.null(crb$experiment))
-})
-
 test_that("a grouping that cannot be drawn as panels falls back with a notice", {
   viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
-  skip_if_not(file.exists(viz))
   env <- new.env(parent = baseenv())
   env$`%||%` <- function(x, y) if (is.null(x)) y else x
   eval(viewer_r_assignment(viz, "IR_CLONAL_UMAP_MAX_PANELS"), env)
@@ -177,7 +151,6 @@ test_that("a grouping that cannot be drawn as panels falls back with a notice", 
 
 test_that("grouped Clonal UMAP panels partition the cells and label their counts", {
   viz <- file.path(shiny_root, "immune_repertoire", "visualizations.R")
-  skip_if_not(file.exists(viz))
   env <- new.env(parent = baseenv())
   env$IR_CLONE_LABELS <- c("Single", "Small", "Medium")
   env$IR_EXPANSION_COLORS <- c(Single = "#1", Small = "#2", Medium = "#3")
@@ -193,33 +166,50 @@ test_that("grouped Clonal UMAP panels partition the cells and label their counts
     ),
     barcode = paste0("cell", 1:6),
     .umap_group = factor(
-      c("a", "a", "b", "b", "b", "b"),
+      c("b", "a", "b", "a", "b", "b"),
       levels = c("a", "b", "c")
     ),
+    .cell_row = c(11L, 12L, 13L, 14L, 15L, 16L),
     stringsAsFactors = FALSE
   )
   out <- env$ir_clonal_umap_panels(df, "umap")
 
-  ## cells of every group land in exactly one panel; the empty group has none
+  ## cells of every group land in exactly one panel, a slice of the frame's
+  ## rows; the empty group has none, and no panel carries its own arrays
   expect_length(out$panels, 2L)
-  keys <- lapply(out$panels, `[[`, "selection_key")
+  slice <- function(panel) panel$start + seq_len(panel$count)
+  expect_identical(lapply(out$panels, slice), list(1:2, 3:6))
+  expect_null(out$panels[[1L]][["selection_key"]])
+  expect_null(out$panels[[1L]][["x"]])
+  expect_null(out$panels[[1L]][["hover"]])
+  keys <- lapply(out$panels, function(panel) out$keys[slice(panel)])
   expect_identical(sort(unlist(keys)), sort(df$barcode))
-  expect_identical(keys[[1L]], c("cell1", "cell2"))
-  expect_setequal(keys[[2L]], c("cell3", "cell4", "cell5", "cell6"))
+  expect_setequal(keys[[1L]], c("cell2", "cell4"))
+  expect_setequal(keys[[2L]], c("cell1", "cell3", "cell5", "cell6"))
+  ## coordinates and canonical rows follow the same order as the keys
+  expect_identical(out$x, df$x[match(out$keys, df$barcode)])
+  expect_identical(out$rows, df$.cell_row[match(out$keys, df$barcode)])
+  ## colour codes index the levels
+  group <- out$levels[out$group_code + 1L]
+  expect_null(out[["group"]])
   ## titled with the group and its receptor-carrying cells
   expect_match(out$panels[[1L]]$label, "^a +· +1 cell with receptor$")
   expect_match(out$panels[[2L]]$label, "^b +· +3 cells with receptor$")
   ## panels share axis ranges so groups stay comparable
   expect_identical(out$panels[[1L]]$x_range, out$panels[[2L]]$x_range)
-  ## colour levels and colours line up; cells without the receptor come first
+  ## colour levels and colours line up; within each panel cells without the
+  ## receptor come first and the most expanded last
   expect_identical(out$levels, c("Other cells", "Single", "Small", "Medium"))
   expect_length(out$colors, length(out$levels))
-  expect_identical(
-    unname(out$group[seq_len(2)]),
-    c("Other cells", "Other cells")
-  )
-  expect_identical(out$group[[length(out$group)]], "Medium")
-  expect_length(out$group, length(out$keys))
+  expect_identical(group[1:2], c("Other cells", "Small"))
+  expect_identical(group[3:6], c("Other cells", "Single", "Single", "Medium"))
+  expect_length(group, length(out$keys))
+  ## Cells named by canonical row only carry no barcodes.
+  df$barcode <- NULL
+  by_row <- env$ir_clonal_umap_panels(df, "umap")
+  expect_null(by_row$keys)
+  expect_identical(by_row$rows, out$rows)
+  expect_identical(by_row$x, out$x)
 })
 
 # ---- Compare (interactive alluvial) ------------------------------------- #
@@ -229,9 +219,6 @@ test_that("grouped Clonal UMAP panels partition the cells and label their counts
 # plain data.frame shaped like clonalCompare(exportTable = TRUE)).
 compare_env <- local({
   helper <- file.path(shiny_root, "immune_repertoire", "compare_helpers.R")
-  if (!file.exists(helper)) {
-    return(NULL)
-  }
   e <- new.env(parent = globalenv())
   sys.source(file.path(shiny_root, "plotting_functions.R"), envir = e)
   sys.source(helper, envir = e)
@@ -248,7 +235,6 @@ compare_tab_2grp <- data.frame(
 )
 
 test_that("compare prep stacks two groups and links only shared clones", {
-  skip_if(is.null(compare_env))
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
     c("sample_1", "sample_2"),
@@ -267,7 +253,6 @@ test_that("compare prep stacks two groups and links only shared clones", {
 })
 
 test_that("compare ribbon ends have different widths when the clone changes size", {
-  skip_if(is.null(compare_env))
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
     c("sample_1", "sample_2"),
@@ -283,7 +268,6 @@ test_that("compare ribbon ends have different widths when the clone changes size
 })
 
 test_that("compare prep detects the Count column in count mode", {
-  skip_if(is.null(compare_env))
   tab <- data.frame(
     clones = c("A", "A"),
     Count = c(10, 4),
@@ -301,7 +285,6 @@ test_that("compare prep detects the Count column in count mode", {
 })
 
 test_that("compare prep stacks every column in one shared clone order", {
-  skip_if(is.null(compare_env))
   # A has the largest total, then B, then C. All columns must stack in that
   # SHARED order (A bottom, C top) so a clone keeps a consistent band and its
   # ribbons run parallel without crossing — even though within s2 the sizes
@@ -330,7 +313,6 @@ test_that("compare prep stacks every column in one shared clone order", {
 })
 
 test_that("compare prep reports per-clone totals in clone order", {
-  skip_if(is.null(compare_env))
   tab <- data.frame(
     clones = c("A", "B", "A", "C"),
     Proportion = c(0.5, 0.3, 0.2, 0.4),
@@ -359,7 +341,6 @@ test_that("compare prep reports per-clone totals in clone order", {
 })
 
 test_that("compare prep links only adjacent groups across three groups", {
-  skip_if(is.null(compare_env))
   tab <- data.frame(
     clones = rep("A", 3),
     Proportion = c(0.4, 0.3, 0.5),
@@ -377,7 +358,6 @@ test_that("compare prep links only adjacent groups across three groups", {
 })
 
 test_that("compare prep preserves the requested group order", {
-  skip_if(is.null(compare_env))
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
     c("sample_2", "sample_1"), # reversed
@@ -387,7 +367,6 @@ test_that("compare prep preserves the requested group order", {
 })
 
 test_that("compare prep returns friendly empty states", {
-  skip_if(is.null(compare_env))
   # Empty table.
   e1 <- compare_env$ir_prepare_compare_alluvial(
     data.frame(),
@@ -416,7 +395,6 @@ test_that("compare prep returns friendly empty states", {
 })
 
 test_that("compare plotly shows exactly one legend entry per clone", {
-  skip_if(is.null(compare_env))
   skip_if_not_installed("plotly")
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
@@ -469,7 +447,6 @@ test_that("compare plotly shows exactly one legend entry per clone", {
 })
 
 test_that("compare hover comes from single-tooltip anchor markers", {
-  skip_if(is.null(compare_env))
   skip_if_not_installed("plotly")
   prep <- compare_env$ir_prepare_compare_alluvial(
     compare_tab_2grp,
@@ -514,7 +491,6 @@ test_that("compare hover comes from single-tooltip anchor markers", {
 })
 
 test_that("compare plotly hover keeps the full clone and honours the value mode", {
-  skip_if(is.null(compare_env))
   skip_if_not_installed("plotly")
   long_clone <- paste(rep("IGHV3-23.IGHJ4", 6), collapse = "_")
   tab <- data.frame(

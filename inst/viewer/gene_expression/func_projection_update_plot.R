@@ -30,9 +30,6 @@ expressionPackedColor <- function(values) {
 }
 
 expressionColorDatasetKey <- function() {
-  if (!exists("viewerDatasetIdentity", mode = "function", inherits = TRUE)) {
-    return(NULL)
-  }
   identity <- tryCatch(viewerDatasetIdentity(), error = function(error) NULL)
   fingerprint <- as.character(identity$pack_fingerprint %||% "")
   if (
@@ -142,6 +139,14 @@ expression_projection_update_plot <- function(input) {
     reset_axes = reset_axes
   )
   output_data[["render_key"]] <- render_key
+  if (isTRUE(input[["client_percentage"]])) {
+    ## The browser applies "% of cells" to this full frame; later slider edits
+    ## arrive through the shared scatter defaults without a new frame.
+    output_data[["client_percentage"]] <- TRUE
+    output_data[["percentage_cells_to_show"]] <- isolate(
+      current_scatter_percentage()
+    )
+  }
   if (is.list(expression_levels)) {
     output_data[["color"]] <- NULL
     if (!identical(display_mode, "rgb")) {
@@ -195,6 +200,34 @@ expression_projection_update_plot <- function(input) {
     output_data[["y"]] <- NULL
     output_data[["projection_resource"]] <- projection_asset
   }
+  ## A trajectory drawn on a Viewer Pack projection with all its cells: the
+  ## browser takes the projection and the trajectory's cell subset from the
+  ## Pack, as on the Trajectory page, instead of a million coordinates here.
+  trajectory_asset <- if (
+    isTRUE(plot_parameters[["is_trajectory"]]) &&
+      length(cell_indices) &&
+      identical(cell_indices, input[["trajectory_rows"]]) &&
+      exists("viewerTrajectoryFrameAsset", mode = "function", inherits = TRUE)
+  ) {
+    selection <- strsplit(plot_parameters[["projection"]], split = " // ")[[1]]
+    viewerTrajectoryFrameAsset(selection[[1]], selection[[2]])
+  }
+  if (
+    is.list(trajectory_asset) &&
+      identical(
+        as.character(trajectory_asset$geometry_kind),
+        "canonical_projection"
+      ) &&
+      identical(as.integer(trajectory_asset$cells), length(cell_indices)) &&
+      is.list(trajectory_asset$projection) &&
+      is.list(trajectory_asset$subset) &&
+      !identical(as.character(failed_asset), trajectory_asset$projection$url)
+  ) {
+    output_data[["x"]] <- NULL
+    output_data[["y"]] <- NULL
+    output_data[["projection_resource"]] <- trajectory_asset$projection
+    output_data[["projection_subset_resource"]] <- trajectory_asset$subset
+  }
   if (plot_parameters[["draw_border"]]) {
     output_data[['point_line']] <- list(
       color = "rgb(196,196,196)",
@@ -246,26 +279,54 @@ expression_projection_update_plot <- function(input) {
     NULL
   }
   core_aux <- function() {
-    metadata <- if (is.null(data_snapshot)) {
-      getMetaData()
-    } else {
-      data_snapshot$getMetaData()
+    hover <- isTRUE(plot_parameters[["hover_info"]])
+    ## With the cell-name file the points are named by canonical row: no
+    ## million names in the message, and a selection is reported by row.
+    names_resource <- viewerCellNamesResourceFor(cell_indices)
+    if (
+      is.list(names_resource) &&
+        length(cell_indices) == names_resource$cells &&
+        identical(as.integer(cell_indices), seq_along(cell_indices))
+    ) {
+      return(list(
+        selection_index_all = TRUE,
+        cell_names_resource = names_resource,
+        hover = list(
+          hoverinfo = if (hover) "text" else "skip",
+          columns = list(),
+          pending = hover
+        )
+      ))
+    }
+    cell_barcodes <- if (!is.list(names_resource)) {
+      metadata <- if (is.null(data_snapshot)) {
+        getMetaData()
+      } else {
+        data_snapshot$getMetaData()
+      }
+      metadata[["cell_barcode"]][cell_indices]
     }
     core <- cerebroCellViewDeferredAux(
       selection_rows = seq_len(n_cells),
-      cell_barcodes = metadata[["cell_barcode"]][cell_indices],
-      hover = isTRUE(plot_parameters[["hover_info"]])
+      cell_barcodes = cell_barcodes,
+      hover = hover,
+      names_resource = names_resource,
+      cell_rows = cell_indices
     )
-    core$hover$pending <- isTRUE(plot_parameters[["hover_info"]])
+    core$hover$pending <- hover
     core
   }
-  deferred_aux <- function() {
+  ## `keys = FALSE` after core_aux() named the cells: the hover columns come
+  ## from the first-frame metadata, so a thin CRB is not hydrated for them.
+  deferred_aux <- function(keys = TRUE) {
     full_metadata <- if (
       !is.null(metadata) && "cell_barcode" %in% colnames(metadata)
     ) {
       metadata
-    } else {
+    } else if (keys) {
       getMetaData()
+    } else {
+      viewerProjectionFirstFrameMetadata()
     }
     hover <- isTRUE(plot_parameters[["hover_info"]])
     columns <- viewerProjectionMetadataColumns(
@@ -309,7 +370,8 @@ expression_projection_update_plot <- function(input) {
       selection_rows = seq_len(nrow(deferred_metadata)),
       cell_barcodes = deferred_metadata[["cell_barcode"]],
       hover_columns = hover_columns,
-      hover = hover
+      hover = hover,
+      keys = keys
     )
   }
   geometry <- list(

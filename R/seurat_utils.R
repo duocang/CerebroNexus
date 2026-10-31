@@ -769,154 +769,120 @@
   ) {
     stop("`return_resolution` must be TRUE or FALSE.", call. = FALSE)
   }
-  seurat_version <- as.character(utils::packageVersion("Seurat"))
-  is_seurat_v5 <- utils::compareVersion(seurat_version, "5.0.0") >= 0
   requested_layer <- as.character(slot)
   resolved_layer <- requested_layer
   joined_layers <- FALSE
 
-  if (!is_seurat_v5) {
-    expr_matrix <- tryCatch(
-      {
-        Seurat::GetAssayData(seurat, assay = assay, slot = slot)
-      },
-      error = function(e) {
-        stop(
-          "Failed to get expression matrix from Seurat v4 object.\n",
-          "  Assay: ",
-          assay,
-          "\n",
-          "  Slot: ",
-          slot,
-          "\n",
-          "  Error: ",
-          e$message,
-          "\n",
-          "Suggestions:\n",
-          "  1. Check if the assay '",
-          assay,
-          "' exists in your Seurat object using: names(seurat@assays)\n",
-          "  2. Check if the slot '",
-          slot,
-          "' exists in the assay using: names(seurat@assays$",
-          assay,
-          "@layers)\n",
-          "  3. Try using a different assay or slot (e.g., assay='RNA', slot='data')"
-        )
-      }
+  if (!assay %in% names(seurat@assays)) {
+    stop(
+      "Assay '",
+      assay,
+      "' not found in Seurat object.\n",
+      "Available assays: ",
+      paste(names(seurat@assays), collapse = ", "),
+      "\n",
+      "Suggestions:\n",
+      "  1. Use one of the available assays listed above\n",
+      "  2. Check your Seurat object structure using: names(seurat@assays)"
     )
-  } else {
-    if (!assay %in% names(seurat@assays)) {
-      stop(
-        "Assay '",
-        assay,
-        "' not found in Seurat v5 object.\n",
-        "Available assays: ",
-        paste(names(seurat@assays), collapse = ", "),
-        "\n",
-        "Suggestions:\n",
-        "  1. Use one of the available assays listed above\n",
-        "  2. Check your Seurat object structure using: names(seurat@assays)"
-      )
-    }
-
-    layer_name <- as.character(slot)
-    if (length(layer_name) != 1L || is.na(layer_name) || !nzchar(layer_name)) {
-      stop("`slot` must be one non-empty layer name.", call. = FALSE)
-    }
-
-    resolution <- .resolve_seurat_v5_layer(
-      seurat = seurat,
-      assay = assay,
-      requested_layer = layer_name,
-      join_samples = join_samples,
-      verbose = verbose
-    )
-
-    if (
-      is.null(resolution$data) &&
-        !is.null(resolution$failure)
-    ) {
-      .stop_incomplete_layer_resolution(
-        resolution = resolution,
-        assay = assay,
-        requested_layer = layer_name
-      )
-    }
-
-    if (is.null(resolution$data)) {
-      available_layers <- SeuratObject::Layers(seurat[[assay]])
-      prefix_detail <- if (length(resolution$candidates) > 0L) {
-        paste0(
-          "Exact layer `",
-          layer_name,
-          "` is absent. Prefix-matching layers (",
-          paste(resolution$candidates, collapse = ", "),
-          ") do not form a split partition.\n"
-        )
-      } else {
-        ""
-      }
-      ## Suggest a layer that will resolve: a standard full layer if present,
-      ## else the root of a split family, else the first layer.
-      example_layer <- NULL
-      if (length(available_layers) > 0L) {
-        roots <- sub("\\..*$", "", available_layers)
-        example_layer <- if (any(c("counts", "data") %in% available_layers)) {
-          intersect(c("counts", "data"), available_layers)[[1L]]
-        } else if (any(duplicated(roots))) {
-          roots[duplicated(roots)][[1L]]
-        } else {
-          available_layers[[1L]]
-        }
-      }
-      fix <- if (!is.null(layer_argument) && !is.null(example_layer)) {
-        paste0(
-          "Pass an existing layer, e.g. `",
-          layer_argument,
-          " = \"",
-          example_layer,
-          "\"`. No other layer is substituted for `",
-          layer_name,
-          "`.\n"
-        )
-      } else {
-        paste0(
-          "This function needs the `",
-          layer_name,
-          "` layer; add it to the assay first (for example ",
-          "`Seurat::NormalizeData()` creates `data`). No other layer is ",
-          "substituted for it.\n"
-        )
-      }
-      stop(
-        paste0(
-          prefix_detail,
-          "Layer `",
-          layer_name,
-          "` does not exist in the `",
-          assay,
-          "` assay.\n",
-          "Available layers: ",
-          if (length(available_layers) > 0L) {
-            paste(available_layers, collapse = ", ")
-          } else {
-            "none"
-          },
-          "\n",
-          fix,
-          "Inspect the assay with: SeuratObject::Layers(object[[\"",
-          assay,
-          "\"]])"
-        ),
-        call. = FALSE
-      )
-    }
-
-    expr_matrix <- resolution$data
-    resolved_layer <- resolution$resolved
-    joined_layers <- isTRUE(resolution$joined)
   }
+
+  layer_name <- as.character(slot)
+  if (length(layer_name) != 1L || is.na(layer_name) || !nzchar(layer_name)) {
+    stop("`slot` must be one non-empty layer name.", call. = FALSE)
+  }
+
+  resolution <- .resolve_seurat_v5_layer(
+    seurat = seurat,
+    assay = assay,
+    requested_layer = layer_name,
+    join_samples = join_samples,
+    verbose = verbose
+  )
+
+  if (
+    is.null(resolution$data) &&
+      !is.null(resolution$failure)
+  ) {
+    .stop_incomplete_layer_resolution(
+      resolution = resolution,
+      assay = assay,
+      requested_layer = layer_name
+    )
+  }
+
+  if (is.null(resolution$data)) {
+    available_layers <- SeuratObject::Layers(seurat[[assay]])
+    prefix_detail <- if (length(resolution$candidates) > 0L) {
+      paste0(
+        "Exact layer `",
+        layer_name,
+        "` is absent. Prefix-matching layers (",
+        paste(resolution$candidates, collapse = ", "),
+        ") do not form a split partition.\n"
+      )
+    } else {
+      ""
+    }
+    ## Suggest a layer that will resolve: a standard full layer if present,
+    ## else the root of a split family, else the first layer.
+    example_layer <- NULL
+    if (length(available_layers) > 0L) {
+      roots <- sub("\\..*$", "", available_layers)
+      example_layer <- if (any(c("counts", "data") %in% available_layers)) {
+        intersect(c("counts", "data"), available_layers)[[1L]]
+      } else if (any(duplicated(roots))) {
+        roots[duplicated(roots)][[1L]]
+      } else {
+        available_layers[[1L]]
+      }
+    }
+    fix <- if (!is.null(layer_argument) && !is.null(example_layer)) {
+      paste0(
+        "Pass an existing layer, e.g. `",
+        layer_argument,
+        " = \"",
+        example_layer,
+        "\"`. No other layer is substituted for `",
+        layer_name,
+        "`.\n"
+      )
+    } else {
+      paste0(
+        "This function needs the `",
+        layer_name,
+        "` layer; add it to the assay first (for example ",
+        "`Seurat::NormalizeData()` creates `data`). No other layer is ",
+        "substituted for it.\n"
+      )
+    }
+    stop(
+      paste0(
+        prefix_detail,
+        "Layer `",
+        layer_name,
+        "` does not exist in the `",
+        assay,
+        "` assay.\n",
+        "Available layers: ",
+        if (length(available_layers) > 0L) {
+          paste(available_layers, collapse = ", ")
+        } else {
+          "none"
+        },
+        "\n",
+        fix,
+        "Inspect the assay with: SeuratObject::Layers(object[[\"",
+        assay,
+        "\"]])"
+      ),
+      call. = FALSE
+    )
+  }
+
+  expr_matrix <- resolution$data
+  resolved_layer <- resolution$resolved
+  joined_layers <- isTRUE(resolution$joined)
 
   if (is.null(expr_matrix)) {
     stop(
@@ -928,16 +894,12 @@
       slot,
       "\n",
       "  Seurat version: ",
-      seurat_version,
+      as.character(utils::packageVersion("Seurat")),
       "\n",
       "Suggestions:\n",
       "  1. Verify that the assay contains data\n",
       "  2. Check the assay structure using: ",
-      if (is_seurat_v5) {
-        paste0('Layers(seurat[["', assay, '"]])')
-      } else {
-        paste0("names(seurat@assays$", assay, "@layers)")
-      },
+      paste0('Layers(seurat[["', assay, '"]])'),
       "\n",
       "  3. Try using a different assay or slot"
     )
@@ -1035,11 +997,7 @@
           "  2. Verify the data type using: class(GetAssayData(seurat, assay = \"",
           assay,
           "\"",
-          if (is_seurat_v5) {
-            paste0(', layer = "', slot, '"))')
-          } else {
-            paste0(', slot = "', slot, '"))')
-          }
+          paste0(', layer = "', slot, '"))')
         )
       }
     )

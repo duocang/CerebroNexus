@@ -1,13 +1,3 @@
-## ---- Reactive: raw repertoire data (as stored in crb) ------------------ ##
-ir_data_raw <- reactive({
-  req(!is.null(data_set()))
-  data <- getImmuneRepertoire()
-  if (is.null(data) || !is.list(data) || length(data) == 0) {
-    return(NULL)
-  }
-  data
-})
-
 ## The default Clonal projection is backed by the compact Viewer Pack. Keep its
 ## availability gate on the backend summary so opening the page does not hydrate
 ## the full repertoire sidecar merely to decide whether controls may render.
@@ -15,134 +5,146 @@ ir_repertoire_available <- reactive({
   isTRUE(getImmuneRepertoireSummary()$available)
 })
 
-## ---- Standard scRepertoire columns (not usable as grouping) ----------- ##
-ir_scr_cols <- c(
-  "barcode",
-  "CTgene",
-  "CTnt",
-  "CTaa",
-  "CTstrict",
-  "clonalProportion",
-  "clonalFrequency",
-  "cloneSize",
-  "Frequency",
-  "frequency",
-  "cloneType"
-)
+## Said once, when the repertoire really is encoded in memory (not read from
+## the process memo or the cache): the page takes about a minute on a million
+## cells, and the way out is to rebuild the Pack.
+ir_notify_slow_encoding <- function(pack) {
+  text <- paste0(
+    if (is.list(pack)) {
+      "This Viewer Pack was built before the fast Immune repertoire format"
+    } else {
+      "This data set has no Viewer Pack"
+    },
+    ", so its repertoire is encoded now: about a minute on a million cells, ",
+    "less when the next session reuses it. ",
+    "buildViewerPack(<crb file>, overwrite = TRUE) makes this page open in ",
+    "seconds."
+  )
+  message(text)
+  tryCatch(
+    shiny::showNotification(
+      text,
+      type = "warning",
+      duration = 30,
+      id = "ir-pack-outdated"
+    ),
+    error = function(error) NULL
+  )
+  invisible(NULL)
+}
 
-## ---- Join only requested metadata onto IR rows by barcode -------------- ##
-## Most repertoire views do not group by cell metadata. Copying every metadata
-## column onto 500k receptor rows therefore wastes both time and memory. Track
-## the active grouping controls and attach just those columns, using one match
-## over the concatenated barcode vector rather than rebuilding a 1M-cell lookup
-## for every sample.
-ir_requested_metadata_fields <- function(
-  tab,
-  group_by = NULL,
-  umap_group = NULL,
-  sharing_unit = NULL
+## ---- The encoded repertoire (encode.R) -------------------------------- ##
+## The tabs read the repertoire's integer columns: the Viewer Pack's, or for a
+## data set without a Pack, or with a Pack built before the encoding, the same
+## encoding made in memory, once per process for the data set's files.
+ir_encoded <- reactive({
+  req(!is.null(data_set()))
+  pack <- viewerPackCurrent()
+  encoded <- if (is.list(pack)) {
+    viewerPackImmuneEncoded(pack, IR_ENCODING_VERSION)
+  }
+  if (!is.null(encoded)) {
+    encoded
+  } else {
+    ir_process_memo(
+      "encoded",
+      ir_dataset_process_key(data_set()),
+      function() {
+        repertoire <- getImmuneRepertoire()
+        if (!length(repertoire)) {
+          return(NULL)
+        }
+        ir_notify_slow_encoding(pack)
+        ## The ranks are sorted when a plot needs them (ir_clone_rank()).
+        ir_encode_repertoire(
+          repertoire,
+          as.character(getMetaData()$cell_barcode),
+          rank = FALSE
+        )
+      },
+      disk = TRUE
+    )
+  }
+})
+
+## The clones `ids` of `column` on `chain`: in memory, or read from the
+## Pack's blocks of names that hold them.
+ir_clone_names <- function(encoded, column, chain, ids) {
+  names <- encoded$names[[column]][[chain]]
+  if (!is.null(names)) {
+    return(names[ids])
+  }
+  viewerPackImmuneCloneNames(
+    viewerPackCurrent(),
+    column,
+    chain,
+    ids,
+    encoded$name_blocks
+  )
+}
+
+## ---- Grouping values of the repertoire rows --------------------------- ##
+## The data set's cell metadata in canonical order, the order of the encoded
+## `cell` rows: the Pack's first-frame table (every column but the cell
+## names), else the full table.
+ir_cell_metadata <- function() {
+  pack <- tryCatch(viewerPackCurrent(), error = function(e) NULL)
+  metadata <- if (is.list(pack)) {
+    tryCatch(viewerProjectionFirstFrameCache()$meta_data, error = function(e) {
+      NULL
+    })
+  }
+  if (is.data.frame(metadata)) {
+    return(metadata)
+  }
+  tryCatch(getMetaData(), error = function(e) NULL)
+}
+
+## The value of column `name` for every repertoire row: the tables' own column,
+## else (when `metadata` is joined) the metadata's value at the row's cell, NA
+## for a row without one; "sample" falls back to the sample names. NULL when
+## the column is nowhere.
+ir_row_values <- function(
+  encoded,
+  name,
+  metadata = ir_cell_metadata(),
+  joined = TRUE
 ) {
-  requested <- group_by
-  if (identical(tab, "Clonal UMAP")) {
-    requested <- c(requested, umap_group)
-  }
-  if (identical(tab, "Clone Sharing") && !identical(sharing_unit, "sample")) {
-    requested <- c(requested, sharing_unit)
-  }
-  requested <- as.character(requested)
-  unique(requested[!is.na(requested) & nzchar(requested)])
-}
-
-ir_requested_metadata_columns <- reactiveVal(character())
-observe(
-  {
-    # reactiveVal only invalidates consumers when the fields actually change.
-    # This observer reads small control values, never repertoire or metadata.
-    ir_requested_metadata_columns(ir_requested_metadata_fields(
-      input[["ir_tabs"]],
-      input[["ir_groupBy"]],
-      input[["ir_p_umap_group_by"]],
-      input[["ir_sharing_unit"]]
-    ))
-  },
-  priority = 100
-)
-
-ir_annotate_metadata <- function(data, metadata, columns = character()) {
-  if (
-    is.null(metadata) ||
-      !("cell_barcode" %in% colnames(metadata)) ||
-      !length(columns)
-  ) {
-    return(data)
-  }
-  columns <- intersect(
-    unique(columns),
-    setdiff(colnames(metadata), "cell_barcode")
-  )
-  add <- lapply(data, function(df) {
-    if (is.null(df) || !("barcode" %in% colnames(df))) {
-      return(character())
-    }
-    setdiff(columns, colnames(df))
-  })
-  join <- lengths(add) > 0L
-  if (!any(join)) {
-    return(data)
-  }
-  joined_indices <- which(join)
-  n_rows <- vapply(data[joined_indices], nrow, integer(1))
-  ends <- cumsum(n_rows)
-  idx <- match(
-    unlist(lapply(data[joined_indices], `[[`, "barcode"), use.names = FALSE),
-    metadata$cell_barcode
-  )
-  n_miss <- sum(is.na(idx))
-  if (n_miss > 0L) {
-    warning(sprintf(
-      paste0(
-        "[IR] %d / %d clonotype barcodes not found in cell metadata; ",
-        "grouping/splitting by metadata columns may be incomplete."
-      ),
-      n_miss,
-      length(idx)
-    ))
-  }
-  out <- data
-  for (position in seq_along(joined_indices)) {
-    data_index <- joined_indices[[position]]
-    n <- n_rows[[position]]
-    rows <- seq.int(ends[[position]] - n + 1L, length.out = n)
-    frame_idx <- idx[rows]
-    for (column in add[[data_index]]) {
-      out[[data_index]][[column]] <- metadata[[column]][frame_idx]
-    }
-  }
-  out
-}
-
-ir_data_annotated <- reactive({
-  data <- ir_data_raw()
-  if (is.null(data)) {
+  if (is.null(name) || !length(name) || is.na(name) || !nzchar(name)) {
     return(NULL)
   }
-  columns <- ir_requested_metadata_columns()
-  if (!length(columns)) {
-    return(data)
+  in_metadata <- isTRUE(joined) &&
+    is.data.frame(metadata) &&
+    name %in% names(metadata)
+  own <- encoded$columns[[name]]
+  if (!is.null(own)) {
+    carried <- attr(own, "samples")
+    character <- isTRUE(attr(own, "character"))
+    attributes(own) <- attributes(own)[c("levels", "class")]
+    if (is.null(carried) || !in_metadata) {
+      return(if (character) as.character(own) else own)
+    }
+    ## Tables without the column take the metadata's.
+    values <- as.character(own)
+    fill <- !encoded$sample %in% carried
+    values[fill] <- as.character(metadata[[name]][encoded$cell[fill]])
+    return(values)
   }
-  md <- tryCatch(getMetaData(), error = function(e) NULL)
-  ir_annotate_metadata(data, md, columns)
-})
+  if (in_metadata) {
+    return(metadata[[name]][encoded$cell])
+  }
+  if (identical(name, "sample")) {
+    return(encoded$samples[encoded$sample])
+  }
+  NULL
+}
 
-## ---- Reactive: repertoire data --------------------------------------- ##
-## Returns the metadata-annotated repertoire list as loaded. Grouping is not
-## done here: scRepertoire's own group.by rbinds the list and re-splits on the
-## chosen column (.groupList), so an in-app re-split would only duplicate — with
-## a narrower, sample-only column set — what group.by already does. Comparison
-## units are therefore expressed solely through ir_groupBy / group.by.
-ir_data <- reactive({
-  ir_data_annotated()
-})
+## Per sample, whether its clone column has any clone: the tabs leave out a
+## sample whose clones are all NA, as scRepertoire does.
+ir_samples_with_clones <- function(encoded, clone_col) {
+  both <- encoded$clones[[clone_col]]$both
+  tabulate(encoded$sample[!is.na(both)], length(encoded$samples)) > 0L
+}
 
 ## ---- Helper: read a dynamic function-specific parameter --------------- ##
 ## The function-specific controls (IR_PARAM_SPEC) are rendered into a dynamic
@@ -205,71 +207,64 @@ ir_clone_size <- function() {
 ## ---- Comparable groups for Paired Scatter / Compare ------------------ ##
 ## clonalScatter (x.axis/y.axis) and clonalCompare (samples) operate on the
 ## *names of the groups that group.by produces*. With group.by = None the
-## groups are the list elements (samples); with group.by = <column> they are
-## that column's levels. This reactive returns those group names so the Paired
-## Scatter X/Y and Compare selectors stay in sync with the active grouping.
+## groups are the samples; with group.by = <column> they are that column's
+## levels among the repertoire's rows. This reactive returns those group names
+## so the Paired Scatter X/Y and Compare selectors stay in sync.
 ir_compare_groups <- reactive({
-  data <- ir_data()
-  if (is.null(data)) {
+  encoded <- ir_encoded()
+  if (is.null(encoded)) {
     return(character(0))
   }
-  gb <- input$ir_groupBy
-  if (is.null(gb) || !nzchar(gb)) {
-    return(names(data))
-  }
-  vals <- unique(unlist(lapply(data, function(df) {
-    if (gb %in% colnames(df)) as.character(df[[gb]]) else character(0)
-  })))
-  vals <- vals[!is.na(vals) & nzchar(vals)]
-  if (length(vals) == 0) names(data) else sort(vals)
+  ir_group_names(encoded, ir_row_values(encoded, input$ir_groupBy))
 })
+
+ir_group_names <- function(encoded, values) {
+  if (is.null(values)) {
+    return(encoded$samples)
+  }
+  vals <- if (is.factor(values)) {
+    levels(values)[unique(as.integer(values))]
+  } else {
+    unique(as.character(values))
+  }
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  if (length(vals) == 0) encoded$samples else sort(vals)
+}
+
 
 ## ---- Candidate columns for the Sharing "unit" selector ---------------- ##
 ## The Sharing tab needs a "smallest sharing unit" (default: sample). Offer any
-## metadata column that is categorical (character/factor with > 1 distinct
-## non-empty value) and is not a raw scRepertoire column (ir_scr_cols). `sample`
-## is placed first so it becomes the default selection.
-ir_discover_sharing_units <- function(data, metadata = NULL) {
-  if (!length(data)) {
+## column of the repertoire's tables or the cell metadata that is categorical
+## (character/factor with > 1 distinct non-empty value among the repertoire's
+## rows) and is not a scRepertoire column. `sample` is placed first so it
+## becomes the default selection.
+ir_discover_sharing_units <- function(encoded, metadata = NULL) {
+  if (is.null(encoded) || !length(encoded$samples)) {
     return(character())
   }
-  common <- Reduce(intersect, lapply(data, colnames))
+  shared <- names(Filter(
+    function(v) is.null(attr(v, "samples")),
+    encoded$columns
+  ))
   candidates <- setdiff(
-    union(common, colnames(metadata)),
-    c(ir_scr_cols, "cell_barcode")
+    union(shared, colnames(metadata)),
+    c(IR_SCR_COLUMNS, "cell_barcode")
   )
-  categorical <- function(x) is.character(x) || is.factor(x)
-  # One barcode match, then inspect one candidate column at a time. No wide join.
-  indices <- if (
-    is.data.frame(metadata) && "cell_barcode" %in% names(metadata)
-  ) {
-    lapply(data, function(df) match(df$barcode, metadata$cell_barcode))
-  } else {
-    rep(list(integer()), length(data))
-  }
   keep <- vapply(
     candidates,
     function(column) {
-      seen <- character()
-      for (i in seq_along(data)) {
-        values <- if (column %in% names(data[[i]])) {
-          data[[i]][[column]]
-        } else {
-          metadata[[column]][indices[[i]]]
-        }
-        if (!categorical(values)) {
-          return(FALSE)
-        }
-        values <- as.character(values)
-        values <- values[!is.na(values) & nzchar(values)]
-        seen <- unique(c(seen, unique(values)))
+      values <- ir_row_values(encoded, column, metadata)
+      if (!is.character(values) && !is.factor(values)) {
+        return(FALSE)
       }
-      length(seen) > 1L
+      # Distinct values first: a factor's unique() works on its codes.
+      values <- as.character(unique(values))
+      length(unique(values[!is.na(values) & nzchar(values)])) > 1L
     },
     logical(1)
   )
   choices <- candidates[keep]
-  if (length(data) > 1L) {
+  if (length(encoded$samples) > 1L) {
     choices <- union("sample", choices)
   }
   if ("sample" %in% choices) {
@@ -279,16 +274,145 @@ ir_discover_sharing_units <- function(data, metadata = NULL) {
   }
 }
 
+
+## ---- Results shared by the sessions of a process ----------------------- ##
+## Every session gets its own copy of a cached data set, so a value computed
+## from the data set's files alone is keyed by those files instead: the CRB
+## (path, size, modification time) and the repertoire sidecar's checksum. A
+## data set without a file on disk has no key and is not shared.
+ir_dataset_process_key <- function(ds) {
+  path <- attr(ds, "cerebro_dataset_path", exact = TRUE)
+  if (
+    !is.character(path) ||
+      length(path) != 1L ||
+      is.na(path) ||
+      !file.exists(path)
+  ) {
+    return(NULL)
+  }
+  info <- file.info(path)
+  backend <- tryCatch(ds$immune_repertoire_backend, error = function(e) NULL)
+  list(
+    path = normalizePath(path, winslash = "/"),
+    size = as.numeric(info$size),
+    mtime = as.numeric(info$mtime),
+    repertoire = if (is.list(backend)) as.character(backend$md5 %||% "") else ""
+  )
+}
+
+ir_process_cache <- if (exists(".ir_process_cache", inherits = TRUE)) {
+  get(".ir_process_cache", inherits = TRUE)
+} else {
+  new.env(parent = emptyenv())
+}
+
+## Where an encoding made in memory is kept between sessions: the user cache
+## directory (CEREBRO_IR_CACHE overrides it). The Pack's encoding is the real
+## store; this one spares a data set without it (or with a Pack built before
+## the encoding) the minute of encoding at every start.
+ir_disk_cache_file <- function(name, key) {
+  dir <- Sys.getenv("CEREBRO_IR_CACHE", unset = "")
+  if (!nzchar(dir)) {
+    dir <- file.path(tools::R_user_dir("CerebroNexus", "cache"), "immune")
+  }
+  file.path(
+    dir,
+    paste0(
+      name,
+      "-v",
+      IR_ENCODING_VERSION,
+      "-",
+      rlang::hash(as.character(key$path %||% "")),
+      "-",
+      rlang::hash(key),
+      ".qs2"
+    )
+  )
+}
+
+ir_disk_cache_read <- function(file) {
+  if (!file.exists(file)) {
+    return(NULL)
+  }
+  value <- tryCatch(qs2::qs_read(file), error = function(e) NULL)
+  if (is.list(value) && identical(value$version, IR_ENCODING_VERSION)) {
+    value
+  }
+}
+
+## Written through a temporary name, so a session that stops half way or reads
+## at the same time never sees a partial file. A failure (a read-only cache) is
+## not an error: the next start encodes again.
+ir_disk_cache_write <- function(file, value) {
+  tryCatch(
+    {
+      dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+      partial <- paste0(file, ".", Sys.getpid(), ".tmp")
+      on.exit(unlink(partial), add = TRUE)
+      qs2::qs_save(value, partial)
+      file.rename(partial, file)
+      ## The data set's earlier entries (another file version, another encoding
+      ## version) are out of date for good.
+      same_path <- sub("-[0-9a-f]+[.]qs2$", "", basename(file))
+      stale <- list.files(
+        dirname(file),
+        pattern = paste0("^", gsub("-v[0-9]+-", "-v[0-9]+-", same_path), "-")
+      )
+      unlink(file.path(dirname(file), setdiff(stale, basename(file))))
+    },
+    error = function(e) NULL
+  )
+  invisible(NULL)
+}
+
+## compute() once per (name, key) in the process; without a key, every call.
+## `disk`: also keep the result in the user cache between sessions.
+ir_process_memo <- function(
+  name,
+  key,
+  compute,
+  cache = ir_process_cache,
+  disk = FALSE
+) {
+  if (is.null(key)) {
+    return(compute())
+  }
+  id <- paste0(name, ":", rlang::hash(key))
+  if (!exists(id, envir = cache, inherits = FALSE)) {
+    value <- NULL
+    file <- if (isTRUE(disk)) ir_disk_cache_file(name, key)
+    if (!is.null(file)) {
+      value <- ir_disk_cache_read(file)
+    }
+    if (is.null(value)) {
+      value <- compute()
+      if (!is.null(file) && !is.null(value)) {
+        ir_disk_cache_write(file, value)
+      }
+    }
+    assign(id, value, envir = cache)
+  }
+  get(id, envir = cache, inherits = FALSE)
+}
+
 ## Discovery scans the whole repertoire and metadata (seconds for large data)
 ## and depends only on the loaded dataset, not on the visit to this tab.
 ir_sharing_unit_memo <- viewerMemoOne()
+
 ir_sharing_unit_choices <- reactive({
   req(identical(input[["ir_tabs"]], "Clone Sharing"))
-  # Discovery is independent of ir_data_annotated and the selected sharing unit.
-  ir_sharing_unit_memo(data_set(), function() {
-    ir_discover_sharing_units(ir_data_raw(), getMetaData())
-  })
+  ds <- data_set()
+  discover <- function() {
+    ir_discover_sharing_units(ir_encoded(), ir_cell_metadata())
+  }
+  key <- ir_dataset_process_key(ds)
+  if (is.null(key)) {
+    ir_sharing_unit_memo(ds, discover)
+  } else {
+    ir_process_memo("sharing_units", key, discover)
+  }
 })
+
 
 ## ---- Reactive: parameters --------------------------------------------- ##
 ir_params <- reactive({
@@ -307,7 +431,7 @@ ir_params <- reactive({
 specific_chain <- reactive({
   ch <- input$ir_chain
   if (is.null(ch) || ch == "both") {
-    chains <- detect_chains(ir_data())
+    chains <- ir_encoded()$chains
     if ("TRB" %in% chains) {
       return("TRB")
     }
@@ -318,6 +442,7 @@ specific_chain <- reactive({
   }
   ch
 })
+
 
 ##----------------------------------------------------------------------------##
 ## Clonal UMAP data layer
@@ -330,79 +455,26 @@ IR_BCR_CHAINS <- CEREBRO_BCR_CHAINS
 ## ---- Which receptor classes are present in the data ------------------- ##
 ## Returns a named vector ("TCR" / "BCR") of the receptor types actually
 ## detected, so the Clonal UMAP selector only offers what exists. The names
-## are the labels shown to the user; values feed ir_umap_chains().
+## are the labels shown to the user. The sidecar descriptor names the chains
+## without reading the repertoire.
 ir_receptor_types <- reactive({
-  pack <- viewerPackCurrent()
-  packed <- if (is.list(pack)) {
-    as.character(pack$manifest$immune_receptors)
-  } else {
-    character(0)
-  }
-  packed <- intersect(packed, c("TCR", "BCR"))
-  if (length(packed)) {
-    return(stats::setNames(packed, packed))
-  }
   chains <- as.character(getImmuneRepertoireSummary()$chains)
   present <- c(
     if (any(chains %in% IR_TCR_CHAINS)) "TCR" else character(0),
     if (any(chains %in% IR_BCR_CHAINS)) "BCR" else character(0)
   )
-  if (length(present)) {
-    return(stats::setNames(present, present))
+  if (!length(present)) {
+    present <- tryCatch(ir_encoded()$receptors, error = function(e) NULL) %||%
+      character(0)
   }
-  present <- tryCatch(
-    # Receptor availability is structural. Using the metadata-annotated
-    # reactive here makes the parameter panel depend on its own grouping
-    # select input; changing that input then rebuilds the panel and resets the
-    # selection before the grouped plot can render.
-    cerebro_receptors_present(ir_data_raw()),
-    error = function(e) character(0)
-  )
   stats::setNames(present, present)
 })
-
-## ---- Chains belonging to the selected receptor type ------------------- ##
-ir_umap_chains <- function(receptor) {
-  if (identical(receptor, "BCR")) IR_BCR_CHAINS else IR_TCR_CHAINS
-}
 
 ## ---- Clone-size bin breaks / labels (scRepertoire cloneSize defaults) -- ##
 ## A clone's size = number of cells carrying that clonotype (within the
 ## selected receptor). Cells are binned into the standard expansion levels.
 IR_CLONE_BINS <- CEREBRO_CLONE_BINS
 IR_CLONE_LABELS <- CEREBRO_CLONE_LABELS
-
-ir_clone_expansion <- function(clones) {
-  clone_ids <- match(clones, unique(clones))
-  sizes <- tabulate(clone_ids)
-  cut(
-    sizes[clone_ids],
-    breaks = IR_CLONE_BINS,
-    labels = IR_CLONE_LABELS,
-    right = TRUE,
-    include.lowest = TRUE
-  )
-}
-
-## Exact clone-size histogram. Callers decide whether blank identities count
-## and whether an empty group must remain visible; counting itself is shared.
-ir_clone_histogram <- function(clones, sample, keep_empty = FALSE) {
-  clones <- as.character(clones)
-  clones <- clones[!is.na(clones)]
-  if (!length(clones)) {
-    if (!keep_empty) {
-      return(NULL)
-    }
-    return(data.frame(sample = sample, abundance = 0L, n_clones = 0L))
-  }
-  bins <- table(tabulate(match(clones, unique(clones))))
-  data.frame(
-    sample = sample,
-    abundance = as.integer(names(bins)),
-    n_clones = as.integer(bins),
-    stringsAsFactors = FALSE
-  )
-}
 
 ir_bind_clone_histograms <- function(rows) {
   rows <- Filter(Negate(is.null), rows)
@@ -416,77 +488,391 @@ ir_bind_clone_histograms <- function(rows) {
   do.call(rbind, rows)
 }
 
-ir_sample_clone_histograms <- function(data, clone_col, drop_empty = FALSE) {
-  samples <- names(data) %||% as.character(seq_along(data))
-  ir_bind_clone_histograms(Map(
-    function(frame, sample) {
-      clones <- as.character(frame[[clone_col]])
-      if (drop_empty) {
-        clones <- clones[!is.na(clones) & nzchar(clones)]
-      }
-      ir_clone_histogram(clones, sample)
-    },
-    data,
-    samples
-  ))
-}
-
-ir_clonal_abundance_counts <- function(data, clone_col) {
-  packed <- if (
-    exists("viewerPackCurrent", mode = "function") &&
-      exists("viewerPackImmuneAbundance", mode = "function")
-  ) {
-    viewerPackImmuneAbundance(viewerPackCurrent(), clone_col)
-  } else {
-    NULL
+## Clone-size histogram as clonalAbundance() plots it, without scRepertoire:
+## one row per (unit, abundance) with the number of clones of that size. The
+## units are the samples, or with `groups` (the grouping value of every row)
+## that column's levels: a clone keeps its size in its sample and counts once
+## for every group its cells fall in. Samples without a clone are left out;
+## NA and blank clones are not counted.
+ir_abundance_histogram <- function(
+  encoded,
+  clone_col,
+  chain = "both",
+  groups = NULL
+) {
+  ids <- encoded$clones[[clone_col]][[chain]]
+  keep <- !is.na(ids)
+  blank <- if (identical(chain, "both")) encoded$blank[[clone_col]] else NA
+  if (!is.na(blank)) {
+    keep <- keep & ids != blank
   }
-  if (!is.null(packed)) {
-    return(packed)
-  }
-  ir_sample_clone_histograms(data, clone_col, drop_empty = TRUE)
-}
-
-## ---- Scalable clone-size distribution -------------------------------- ##
-## Exact all-chain Homeostasis. The histogram preserves cell-weighted
-## clone proportions without sorting long clone strings or loading scRepertoire.
-ir_homeostasis_counts <- function(data, clone_col) {
-  pack <- viewerPackCurrent()
-  packed <- viewerPackReadAsset(pack, "immune/homeostasis.qs2")
-  if (!is.null(packed[[clone_col]])) {
-    return(packed[[clone_col]])
-  }
-  ir_sample_clone_histograms(data, clone_col)
-}
-
-## Pool clonotypes across samples within each metadata group. Keep only the two
-## required columns; scRepertoire's wide rbind/split copies every receptor field.
-## Blank clones count, NA clones do not. Match its removal of all-NA samples
-## before grouping, and split()'s missing-group/unused-factor-level semantics.
-ir_grouped_homeostasis_counts <- function(data, clone_col, group_by) {
-  frames <- lapply(data, function(frame) {
-    if (!all(c(clone_col, group_by) %in% names(frame))) {
-      stop("Homeostasis clone or grouping column is missing.")
-    }
-    if (!nrow(frame) || all(is.na(frame[[clone_col]]))) {
-      return(NULL)
-    }
-    frame <- frame[, unique(c(clone_col, group_by)), drop = FALSE]
-    rownames(frame) <- NULL
-    frame
-  })
-  frames <- Filter(Negate(is.null), frames)
-  if (!length(frames)) {
+  if (!any(keep)) {
     return(ir_bind_clone_histograms(list()))
   }
-  pooled <- do.call(rbind, unname(frames))
-  groups <- split(as.character(pooled[[clone_col]]), pooled[[group_by]])
-  ir_bind_clone_histograms(Map(
-    ir_clone_histogram,
-    groups,
-    names(groups),
-    MoreArgs = list(keep_empty = TRUE)
-  ))
+  sample <- encoded$sample[keep]
+  clones <- ir_encode_pairs(sample, ids[keep])
+  cells <- tabulate(clones$index, length(clones$first))
+  if (is.null(groups)) {
+    ## Clones per (sample, size), samples in order, sizes ascending.
+    clone_sample <- sample[clones$first]
+    o <- order(clone_sample, cells)
+    clone_sample <- clone_sample[o]
+    cells <- cells[o]
+    n <- length(cells)
+    start <- which(c(
+      TRUE,
+      clone_sample[-1L] != clone_sample[-n] | cells[-1L] != cells[-n]
+    ))
+    return(data.frame(
+      sample = encoded$samples[clone_sample[start]],
+      abundance = cells[start],
+      n_clones = diff(c(start, n + 1L)),
+      stringsAsFactors = FALSE
+    ))
+  }
+  groups <- as.character(groups[keep])
+  pair <- ir_encode_pairs(clones$index, groups)$first
+  pair <- pair[!is.na(groups[pair])]
+  if (!length(pair)) {
+    return(ir_bind_clone_histograms(list()))
+  }
+  counts <- as.data.frame(
+    table(sample = groups[pair], abundance = cells[clones$index[pair]]),
+    stringsAsFactors = FALSE
+  )
+  counts <- counts[counts$Freq > 0L, , drop = FALSE]
+  data.frame(
+    sample = counts$sample,
+    abundance = as.integer(counts$abundance),
+    n_clones = as.integer(counts$Freq),
+    stringsAsFactors = FALSE
+  )
 }
+
+
+## The Abundance histogram for the controls `pars`.
+ir_abundance_counts_for <- function(pars, encoded) {
+  req(!is.null(encoded))
+  ir_abundance_histogram(
+    encoded,
+    ir_clonecall_col(pars$cloneCall),
+    pars$chain,
+    ir_row_values(encoded, pars$groupBy)
+  )
+}
+
+
+## clonalCompare(exportTable = TRUE) without scRepertoire, for the compared
+## units only (samples, or with `groups`, the grouping value of every row,
+## that column's levels): the cells of every clone in a unit, or their share
+## of the unit's clonal cells, kept for the clones among any unit's
+## `top_clones` largest (ties by clone name: `clone_rank` is each id's place
+## among the sorted names). Samples whose clones are all NA are left out
+## first, as clonalCompare does. Rows come unit by unit, in no particular
+## clone order. `clone_names(ids)` names the clones kept; without it they are
+## their ids.
+ir_compare_table <- function(
+  encoded,
+  clone_col,
+  chain,
+  groups,
+  units,
+  top_clones = NULL,
+  proportion = TRUE,
+  clone_rank = NULL,
+  clone_names = NULL
+) {
+  ids <- encoded$clones[[clone_col]][[chain]]
+  rows <- ir_samples_with_clones(encoded, clone_col)[encoded$sample]
+  if (is.null(groups)) {
+    position <- match(encoded$samples, units)[encoded$sample]
+  } else if (is.factor(groups)) {
+    ## A factor's levels are matched once, not every cell's label.
+    position <- match(levels(groups), units)[as.integer(groups)]
+  } else {
+    position <- match(as.character(groups), units)
+  }
+  keep <- rows & !is.na(ids) & !is.na(position)
+  ids <- ids[keep]
+  unit <- position[keep]
+  ## Clones of the compared units numbered from 1.
+  present_ids <- unique(ids)
+  local <- match(ids, present_ids)
+  rank_of <- if (is.null(clone_rank)) present_ids else clone_rank[present_ids]
+  rows <- lapply(seq_along(units), function(k) {
+    n <- tabulate(local[unit == k], nbins = length(present_ids))
+    clone <- which(n > 0L)
+    value <- n[clone]
+    if (isTRUE(proportion)) {
+      value <- value / sum(value)
+    }
+    list(clone = clone, value = value)
+  })
+  if (length(top_clones) == 1L && !is.na(top_clones)) {
+    ## Each unit's largest clones; only the ties at the cut are put in name
+    ## order instead of every clone.
+    top <- unique(unlist(lapply(rows, function(r) {
+      if (!length(r$value)) {
+        return(integer())
+      }
+      cut <- sort(r$value, decreasing = TRUE)[min(top_clones, length(r$value))]
+      candidates <- which(r$value >= cut)
+      candidates <- candidates[order(
+        -r$value[candidates],
+        rank_of[r$clone[candidates]]
+      )]
+      r$clone[head(candidates, top_clones)]
+    })))
+    rows <- lapply(rows, function(r) {
+      keep <- r$clone %in% top
+      list(clone = r$clone[keep], value = r$value[keep])
+    })
+  }
+  sizes <- vapply(rows, function(r) length(r$clone), integer(1))
+  if (!sum(sizes)) {
+    stop(
+      "Please reasses the filtering strategies here, there are not\n",
+      "            enough clones to examine."
+    )
+  }
+  kept <- present_ids[unlist(lapply(rows, `[[`, "clone"), use.names = FALSE)]
+  if (!is.null(clone_names)) {
+    labels <- unique(kept)
+    kept <- clone_names(labels)[match(kept, labels)]
+  }
+  table <- data.frame(
+    clones = kept,
+    value = unlist(lapply(rows, `[[`, "value"), use.names = FALSE),
+    Sample = rep(units, sizes),
+    stringsAsFactors = FALSE
+  )
+  names(table)[[2L]] <- if (isTRUE(proportion)) "Proportion" else "Count"
+  table
+}
+
+
+## ---- Homeostasis histograms -------------------------------------------- ##
+## Homeostasis histograms as clonalHomeostasis() counts them: per sample, or
+## with `groups` (the grouping value of every row) per level of that column
+## pooled across the samples (NA groups left out), the clones' cells over every
+## clonal cell of the unit. Blank clones count, cells without a clone on the
+## chain do not, and samples whose clones are all NA are left out first. A
+## unit without a clone keeps an empty row; on all chains a grouping factor's
+## unused levels do too, as split() leaves them.
+ir_homeostasis_counts <- function(
+  encoded,
+  clone_col,
+  chain = "both",
+  groups = NULL
+) {
+  histogram <- function(ids, unit) {
+    ids <- ids[!is.na(ids)]
+    if (!length(ids)) {
+      return(data.frame(sample = unit, abundance = 0L, n_clones = 0L))
+    }
+    bins <- tabulate(tabulate(match(ids, unique(ids))))
+    abundance <- which(bins > 0L)
+    data.frame(
+      sample = unit,
+      abundance = abundance,
+      n_clones = bins[abundance],
+      stringsAsFactors = FALSE
+    )
+  }
+  has <- ir_samples_with_clones(encoded, clone_col)
+  rows <- has[encoded$sample]
+  ids <- encoded$clones[[clone_col]][[chain]][rows]
+  if (is.null(groups)) {
+    by_sample <- split(ids, factor(encoded$sample[rows], which(has)))
+    return(ir_bind_clone_histograms(Map(
+      histogram,
+      by_sample,
+      encoded$samples[has]
+    )))
+  }
+  groups <- groups[rows]
+  by_group <- split(
+    ids,
+    if (identical(chain, "both")) groups else as.character(groups)
+  )
+  ir_bind_clone_histograms(Map(histogram, by_group, names(by_group)))
+}
+
+## The indices clonalDiversity() offers, with immApex's formulas, of a unit's
+## clone sizes (positive counts).
+ir_diversity_metrics <- local({
+  shannon <- function(n) {
+    p <- n / sum(n)
+    -sum(p * log(p))
+  }
+  inv_simpson <- function(n) {
+    p <- n / sum(n)
+    1 / sum(p * p)
+  }
+  norm_entropy <- function(n) {
+    if (length(n) == 1L) 0 else shannon(n) / log(length(n))
+  }
+  hill <- function(q) {
+    function(n) {
+      p <- n / sum(n)
+      if (q == 1) exp(-sum(p * log(p))) else sum(p^q)^(1 / (1 - q))
+    }
+  }
+  list(
+    shannon = shannon,
+    inv.simpson = inv_simpson,
+    gini.simpson = function(n) 1 - 1 / inv_simpson(n),
+    norm.entropy = norm_entropy,
+    pielou = norm_entropy,
+    ace = function(n) {
+      s_obs <- length(n)
+      if (s_obs == 0) {
+        return(0)
+      }
+      rare <- n[n <= 10]
+      s_rare <- length(rare)
+      s_abund <- s_obs - s_rare
+      if (s_rare == 0) {
+        return(s_obs)
+      }
+      n_rare <- sum(rare)
+      f1 <- sum(rare == 1)
+      coverage <- 1 - f1 / n_rare
+      if (coverage == 0) {
+        return(s_obs)
+      }
+      den <- coverage * n_rare * (n_rare - 1)
+      gamma_sq <- if (den == 0) {
+        0
+      } else {
+        max(0, s_rare * sum(rare * (rare - 1)) / den - 1)
+      }
+      max(s_obs, s_abund + s_rare / coverage + f1 / coverage * gamma_sq)
+    },
+    chao1 = function(n) {
+      f1 <- sum(n == 1)
+      f2 <- sum(n == 2)
+      if (f1 > 1 && f2 > 0) {
+        length(n) + f1 * (f1 - 1) / (2 * (f2 + 1))
+      } else {
+        length(n)
+      }
+    },
+    gini = function(n) {
+      s <- length(n)
+      if (s <= 1) {
+        return(0)
+      }
+      sum((2 * seq_len(s) - s - 1) * sort(n)) / (s * sum(n))
+    },
+    d50 = function(n) {
+      if (!length(n)) {
+        return(0)
+      }
+      which.max(cumsum(sort(n, decreasing = TRUE)) >= sum(n) * 50 / 100)
+    },
+    hill0 = hill(0),
+    hill1 = hill(1),
+    hill2 = hill(2)
+  )
+})
+
+## clonalDiversity(return.boots = TRUE) without scRepertoire: `n_boots` values
+## of `metric` per unit, each of as many cells as the smallest unit has, drawn
+## with replacement, with the same draws from the R session's generator. Units
+## are the samples, or with `groups` the levels of `group_by` (with `x_values`
+## too, of both) pooled over the samples; `groups` and `x_values` are the
+## columns' values of every row. Samples whose clones are all NA are left out
+## first, rows on another chain are dropped, and cells without a clone are
+## drawn but not counted. Units left without a row are left out:
+## clonalDiversity() keeps the empty combinations of `group_by` and `x_axis`,
+## which makes every value one of no cells (a group nested in an x level), and
+## stops at a sample without a cell on the chain (a BCR sample on TRB). With
+## `x_axis`, each unit takes the x value of its first row, merged and renamed
+## as clonalDiversity() does.
+ir_diversity_table <- function(
+  encoded,
+  clone_col,
+  chain,
+  group_by = NULL,
+  x_axis = NULL,
+  metric = "shannon",
+  n_boots = 100,
+  groups = NULL,
+  x_values = NULL
+) {
+  diversity <- ir_diversity_metrics[[metric]]
+  if (is.null(diversity)) {
+    stop("Invalid `metric`.")
+  }
+  samples <- which(ir_samples_with_clones(encoded, clone_col))
+  keep <- encoded$sample %in% samples
+  if (!identical(chain, "both")) {
+    keep[encoded$other[[chain]]] <- FALSE
+  }
+  ids <- encoded$clones[[clone_col]][[chain]][keep]
+  sample <- factor(encoded$sample[keep], samples)
+  column <- function(values) as.character(values)[keep]
+  if (is.null(group_by)) {
+    units <- stats::setNames(split(ids, sample), encoded$samples[samples])
+    x_values <- if (!is.null(x_axis)) {
+      stats::setNames(split(column(x_values), sample), encoded$samples[samples])
+    }
+  } else {
+    by <- list(column(groups))
+    if (!is.null(x_axis)) {
+      by[[2L]] <- column(x_values)
+    }
+    if (length(by) == 1L) {
+      by <- by[[1L]]
+    }
+    units <- split(ids, by)
+    x_values <- if (!is.null(x_axis)) split(by[[2L]], by)
+  }
+  keep <- lengths(units) > 0L
+  units <- units[keep]
+  x_values <- x_values[keep]
+  size <- min(lengths(units))
+  values <- lapply(units, function(unit) {
+    clones <- match(unit, unique(unit[!is.na(unit)]))
+    bins <- max(clones, 0L, na.rm = TRUE)
+    vapply(
+      seq_len(n_boots),
+      function(boot) {
+        counts <- tabulate(
+          clones[sample.int(length(clones), size, replace = TRUE)],
+          bins
+        )
+        diversity(counts[counts > 0L])
+      },
+      numeric(1)
+    )
+  })
+  output <- data.frame(
+    group = rep(names(units), lengths(values)),
+    value = unlist(values, use.names = FALSE),
+    metric = metric
+  )
+  names(output)[1L] <- group_by %||% "Group"
+  if (is.null(x_axis)) {
+    output$x.axis <- 1
+    return(output)
+  }
+  x_variable <- as.data.frame(do.call(
+    rbind,
+    lapply(x_values, function(x) unique(x)[1L])
+  ))
+  colnames(x_variable) <- x_axis
+  output <- merge(
+    output,
+    x_variable,
+    by.x = group_by %||% "Group",
+    by.y = "row.names"
+  )
+  output[, 1L] <- gsub("\\..*", "", output[, 1L])
+  output
+}
+
 
 ir_homeostasis_matrix <- function(counts, clone_size) {
   samples <- unique(counts$sample)
@@ -521,13 +907,27 @@ ir_homeostasis_matrix <- function(counts, clone_size) {
   result
 }
 
-ir_homeostasis_plot <- function(counts, clone_size, palette) {
+ir_homeostasis_plot <- function(
+  counts,
+  clone_size,
+  palette,
+  order_by = NULL
+) {
   mat <- ir_homeostasis_matrix(counts, clone_size)
   if (!nrow(mat)) {
     return(ggplot2::ggplot() + ggplot2::theme_void())
   }
+  ## Bars in sorted order, or with order.by = "alphanumeric" by their letters,
+  ## then their number, as clonalHomeostasis() orders them.
+  units <- sort(unique(rownames(mat)))
+  if (identical(order_by, "alphanumeric")) {
+    units <- units[order(
+      gsub("[0-9]", "", units),
+      suppressWarnings(as.numeric(gsub("[^0-9]", "", units)))
+    )]
+  }
   frame <- data.frame(
-    sample = rep(rownames(mat), ncol(mat)),
+    sample = factor(rep(rownames(mat), ncol(mat)), levels = units),
     category = factor(
       rep(colnames(mat), each = nrow(mat)),
       levels = rev(colnames(mat))
@@ -556,110 +956,53 @@ ir_homeostasis_plot <- function(counts, clone_size, palette) {
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1))
 }
 
-## scRepertoire::clonalSizeDistribution() expands a dense
-## clonotype-by-sample matrix before fitting its model. With hundreds of Ren
-## samples this matrix contains mostly zeroes and can keep the single Shiny R
-## process busy for close to a minute. The helpers below retain the exact
-## observed clone sizes, summarize them into logarithmic bins, and cluster the
-## resulting empirical distributions without constructing that dense matrix.
-ir_chain_clone_values <- function(frame, chain, clone_col = "CTstrict") {
-  if (
-    is.null(frame) ||
-      !(clone_col %in% colnames(frame)) ||
-      !nrow(frame)
-  ) {
-    return(character())
-  }
-  values <- as.character(frame[[clone_col]])
-  if (is.null(chain) || !nzchar(chain) || identical(chain, "both")) {
-    return(values)
-  }
-  if (!("CTgene" %in% colnames(frame))) {
-    return(rep(NA_character_, length(values)))
-  }
-  genes <- as.character(frame$CTgene)
-  pair_key <- paste(genes, values, sep = "\034")
-  first <- !duplicated(pair_key)
-  unique_genes <- strsplit(genes[first], "_", fixed = TRUE)
-  unique_values <- strsplit(values[first], "_", fixed = TRUE)
-  selected <- mapply(
-    function(gene_parts, value_parts) {
-      gene_first <- sub(";.*$", "", gene_parts)
-      index <- which(
-        startsWith(gene_first, chain) & gene_first != "NA"
-      )[1L]
-      if (
-        is.na(index) ||
-          index > length(value_parts) ||
-          is.na(value_parts[[index]]) ||
-          !nzchar(value_parts[[index]]) ||
-          identical(value_parts[[index]], "NA")
-      ) {
-        NA_character_
-      } else {
-        value_parts[[index]]
-      }
-    },
-    unique_genes,
-    unique_values,
-    USE.NAMES = FALSE
-  )
-  selected[match(pair_key, pair_key[first])]
-}
-
+## The exact clone-size profile of every unit: the strict clones of `chain`
+## (blank clones left out) counted per sample, or per level of `groups` (the
+## grouping value of every row), in log2 bins.
 ir_clone_size_profiles <- function(
-  data,
+  encoded,
   chain = "both",
-  group_by = NULL,
+  groups = NULL,
   threshold = 1
 ) {
-  if (is.null(data) || !length(data)) {
+  if (is.null(encoded) || !length(encoded$samples)) {
     return(NULL)
   }
   threshold <- suppressWarnings(as.integer(threshold))
   if (is.na(threshold) || threshold < 1L) {
     threshold <- 1L
   }
-  sample_names <- names(data)
-  if (is.null(sample_names)) {
-    sample_names <- as.character(seq_along(data))
+  clones <- encoded$clones$CTstrict[[chain]]
+  if (identical(chain, "both")) {
+    clones[clones %in% encoded$blank[["CTstrict"]]] <- NA
   }
-  counts <- list()
-  merge_counts <- function(existing, incoming) {
-    if (is.null(existing)) {
-      return(incoming)
-    }
-    keys <- union(names(existing), names(incoming))
-    out <- integer(length(keys))
-    names(out) <- keys
-    out[match(names(existing), keys)] <- existing
-    positions <- match(names(incoming), keys)
-    out[positions] <- out[positions] + incoming
-    out
+  groups <- if (is.null(groups)) {
+    encoded$samples[encoded$sample]
+  } else {
+    as.character(groups)
   }
-  for (index in seq_along(data)) {
-    frame <- data[[index]]
-    clones <- ir_chain_clone_values(frame, chain, "CTstrict")
-    groups <- if (
-      !is.null(group_by) &&
-        nzchar(group_by) &&
-        group_by %in% colnames(frame)
-    ) {
-      as.character(frame[[group_by]])
-    } else {
-      rep(sample_names[[index]], nrow(frame))
-    }
-    keep <- !is.na(clones) & nzchar(clones) & !is.na(groups) & nzchar(groups)
-    if (!any(keep)) {
-      next
-    }
-    rows_by_group <- split(which(keep), groups[keep], drop = TRUE)
-    for (group in names(rows_by_group)) {
-      incoming <- base::table(clones[rows_by_group[[group]]])
-      incoming <- stats::setNames(as.integer(incoming), names(incoming))
-      counts[[group]] <- merge_counts(counts[[group]], incoming)
-    }
+  keep <- !is.na(clones) & !is.na(groups) & nzchar(groups)
+  if (!any(keep)) {
+    return(NULL)
   }
+  ids <- clones[keep]
+  groups <- groups[keep]
+  ## Groups in the order a per-sample split() first meets them.
+  group_names <- character()
+  for (values in split(groups, encoded$sample[keep])) {
+    group_names <- c(group_names, setdiff(sort(unique(values)), group_names))
+  }
+  ## The cells of every clone per group, counted over integer clone ids.
+  group_index <- match(groups, group_names)
+  n_ids <- max(ids)
+  counts <- lapply(
+    split(ids, factor(group_index, levels = seq_along(group_names))),
+    function(group_ids) {
+      n <- tabulate(group_ids, nbins = n_ids)
+      n[n > 0L]
+    }
+  )
+  names(counts) <- group_names
   counts <- lapply(counts, function(x) x[x >= threshold])
   counts <- counts[lengths(counts) > 0L]
   if (!length(counts)) {
@@ -682,14 +1025,14 @@ ir_clone_size_profiles <- function(
   list(profile = profile, clone_counts = counts, threshold = threshold)
 }
 
+
 ir_size_distribution_profile <- reactive({
-  data <- ir_data()
+  encoded <- ir_encoded()
   chain <- req(input$ir_chain)
-  group <- ir_param("ir_groupBy", NULL)
   profiles <- ir_clone_size_profiles(
-    data,
+    encoded,
     chain,
-    group,
+    ir_row_values(encoded, ir_param("ir_groupBy", NULL)),
     ir_param("ir_p_sd_threshold", 1)
   )
   # Keep just the current compact matrix, not the large named clone counts.
@@ -698,6 +1041,7 @@ ir_size_distribution_profile <- reactive({
   }
   profiles
 })
+
 
 ir_size_profile_plot <- function(profiles, method = "ward.D2") {
   if (is.null(profiles)) {
@@ -778,10 +1122,12 @@ ir_clonecall_col <- function(cloneCall) {
 }
 
 ## ---- Clonal UMAP data: coords + per-cell expansion level --------------- ##
-## Joins the chosen projection's UMAP coordinates (barcode-indexed) with each
-## cell's clone-expansion level, restricted to the selected receptor (TCR/BCR).
-## Returns a data.frame (x, y, expansion, barcode) or NULL when it cannot be
-## built (no projection, no data for the receptor, no overlapping barcodes).
+## The chosen projection's canonical coordinates with each cell's
+## clone-expansion level, restricted to the selected receptor (TCR/BCR): a
+## cell's first repertoire row of the receptor with a clone, the clone's size
+## counted over those cells. Returns a data.frame (x, y, expansion,
+## cell_index) or NULL when it cannot be built (no projection, no data for the
+## receptor).
 ##
 ##   projection : a name from availableProjections()
 ##   receptor   : "TCR" | "BCR"
@@ -789,7 +1135,7 @@ ir_clonecall_col <- function(cloneCall) {
 ##   show_all   : when TRUE, also include every other cell in the projection
 ##                with expansion = NA (drawn as a grey background by the
 ##                renderer), so the receptor cells are shown in context.
-##   cells      : optional character vector of barcodes to restrict to (e.g.
+##   cells      : optional canonical (metadata) rows to restrict to (e.g.
 ##                from the Group filters); NULL = all cells in the projection.
 ##   split_output: return renderer-ready grouped coordinate arrays plus compact
 ##                deferred key sources. This avoids intermediate data.frames on
@@ -814,26 +1160,12 @@ ir_clonal_umap_data <- function(
   ) {
     return(NULL)
   }
-  clone_col <- ir_clonecall_col(cloneCall)
-  pack <- NULL
-  packed <- NULL
-  if (
-    identical(clone_col, "CTgene") &&
-      exists("viewerPackCurrent", mode = "function") &&
-      exists("viewerPackImmuneIndex", mode = "function")
-  ) {
-    pack <- viewerPackCurrent()
-    packed <- viewerPackImmuneIndex(pack, receptor)
+  encoded <- ir_encoded()
+  if (is.null(encoded)) {
+    return(NULL)
   }
-  indexed_pack <- !is.null(packed) &&
-    isTRUE(pack$canonical_order) &&
-    exists("viewerProjectionFirstFrameCoordinates", mode = "function")
   coords <- tryCatch(
-    if (indexed_pack) {
-      viewerProjectionFirstFrameCoordinates(projection)
-    } else {
-      getProjection(projection)
-    },
+    viewerProjectionFirstFrameCoordinates(projection),
     error = function(e) NULL
   )
   if (is.null(coords) || nrow(coords) == 0) {
@@ -851,90 +1183,43 @@ ir_clonal_umap_data <- function(
     max_background <- 100000L
   }
   visible_indices <- seq_len(nrow(coords))
-  repertoire_cells <- rownames(coords)
-  if (!is.null(cells) && indexed_pack) {
-    canonical <- if (exists("viewerPackCellBarcodes", mode = "function")) {
-      viewerPackCellBarcodes(pack)
-    } else {
-      NULL
-    }
-    if (is.null(canonical)) {
-      return(NULL)
-    }
-    visible_indices <- visible_indices[canonical %in% cells]
+  ## `cells` are canonical (metadata) rows (ir_umap_cells_to_show()), the
+  ## rows of the canonical coordinates.
+  if (!is.null(cells)) {
+    visible_indices <- visible_indices[visible_indices %in% cells]
     if (!length(visible_indices)) {
       return(NULL)
     }
-  } else if (!is.null(cells)) {
-    coords <- coords[rownames(coords) %in% cells, , drop = FALSE]
-    if (nrow(coords) == 0) {
-      return(NULL)
-    }
-    visible_indices <- seq_len(nrow(coords))
   }
 
-  coord_bc <- rownames(coords)
-  if (indexed_pack) {
-    coord_index <- suppressWarnings(as.integer(packed$cell_index))
-    clones <- packed$clone
-    valid <- !is.na(clones) &
-      nzchar(clones) &
-      !is.na(coord_index) &
-      coord_index >= 1L &
-      coord_index <= nrow(coords) &
-      coord_index %in% visible_indices
-    clones <- clones[valid]
-    coord_index <- coord_index[valid]
-    barcodes <- NULL
-  } else if (!is.null(packed)) {
-    canonical <- pack$cells
-    barcodes <- canonical[packed$cell_index]
-    clones <- packed$clone
-  } else {
-    data <- ir_data_annotated()
-    if (is.null(data)) {
-      return(NULL)
-    }
-    keep_chains <- ir_umap_chains(receptor)
-    rows <- lapply(data, function(df) {
-      if (is.null(df) || !all(c("barcode", clone_col) %in% colnames(df))) {
-        return(NULL)
-      }
-      chain_ref <- if ("CTstrict" %in% colnames(df)) {
-        as.character(df$CTstrict)
-      } else {
-        as.character(df[[clone_col]])
-      }
-      in_receptor <- grepl(paste(keep_chains, collapse = "|"), chain_ref)
-      if (!any(in_receptor)) {
-        return(NULL)
-      }
-      list(
-        barcode = as.character(df$barcode[in_receptor]),
-        clone = as.character(df[[clone_col]][in_receptor])
-      )
-    })
-    rows <- rows[!vapply(rows, is.null, logical(1))]
-    barcodes <- unlist(lapply(rows, `[[`, "barcode"), use.names = FALSE)
-    clones <- unlist(lapply(rows, `[[`, "clone"), use.names = FALSE)
-    # Match the pack's dataset population and first-row-per-barcode contract.
-    keep <- !is.na(clones) & nzchar(clones)
-    barcodes <- barcodes[keep]
-    clones <- clones[keep]
-    keep <- !duplicated(barcodes) & barcodes %in% repertoire_cells
-    barcodes <- barcodes[keep]
-    clones <- clones[keep]
-  }
+  clone_col <- ir_clonecall_col(cloneCall)
+  clone <- encoded$clones[[clone_col]]$both
+  blank <- encoded$blank[[clone_col]]
+  bit <- if (identical(receptor, "BCR")) 2L else 1L
+  rows <- which(
+    bitwAnd(encoded$receptor, bit) > 0L &
+      !is.na(clone) &
+      (is.na(blank) | clone != blank) &
+      !is.na(encoded$cell)
+  )
+  rows <- rows[!duplicated(encoded$cell[rows])]
+  coord_index <- encoded$cell[rows]
+  clones <- clone[rows]
   # Display filters and sampling must not redefine the biological clone size.
-  full_expansion <- if (is.null(packed)) ir_clone_expansion(clones) else NULL
-  if (!indexed_pack) {
-    valid <- !is.na(clones) & nzchar(clones)
-    coord_index <- match(barcodes, coord_bc)
-    valid <- valid & !is.na(coord_index)
-    barcodes <- barcodes[valid]
-    clones <- clones[valid]
-    coord_index <- coord_index[valid]
+  size <- if (length(clones) && min(clones) >= 1L) {
+    ## Clone ids are 1..n_clones: count them in place.
+    tabulate(clones, nbins = max(clones))[clones]
+  } else {
+    tabulate(match(clones, unique(clones)))[match(clones, unique(clones))]
   }
+  expansion_code <- findInterval(size, IR_CLONE_BINS, left.open = TRUE)
+  ## Every row is visible unless `cells` narrows them (a lookup of each
+  ## receptor cell in a million-long index otherwise).
+  valid <- coord_index <= nrow(coords)
+  if (!is.null(cells)) {
+    valid <- valid & coord_index %in% visible_indices
+  }
+  coord_index <- coord_index[valid]
   has_receptor <- length(coord_index) > 0L
   if (!has_receptor) {
     # No receptor cells. With show_all we can still draw the grey background;
@@ -944,15 +1229,11 @@ ir_clonal_umap_data <- function(
     }
     expansion <- factor(levels = IR_CLONE_LABELS)
   } else {
-    expansion <- if (!is.null(packed)) {
-      factor(
-        packed$expansion[valid],
-        levels = seq_along(IR_CLONE_LABELS),
-        labels = IR_CLONE_LABELS
-      )
-    } else {
-      full_expansion[valid]
-    }
+    expansion <- factor(
+      expansion_code[valid],
+      levels = seq_along(IR_CLONE_LABELS),
+      labels = IR_CLONE_LABELS
+    )
   }
   receptor_indices <- unique(coord_index)
 
@@ -966,11 +1247,7 @@ ir_clonal_umap_data <- function(
       } else {
         integer()
       }
-      if (indexed_pack) {
-        coord_index <- coord_index[keep]
-      } else {
-        barcodes <- barcodes[keep]
-      }
+      coord_index <- coord_index[keep]
       expansion <- expansion[keep]
       idx <- idx[keep]
     }
@@ -1022,7 +1299,7 @@ ir_clonal_umap_data <- function(
       visible_expansions,
       function(code) which(expansion_codes == code)
     )
-    out <- list(
+    return(list(
       x = c(
         if (length(bg_idx)) list(as.numeric(coord_x[bg_idx])) else list(),
         lapply(coloured_rows, function(rows) as.numeric(coord_x[idx[rows]]))
@@ -1035,55 +1312,40 @@ ir_clonal_umap_data <- function(
         if (length(bg_idx)) NA_integer_ else integer(),
         visible_expansions
       ),
-      coloured_rows = coloured_rows
-    )
-    if (indexed_pack) {
-      out$background_key <- bg_idx
-      out$coloured_key <- coord_index
-      out$key_type <- "cell_index"
-    } else {
-      out$background_key <- coord_bc[bg_idx]
-      out$coloured_key <- barcodes
-      out$key_type <- "barcode"
-    }
-    return(out)
+      coloured_rows = coloured_rows,
+      background_key = bg_idx,
+      coloured_key = coord_index,
+      key_type = "cell_index"
+    ))
   }
 
   # One frame: grey background rows (expansion = NA) first, then the coloured
   # receptor rows.
   rows <- c(bg_idx, idx)
-  out <- data.frame(
+  data.frame(
     x = as.numeric(coord_x[rows]),
     y = as.numeric(coord_y[rows]),
     expansion = factor(
       c(rep(NA_character_, length(bg_idx)), as.character(expansion)),
       levels = IR_CLONE_LABELS
     ),
+    cell_index = c(bg_idx, coord_index),
     stringsAsFactors = FALSE
   )
-  if (indexed_pack) {
-    out$cell_index <- c(bg_idx, coord_index)
-  } else {
-    out$barcode <- c(coord_bc[bg_idx], barcodes)
-  }
-  out
 }
 
+
+## The cell names of a Clonal UMAP frame's canonical rows.
 ir_clonal_umap_barcodes <- function(data) {
-  if ("barcode" %in% colnames(data)) {
-    return(as.character(data$barcode))
-  }
   if (!("cell_index" %in% colnames(data))) {
     return(NULL)
   }
-  if (
-    exists("viewerPackCurrent", mode = "function") &&
-      exists("viewerPackCellBarcodes", mode = "function")
-  ) {
-    cells <- viewerPackCellBarcodes(viewerPackCurrent(), data$cell_index)
-    if (!is.null(cells)) {
-      return(cells)
-    }
+  cells <- tryCatch(
+    viewerPackCellBarcodes(viewerPackCurrent(), data$cell_index),
+    error = function(e) NULL
+  )
+  if (!is.null(cells)) {
+    return(cells)
   }
   metadata <- tryCatch(getMetaData(), error = function(e) NULL)
   if (
@@ -1096,157 +1358,38 @@ ir_clonal_umap_barcodes <- function(data) {
   as.character(metadata$cell_barcode[data$cell_index])
 }
 
-##----------------------------------------------------------------------------##
-## Clone-segment parsing (used by the Clone Sharing tab)
-##----------------------------------------------------------------------------##
-
-## ---- Parse V / J / CDR3 for one chain out of the CT* columns ----------- ##
-## scRepertoire packs all chains of a cell into single strings:
-##   CTgene : "<chainA gene segs>_<chainB gene segs>"  (chains joined by "_")
-##            each chain's segs are V.D.J.C joined by "."  (empty D -> "..")
-##            a chain's two alleles are joined by ";"      (take the first)
-##   CTaa   : "<chainA CDR3>_<chainB CDR3>"              (chains joined by "_")
-## "NA" marks a missing chain. This returns one row per cell that HAS the
-## requested chain, with parsed v_gene / j_gene / cdr3 and a combined
-## clone_vjc = "v;j;cdr3" id, plus every metadata column already joined onto
-## the IR data (so callers can group/split by any of them).
-##
-##   data  : the metadata-annotated IR list (ir_data_annotated())
-##   chain : chain prefix, e.g. "TRB" / "TRA" / "IGH"
-ir_parse_segments <- function(data, chain, columns = NULL) {
-  if (is.null(data) || length(data) == 0 || is.null(chain) || !nzchar(chain)) {
-    return(NULL)
+## The sharing class of every clone (integer ids `clone`, 1..n_clones) from the
+## distinct sharing units and groups its rows span:
+##   Private               : found in exactly 1 unit
+##   Public (within-group) : >= 2 units, all in the same group
+##   Public (cross-group)  : spans >= 2 groups
+## Without groups, Private / Public (>= 2 units). NA units and groups do not
+## count.
+ir_sharing_classes <- function(clone, n_clones, units, groups = NULL) {
+  n_distinct <- function(values) {
+    ok <- !is.na(values)
+    levels <- unique(values[ok])
+    codes <- (as.double(clone[ok]) - 1) *
+      (length(levels) + 1) +
+      match(values[ok], levels)
+    tabulate(clone[ok][!duplicated(codes)], nbins = n_clones)
   }
-  # For each cell's CT* string (chains joined by "_"), find the positional index
-  # (1-based) of the chain matching `chain`, then return that slot's value from
-  # both CTgene and CTaa in parallel so gene and CDR3 stay aligned.
-  # Returns NA when the chain is absent or its slot is "NA".
-  chain_slot_index <- function(parts) {
-    sizes <- lengths(parts)
-    owners <- rep.int(seq_along(parts), sizes)
-    first <- sub(";.*$", "", unlist(parts, use.names = FALSE))
-    hits <- which(grepl(chain, first, fixed = TRUE) & first != "NA")
-    hits <- hits[!duplicated(owners[hits])]
-    slots <- rep(NA_integer_, length(parts))
-    offsets <- cumsum(sizes) - sizes
-    slots[owners[hits]] <- hits - offsets[owners[hits]]
-    slots
+  n_units <- n_distinct(units)
+  if (is.null(groups)) {
+    return(factor(
+      ifelse(n_units <= 1, "Private", "Public"),
+      levels = IR_SHARING_LEVELS_2
+    ))
   }
-  # Given a CT* vector and a per-row slot index, pick that slot's value.
-  # strsplit the whole vector once, then index the flattened slots in one
-  # vector operation. NA slot, out-of-range slot, and a
-  # literal "NA" / empty value all collapse to NA_character_, as before.
-  pick_slot <- function(ct_vec, slot_idx, split_all = NULL) {
-    if (length(ct_vec) == 0) {
-      return(character(0))
-    }
-    if (is.null(split_all)) {
-      split_all <- strsplit(as.character(ct_vec), "_", fixed = TRUE)
-    }
-    sizes <- lengths(split_all)
-    valid <- !is.na(slot_idx) & slot_idx <= sizes
-    val <- rep(NA_character_, length(split_all))
-    offsets <- cumsum(sizes) - sizes
-    val[valid] <- unlist(split_all, use.names = FALSE)[
-      offsets[valid] + slot_idx[valid]
-    ]
-    val[is.na(val) | val == "NA" | !nzchar(val)] <- NA_character_
-    val
-  }
-  # Take the first allele (before ";") of a chain segment.
-  first_allele <- function(x) {
-    ifelse(is.na(x), NA_character_, sub(";.*$", "", x))
-  }
-
-  sample_names <- names(data)
-  if (is.null(sample_names)) {
-    sample_names <- as.character(seq_along(data))
-  }
-  rows <- Map(
-    function(df, sample_name) {
-      if (
-        is.null(df) || !all(c("barcode", "CTgene", "CTaa") %in% colnames(df))
-      ) {
-        return(NULL)
-      }
-      # Parse each distinct CTgene/CTaa pair once. Large repertoires contain many
-      # repeated clonotypes; parsing every cell separately made Clone Sharing
-      # spend tens of seconds in strsplit() before drawing.
-      pair_key <- paste(df$CTgene, df$CTaa, sep = "\034")
-      first <- !duplicated(pair_key)
-      unique_gene <- df$CTgene[first]
-      unique_aa <- df$CTaa[first]
-      gene_parts <- strsplit(as.character(unique_gene), "_", fixed = TRUE)
-      slot_idx <- chain_slot_index(gene_parts)
-      gene_unique <- first_allele(pick_slot(unique_gene, slot_idx, gene_parts))
-      cdr3_unique <- first_allele(pick_slot(unique_aa, slot_idx))
-      pair_index <- match(pair_key, pair_key[first])
-      gene_seg <- gene_unique[pair_index]
-      cdr3 <- cdr3_unique[pair_index]
-      # From "TRBV6-2..TRBJ2-6.TRBC2" pull the V and J tokens (segs split on ".").
-      # NA gene_seg -> strsplit yields NA -> no token matches -> NA gene, dropped.
-      # Tokenize each distinct segment once and map back to the cells.
-      segments <- unique(gene_unique)
-      segment_tokens <- strsplit(segments, ".", fixed = TRUE)
-      segment_index <- match(gene_seg, segments)
-      pull_token <- function(prefix) {
-        pattern <- paste0("^", chain, prefix)
-        vapply(
-          segment_tokens,
-          function(toks) {
-            hit <- toks[grepl(pattern, toks)]
-            if (length(hit) == 0) NA_character_ else hit[1]
-          },
-          character(1)
-        )[segment_index]
-      }
-      v_gene <- pull_token("V")
-      j_gene <- pull_token("J")
-      keep <- !is.na(v_gene) & !is.na(j_gene) & !is.na(cdr3) & nzchar(cdr3)
-      if (!any(keep)) {
-        return(NULL)
-      }
-      keep_columns <- if (is.null(columns)) {
-        colnames(df)
-      } else {
-        intersect(unique(c("barcode", columns)), colnames(df))
-      }
-      out <- df[keep, keep_columns, drop = FALSE]
-      if (
-        !is.null(columns) &&
-          "sample" %in% columns &&
-          !("sample" %in% names(out))
-      ) {
-        out$sample <- sample_name
-      }
-      out$v_gene <- v_gene[keep]
-      out$j_gene <- j_gene[keep]
-      out$cdr3 <- cdr3[keep]
-      out$clone_vjc <- paste(out$v_gene, out$j_gene, out$cdr3, sep = ";")
-      out
-    },
-    data,
-    sample_names
+  n_groups <- n_distinct(groups)
+  factor(
+    ifelse(
+      n_units <= 1,
+      "Private",
+      ifelse(n_groups >= 2, "Public (cross-group)", "Public (within-group)")
+    ),
+    levels = IR_SHARING_LEVELS_3
   )
-  rows <- rows[!vapply(rows, is.null, logical(1))]
-  if (length(rows) == 0) {
-    return(NULL)
-  }
-  # Align columns before rbind. Use the UNION of all sample columns and NA-fill
-  # any a given sample lacks, so per-cohort metadata columns are never silently
-  # dropped (intersect would lose them). Column order follows the first sample,
-  # with any extra columns from later samples appended.
-  all_cols <- unique(unlist(lapply(rows, colnames)))
-  rows <- lapply(rows, function(df) {
-    miss <- setdiff(all_cols, colnames(df))
-    for (col in miss) {
-      df[[col]] <- NA
-    }
-    df[, all_cols, drop = FALSE]
-  })
-  out <- do.call(rbind, rows)
-  rownames(out) <- NULL
-  out
 }
 
 ## ---- Sharing-class factor levels --------------------------------------- ##
@@ -1256,66 +1399,6 @@ IR_SHARING_LEVELS_3 <- c(
   "Public (cross-group)"
 )
 IR_SHARING_LEVELS_2 <- c("Private", "Public")
-
-## ---- Classify each clonotype by how it is shared ----------------------- ##
-## For every distinct clone_vjc, count how many `unit_col` values carry it and
-## how many `group_col` values it spans, then label it:
-##   Private               : found in exactly 1 unit
-##   Public (within-group) : >= 2 units, all in the same group
-##   Public (cross-group)  : spans >= 2 groups
-## With group_col = NULL there is no group dimension, so it degrades to
-## Private / Public (>= 2 units). Returns one row per clonotype: clone_vjc,
-## n_units, n_groups (0 when ungrouped), sharing (factor). NA unit/group
-## values are ignored when counting, so a stray NA row cannot inflate a
-## clonotype into a spurious Public / cross-group classification.
-ir_sharing_classify <- function(seg, unit_col, group_col = NULL) {
-  if (is.null(seg) || nrow(seg) == 0 || !(unit_col %in% colnames(seg))) {
-    return(NULL)
-  }
-  has_group <- !is.null(group_col) &&
-    nzchar(group_col) &&
-    group_col %in% colnames(seg)
-  # Distinct-count helper: for each clonotype (all clones share a stable factor
-  # level set), count how many distinct non-NA values of `col` it carries.
-  # Vectorised over all clonotypes at once via unique-then-tabulate, instead of
-  # splitting per clonotype and building a one-row data.frame each time.
-  clones <- factor(seg$clone_vjc)
-  clone_codes <- as.integer(clones)
-  n_distinct_by_clone <- function(col) {
-    vals <- as.character(seg[[col]])
-    ok <- !is.na(vals)
-    # Encode (clone, value) pairs as one exact double instead of letting
-    # duplicated.data.frame() paste every row into a string.
-    value_levels <- unique(vals[ok])
-    value_codes <- match(vals[ok], value_levels)
-    pair_codes <- (as.double(clone_codes[ok]) - 1) *
-      (length(value_levels) + 1) +
-      value_codes
-    pairs <- !duplicated(pair_codes)
-    tabulate(clone_codes[ok][pairs], nbins = nlevels(clones))
-  }
-  n_units <- n_distinct_by_clone(unit_col)
-  n_groups <- if (has_group) n_distinct_by_clone(group_col) else 0L
-  sharing <- if (!has_group) {
-    ifelse(n_units <= 1, "Private", "Public")
-  } else {
-    ifelse(
-      n_units <= 1,
-      "Private",
-      ifelse(n_groups >= 2, "Public (cross-group)", "Public (within-group)")
-    )
-  }
-  lvls <- if (has_group) IR_SHARING_LEVELS_3 else IR_SHARING_LEVELS_2
-  out <- data.frame(
-    clone_vjc = levels(clones),
-    n_units = n_units,
-    n_groups = if (has_group) n_groups else 0L,
-    sharing = factor(sharing, levels = lvls),
-    stringsAsFactors = FALSE
-  )
-  rownames(out) <- NULL
-  out
-}
 
 ## ---- Is the chain a BCR chain? ----------------------------------------- ##
 ## IGH/IGK/IGL undergo somatic hypermutation, so identical-CDR3 clone calling
@@ -1332,7 +1415,7 @@ ir_is_bcr_chain <- function(chain) {
 IR_BCR_SHM_CAVEAT <- "BCR: CDR3 not collapsed by SHM; clones may be split."
 
 ## ---- Friendly display labels for the sharing classes ------------------- ##
-## The data layer (ir_sharing_classify) keeps immunology-standard labels
+## The data layer (ir_sharing_classes) keeps immunology-standard labels
 ## (Private / Public (within-group) / Public (cross-group)); the plot maps
 ## them to self-explanatory axis labels. Two-class mode reuses the first two.
 IR_SHARING_DISPLAY_LABELS <- c(
@@ -1343,23 +1426,45 @@ IR_SHARING_DISPLAY_LABELS <- c(
 )
 
 ## ---- Build the Clone Sharing ggplot ------------------------------------ ##
-## Classifies each clonotype (via ir_sharing_classify) and bars the class
-## counts, using friendly x-axis labels. Returns NULL on empty data or when
-## the unit column is absent. Shared by the live renderer and the demo.
-ir_build_sharing_plot <- function(data, chain, unit_col, group_by = NULL) {
-  seg <- ir_parse_segments(
-    data,
-    chain,
-    columns = unique(c(unit_col, group_by))
+## Classifies each V;J;CDR3 clonotype of `chain` by the sharing units and the
+## groups it spans and bars the class counts, using friendly x-axis labels.
+## The units are `unit_col`'s values of the repertoire rows: the tables' own
+## column, else the cell metadata's (except for "sample", which is the sample
+## names unless the tables or the grouping carry it); the groups are
+## `group_by`'s. Returns NULL on empty data or when the unit column is absent.
+## Shared by the live renderer and the demo.
+ir_build_sharing_plot <- function(
+  encoded,
+  chain,
+  unit_col,
+  group_by = NULL,
+  metadata = NULL
+) {
+  clone <- encoded$sharing[[chain]]
+  kept <- which(!is.na(clone))
+  if (!length(kept)) {
+    return(NULL)
+  }
+  grouped <- !is.null(group_by) && nzchar(group_by)
+  units <- ir_row_values(
+    encoded,
+    unit_col,
+    metadata,
+    joined = !identical(unit_col, "sample") ||
+      (grouped && identical(group_by, "sample"))
   )
-  if (is.null(seg) || nrow(seg) == 0 || !(unit_col %in% colnames(seg))) {
+  if (is.null(units)) {
     return(NULL)
   }
-  cls <- ir_sharing_classify(seg, unit_col = unit_col, group_col = group_by)
-  if (is.null(cls)) {
-    return(NULL)
-  }
-  counts <- as.data.frame(table(sharing = cls$sharing))
+  groups <- if (grouped) ir_row_values(encoded, group_by, metadata)
+  grouped <- !is.null(groups)
+  sharing <- ir_sharing_classes(
+    clone[kept],
+    max(clone[kept]),
+    as.character(units[kept]),
+    if (grouped) as.character(groups[kept])
+  )
+  counts <- as.data.frame(table(sharing = sharing))
   counts$pct <- counts$Freq / sum(counts$Freq) * 100
   # Map the raw class labels to friendly display labels, preserving order.
   counts$display <- factor(

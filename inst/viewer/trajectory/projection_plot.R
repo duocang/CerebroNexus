@@ -37,6 +37,21 @@ trajectory_projection_feedback <- function() {
   )
 }
 
+## The feedback a frame is sent with, with the current point size and opacity.
+trajectory_projection_full_feedback <- function(feedback) {
+  utils::modifyList(
+    feedback,
+    list(
+      trajectory_point_size = as.character(
+        isolate(trajectory_projection_appearance$point_size)
+      ),
+      trajectory_point_opacity = as.character(
+        isolate(trajectory_projection_appearance$point_opacity)
+      )
+    )
+  )
+}
+
 trajectory_projection_point_line <- function(draw_border) {
   if (draw_border) {
     list(color = cerebro_plotly_theme()$axis, width = 1)
@@ -78,6 +93,68 @@ trajectory_projection_hover_columns <- function(hover_cells) {
 trajectory_projection_active <- function() {
   identical(input[["sidebar"]], "trajectory")
 }
+## Group filters that leave cells out. A filter that selects every level (what
+## the drawer's controls bind with) is no filter, so mounting the drawer does
+## not rebuild or resend the frame.
+trajectory_active_group_filters <- function() {
+  groups <- getGroups()
+  filters <- stats::setNames(
+    lapply(groups, function(group) {
+      input[[paste0("trajectory_projection_group_filter_", group)]]
+    }),
+    groups
+  )
+  filters <- filters[!vapply(filters, is.null, logical(1))]
+  everything <- vapply(
+    names(filters),
+    function(group) {
+      levels <- as.character(getGroupLevels(group))
+      length(levels) > 0L &&
+        setequal(as.character(filters[[group]]), levels)
+    },
+    logical(1)
+  )
+  filters[!everything]
+}
+
+## With a Viewer Pack the frame carries every cell and the browser hides a
+## deterministic share of them, as on Overview, so the "% of cells" slider does
+## not resample and resend the trajectory cells from R.
+trajectory_client_percentage <- reactive({
+  viewerPackCanonical(viewerPackCurrent())
+})
+## The share of cells R samples for the frame.
+trajectory_server_percentage <- function() {
+  if (isTRUE(trajectory_client_percentage())) {
+    100
+  } else {
+    trajectory_projection_appearance$percentage_cells_to_show
+  }
+}
+## Frame fields that hand "% of cells" to the browser.
+trajectory_client_percentage_fields <- function() {
+  if (!isTRUE(trajectory_client_percentage())) {
+    return(list())
+  }
+  list(
+    client_percentage = TRUE,
+    percentage_cells_to_show = isolate(
+      trajectory_projection_appearance$percentage_cells_to_show
+    )
+  )
+}
+
+## What a frame is built for. The debounced frame is only sent once it matches
+## the current request; an earlier one would show the previous state.
+trajectory_projection_request <- function() {
+  list(
+    color_variable = input[["trajectory_point_color"]],
+    filters = trajectory_active_group_filters(),
+    percentage = trajectory_server_percentage()
+  )
+}
+
+trajectory_projection_cells_memo <- viewerMemoOne()
 trajectory_projection_prepared_raw <- reactive({
   req(trajectory_projection_active())
   dataset_context <- viewer_loaded_dataset_context()
@@ -88,49 +165,62 @@ trajectory_projection_prepared_raw <- reactive({
 
   trajectory_data <- trajectory_data_reactive()
 
-  groups <- getGroups()
-  group_filters <- stats::setNames(
-    lapply(groups, function(group) {
-      input[[paste0("trajectory_projection_group_filter_", group)]]
-    }),
-    groups
-  )
-  group_filters <- group_filters[
-    !vapply(group_filters, is.null, logical(1))
-  ]
+  request <- trajectory_projection_request()
+  group_filters <- request$filters
   color_variable <- input[["trajectory_point_color"]]
-  cells_df <- trajectory_cells_reactive(c(
-    color_variable,
-    names(group_filters)
-  ))
-  keep <- cerebroGroupFilterMask(cells_df, group_filters)
-  if (!all(keep)) {
-    cells_df <- cells_df[keep, , drop = FALSE]
-  }
+  ## Sampling and shuffling are random. The same cells and request (evaluated
+  ## again because a control bound with its current value) reuse the drawn
+  ## cells, so the frame is identical and is not sent again. The cells are a
+  ## function of the data set, the trajectory and the columns read, so those
+  ## key them rather than the cells themselves, which would be read and
+  ## compared in full on every evaluation.
+  built <- trajectory_projection_cells_memo(
+    list(
+      dataset_context,
+      trajectory_data,
+      input[["trajectory_selected_method"]],
+      input[["trajectory_selected_name"]],
+      request,
+      color_variable
+    ),
+    function() {
+      cells_df <- trajectory_cells_reactive(c(
+        color_variable,
+        names(group_filters)
+      ))
+      keep <- cerebroGroupFilterMask(cells_df, group_filters)
+      if (!all(keep)) {
+        cells_df <- cells_df[keep, , drop = FALSE]
+      }
 
-  ## randomly remove cells (if necessary)
-  cells_df <- randomlySubsetCells(
-    cells_df,
-    trajectory_projection_appearance$percentage_cells_to_show
-  )
+      ## randomly remove cells (if necessary)
+      cells_df <- randomlySubsetCells(cells_df, request$percentage)
 
-  ## An empty frame is still sent, without trajectory lines, so clearing every
-  ## filter cannot leave the previous Canvas frame visible.
-  trajectory_lines <- list()
-  if (nrow(cells_df) > 0L) {
-    ## Categorical payloads are split into one trace per group below, so
-    ## shuffling rows within a trace cannot change paint order. Continuous
-    ## colours stay shuffled so the original overlap behaviour is preserved.
-    if (is.numeric(cells_df[[color_variable]])) {
-      cells_df <- cells_df[sample.int(nrow(cells_df)), , drop = FALSE]
+      ## An empty frame is still sent, without trajectory lines, so clearing
+      ## every filter cannot leave the previous Canvas frame visible.
+      trajectory_lines <- list()
+      if (nrow(cells_df) > 0L) {
+        ## Categorical payloads are split into one trace per group below, so
+        ## shuffling rows within a trace cannot change paint order. Continuous
+        ## colours stay shuffled so the original overlap behaviour is preserved.
+        if (is.numeric(cells_df[[color_variable]])) {
+          cells_df <- cells_df[sample.int(nrow(cells_df)), , drop = FALSE]
+        }
+
+        ## trajectory path as line-segment shapes (warm near-black, the theme
+        ## title colour), drawn under the points as the structural backbone
+        trajectory_lines <- trajectory_projection_lines(trajectory_data[[
+          "edges"
+        ]])
+      }
+      list(cells_df = cells_df, trajectory_lines = trajectory_lines)
     }
-
-    ## trajectory path as line-segment shapes (warm near-black, the theme title
-    ## colour), drawn under the points as the structural backbone
-    trajectory_lines <- trajectory_projection_lines(trajectory_data[["edges"]])
-  }
+  )
+  cells_df <- built$cells_df
+  trajectory_lines <- built$trajectory_lines
 
   list(
+    request = request,
     dataset_context = dataset_context,
     feedback = trajectory_projection_feedback(),
     cells_df = cells_df,
@@ -139,8 +229,8 @@ trajectory_projection_prepared_raw <- reactive({
     color_variable = color_variable,
     point_size = isolate(trajectory_projection_appearance$point_size),
     point_opacity = isolate(trajectory_projection_appearance$point_opacity),
-    draw_border = trajectory_projection_appearance$draw_border,
-    keep_square = trajectory_projection_appearance$keep_square
+    draw_border = isolate(trajectory_projection_appearance$draw_border),
+    keep_square = isolate(trajectory_projection_appearance$keep_square)
   )
 })
 
@@ -183,30 +273,49 @@ observeEvent(
 ## Observer that pushes the prepared data to the shared JS renderer.
 ##----------------------------------------------------------------------------##
 trajectory_projection_sent <- reactiveVal(FALSE)
+## The render request and frame last sent. The observer also re-runs when a
+## control it reads binds with the value it already used (the drawer's group
+## filters); the same frame for the same request is not sent again.
+## The key is recorded once the frame is sent, so a frame that failed is sent
+## again on the next run.
+trajectory_projection_last <- new.env(parent = emptyenv())
+trajectory_projection_frame_key <- function(render_request, frame) {
+  list(render_request = render_request, frame = frame)
+}
 
 ## The default million-cell frame is already stored in the Viewer Pack in the
 ## exact trajectory row order. Keep this gate deliberately narrow: any filter,
-## sampling, non-state colour, unsupported transport, or failed resource uses
+## sampling, non-state colour or failed resource uses
 ## the established R construction path below.
 trajectory_static_first_frame <- reactive({
+  static_frame <- trajectory_static_frame()
+  if (
+    length(trajectory_active_group_filters()) &&
+      is.null(trajectory_client_filters())
+  ) {
+    return(NULL)
+  }
+  static_frame
+})
+## The group filters for the browser to apply to the Viewer Pack frame, which
+## holds every trajectory cell and maps them to the Pack's codes (NULL: R
+## builds and filters the frame).
+trajectory_client_filters <- viewerClientFilters(
+  "trajectory_projection",
+  active = function() trajectory_projection_active(),
+  client = function() !is.null(trajectory_static_frame()),
+  filters = function() trajectory_active_group_filters()
+)
+## The Viewer Pack frame for every trajectory cell, filters aside.
+trajectory_static_frame <- reactive({
   req(trajectory_selection_ok())
   color_variable <- input[["trajectory_point_color"]]
   groups <- getGroups()
   if (
-    !isTRUE(input[["coordviews_wire_supported"]]) ||
-      !(identical(color_variable, "state") ||
-        isTRUE(color_variable %in% groups)) ||
-      !isTRUE(all.equal(
-        as.numeric(trajectory_projection_appearance$percentage_cells_to_show),
-        100
-      ))
+    !(identical(color_variable, "state") ||
+      isTRUE(color_variable %in% groups)) ||
+      !isTRUE(all.equal(as.numeric(trajectory_server_percentage()), 100))
   ) {
-    return(NULL)
-  }
-  filters <- lapply(groups, function(group) {
-    input[[paste0("trajectory_projection_group_filter_", group)]]
-  })
-  if (any(!vapply(filters, is.null, logical(1)))) {
     return(NULL)
   }
   method <- input[["trajectory_selected_method"]]
@@ -291,34 +400,6 @@ observeEvent(
   ignoreInit = TRUE
 )
 
-## Point size and opacity are renderer patches, as on Spatial: changing them
-## must not resample or rebuild the frame. Other pages' edits reach this view
-## through the shared scatter defaults and the next render.
-observeEvent(
-  list(
-    trajectory_projection_appearance$point_size,
-    trajectory_projection_appearance$point_opacity
-  ),
-  {
-    req(trajectory_projection_active(), isTRUE(trajectory_projection_sent()))
-    identity <- viewerDatasetIdentity()
-    req(identity$fingerprint)
-    session$sendCustomMessage(
-      "cell_view_appearance",
-      list(
-        id = "trajectory_projection",
-        dataset_context = viewer_loaded_dataset_context(),
-        dataset_fingerprint = identity$fingerprint,
-        values = list(
-          point_size = trajectory_projection_appearance$point_size,
-          point_opacity = trajectory_projection_appearance$point_opacity
-        )
-      )
-    )
-  },
-  ignoreInit = TRUE
-)
-
 observe({
   ## Shared point defaults change from other pages; do not rebuild and send
   ## this page's frame in the background.
@@ -338,20 +419,41 @@ observe({
   reset_axes_now <- isolate(
     trajectory_projection_parameters_other[["reset_axes"]]
   )
-  trajectory_projection_parameters_other[["reset_axes"]] <- FALSE
 
+  ## "% of cells" reaches R first as the shared scatter edit (which may or may
+  ## not draw a frame) and then as the slider's own debounced value. Re-run on
+  ## the latter, so the drawn frame acknowledges it.
+  input[["trajectory_percentage_cells_to_show"]]
   static_frame <- trajectory_static_first_frame()
   if (!is.null(static_frame)) {
+    feedback <- trajectory_projection_feedback()
+    key <- trajectory_projection_frame_key(render_request, static_frame)
+    if (identical(key, trajectory_projection_last$key)) {
+      ## "% of cells" applied by the browser: acknowledge it on the drawn frame.
+      if (
+        !is.null(trajectory_projection_last$token) &&
+          !identical(feedback, trajectory_projection_last$feedback)
+      ) {
+        cerebroSendViewFeedback(
+          "trajectory_projection",
+          trajectory_projection_last$token,
+          current_context,
+          feedback
+        )
+        trajectory_projection_last$feedback <- feedback
+      }
+      return()
+    }
     resource <- static_frame$resource
     meta <- list(
       color_type = "categorical",
       color_variable = static_frame$color_variable,
       traces = as.list(static_frame$levels),
-      appearance = list(
+      appearance = isolate(list(
         group_labels = isTRUE(trajectory_projection_appearance$group_labels),
         draw_border = isTRUE(trajectory_projection_appearance$draw_border),
         keep_square = isTRUE(trajectory_projection_appearance$keep_square)
-      ),
+      )),
       space_label = input[["trajectory_selected_name"]]
     )
     primary <- list(
@@ -359,7 +461,7 @@ observe({
       point_size = isolate(trajectory_projection_appearance$point_size),
       point_opacity = isolate(trajectory_projection_appearance$point_opacity),
       point_line = trajectory_projection_point_line(
-        trajectory_projection_appearance$draw_border
+        isolate(trajectory_projection_appearance$draw_border)
       ),
       x_range = list(),
       y_range = list(),
@@ -367,26 +469,35 @@ observe({
       trajectory_frame_resource = resource,
       deferred_selection_lengths = resource$cells
     )
+    primary <- c(primary, trajectory_client_percentage_fields())
     deferred_aux <- function() {
+      ## Without hover only the rows are needed, not a million-row table of
+      ## every group.
       hover_cells <- trajectory_cells_reactive(
-        c("nUMI", "nGene", getGroups()),
-        barcodes = TRUE
+        if (static_frame$hover) c("nUMI", "nGene", getGroups())
       )
       if (nrow(hover_cells) != resource$cells) {
         stop("Trajectory Viewer Pack frame no longer matches trajectory rows.")
       }
+      ## Named by canonical row when the cell-name file covers them.
+      names_resource <- viewerCellNamesResourceFor(hover_cells[["cell_index"]])
       cerebroCellViewDeferredAux(
         selection_rows = seq_len(resource$cells),
-        cell_barcodes = as.character(hover_cells[["cell_barcode"]]),
+        cell_barcodes = if (is.null(names_resource)) {
+          viewerCellBarcodesAt(hover_cells[["cell_index"]])
+        },
         hover_columns = if (static_frame$hover) {
           trajectory_projection_hover_columns(hover_cells)
         } else {
           list()
         },
-        hover = static_frame$hover
+        hover = static_frame$hover,
+        names_resource = names_resource,
+        cell_rows = hover_cells[["cell_index"]]
       )
     }
-    cerebroCellViewRender(
+    trajectory_projection_parameters_other[["reset_axes"]] <- FALSE
+    trajectory_projection_last$token <- cerebroCellViewRender(
       "trajectory_projection",
       meta,
       primary,
@@ -394,8 +505,10 @@ observe({
       extra = list(shapes = static_frame$trajectory_lines),
       deferred_aux = deferred_aux,
       dataset_context = current_context,
-      feedback = trajectory_projection_feedback()
+      feedback = feedback
     )
+    trajectory_projection_last$key <- key
+    trajectory_projection_last$feedback <- feedback
     if (!isolate(trajectory_projection_sent())) {
       session$onFlushed(
         function() trajectory_projection_sent(TRUE),
@@ -410,6 +523,34 @@ observe({
     prepared,
     viewerDatasetContextEqual(prepared$dataset_context, current_context)
   )
+  ## Wait for the debounced frame of this request; it re-runs this observer.
+  if (!identical(prepared$request, trajectory_projection_request())) {
+    return()
+  }
+  ## Control values are not part of the frame: when only they changed (the
+  ## drawer's group filters binding), the drawn frame acknowledges them.
+  feedback <- trajectory_projection_full_feedback(
+    trajectory_projection_feedback()
+  )
+  key <- trajectory_projection_frame_key(
+    render_request,
+    prepared[setdiff(names(prepared), "feedback")]
+  )
+  if (identical(key, trajectory_projection_last$key)) {
+    if (
+      !is.null(trajectory_projection_last$token) &&
+        !identical(feedback, trajectory_projection_last$feedback)
+    ) {
+      cerebroSendViewFeedback(
+        "trajectory_projection",
+        trajectory_projection_last$token,
+        current_context,
+        feedback
+      )
+      trajectory_projection_last$feedback <- feedback
+    }
+    return()
+  }
 
   cells_df <- prepared[["cells_df"]]
   color_variable <- prepared[["color_variable"]]
@@ -458,29 +599,36 @@ observe({
     hover = FALSE,
     space_label = input[["trajectory_selected_name"]]
   )
+  payload$data <- c(payload$data, trajectory_client_percentage_fields())
   selection_rows <- payload$data$selection_key
   deferred_aux <- function() {
     hover_cells <- trajectory_cells_reactive(
-      c("nUMI", "nGene", getGroups()),
-      barcodes = TRUE
+      if (prepared[["hover"]]) c("nUMI", "nGene", getGroups())
     )
     hover_cells <- hover_cells[
       match(cells_df[["cell_index"]], hover_cells[["cell_index"]]),
       ,
       drop = FALSE
     ]
+    ## Named by canonical row when the cell-name file covers them.
+    names_resource <- viewerCellNamesResourceFor(hover_cells[["cell_index"]])
     cerebroCellViewDeferredAux(
       selection_rows = selection_rows,
-      cell_barcodes = as.character(hover_cells[["cell_barcode"]]),
+      cell_barcodes = if (is.null(names_resource)) {
+        viewerCellBarcodesAt(hover_cells[["cell_index"]])
+      },
       hover_columns = if (prepared[["hover"]]) {
         trajectory_projection_hover_columns(hover_cells)
       } else {
         list()
       },
-      hover = prepared[["hover"]]
+      hover = prepared[["hover"]],
+      names_resource = names_resource,
+      cell_rows = hover_cells[["cell_index"]]
     )
   }
-  cerebroCellViewRender(
+  trajectory_projection_parameters_other[["reset_axes"]] <- FALSE
+  trajectory_projection_last$token <- cerebroCellViewRender(
     "trajectory_projection",
     payload[["meta"]],
     payload[["data"]],
@@ -488,18 +636,10 @@ observe({
     extra = list(shapes = prepared[["trajectory_lines"]]),
     deferred_aux = deferred_aux,
     dataset_context = prepared[["dataset_context"]],
-    feedback = utils::modifyList(
-      prepared[["feedback"]],
-      list(
-        trajectory_point_size = as.character(
-          isolate(trajectory_projection_appearance$point_size)
-        ),
-        trajectory_point_opacity = as.character(
-          isolate(trajectory_projection_appearance$point_opacity)
-        )
-      )
-    )
+    feedback = feedback
   )
+  trajectory_projection_last$key <- key
+  trajectory_projection_last$feedback <- feedback
   if (!isolate(trajectory_projection_sent())) {
     session$onFlushed(
       function() trajectory_projection_sent(TRUE),
@@ -576,29 +716,12 @@ trajectory_projection_selected_cells <- reactive({
 })
 
 ##----------------------------------------------------------------------------##
-## Text showing the number of selected cells.
+## Number and composition of the selected cells.
 ##----------------------------------------------------------------------------##
-
-output[["trajectory_number_of_selected_cells"]] <- renderUI({
-  selection <- trajectory_projection_selected_cells()
-  cerebroSelectionSummary(
-    selection,
-    input[["trajectory_selected_name"]],
-    input[["trajectory_point_color"]],
-    ## Match Gene's empty-selection path: only the validated count is needed.
-    metadata = if (is.null(selection)) {
-      viewerProjectionFirstFrameMetadata()
-    } else {
-      getMetaData()
-    }
-  )
-})
-
-output[["trajectory_projection_composition"]] <- renderUI({
-  cerebroSelectionSummary(
-    trajectory_projection_selected_cells(),
-    input[["trajectory_selected_name"]],
-    input[["trajectory_point_color"]],
-    composition = TRUE
-  )
-})
+viewerSelectionSummaryOutputs(
+  "trajectory_projection",
+  "trajectory_number_of_selected_cells",
+  function() trajectory_projection_selected_cells(),
+  source = function() input[["trajectory_selected_name"]],
+  color = function() input[["trajectory_point_color"]]
+)

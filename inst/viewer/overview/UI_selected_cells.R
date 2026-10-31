@@ -1,6 +1,11 @@
+overview_selection_present <- viewerSelectionPresence("overview_projection")
+
 output[["overview_selected_cells_plot_UI"]] <- renderUI({
-  req(overview_projection_selected_cells())
-  choices <- setdiff(colnames(getMetaData()), "cell_barcode")
+  req(overview_selection_present())
+  choices <- setdiff(
+    colnames(viewerProjectionFirstFrameMetadata()),
+    "cell_barcode"
+  )
   cerebroSelectedCellsPlotUI("overview", choices)
 })
 
@@ -11,7 +16,7 @@ cerebroRegisterInfo(
 )
 
 output[["overview_selected_cells_table_UI"]] <- renderUI({
-  req(overview_projection_selected_cells())
+  req(overview_selection_present())
   cerebroSelectedCellsTableUI("overview")
 })
 

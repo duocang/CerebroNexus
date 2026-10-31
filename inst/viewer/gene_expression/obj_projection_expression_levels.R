@@ -82,9 +82,7 @@ expressionProjectionDatasetKey <- function() {
 }
 
 expressionProjectionFullCellSelection <- function(data, cells) {
-  n_cells <- tryCatch(ncol(data$expression), error = function(error) {
-    NA_integer_
-  })
+  n_cells <- viewerExpressionCellCount(data)
   length(n_cells) == 1L &&
     !is.na(n_cells) &&
     length(cells) == n_cells &&
@@ -218,7 +216,7 @@ expressionProjectionRenderKey <- function(
 expression_projection_render_key <- reactive({
   expressionProjectionRenderKey(
     expression_selected_genes(),
-    input[["expression_projection_genes_in_separate_panels"]],
+    expression_projection_display_mode(),
     input[["expression_rgb_layout"]]
   )
 })
@@ -283,8 +281,12 @@ if (
 ## This keeps the fast page-open path intact while moving one-time method and
 ## backend initialization out of the user's first gene selection.
 expression_projection_backend_warmed <- reactiveVal(FALSE)
+expression_projection_warm_retry <- reactiveVal(0L)
 observeEvent(
-  input[["expression_projection_rendered_state"]],
+  list(
+    input[["expression_projection_rendered_state"]],
+    expression_projection_warm_retry()
+  ),
   {
     req(expressionProjectionPaintedCurrent())
     if (isTRUE(expression_projection_backend_warmed())) {
@@ -292,6 +294,27 @@ observeEvent(
     }
     genes <- expression_selected_genes()[["genes_to_display_present"]]
     if (length(genes)) {
+      return()
+    }
+    ## A thin CRB's cell names are still being checked in a daemon: look again
+    ## later instead of waiting for it on the session's R thread.
+    pending <- attr(data_set(), "cerebro_h5_cells_pending", exact = TRUE)
+    if (is.function(pending) && isTRUE(pending())) {
+      later::later(
+        function() {
+          ## later() callbacks outlive a closed session. Reading its reactives
+          ## then raises outside any session and stops the whole app.
+          if (
+            isTRUE(tryCatch(session$isClosed(), error = function(error) FALSE))
+          ) {
+            return(invisible(NULL))
+          }
+          expression_projection_warm_retry(
+            isolate(expression_projection_warm_retry()) + 1L
+          )
+        },
+        0.25
+      )
       return()
     }
     available <- getGeneNames()
@@ -319,7 +342,8 @@ expression_projection_read_levels <- function(
   n_cells <- length(cells_to_show)
   ## Layout only changes the projection; it must not re-read expression rows.
   render_key <- isolate(expression_projection_render_key())
-  painted_key <- isolate(input[["expression_projection_rendered_key"]])
+  painted <- isolate(input[["expression_projection_rendered_state"]])
+  painted_key <- if (is.list(painted)) painted$render_key
   ## Visibility/request state controls the progress UI, not expression reads.
   ## Navigation and request acknowledgements must not invalidate these values.
   if (
@@ -402,12 +426,21 @@ expression_projection_read_levels <- function(
     } else if (length(genes_present) >= 2) {
       expressionProjectionProgressUpdate(0.3, "Calculating mean expression...")
       ## Per-cell mean across the requested genes, restricted to cells_to_show.
-      expression_levels <- unname(
-        data_set()$getMeanExpressionForCells(
-          cells = viewerExpressionCells(data_set(), cells_to_show),
-          genes = genes_present
-        )
+      ## An H5 sidecar is read row by row, as for one gene.
+      cells <- viewerExpressionCells(data_set(), cells_to_show)
+      expression_levels <- viewerH5ExpressionMean(
+        data_set(),
+        cells,
+        genes_present
       )
+      if (is.null(expression_levels)) {
+        expression_levels <- unname(
+          data_set()$getMeanExpressionForCells(
+            cells = cells,
+            genes = genes_present
+          )
+        )
+      }
     }
     expressionProjectionProgressUpdate(
       0.55,
@@ -442,7 +475,7 @@ expression_projection_expression_levels <- reactive({
     getGeneNames()
   )
   display_mode <- expressionSummaryMode(
-    input[["expression_projection_genes_in_separate_panels"]],
+    expression_projection_display_mode(),
     length(genes_present),
     ncol(expression_projection_coordinates())
   )
@@ -467,7 +500,7 @@ expression_summary_data <- reactive({
   req(
     expression_projection_cells_to_show(),
     expression_selected_genes(),
-    input[["expression_projection_genes_in_separate_panels"]]
+    expression_projection_display_mode()
   )
   genes <- unique(intersect(
     as.character(expression_selected_genes()[["genes_to_display_present"]]),
@@ -476,7 +509,7 @@ expression_summary_data <- reactive({
   req(length(genes) > 0)
 
   spec <- expressionSummarySpec(
-    input[["expression_projection_genes_in_separate_panels"]],
+    expression_projection_display_mode(),
     genes,
     expression_selected_genes()[["rgb_genes"]],
     ncol(expression_projection_coordinates())

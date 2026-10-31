@@ -18,7 +18,8 @@ output[["trajectory_primary_controls_UI"]] <- renderUI({
   method_labels <- c(
     monocle2 = "Monocle 2",
     marker_guided = "Marker-guided",
-    illustrative = "Illustrative"
+    illustrative = "Illustrative",
+    published_pseudotime = "Published pseudotime"
   )
   selected_method <- isolate(input[["trajectory_selected_method"]])
   if (

@@ -10,7 +10,8 @@ async function check(backend) {
     createProgram: () => ({}), attachShader() {}, linkProgram() {},
     getProgramParameter: () => true, getUniformLocation: () => ({}),
     createBuffer: () => ({}), useProgram() {}, bindBuffer() {},
-    bufferData: (_target, array) => record(array), enableVertexAttribArray() {},
+    bufferData: (_target, array) => record(array),
+    bufferSubData: (_target, _offset, array) => record(array), enableVertexAttribArray() {},
     vertexAttribIPointer() {}, vertexAttribPointer() {}, viewport() {},
     getParameter: () => 'test adapter'
   };

@@ -369,15 +369,9 @@ hla_build_motif_visnet <- function(
     )
   }
 
-  # Draw coordinates, computed once by igraph when the graph was built (see
-  # hla_motif_layout) and carried on the vertices ever since. NULL only for a
-  # graph built before this existed, in which case the renderer falls back to
-  # letting the browser settle it.
-  layout <- if (all(c("layout_x", "layout_y") %in% names(va))) {
-    cbind(as.numeric(va[["layout_x"]]), as.numeric(va[["layout_y"]]))
-  } else {
-    NULL
-  }
+  # Draw coordinates, computed once by igraph when the raw graph was built (see
+  # hla_motif_layout) and carried on the vertices ever since.
+  layout <- cbind(as.numeric(va[["layout_x"]]), as.numeric(va[["layout_y"]]))
 
   list(
     nodes = nodes,
@@ -460,13 +454,17 @@ hla_visnet <- reactive({
     carrier_allele = allele,
     unit_noun = hla_unit_noun(),
     legend_mode = hla_param("hla_legend_mode", "auto"),
-    lineage_col = hla_celltype_col(),
-    # Display only. Read here so a size change flows through the SAME colour
-    # path: the graph is untouched, so Canvas receives new radii without
-    # rebuilding or re-fitting the layout.
-    node_scale = hla_param("hla_node_scale", 1)
+    # Node size is display only: frames carry the base radii and the size
+    # factor (point_scale), and the browser applies a slider change itself
+    # (hla_motifs.js), so neither this nor the frame is rebuilt for it.
+    lineage_col = hla_celltype_col()
   )
 })
+
+## The node-size control's factor, clamped as hla_node_radius() clamps it.
+hla_node_scale_factor <- function() {
+  hla_node_radius(1, hla_param("hla_node_scale", 1)) / hla_node_radius(1)
+}
 
 ## Live read-out for the min-size slider: how many clusters / nodes the current
 ## threshold keeps. Reads the same finalized graph the network draws, so it
@@ -474,12 +472,20 @@ hla_visnet <- reactive({
 output$hla_motif_readout <- renderUI({
   hla_require_active_page()
   req(hla_ready_latch())
-  g <- hla_motif_graph_cached()
-  if (!hla_motif_graph_ok(g)) {
-    return(NULL)
+  ## A first frame drawn from the snapshot is counted from it, not from a
+  ## full graph finalized only for these two numbers.
+  snapshot <- hla_first_frame_graph_snapshot()
+  if (!is.null(snapshot)) {
+    n_nodes <- length(snapshot$vertex_attrs$name)
+    cl <- snapshot$vertex_attrs$cluster
+  } else {
+    g <- hla_motif_graph_cached()
+    if (!hla_motif_graph_ok(g)) {
+      return(NULL)
+    }
+    n_nodes <- igraph::vcount(g)
+    cl <- tryCatch(igraph::vertex_attr(g, "cluster"), error = function(e) NULL)
   }
-  n_nodes <- igraph::vcount(g)
-  cl <- tryCatch(igraph::vertex_attr(g, "cluster"), error = function(e) NULL)
   n_clusters <- if (is.null(cl)) 0L else length(unique(cl))
   tags$div(
     class = "text-muted",
@@ -511,7 +517,7 @@ observe(
     req(hla_active_chain() %in% hla_tcr_chains())
     req(isTRUE(hla_first_frame_graph_matches()) || hla_ready_latch())
     vn <- hla_visnet()
-    if (is.null(vn) || is.null(vn$layout)) {
+    if (is.null(vn)) {
       return()
     }
 
@@ -573,6 +579,9 @@ observe(
         selection_key = vn$nodes$node_key,
         color = vn$nodes$color,
         point_sizes = point_sizes,
+        # The browser multiplies point_sizes by this; isolate(): a size change
+        # is drawn there without a new frame.
+        point_scale = isolate(hla_node_scale_factor()),
         point_size = min(20, stats::median(point_sizes)),
         point_opacity = 1,
         reset_axes = FALSE
@@ -734,11 +743,32 @@ output$hla_export_analysis <- downloadHandler(
 ## The plot's own status box reports it (view-feedback.js); the note under the
 ## network only explains a drawn one.
 hla_motif_blocked <- reactive({
+  too_large <- function(n_nodes) {
+    list(
+      kind = "error",
+      text = sprintf(
+        "The filtered graph has %s nodes; interactive rendering is capped at %s. Increase motif size or filter the repertoire.",
+        format(n_nodes, big.mark = ","),
+        format(HLA_MOTIF_MAX_RENDER, big.mark = ",")
+      )
+    )
+  }
   if (!hla_has_deps()) {
     return(list(
       kind = "empty",
-      text = "The motif network requires the 'visNetwork' and 'stringdist' packages."
+      text = "The motif network requires the 'stringdist' and 'igraph' packages."
     ))
+  }
+  ## The Viewer Pack's snapshot is the graph these settings build, and is
+  ## stored only when it has nodes. Building the full Hamming graph here only
+  ## to confirm it would cancel the first frame drawn from the snapshot.
+  snapshot <- hla_first_frame_graph_snapshot()
+  if (!is.null(snapshot)) {
+    n_nodes <- length(snapshot$vertex_attrs$name)
+    if (n_nodes > HLA_MOTIF_MAX_RENDER) {
+      return(too_large(n_nodes))
+    }
+    return(NULL)
   }
   seg <- hla_segments()
   if (is.null(seg) || nrow(seg) == 0) {
@@ -765,14 +795,7 @@ hla_motif_blocked <- reactive({
     ))
   }
   if (igraph::vcount(g) > HLA_MOTIF_MAX_RENDER) {
-    return(list(
-      kind = "error",
-      text = sprintf(
-        "The filtered graph has %s nodes; interactive rendering is capped at %s. Increase motif size or filter the repertoire.",
-        format(igraph::vcount(g), big.mark = ","),
-        format(HLA_MOTIF_MAX_RENDER, big.mark = ",")
-      )
-    ))
+    return(too_large(igraph::vcount(g)))
   }
   NULL
 })
