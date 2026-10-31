@@ -216,6 +216,7 @@
     as.character(columns)
   }
   columns <- columns[nzchar(columns) & columns %in% children]
+  skipped <- character()
   values <- lapply(columns, function(column) {
     tryCatch(
       {
@@ -230,6 +231,7 @@
         value
       },
       error = function(e) {
+        skipped <<- c(skipped, column)
         if (verbose) {
           message(
             "[INFO] Skipping h5ad column `",
@@ -244,7 +246,22 @@
   })
   names(values) <- columns
   values <- values[!vapply(values, is.null, logical(1))]
-  values <- values[vapply(values, length, integer(1)) == length(index)]
+  not_a_column <- vapply(values, length, integer(1)) != length(index)
+  skipped <- c(skipped, names(values)[not_a_column])
+  values <- values[!not_a_column]
+  ## the per-column notes above are shown only with verbose = TRUE
+  if (length(skipped) && !verbose) {
+    message(
+      "Skipped ",
+      length(skipped),
+      " column(s) of `",
+      path,
+      "` in an encoding that is not read: ",
+      paste(utils::head(skipped, 5L), collapse = ", "),
+      if (length(skipped) > 5L) ", ...",
+      " (verbose = TRUE says why)."
+    )
+  }
   list(index = index, columns = values)
 }
 

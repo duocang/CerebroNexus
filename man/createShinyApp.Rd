@@ -222,6 +222,12 @@ from an older release that is no longer read (see
 one of field and getter.
 Dataset labels are unique. Two labels may name the same input file; the
 bundle then holds one copy of it per label.
+While developing the package, the environment variable
+\code{CEREBRO_PACKAGE_SOURCE} may name a source checkout (a directory with
+\code{DESCRIPTION} for \code{Package: CerebroNexus}, \code{R/} and
+\code{inst/}); the Viewer files and the version written into the bundle then
+come from it instead of from the installed package. Any other directory is
+ignored.
 Generated bundles follow the standard deployment model of one app per R
 process; process-global \code{Cerebro.options} does not provide same-process
 isolation between separately sourced apps.

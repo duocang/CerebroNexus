@@ -2106,15 +2106,22 @@
 
 .cerebroSourceRoot <- function() {
   source_root <- Sys.getenv("CEREBRO_PACKAGE_SOURCE", unset = "")
+  if (!nzchar(source_root)) {
+    return(NULL)
+  }
+  description <- file.path(source_root, "DESCRIPTION")
+  package <- if (file.exists(description)) {
+    tryCatch(
+      read.dcf(description, fields = "Package")[[1L]],
+      error = function(error) NA_character_
+    )
+  } else {
+    NA_character_
+  }
   if (
-    nzchar(source_root) &&
-      file.exists(file.path(source_root, "DESCRIPTION")) &&
-      dir.exists(file.path(source_root, "R")) &&
-      length(list.files(
-        file.path(source_root, "R"),
-        pattern = "[.][Rr]$"
-      )) >
-        0L
+    identical(unname(package), "CerebroNexus") &&
+      dir.exists(file.path(source_root, "inst")) &&
+      length(list.files(file.path(source_root, "R"), pattern = "[.][Rr]$")) > 0L
   ) {
     normalizePath(source_root, winslash = "/", mustWork = TRUE)
   } else {
@@ -2181,6 +2188,12 @@
 #' one of field and getter.
 #' Dataset labels are unique. Two labels may name the same input file; the
 #' bundle then holds one copy of it per label.
+#' While developing the package, the environment variable
+#' \code{CEREBRO_PACKAGE_SOURCE} may name a source checkout (a directory with
+#' \code{DESCRIPTION} for \code{Package: CerebroNexus}, \code{R/} and
+#' \code{inst/}); the Viewer files and the version written into the bundle then
+#' come from it instead of from the installed package. Any other directory is
+#' ignored.
 #' Generated bundles follow the standard deployment model of one app per R
 #' process; process-global \code{Cerebro.options} does not provide same-process
 #' isolation between separately sourced apps.

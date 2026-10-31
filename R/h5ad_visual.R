@@ -66,6 +66,11 @@
   } else {
     return(NULL)
   }
+  ## rhdf5 returns the integer types as integer and the floats as double. An
+  ## integer image is 0-255 (or 0-65535); a float one is 0-1 unless it holds
+  ## values well above 1, so a float image whose maximum is 1.000001 is not
+  ## divided by 255
+  integer_pixels <- is.integer(raw)
   storage.mode(raw) <- "double"
   if (length(dim(raw)) == 3L && !dim(raw)[[3L]] %in% c(1L, 3L, 4L)) {
     return(NULL)
@@ -74,8 +79,8 @@
     raw <- raw[,, 1L]
   }
   top <- suppressWarnings(max(raw, na.rm = TRUE))
-  if (is.finite(top) && top > 1) {
-    raw <- raw / 255
+  if (is.finite(top) && (integer_pixels || top > 1.5)) {
+    raw <- raw / (if (top > 255) 65535 else 255)
   }
   raw[raw < 0] <- 0
   raw[raw > 1] <- 1
