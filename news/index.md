@@ -56,6 +56,26 @@
 - Preserve dataset and cell identities across export; publish ROI, image
   alignment and content settings through shared contracts consumed by
   the Viewer.
+- A Builder project is one small file, `builder-project.rds`, in a
+  folder you choose: the datasets, the path of each source file and your
+  choices for each. It holds no data, so it is not portable: a source
+  that moved, or a dataset added by a browser upload, is listed as not
+  restored when the project is opened. There is no autosave, and Build
+  always builds every checked dataset.
+
+### Viewer fixes
+
+- Linked views no longer stays busy after it is opened: the output that
+  shows the selected cells had no value until the first selection, and
+  shiny \>= 1.9 keeps an output marked as recalculating until its first
+  value arrives.
+- Immune repertoire: the Clone Sharing bars name the chosen sharing unit
+  (“Private (1 tissue site)”) instead of always saying “sample”, and a
+  Group by chosen on Clone Sharing no longer becomes the one on Compare
+  and Paired Scatter.
+- Opening a saved Trajectory view reports how many of the saved cells
+  the trajectory kept (“Restored 31 of 34 selected cells”) instead of
+  the number in the file.
 
 ## CerebroNexus 6.0.0
 
