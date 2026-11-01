@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">7.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -28,6 +28,7 @@
     <li><a class="dropdown-item" href="../articles/overview_of_cerebro_class.html">Overview of the Cerebro class</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>How-to</h6></li>
+    <li><a class="dropdown-item" href="../articles/build_a_data_set_by_pointing.html">Build a data set without writing code</a></li>
     <li><a class="dropdown-item" href="../articles/data_integrity_contracts.html">Data integrity from Seurat to a self-contained Cerebro app</a></li>
     <li><a class="dropdown-item" href="../articles/seurat_v5_layered_assays.html">Seurat v5 layered assays: complete and safe expression matrices</a></li>
     <li><a class="dropdown-item" href="../articles/create_a_self_contained_shiny_app.html">Create a self-contained Shiny app from a Cerebro data file</a></li>
@@ -73,9 +74,26 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/builder/04_slim-project/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="7.0.0" id="cerebronexus-700">CerebroNexus 7.0.0<a class="anchor" aria-label="anchor" href="#cerebronexus-700"></a></h2>
+<div class="section level3">
+<h3 id="input-formats-in-the-builder-and-the-export-7-0-0">Input formats in the Builder and the export<a class="anchor" aria-label="anchor" href="#input-formats-in-the-builder-and-the-export-7-0-0"></a></h3>
+<ul><li>Reads SingleCellExperiment (<code><a href="../reference/convertSCEToCerebro.html">convertSCEToCerebro()</a></code>, <code><a href="../reference/exportFromSCE.html">exportFromSCE()</a></code>) and AnnData (<code><a href="../reference/convertH5adToCerebro.html">convertH5adToCerebro()</a></code>, <code><a href="../reference/readH5adAsSCE.html">readH5adAsSCE()</a></code>; <code>.h5ad</code> and <code>.h5mu</code>) natively, without Python, through the same export core as Seurat. The <code>.crb</code> is the hub: Seurat, SCE and h5ad convert to each other through it, and <code><a href="../reference/exportToH5ad.html">exportToH5ad()</a></code> writes a <code>.crb</code> back as <code>.h5ad</code>.</li>
+<li>From AnnData it also carries scanpy marker tables and category colours, Visium tissue images, spatial sections, scirpy TCR/BCR repertoires and scanpy / scVelo trajectories. <code><a href="../reference/exportToH5ad.html">exportToH5ad()</a></code> writes spatial coordinates and tissue images back so scanpy and squidpy can draw them, the immune repertoire as scirpy’s <code>obsm["airr"]</code> and each trajectory’s pseudotime as an <code>obs</code> column.</li>
+<li>SpatialData (<code>.zarr</code>) stores are read natively too: <code><a href="../reference/readSpatialDataAsSCE.html">readSpatialDataAsSCE()</a></code> and <code><a href="../reference/convertSpatialDataToCerebro.html">convertSpatialDataToCerebro()</a></code> take the cell table, its coordinates (from <code>obsm["spatial"]</code> or from the annotated shapes) and the tissue pictures placed in each section, one spatial section per region. Plain AnnData <code>.zarr</code> stores open in <code><a href="../reference/convertH5adToCerebro.html">convertH5adToCerebro()</a></code>.</li>
+<li>CITE-seq data: <code>extra_modalities =</code> (MuData, e.g. <code>"prot"</code>) and <code>extra_features =</code> (SingleCellExperiment <code>altExp</code>, e.g. <code>"ADT"</code>) add the antibody features to the expression data as <code>&lt;experiment&gt;:&lt;feature&gt;</code>.</li>
+<li>The Builder opens <code>.h5ad</code>, <code>.h5mu</code> and SingleCellExperiment <code>.rds</code>/<code>.qs2</code> files like Seurat ones (<code><a href="../reference/convertSCEToSeurat.html">convertSCEToSeurat()</a></code> is the conversion it uses), and offers PAGA, scVelo and pseudotime trajectories next to monocle2. A SpatialData store can be added as a <code>.zip</code> of its <code>.zarr</code> folder, and the antibody features of an <code>.h5mu</code> file (or a SingleCellExperiment’s <code>ADT</code> alternative experiment) are added to the genes as <code>&lt;experiment&gt;:&lt;feature&gt;</code>. Spatial coordinates arrive as one spatial section per <code>library_id</code>, and Visium tissue pictures are attached to their sections as images at the position their scale factor gives.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="builder-7-0-0">Builder<a class="anchor" aria-label="anchor" href="#builder-7-0-0"></a></h3>
+<ul><li>Add <code><a href="../reference/launchCerebroBuilder.html">launchCerebroBuilder()</a></code> for importing data, configuring content, saving reusable projects, previewing spatial alignment, and publishing private Viewer apps with optional login. Review planned payload targets before publication.</li>
+<li>Preserve dataset and cell identities across export; publish ROI, image alignment and content settings through shared contracts consumed by the Viewer.</li>
+<li>A Builder project is one small file, <code>builder-project.rds</code>, in a folder you choose: the datasets, the path of each source file and your choices for each. It holds no data, so it is not portable: a source that moved, or a dataset added by a browser upload, is listed as not restored when the project is opened. There is no autosave, and Build always builds every checked dataset.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="6.0.0" id="cerebronexus-600">CerebroNexus 6.0.0<a class="anchor" aria-label="anchor" href="#cerebronexus-600"></a></h2>
 <div class="section level3">

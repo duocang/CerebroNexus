@@ -1,5 +1,68 @@
 # Changelog
 
+## CerebroNexus 7.0.0
+
+### Input formats in the Builder and the export
+
+- Reads SingleCellExperiment
+  ([`convertSCEToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSCEToCerebro.md),
+  [`exportFromSCE()`](https://mihem.github.io/CerebroNexus/reference/exportFromSCE.md))
+  and AnnData
+  ([`convertH5adToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertH5adToCerebro.md),
+  [`readH5adAsSCE()`](https://mihem.github.io/CerebroNexus/reference/readH5adAsSCE.md);
+  `.h5ad` and `.h5mu`) natively, without Python, through the same export
+  core as Seurat. The `.crb` is the hub: Seurat, SCE and h5ad convert to
+  each other through it, and
+  [`exportToH5ad()`](https://mihem.github.io/CerebroNexus/reference/exportToH5ad.md)
+  writes a `.crb` back as `.h5ad`.
+- From AnnData it also carries scanpy marker tables and category
+  colours, Visium tissue images, spatial sections, scirpy TCR/BCR
+  repertoires and scanpy / scVelo trajectories.
+  [`exportToH5ad()`](https://mihem.github.io/CerebroNexus/reference/exportToH5ad.md)
+  writes spatial coordinates and tissue images back so scanpy and
+  squidpy can draw them, the immune repertoire as scirpy’s
+  `obsm["airr"]` and each trajectory’s pseudotime as an `obs` column.
+- SpatialData (`.zarr`) stores are read natively too:
+  [`readSpatialDataAsSCE()`](https://mihem.github.io/CerebroNexus/reference/readSpatialDataAsSCE.md)
+  and
+  [`convertSpatialDataToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertSpatialDataToCerebro.md)
+  take the cell table, its coordinates (from `obsm["spatial"]` or from
+  the annotated shapes) and the tissue pictures placed in each section,
+  one spatial section per region. Plain AnnData `.zarr` stores open in
+  [`convertH5adToCerebro()`](https://mihem.github.io/CerebroNexus/reference/convertH5adToCerebro.md).
+- CITE-seq data: `extra_modalities =` (MuData, e.g. `"prot"`) and
+  `extra_features =` (SingleCellExperiment `altExp`, e.g. `"ADT"`) add
+  the antibody features to the expression data as
+  `<experiment>:<feature>`.
+- The Builder opens `.h5ad`, `.h5mu` and SingleCellExperiment
+  `.rds`/`.qs2` files like Seurat ones
+  ([`convertSCEToSeurat()`](https://mihem.github.io/CerebroNexus/reference/convertSCEToSeurat.md)
+  is the conversion it uses), and offers PAGA, scVelo and pseudotime
+  trajectories next to monocle2. A SpatialData store can be added as a
+  `.zip` of its `.zarr` folder, and the antibody features of an `.h5mu`
+  file (or a SingleCellExperiment’s `ADT` alternative experiment) are
+  added to the genes as `<experiment>:<feature>`. Spatial coordinates
+  arrive as one spatial section per `library_id`, and Visium tissue
+  pictures are attached to their sections as images at the position
+  their scale factor gives.
+
+### Builder
+
+- Add
+  [`launchCerebroBuilder()`](https://mihem.github.io/CerebroNexus/reference/launchCerebroBuilder.md)
+  for importing data, configuring content, saving reusable projects,
+  previewing spatial alignment, and publishing private Viewer apps with
+  optional login. Review planned payload targets before publication.
+- Preserve dataset and cell identities across export; publish ROI, image
+  alignment and content settings through shared contracts consumed by
+  the Viewer.
+- A Builder project is one small file, `builder-project.rds`, in a
+  folder you choose: the datasets, the path of each source file and your
+  choices for each. It holds no data, so it is not portable: a source
+  that moved, or a dataset added by a browser upload, is listed as not
+  restored when the project is opened. There is no autosave, and Build
+  always builds every checked dataset.
+
 ## CerebroNexus 6.0.0
 
 ### New
