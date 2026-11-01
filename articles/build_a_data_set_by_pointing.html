@@ -103,7 +103,7 @@
             
             <h4 data-toc-skip class="date">01 November, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/builder-04/vignettes/build_a_data_set_by_pointing.Rmd" class="external-link"><code>vignettes/build_a_data_set_by_pointing.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/builder-03/vignettes/build_a_data_set_by_pointing.Rmd" class="external-link"><code>vignettes/build_a_data_set_by_pointing.Rmd</code></a></small>
       <div class="d-none name"><code>build_a_data_set_by_pointing.Rmd</code></div>
     </div>
 
@@ -361,15 +361,13 @@ access policy matches the data.</p>
 <div class="section level3">
 <h3 id="save-a-project-or-run-a-release">Save a project or run a release<a class="anchor" aria-label="anchor" href="#save-a-project-or-run-a-release"></a>
 </h3>
-<p><strong>Save</strong> writes one small file,
-<code>builder-project.rds</code>, into the folder you choose. It lists
-your datasets, the path of each source file and your choices for each,
-but not the data, so it is not portable: <strong>Open</strong> loads the
-sources again from their paths. A dataset added by browser upload or
-whose source has moved is listed as not restored and must be added
-again. Login passwords and the database passphrase are not saved, so
-provide accounts again when building a login-enabled release. A project
-is a working note; the release below is the separate deliverable.</p>
+<p><strong>Save</strong> stores an editable project with
+<code>builder-project.json</code>, managed sources, attachments and
+reusable artifacts. <strong>Open</strong> restores it for further work.
+Login passwords and the database passphrase are not saved in the
+project, so provide accounts again when building a login-enabled
+release. A project is a working directory; the release below is the
+separate deliverable.</p>
 <p>Run <code>shiny::runApp("path/to/release/cerebro_app")</code> for a
 Viewer App. On Linux, run <code>bash viewer/start-linux.sh</code> from
 <code>cerebro_app/</code> to prepare login-file permissions and start
