@@ -101,9 +101,9 @@
       <img src="../logo.svg" class="logo" alt=""><h1>Build a data set without writing code</h1>
                         <h4 data-toc-skip class="author">CerebroNexus</h4>
             
-            <h4 data-toc-skip class="date">01 November, 2026</h4>
+            <h4 data-toc-skip class="date">05 November, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/builder/04_slim-project/vignettes/build_a_data_set_by_pointing.Rmd" class="external-link"><code>vignettes/build_a_data_set_by_pointing.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/03_shard/vignettes/build_a_data_set_by_pointing.Rmd" class="external-link"><code>vignettes/build_a_data_set_by_pointing.Rmd</code></a></small>
       <div class="d-none name"><code>build_a_data_set_by_pointing.Rmd</code></div>
     </div>
 
@@ -220,16 +220,17 @@ page) to add Seurat or SingleCellExperiment objects stored as
 store, or choose <strong>Load example datasets</strong>. Available
 formats depend on the installed readers; a format whose reader is
 missing is listed under the add button with the reason.</p>
-<p>The example action loads three synthetic datasets: <strong>Complete
-Viewer demo</strong>, <strong>Trekker spatial demo</strong> and
-<strong>Spatial alignment demo</strong>. The first covers analysis
-tables, gene lists, trajectories, supplementary material, immune
-repertoire, HLA and spatial content; the second provides four tissue
-images; the third demonstrates an arrow-shaped section with a preset
-background alignment.</p>
+<p>The example action loads three datasets: <strong>Complete Viewer
+demo</strong>, <strong>Trekker spatial demo</strong> and <strong>Visium
+breast cancer demo</strong>. The first two are synthetic: the first
+covers analysis tables, gene lists, trajectories, supplementary
+material, immune repertoire, HLA and spatial content; the second
+provides four tissue images. The third is a crop of a real 10x Visium
+breast cancer section (405 spots, 300 genes; 10x Genomics, CC BY 4.0)
+whose H&amp;E image opens with a preset alignment.</p>
 <p>The complete example also ships marker, supplementary-table and
-histology attachments for the explicit content controls. The arrow
-example’s background is configured automatically; this does not imply
+histology attachments for the explicit content controls. The Visium
+example’s H&amp;E image is configured automatically; this does not imply
 that arbitrary uploaded images are aligned automatically.</p>
 <p>Patient, section, FOV, and image identities are explicit: a tissue
 photograph is not a new spatial FOV. Gallery and file inputs use
@@ -361,15 +362,13 @@ access policy matches the data.</p>
 <div class="section level3">
 <h3 id="save-a-project-or-run-a-release">Save a project or run a release<a class="anchor" aria-label="anchor" href="#save-a-project-or-run-a-release"></a>
 </h3>
-<p><strong>Save</strong> writes one small file,
-<code>builder-project.rds</code>, into the folder you choose. It lists
-your datasets, the path of each source file and your choices for each,
-but not the data, so it is not portable: <strong>Open</strong> loads the
-sources again from their paths. A dataset added by browser upload or
-whose source has moved is listed as not restored and must be added
-again. Login passwords and the database passphrase are not saved, so
-provide accounts again when building a login-enabled release. A project
-is a working note; the release below is the separate deliverable.</p>
+<p><strong>Save</strong> stores an editable project with
+<code>builder-project.json</code>, managed sources, attachments and
+reusable artifacts. <strong>Open</strong> restores it for further work.
+Login passwords and the database passphrase are not saved in the
+project, so provide accounts again when building a login-enabled
+release. A project is a working directory; the release below is the
+separate deliverable.</p>
 <p>Run <code>shiny::runApp("path/to/release/cerebro_app")</code> for a
 Viewer App. On Linux, run <code>bash viewer/start-linux.sh</code> from
 <code>cerebro_app/</code> to prepare login-file permissions and start

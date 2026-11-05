@@ -69,16 +69,17 @@ choose **Load example datasets**. Available formats depend on the
 installed readers; a format whose reader is missing is listed under the
 add button with the reason.
 
-The example action loads three synthetic datasets: **Complete Viewer
-demo**, **Trekker spatial demo** and **Spatial alignment demo**. The
-first covers analysis tables, gene lists, trajectories, supplementary
-material, immune repertoire, HLA and spatial content; the second
-provides four tissue images; the third demonstrates an arrow-shaped
-section with a preset background alignment.
+The example action loads three datasets: **Complete Viewer demo**,
+**Trekker spatial demo** and **Visium breast cancer demo**. The first
+two are synthetic: the first covers analysis tables, gene lists,
+trajectories, supplementary material, immune repertoire, HLA and spatial
+content; the second provides four tissue images. The third is a crop of
+a real 10x Visium breast cancer section (405 spots, 300 genes; 10x
+Genomics, CC BY 4.0) whose H&E image opens with a preset alignment.
 
 The complete example also ships marker, supplementary-table and
-histology attachments for the explicit content controls. The arrow
-example’s background is configured automatically; this does not imply
+histology attachments for the explicit content controls. The Visium
+example’s H&E image is configured automatically; this does not imply
 that arbitrary uploaded images are aligned automatically.
 
 Patient, section, FOV, and image identities are explicit: a tissue
@@ -208,15 +209,12 @@ matches the data.
 
 ### Save a project or run a release
 
-**Save** writes one small file, `builder-project.rds`, into the folder
-you choose. It lists your datasets, the path of each source file and
-your choices for each, but not the data, so it is not portable: **Open**
-loads the sources again from their paths. A dataset added by browser
-upload or whose source has moved is listed as not restored and must be
-added again. Login passwords and the database passphrase are not saved,
-so provide accounts again when building a login-enabled release. A
-project is a working note; the release below is the separate
-deliverable.
+**Save** stores an editable project with `builder-project.json`, managed
+sources, attachments and reusable artifacts. **Open** restores it for
+further work. Login passwords and the database passphrase are not saved
+in the project, so provide accounts again when building a login-enabled
+release. A project is a working directory; the release below is the
+separate deliverable.
 
 Run `shiny::runApp("path/to/release/cerebro_app")` for a Viewer App. On
 Linux, run `bash viewer/start-linux.sh` from `cerebro_app/` to prepare

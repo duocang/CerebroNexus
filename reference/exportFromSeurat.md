@@ -30,6 +30,7 @@ exportFromSeurat(
   immune_sidecar_threshold = 100000L,
   .expression_resolution = NULL,
   .finalize_export = NULL,
+  .on_progress = NULL,
   projections = NULL,
   spatial_coordinate_transforms = NULL
 )
@@ -214,12 +215,20 @@ exportFromSeurat(
   without reading the written file back. Users should leave this as
   `NULL`.
 
+- .on_progress:
+
+  Internal hook used by the Builder: a function called with the name of
+  each part of the export as it starts, so a long export can report how
+  far it has got. Users should leave this as `NULL`.
+
 - projections:
 
   Optional ordered names of dimensional reductions to export. When
   supplied, every named reduction is exported in that order, including
-  PCA beside other projections. The default `NULL` preserves the legacy
-  behavior that uses non-PCA reductions when they are available.
+  PCA beside other projections. An empty vector exports none (an object
+  without reductions, such as an unclustered spatial section). The
+  default `NULL` preserves the legacy behavior that uses non-PCA
+  reductions when they are available.
 
 - spatial_coordinate_transforms:
 
@@ -271,22 +280,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [02:07:07] Initializing Cerebro object...
-#> [02:07:07] Adding expression data (embedded)...
-#> [02:07:07] Collecting available meta data...
-#> [02:07:07] Extracting all meta data columns...
-#> [02:07:07] Extracting dimensional reductions...
-#> [02:07:07] Will export the following dimensional reductions: umap
-#> [02:07:07] Extracting marker genes table...
-#> [02:07:07] No trajectories to extract...
-#> [02:07:07] Checking for spatial data...
-#> [02:07:07] Overview of Cerebro object:
+#> [20:40:20] Initializing Cerebro object...
+#> [20:40:20] Adding expression data (embedded)...
+#> [20:40:20] Collecting available meta data...
+#> [20:40:20] Extracting all meta data columns...
+#> [20:40:20] Extracting dimensional reductions...
+#> [20:40:20] Will export the following dimensional reductions: umap
+#> [20:40:20] Extracting marker genes table...
+#> [20:40:20] No trajectories to extract...
+#> [20:40:20] Checking for spatial data...
+#> [20:40:20] Overview of Cerebro object:
 #> class: Cerebro
 #> exporter package version: 7.0.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-11-01
+#> date of export: 2026-11-05
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -302,6 +311,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [02:07:07] Saving Cerebro object to: /tmp/nix-shell-4479-154189319/RtmpZtFOxn/pbmc_Seurat.crb
-#> [02:07:07] Done!
+#> [20:40:20] Saving Cerebro object to: /tmp/nix-shell-4596-829664495/RtmpofumTs/pbmc_Seurat.crb
+#> [20:40:20] Done!
 ```
