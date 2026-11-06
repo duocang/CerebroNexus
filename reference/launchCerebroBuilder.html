@@ -94,7 +94,7 @@ wrong in a hand-written call are visible before anything is written."><meta prop
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Build a Cerebro data set from a Seurat object, by pointing and clicking.</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/03_shard/R/launchCerebroBuilder.R" class="external-link"><code>R/launchCerebroBuilder.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/03_r3/R/launchCerebroBuilder.R" class="external-link"><code>R/launchCerebroBuilder.R</code></a></small>
       <div class="d-none name"><code>launchCerebroBuilder.Rd</code></div>
     </div>
 
@@ -128,7 +128,8 @@ wrong in a hand-written call are visible before anything is written.</p>
 
 <dl><dt id="arg-host">host<a class="anchor" aria-label="anchor" href="#arg-host"></a></dt>
 <dd><p>Address to bind; defaults to <code>127.0.0.1</code>, i.e. this machine
-only.</p></dd>
+only. Any other address (for example <code>0.0.0.0</code>) gives a warning,
+because other machines could then reach the Builder.</p></dd>
 
 
 <dt id="arg-port">port<a class="anchor" aria-label="anchor" href="#arg-port"></a></dt>

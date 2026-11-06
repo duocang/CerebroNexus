@@ -76,7 +76,7 @@ object to visualize in Cerebro."><meta property="og:image" content="https://mihe
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Export SingleCellExperiment (SCE) object to Cerebro.</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/03_shard/R/exportFromSCE.R" class="external-link"><code>R/exportFromSCE.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/03_r3/R/exportFromSCE.R" class="external-link"><code>R/exportFromSCE.R</code></a></small>
       <div class="d-none name"><code>exportFromSCE.Rd</code></div>
     </div>
 
@@ -152,12 +152,14 @@ contain cell cycle information, e.g. <code>c("Phase")</code>; defaults to
 
 <dt id="arg-numi">nUMI<a class="anchor" aria-label="anchor" href="#arg-numi"></a></dt>
 <dd><p>Column in <code>SingleCellExperiment::colData(object)</code> that contains information about
-number of transcripts per cell; defaults to <code>nUMI</code>.</p></dd>
+number of transcripts per cell; defaults to <code>nUMI</code>. <code>NULL</code> leaves
+it out.</p></dd>
 
 
 <dt id="arg-ngene">nGene<a class="anchor" aria-label="anchor" href="#arg-ngene"></a></dt>
 <dd><p>Column in <code>SingleCellExperiment::colData(object)</code> that contains information about
-number of expressed genes per cell; defaults to <code>nGene</code>.</p></dd>
+number of expressed genes per cell; defaults to <code>nGene</code>. <code>NULL</code>
+leaves it out.</p></dd>
 
 
 <dt id="arg-add-all-meta-data">add_all_meta_data<a class="anchor" aria-label="anchor" href="#arg-add-all-meta-data"></a></dt>
@@ -268,20 +270,20 @@ library named like its level. Both are filled in by
 <span class="r-in"><span>  use_delayed_array <span class="op">=</span> <span class="cn">FALSE</span>,</span></span>
 <span class="r-in"><span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] Initializing Cerebro object...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] Adding expression data (embedded)...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] Collecting available meta data...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] Extracting all meta data columns...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] Extracting dimensional reductions...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] Will export the following dimensional reductions: UMAP</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] No trajectories to extract...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] Overview of Cerebro object:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] Initializing Cerebro object...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] Adding expression data (embedded)...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] Collecting available meta data...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] Extracting all meta data columns...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] Extracting dimensional reductions...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] Will export the following dimensional reductions: UMAP</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] No trajectories to extract...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] Overview of Cerebro object:</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> class: Cerebro</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> exporter package version: 7.0.0</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> experiment name: PBMC</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> organism: hg</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> date of analysis: </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> date of export: 2026-11-05</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> date of export: 2026-11-06</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> number of cells: 80</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> number of genes: 230</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> grouping variables (2): sample, cluster</span>
@@ -296,8 +298,8 @@ library named like its level. Both are filled in by
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Immune repertoire:</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> HLA typing: none</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Spatial data:</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] Saving Cerebro object to: /tmp/nix-shell-4596-829664495/RtmpofumTs/pbmc_SCE.crb</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> [20:40:20] Done!</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] Saving Cerebro object to: /tmp/nix-shell-5132-3060643714/RtmpZCCrnQ/pbmc_SCE.crb</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [11:27:17] Done!</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

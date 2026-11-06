@@ -86,12 +86,12 @@ exportFromSeurat(
 - nUMI:
 
   Column in `object@meta.data` that contains information about number of
-  transcripts per cell; defaults to `nUMI`.
+  transcripts per cell; defaults to `nUMI`. `NULL` leaves it out.
 
 - nGene:
 
   Column in `object@meta.data` that contains information about number of
-  expressed genes per cell; defaults to `nGene`.
+  expressed genes per cell; defaults to `nGene`. `NULL` leaves it out.
 
 - add_all_meta_data:
 
@@ -280,22 +280,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [20:40:20] Initializing Cerebro object...
-#> [20:40:20] Adding expression data (embedded)...
-#> [20:40:20] Collecting available meta data...
-#> [20:40:20] Extracting all meta data columns...
-#> [20:40:20] Extracting dimensional reductions...
-#> [20:40:20] Will export the following dimensional reductions: umap
-#> [20:40:20] Extracting marker genes table...
-#> [20:40:20] No trajectories to extract...
-#> [20:40:20] Checking for spatial data...
-#> [20:40:20] Overview of Cerebro object:
+#> [11:27:17] Initializing Cerebro object...
+#> [11:27:17] Adding expression data (embedded)...
+#> [11:27:17] Collecting available meta data...
+#> [11:27:17] Extracting all meta data columns...
+#> [11:27:17] Extracting dimensional reductions...
+#> [11:27:17] Will export the following dimensional reductions: umap
+#> [11:27:17] Extracting marker genes table...
+#> [11:27:17] No trajectories to extract...
+#> [11:27:17] Checking for spatial data...
+#> [11:27:17] Overview of Cerebro object:
 #> class: Cerebro
 #> exporter package version: 7.0.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-11-05
+#> date of export: 2026-11-06
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -311,6 +311,6 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [20:40:20] Saving Cerebro object to: /tmp/nix-shell-4596-829664495/RtmpofumTs/pbmc_Seurat.crb
-#> [20:40:20] Done!
+#> [11:27:17] Saving Cerebro object to: /tmp/nix-shell-5132-3060643714/RtmpZCCrnQ/pbmc_Seurat.crb
+#> [11:27:17] Done!
 ```

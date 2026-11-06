@@ -30,7 +30,9 @@ launchCerebroBuilder(
 
 - host:
 
-  Address to bind; defaults to `127.0.0.1`, i.e. this machine only.
+  Address to bind; defaults to `127.0.0.1`, i.e. this machine only. Any
+  other address (for example `0.0.0.0`) gives a warning, because other
+  machines could then reach the Builder.
 
 - port:
 

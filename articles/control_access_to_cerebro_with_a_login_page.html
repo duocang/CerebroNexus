@@ -104,9 +104,9 @@ Hillje</h4>
                         <h4 data-toc-skip class="author">Xuesong
 Wang</h4>
             
-            <h4 data-toc-skip class="date">05 November, 2026</h4>
+            <h4 data-toc-skip class="date">06 November, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/03_shard/vignettes/control_access_to_cerebro_with_a_login_page.Rmd" class="external-link"><code>vignettes/control_access_to_cerebro_with_a_login_page.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/03_r3/vignettes/control_access_to_cerebro_with_a_login_page.Rmd" class="external-link"><code>vignettes/control_access_to_cerebro_with_a_login_page.Rmd</code></a></small>
       <div class="d-none name"><code>control_access_to_cerebro_with_a_login_page.Rmd</code></div>
     </div>
 
@@ -419,6 +419,21 @@ temporarily.</p>
 <p>Configure source-aware rate limiting at the reverse proxy. The
 read-only Viewer does not persist failed-login counters or account
 locks.</p>
+<p>The Viewer also slows down guessing in memory: after five failed
+sign-ins for one account or from one client address, that account or
+address waits 30 seconds, doubling with each further failure up to 15
+minutes. The counters are lost when the R process restarts.</p>
+<p>Behind a reverse proxy every request comes from the proxy’s address,
+so the per-client limit would apply to all users together. Set
+<code>CEREBRO_AUTH_CLIENT_HEADER</code> in the R process to the header
+your proxy sets to the client address, for example
+<code>X-Forwarded-For</code> or <code>X-Real-IP</code>. The Viewer uses
+the last address in that header, the one the proxy saw. Set it only when
+every request passes through the proxy, because clients can send the
+header themselves.</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode ini"><code class="sourceCode ini"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="co"># systemd override — add next to the passphrase EnvironmentFile.</span></span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a><span class="kw">[Service]</span></span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a><span class="dt">Environment</span><span class="ot">=</span><span class="st">CEREBRO_AUTH_CLIENT_HEADER=X-Forwarded-For</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="add-remove-or-rotate-users">Add, remove, or rotate users<a class="anchor" aria-label="anchor" href="#add-remove-or-rotate-users"></a>
