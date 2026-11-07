@@ -104,9 +104,9 @@ Hillje</h4>
                         <h4 data-toc-skip class="author">Xuesong
 Wang</h4>
             
-            <h4 data-toc-skip class="date">06 November, 2026</h4>
+            <h4 data-toc-skip class="date">07 November, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/03_r3/vignettes/control_access_to_cerebro_with_a_login_page.Rmd" class="external-link"><code>vignettes/control_access_to_cerebro_with_a_login_page.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/b03-r6/vignettes/control_access_to_cerebro_with_a_login_page.Rmd" class="external-link"><code>vignettes/control_access_to_cerebro_with_a_login_page.Rmd</code></a></small>
       <div class="d-none name"><code>control_access_to_cerebro_with_a_login_page.Rmd</code></div>
     </div>
 
@@ -426,8 +426,16 @@ minutes. The counters are lost when the R process restarts.</p>
 <p>Behind a reverse proxy every request comes from the proxy’s address.
 A loopback address (<code>127.0.0.1</code>, <code>::1</code>) or none at
 all is never counted as a client, so with a proxy on the same host only
-the per-account limit applies. A proxy on another host would make the
-per-client limit apply to all users together.</p>
+the per-account limit applies.</p>
+<p><strong>A proxy on another host (or a shared NAT or VPN
+address):</strong> the Viewer sees one address that is not loopback for
+every user and counts it as one client. Five failed sign-ins from any
+users behind that address, for example five people each mistyping their
+own password, then make every user behind it wait, including a sixth
+user with the correct password. This is by design: the Viewer cannot
+tell users apart by an address they share. To count each user’s own
+address instead, set <code>CEREBRO_AUTH_CLIENT_HEADER</code> as
+described below (<code><a href="https://rdrr.io/pkg/shiny/man/runApp.html" class="external-link">shiny::runApp()</a></code> behind nginx).</p>
 <p><strong><code><a href="https://rdrr.io/pkg/shiny/man/runApp.html" class="external-link">shiny::runApp()</a></code> behind nginx or another
 proxy:</strong> set <code>CEREBRO_AUTH_CLIENT_HEADER</code> in the R
 process to the header your proxy sets to the client address, for example

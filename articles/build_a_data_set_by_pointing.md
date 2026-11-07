@@ -225,6 +225,14 @@ For a service account use
 bundled `viewer/AUTHENTICATION-DEPLOYMENT.md` explains parent-directory
 access, read-only storage and external secrets.
 
+While a release is built it stays in a private, owner-only folder. The
+published release folder follows your umask like any folder you create:
+with the common `umask 022` another account (a Shiny Server service, an
+`rsync` to a deployment user) can read it; with `umask 077` only you
+can. Login credentials are always owner-only, and so is the Builder’s
+ownership record `.cerebro-builder-release-v1`, which the App does not
+need.
+
 ## Results, replacement, and recovery
 
 A successful result names the published artifacts. Every published

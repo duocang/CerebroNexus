@@ -101,9 +101,9 @@
       <img src="../logo.svg" class="logo" alt=""><h1>Build a data set without writing code</h1>
                         <h4 data-toc-skip class="author">CerebroNexus</h4>
             
-            <h4 data-toc-skip class="date">06 November, 2026</h4>
+            <h4 data-toc-skip class="date">07 November, 2026</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/03_r3/vignettes/build_a_data_set_by_pointing.Rmd" class="external-link"><code>vignettes/build_a_data_set_by_pointing.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/b03-r6/vignettes/build_a_data_set_by_pointing.Rmd" class="external-link"><code>vignettes/build_a_data_set_by_pointing.Rmd</code></a></small>
       <div class="d-none name"><code>build_a_data_set_by_pointing.Rmd</code></div>
     </div>
 
@@ -378,6 +378,14 @@ replacing <code>shiny</code> with the actual account, then start the
 service normally. The bundled
 <code>viewer/AUTHENTICATION-DEPLOYMENT.md</code> explains
 parent-directory access, read-only storage and external secrets.</p>
+<p>While a release is built it stays in a private, owner-only folder.
+The published release folder follows your umask like any folder you
+create: with the common <code>umask 022</code> another account (a Shiny
+Server service, an <code>rsync</code> to a deployment user) can read it;
+with <code>umask 077</code> only you can. Login credentials are always
+owner-only, and so is the Builder’s ownership record
+<code>.cerebro-builder-release-v1</code>, which the App does not
+need.</p>
 </div>
 </div>
 <div class="section level2">
