@@ -93,7 +93,7 @@ A new `Cerebro` object.
 
   `list` that contains a `data.frame` holding the most expressed genes
   for each grouping variable that was specified during the call to
-  [`getMostExpressedGenes`](https://mihem.github.io/CerebroNexus/reference/getMostExpressedGenes.md).
+  [`getMostExpressedGenes`](https://www.mheming.com/CerebroNexus/reference/getMostExpressedGenes.md).
 
 - `mean_expression`:
 
@@ -105,16 +105,16 @@ A new `Cerebro` object.
   `list` that contains a `list` for every method that was used to
   calculate marker genes, and a `data.frame` for each grouping variable,
   e.g. those that were specified during the call to
-  [`getMarkerGenes`](https://mihem.github.io/CerebroNexus/reference/getMarkerGenes.md).
+  [`getMarkerGenes`](https://www.mheming.com/CerebroNexus/reference/getMarkerGenes.md).
 
 - `enriched_pathways`:
 
   `list` that contains a `list` for every method that was used to
   calculate marker genes, and a `data.frame` for each grouping variable,
   e.g. those that were specified during the call to
-  [`getEnrichedPathways`](https://mihem.github.io/CerebroNexus/reference/getEnrichedPathways.md)
+  [`getEnrichedPathways`](https://www.mheming.com/CerebroNexus/reference/getEnrichedPathways.md)
   or
-  [`performGeneSetEnrichmentAnalysis`](https://mihem.github.io/CerebroNexus/reference/performGeneSetEnrichmentAnalysis.md).
+  [`performGeneSetEnrichmentAnalysis`](https://www.mheming.com/CerebroNexus/reference/performGeneSetEnrichmentAnalysis.md).
 
 - `trees`:
 
@@ -126,7 +126,7 @@ A new `Cerebro` object.
   `list` that contains a `list` for every method that was used to
   calculate trajectories, and, depending on the method, a `data.frame`
   or `list` for each specific trajectory, e.g. those extracted with
-  [`extractMonocleTrajectory`](https://mihem.github.io/CerebroNexus/reference/extractMonocleTrajectory.md).
+  [`extractMonocleTrajectory`](https://www.mheming.com/CerebroNexus/reference/extractMonocleTrajectory.md).
 
 - `extra_material`:
 

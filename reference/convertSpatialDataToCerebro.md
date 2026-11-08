@@ -1,9 +1,9 @@
 # Convert a SpatialData store to a Cerebro object
 
 Reads the store with
-[`readSpatialDataAsSCE`](https://mihem.github.io/CerebroNexus/reference/readSpatialDataAsSCE.md)
+[`readSpatialDataAsSCE`](https://www.mheming.com/CerebroNexus/reference/readSpatialDataAsSCE.md)
 and exports it with
-[`convertSCEToCerebro`](https://mihem.github.io/CerebroNexus/reference/convertSCEToCerebro.md):
+[`convertSCEToCerebro`](https://www.mheming.com/CerebroNexus/reference/convertSCEToCerebro.md):
 one spatial section per region (with its tissue picture, where the store
 has one), expression, cell data and any embeddings, markers and colours
 the table carries.
@@ -34,7 +34,7 @@ convertSpatialDataToCerebro(
 - table, spatial_images:
 
   See
-  [`readSpatialDataAsSCE`](https://mihem.github.io/CerebroNexus/reference/readSpatialDataAsSCE.md).
+  [`readSpatialDataAsSCE`](https://www.mheming.com/CerebroNexus/reference/readSpatialDataAsSCE.md).
 
 - assay:
 
@@ -43,7 +43,7 @@ convertSpatialDataToCerebro(
 - ...:
 
   Further arguments of
-  [`convertSCEToCerebro`](https://mihem.github.io/CerebroNexus/reference/convertSCEToCerebro.md)
+  [`convertSCEToCerebro`](https://www.mheming.com/CerebroNexus/reference/convertSCEToCerebro.md)
   (for example `groups`, `organism`, `expression_matrix_mode`).
 
 ## Value
@@ -52,4 +52,4 @@ The path of the `.crb`, invisibly.
 
 ## See also
 
-[`readSpatialDataAsSCE`](https://mihem.github.io/CerebroNexus/reference/readSpatialDataAsSCE.md)
+[`readSpatialDataAsSCE`](https://www.mheming.com/CerebroNexus/reference/readSpatialDataAsSCE.md)

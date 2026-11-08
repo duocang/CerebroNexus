@@ -4,7 +4,7 @@ Reads the cell-by-gene table of a SpatialData `.zarr` store natively (no
 Python), with the spatial coordinates of its cells and the tissue
 pictures that sit in each section's coordinate system, so the result
 goes to
-[`convertSCEToCerebro`](https://mihem.github.io/CerebroNexus/reference/convertSCEToCerebro.md)
+[`convertSCEToCerebro`](https://www.mheming.com/CerebroNexus/reference/convertSCEToCerebro.md)
 like any other SingleCellExperiment.
 
 ## Usage
@@ -46,7 +46,7 @@ A SingleCellExperiment.
 ## Details
 
 The table is an AnnData and is read as described in
-[`readH5adAsSCE`](https://mihem.github.io/CerebroNexus/reference/readH5adAsSCE.md).
+[`readH5adAsSCE`](https://www.mheming.com/CerebroNexus/reference/readH5adAsSCE.md).
 Coordinates come from `obsm["spatial"]` when the table has them
 (Visium); otherwise from the shapes element the table annotates
 (MERFISH, Xenium and other cell-based technologies: the centre of each
@@ -67,5 +67,5 @@ use an `.h5ad` file.
 
 ## See also
 
-[`convertSpatialDataToCerebro`](https://mihem.github.io/CerebroNexus/reference/convertSpatialDataToCerebro.md),
-[`readH5adAsSCE`](https://mihem.github.io/CerebroNexus/reference/readH5adAsSCE.md)
+[`convertSpatialDataToCerebro`](https://www.mheming.com/CerebroNexus/reference/convertSpatialDataToCerebro.md),
+[`readH5adAsSCE`](https://www.mheming.com/CerebroNexus/reference/readH5adAsSCE.md)

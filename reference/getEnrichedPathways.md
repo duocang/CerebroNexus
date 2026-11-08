@@ -23,13 +23,13 @@ getEnrichedPathways(
 - object:
 
   Seurat object with marker genes calculated by
-  [`getMarkerGenes`](https://mihem.github.io/CerebroNexus/reference/getMarkerGenes.md).
+  [`getMarkerGenes`](https://www.mheming.com/CerebroNexus/reference/getMarkerGenes.md).
 
 - marker_genes_input:
 
   Name of list of marker gene tables that will be used as input. This
   could be the "name" parameter used in
-  [`getMarkerGenes`](https://mihem.github.io/CerebroNexus/reference/getMarkerGenes.md).
+  [`getMarkerGenes`](https://www.mheming.com/CerebroNexus/reference/getMarkerGenes.md).
   Enriched pathways will be calculated for every group level of every
   grouping variable. Defaults to "cerebro_seurat".
 

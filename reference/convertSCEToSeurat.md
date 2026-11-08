@@ -2,7 +2,7 @@
 
 Gives a SingleCellExperiment (read from an `.rds`/`.qs2` file, or an
 AnnData file opened with
-[`readH5adAsSCE()`](https://mihem.github.io/CerebroNexus/reference/readH5adAsSCE.md))
+[`readH5adAsSCE()`](https://www.mheming.com/CerebroNexus/reference/readH5adAsSCE.md))
 the shape the Seurat-based tools expect, so it can go through the
 Builder like any other dataset. Cells, genes, cell metadata and every
 reduced dimension are carried over; so are the results kept in

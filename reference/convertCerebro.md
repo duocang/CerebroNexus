@@ -13,7 +13,7 @@ table embedded in a spatial entry moves into the per-FOV sidecar next to
 the CRB. A CRB whose expression storage is older than the formats this
 version reads (an unknown expression backend, thin schema 1 or 2) cannot
 be converted; re-export it with
-[`exportFromSeurat`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md).
+[`exportFromSeurat`](https://www.mheming.com/CerebroNexus/reference/exportFromSeurat.md).
 
 ## Usage
 

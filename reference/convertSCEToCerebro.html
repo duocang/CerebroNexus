@@ -11,7 +11,7 @@ serve. It is the SCE counterpart of convertSeuratToCerebro:
 both run the same preparation (group validation and renaming, marker tables,
 most-expressed genes and mean expression) and then hand over to an exporter
 built on the same core, so every storage option and feature of the Seurat
-route is available here."><meta property="og:image" content="https://mihem.github.io/CerebroNexus/logo.svg"></head><body>
+route is available here."><meta property="og:image" content="https://www.mheming.com/CerebroNexus/logo.svg"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -19,7 +19,7 @@ route is available here."><meta property="og:image" content="https://mihem.githu
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">7.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">7.2.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -86,7 +86,7 @@ route is available here."><meta property="og:image" content="https://mihem.githu
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Convert a SingleCellExperiment object to a Cerebro file</h1>
-      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/master/R/convertSCEToCerebro.R" class="external-link"><code>R/convertSCEToCerebro.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/mihem/CerebroNexus/blob/cran/prep/R/convertSCEToCerebro.R" class="external-link"><code>R/convertSCEToCerebro.R</code></a></small>
       <div class="d-none name"><code>convertSCEToCerebro.Rd</code></div>
     </div>
 
@@ -256,17 +256,53 @@ files (<code>bcr_file</code>/<code>tcr_file</code>) is not available for SCE yet
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># \donttest{</span></span></span>
 <span class="r-in"><span><span class="fu">convertSCEToCerebro</span><span class="op">(</span></span></span>
 <span class="r-in"><span>  sce_file <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata/examples/pbmc_SCE.rds"</span>,</span></span>
 <span class="r-in"><span>    package <span class="op">=</span> <span class="st">"CerebroNexus"</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>  result_dir <span class="op">=</span> <span class="st">"output"</span>,</span></span>
+<span class="r-in"><span>  result_dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"output"</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>  experiment_name <span class="op">=</span> <span class="st">"PBMC (SCE)"</span>,</span></span>
 <span class="r-in"><span>  organism <span class="op">=</span> <span class="st">"Human"</span>,</span></span>
 <span class="r-in"><span>  groups <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sample"</span>, <span class="st">"cluster"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Calculating most expressed genes and mean expression for each group...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Processing group: sample</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Processing group: cluster</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Most expressed genes and mean expression calculation completed.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Initializing Cerebro object...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Adding expression data (embedded)...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Collecting available meta data...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Extracting all meta data columns...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Extracting dimensional reductions...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Will export the following dimensional reductions: UMAP</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Extracting tables of most expressed genes...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Extracting tables of mean expression...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] No trajectories to extract...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Overview of Cerebro object:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> class: Cerebro</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> exporter package version: 7.2.0</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> experiment name: PBMC (SCE)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> organism: Human</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> date of analysis: </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> date of export: 2026-11-08</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> number of cells: 80</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> number of genes: 230</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> grouping variables (2): sample, cluster</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> cell cycle variables (0): </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> projections (1): UMAP</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> trees (0): </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> most expressed genes: sample, cluster</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> marker genes:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> enriched pathways:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> trajectories:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> extra material:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> Immune repertoire:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> HLA typing: none</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> Spatial data:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Saving Cerebro object to: /tmp/nix-shell-4293-3677607936/RtmpyU1DNe/output/cerebro_pbmc_SCE.crb</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> [22:22:54] Done!</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> Successfully exported: cerebro_pbmc_SCE.crb</span>
+<span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

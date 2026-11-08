@@ -101,7 +101,7 @@ exportFromSCE(
 
   How to persist the expression matrix. One of `"embedded"` (default) or
   `"h5"`; identical to
-  [`exportFromSeurat`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md).
+  [`exportFromSeurat`](https://www.mheming.com/CerebroNexus/reference/exportFromSeurat.md).
   The `"h5"` backend writes a sibling `<stem>.h5` file next to the
   `.crb`, and `file` must then end in `.crb`.
 
@@ -156,7 +156,7 @@ No data returned.
 ## Details
 
 The export is written by the same format-independent core as
-[`exportFromSeurat`](https://mihem.github.io/CerebroNexus/reference/exportFromSeurat.md):
+[`exportFromSeurat`](https://www.mheming.com/CerebroNexus/reference/exportFromSeurat.md):
 the CRB and any sidecar are built in a private stage and published
 together, and `object@metadata` entries (trees, markers, pathways,
 immune repertoire, HLA typing, extra material, ...) are read with the
@@ -171,12 +171,13 @@ is drawn behind the spatial coordinates: the single library's images go
 to the single spatial entry, and with `spatial_split_by` each section
 takes the images of the library named like its level. Both are filled in
 by
-[`readH5adAsSCE`](https://mihem.github.io/CerebroNexus/reference/readH5adAsSCE.md)
+[`readH5adAsSCE`](https://www.mheming.com/CerebroNexus/reference/readH5adAsSCE.md)
 from scanpy's `uns`.
 
 ## Examples
 
 ``` r
+# \donttest{
 pbmc <- readRDS(system.file("extdata/examples/pbmc_SCE.rds",
   package = "CerebroNexus"))
 exportFromSCE(
@@ -190,16 +191,16 @@ exportFromSCE(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [21:12:57] Initializing Cerebro object...
-#> [21:12:57] Adding expression data (embedded)...
-#> [21:12:57] Collecting available meta data...
-#> [21:12:57] Extracting all meta data columns...
-#> [21:12:57] Extracting dimensional reductions...
-#> [21:12:57] Will export the following dimensional reductions: UMAP
-#> [21:12:57] No trajectories to extract...
-#> [21:12:57] Overview of Cerebro object:
+#> [22:22:56] Initializing Cerebro object...
+#> [22:22:56] Adding expression data (embedded)...
+#> [22:22:56] Collecting available meta data...
+#> [22:22:56] Extracting all meta data columns...
+#> [22:22:56] Extracting dimensional reductions...
+#> [22:22:56] Will export the following dimensional reductions: UMAP
+#> [22:22:56] No trajectories to extract...
+#> [22:22:56] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 7.1.0
+#> exporter package version: 7.2.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
@@ -218,6 +219,7 @@ exportFromSCE(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [21:12:57] Saving Cerebro object to: /tmp/nix-shell-4388-517707261/Rtmp8rKdbt/pbmc_SCE.crb
-#> [21:12:58] Done!
+#> [22:22:56] Saving Cerebro object to: /tmp/nix-shell-4293-3677607936/RtmpyU1DNe/pbmc_SCE.crb
+#> [22:22:56] Done!
+# }
 ```
