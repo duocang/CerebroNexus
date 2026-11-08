@@ -100,8 +100,6 @@
 <picture><source media="(prefers-color-scheme: dark)" srcset="reference/figures/logo-dark.svg"><img src="reference/figures/logo.svg" alt="CerebroNexus" width="380"></picture></p>
 <p><a href="https://github.com/mihem/CerebroNexus/actions/workflows/R-cmd-check.yaml" class="external-link"><img src="https://github.com/mihem/CerebroNexus/actions/workflows/R-cmd-check.yaml/badge.svg" alt="R-CMD-check (upstream)"></a> <a href="https://opensource.org/licenses/MIT" class="external-link"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a> <img src="https://lifecycle.r-lib.org/articles/figures/lifecycle-stable.svg" alt="Lifecycle: stable"></p>
 <p><strong>CerebroNexus</strong> (<strong>Ce</strong>ll<strong>Re</strong>port<strong>Bro</strong>wser <strong>Nexus</strong>) is a <a href="https://shiny.posit.co/" class="external-link">Shiny</a> platform for exploring and sharing single-cell and spatial transcriptomics data, with gene-expression, immune-repertoire, trajectory, and HLA-TCR analyses. See the <a href="https://mihem.github.io/CerebroNexus/">full documentation</a>.</p>
-<p><strong>Builder</strong> prepares your data and packages an App. <strong>Viewer</strong> opens the result for interactive exploration and sharing.</p>
-<p><a href="#install">Install</a> · <a href="#run-builder">Builder</a> · <a href="#run-the-viewer-demos">Viewer demos</a> · <a href="#run-both-large-datasets">Large datasets</a> · <a href="#project-layout">Project layout</a> · <a href="#guides">Guides</a></p>
 <p><a href="https://osmzhlab.uni-muenster.de/shiny/demo/" class="external-link">Try the live demo</a>.</p>
 <p><em>CerebroNexus began as a fork of <a href="https://github.com/romanhaa/cerebroApp" class="external-link">cerebroApp</a> by Roman Hillje and has since evolved with substantial new features and active development by <a href="https://github.com/mihem" class="external-link">mihem</a> and <a href="https://github.com/duocang" class="external-link">Xuesong Wang</a>.</em></p>
 <p>Automated tests run in a reproducible Nix environment.</p>
@@ -109,49 +107,26 @@
 <img src="reference/figures/featured.png" alt="CerebroNexus spatial data view"><div class="figcaption">CerebroNexus spatial data view</div>
 </div>
 <div class="section level2">
-<h2 id="install">Install<a class="anchor" aria-label="anchor" href="#install"></a>
+<h2 id="id_1-installation">1. Installation<a class="anchor" aria-label="anchor" href="#id_1-installation"></a>
 </h2>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"remotes"</span><span class="op">)</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"mihem/CerebroNexus"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Seurat"</span>, <span class="st">"callr"</span>, <span class="st">"processx"</span>, <span class="st">"ps"</span>, <span class="st">"shinymanager"</span><span class="op">)</span><span class="op">)</span> <span class="co"># Builder and login-enabled Apps</span></span></code></pre></div>
-<p>Seurat, callr, processx and ps are needed for Builder; <code>shinymanager &gt;= 1.1.0</code> is needed only for login-enabled Apps. Optional input/backend packages are listed in the <a href="https://mihem.github.io/CerebroNexus/articles/build_a_data_set_by_pointing.html">Builder guide</a>. Exported Apps still require R and the Viewer dependencies on the destination machine.</p>
-</div>
-<div class="section level2">
-<h2 id="run-builder">Run Builder<a class="anchor" aria-label="anchor" href="#run-builder"></a>
-</h2>
+<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">'mihem/CerebroNexus'</span><span class="op">)</span></span></code></pre></div>
+<p>The Builder (below) also needs a few suggested packages:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">CerebroNexus</span><span class="fu">::</span><span class="fu"><a href="reference/launchCerebroBuilder.html">launchCerebroBuilder</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
-<p>Builder opens in your browser and runs locally. Import trusted Seurat <code>.rds</code>, <code>.qs2</code> or <code>.qs</code> files, or choose <strong>Load example datasets</strong> to try it without your own data.</p>
-<div class="float">
-<img src="reference/figures/builder.png" alt="CerebroNexus Builder configuring a bundled example dataset"><div class="figcaption">CerebroNexus Builder configuring a bundled example dataset</div>
-</div>
-<ol style="list-style-type: decimal">
-<li>
-<strong>Data</strong> — add one or more datasets, or reopen a saved Builder project.</li>
-<li>
-<strong>Configure</strong> — choose expression, groups, projections and optional analyses; inspect spatial views and align background images.</li>
-<li>
-<strong>Review</strong> — check the included content and resolve blocking issues.</li>
-<li>
-<strong>Build</strong> — export reusable CRB bundles or a standalone Viewer App, optionally protected by login.</li>
-</ol>
-<p><strong>Save</strong> keeps an editable Builder project for later work. <strong>Build</strong> creates a separate release inside the output folder you choose. A Viewer App release has this layout (simplified):</p>
-<pre class="text"><code>release/
-├── cerebro_app/
-│   ├── app.R
-│   ├── private-data/       # Datasets and required sidecars
-│   ├── viewer/             # Bundled Viewer runtime
-│   └── viewer-auth.env     # Login-enabled releases only; keep private
-└── build-report.json</code></pre>
-<p>Run the exported App with <code>shiny::runApp("path/to/release/cerebro_app")</code>. Keep the entire App directory together when moving or sharing it; CRB-only releases instead contain the <code>.crb</code> files and their required sidecars.</p>
-<p>On Linux, run <code>bash viewer/start-linux.sh</code> from the exported App directory to prepare login-file permissions and start Viewer, including after copying from Windows. For a service deployment, run <code>sudo bash viewer/start-linux.sh --prepare-only --user shiny</code> once with the actual service account, then start the service normally. See the bundled <code>viewer/AUTHENTICATION-DEPLOYMENT.md</code> for details.</p>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Seurat"</span>, <span class="st">"callr"</span>, <span class="st">"processx"</span>, <span class="st">"ps"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="convert-from-a-script">Convert from a script<a class="anchor" aria-label="anchor" href="#convert-from-a-script"></a>
+<h2 id="id_2-build-an-app-for-your-own-data">2. Build an app for your own data<a class="anchor" aria-label="anchor" href="#id_2-build-an-app-for-your-own-data"></a>
 </h2>
+<p><strong>Without writing code</strong>, open the Builder in your browser:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">CerebroNexus</span><span class="fu">::</span><span class="fu"><a href="reference/launchCerebroBuilder.html">launchCerebroBuilder</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<p>Add your data files, choose the groups and content, and build a <code>.crb</code> file or a standalone App. See <a href="https://mihem.github.io/CerebroNexus/articles/build_a_data_set_by_pointing.html">Build a data set by pointing</a>.</p>
+<p><strong>From a script:</strong></p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Seurat, SingleCellExperiment, AnnData (.h5ad / .zarr), MuData (.h5mu)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mihem.github.io/CerebroNexus/">CerebroNexus</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Seurat, SingleCellExperiment, AnnData (.h5ad / .zarr), MuData (.h5mu)</span></span>
 <span><span class="co"># or SpatialData</span></span>
 <span><span class="fu"><a href="reference/convertSeuratToCerebro.html">convertSeuratToCerebro</a></span><span class="op">(</span></span>
 <span>  seurat_file <span class="op">=</span> <span class="st">"my_seurat.rds"</span>,</span>
@@ -167,83 +142,6 @@
 <span>  result_dir <span class="op">=</span> <span class="st">"my_app"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>No Python is needed to read AnnData or SpatialData; see the vignette <a href="vignettes/use_sce_and_anndata_data.Rmd">Use SingleCellExperiment and AnnData data</a>.</p>
-</div>
-<div class="section level2">
-<h2 id="run-the-viewer-demos">Run the Viewer demos<a class="anchor" aria-label="anchor" href="#run-the-viewer-demos"></a>
-</h2>
-<p>In R, launch the bundled demo app (PBMC, Spatial, Trekker and HLA/TCR):</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/runApp.html" class="external-link">runApp</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"CerebroNexus"</span><span class="op">)</span>, launch.browser <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
-<p>Switch datasets using <strong>Sample data set</strong>. For the basic Viewer example, use <code><a href="reference/launchCerebro.html">CerebroNexus::launchCerebro()</a></code>. Use separate R sessions to run Builder and Viewer at the same time.</p>
-</div>
-<div class="section level2">
-<h2 id="run-both-large-datasets">Run both large datasets<a class="anchor" aria-label="anchor" href="#run-both-large-datasets"></a>
-</h2>
-<p>For <strong>Mouse 1M + Ren 1.46M</strong>, alongside the bundled demos, run in a terminal with R and the package dependencies available:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/mihem/CerebroNexus.git</span>
-<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="bu">cd</span> CerebroNexus</span>
-<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a><span class="ex">Rscript</span> <span class="at">-e</span> <span class="st">"install.packages(c('remotes', 'pkgload')); remotes::install_local('.', dependencies = TRUE)"</span></span>
-<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a><span class="ex">Rscript</span> run-demo.R</span></code></pre></div>
-<p>The launcher uses the current checkout and prints the local URL, usually <code>http://127.0.0.1:7451</code>. First-time preparation downloads about <strong>18 GB</strong>; allow <strong>100 GB free disk space</strong>. Later runs reuse complete compatible caches. Keep each <code>.crb</code> with its <code>.bpcells/</code> directory.</p>
-<p>Optional flags: <code>--prepare-only</code> prepares without launching, <code>--ren-only</code> skips Mouse, and <code>--no-browser</code> lets you open the printed URL yourself (useful in WSL).</p>
-</div>
-<div class="section level2">
-<h2 id="project-layout">Project layout<a class="anchor" aria-label="anchor" href="#project-layout"></a>
-</h2>
-<table class="table">
-<colgroup>
-<col width="50%">
-<col width="50%">
-</colgroup>
-<thead><tr>
-<th>Path</th>
-<th>Purpose</th>
-</tr></thead>
-<tbody>
-<tr>
-<td><code>R/</code></td>
-<td>Package API, data conversion and App export</td>
-</tr>
-<tr>
-<td><code>inst/builder/</code></td>
-<td>Builder interface and build workflow</td>
-</tr>
-<tr>
-<td><code>inst/viewer/</code></td>
-<td>Viewer interface and runtime</td>
-</tr>
-<tr>
-<td>
-<code>inst/app.R</code>, <code>inst/extdata/examples/</code>
-</td>
-<td>Bundled demo App and datasets</td>
-</tr>
-<tr>
-<td><code>run-demo.R</code></td>
-<td>Launcher for both large datasets and the bundled demos</td>
-</tr>
-<tr>
-<td><code>data-raw/</code></td>
-<td>Scripts for rebuilding demo data</td>
-</tr>
-<tr>
-<td>
-<code>vignettes/</code>, <code>tests/</code>
-</td>
-<td>User guides and tests</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="section level2">
-<h2 id="guides">Guides<a class="anchor" aria-label="anchor" href="#guides"></a>
-</h2>
-<ul>
-<li><a href="https://mihem.github.io/CerebroNexus/articles/build_a_data_set_by_pointing.html">Builder workflow</a></li>
-<li><a href="https://mihem.github.io/CerebroNexus/articles/million_cell_crb_artifacts.html">Large datasets and preparation</a></li>
-<li><a href="https://mihem.github.io/CerebroNexus/articles/create_a_self_contained_shiny_app.html">Scripted App export</a></li>
-<li><a href="https://mihem.github.io/CerebroNexus/articles/control_access_to_cerebro_with_a_login_page.html">Login-protected Apps</a></li>
-</ul>
 </div>
 <div class="section level2">
 <h2 id="license">License<a class="anchor" aria-label="anchor" href="#license"></a>
