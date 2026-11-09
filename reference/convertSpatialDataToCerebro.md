@@ -53,3 +53,47 @@ The path of the `.crb`, invisibly.
 ## See also
 
 [`readSpatialDataAsSCE`](https://www.mheming.com/CerebroNexus/reference/readSpatialDataAsSCE.md)
+
+## Examples
+
+``` r
+# \donttest{
+dir <- tempfile("cerebro-")
+dir.create(dir)
+convertSpatialDataToCerebro(
+  system.file("extdata/examples/small_spatialdata.zip", package = "CerebroNexus"),
+  result_dir = dir,
+  groups = "cell_type",
+  verbose = FALSE
+)
+#> [22:37:54] Start collecting data...
+#> [22:37:54] Adding expression data (embedded)...
+#> [22:37:54] Overview of Cerebro object:
+#> class: Cerebro
+#> exporter package version: 8.0.0
+#> experiment name: small_spatialdata
+#> organism: Human
+#> date of analysis: 
+#> date of export: 2026-11-09
+#> number of cells: 50
+#> number of genes: 30
+#> grouping variables (1): cell_type
+#> cell cycle variables (0): 
+#> projections (2): UMAP, spatial
+#> trees (0): 
+#> most expressed genes: cell_type
+#> marker genes:
+#> enriched pathways:
+#> trajectories:
+#> extra material:
+#> Immune repertoire:
+#> HLA typing: none
+#> Spatial data:spatial
+#> [22:37:54] Saving Cerebro object to: /tmp/nix-shell-4268-1019160327/RtmpwOOvRz/cerebro-10e939e72bac/cerebro_small_spatialdata.crb
+#> [22:37:54] Done!
+#> Successfully exported: cerebro_small_spatialdata.crb
+list.files(dir)
+#> [1] "cerebro_small_spatialdata.crb"
+unlink(dir, recursive = TRUE)
+# }
+```

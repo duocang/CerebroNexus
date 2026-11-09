@@ -26,3 +26,35 @@ readCerebro(file)
 ## Value
 
 A current Cerebro object.
+
+## Examples
+
+``` r
+crb <- system.file("extdata/examples/example.crb", package = "CerebroNexus")
+cerebro <- readCerebro(crb)
+cerebro
+#> class: Cerebro
+#> exporter package version: 1.7.3
+#> experiment name: pbmc5p_v2_hs
+#> organism: hg
+#> date of analysis: 
+#> date of export: 2026-06-25
+#> number of cells: 1,000
+#> number of genes: 100
+#> grouping variables (3): sample, seurat_clusters, cell_type
+#> cell cycle variables (0): 
+#> projections (1): umap
+#> trees (0): 
+#> most expressed genes: sample, seurat_clusters, cell_type
+#> marker genes:
+#>   - cerebro_seurat (1): seurat_clusters
+#> enriched pathways:
+#>   - cerebro_seurat_enrichr (1): seurat_clusters, 
+#>   - cerebro_GSVA (1): seurat_clusters
+#> trajectories:
+#> extra material:
+#>   - tables (1): cluster_cell_counts
+#> Immune repertoire:sample_1, sample_2, sample_3
+#> HLA typing: none
+#> Spatial data:
+```

@@ -267,6 +267,8 @@ typed one.
 ## Examples
 
 ``` r
+# \donttest{
+## Reading the Seurat object loads SeuratObject, which takes a few seconds.
 pbmc <- readRDS(system.file("extdata/examples/pbmc_seurat.rds",
   package = "CerebroNexus"))
 exportFromSeurat(
@@ -280,22 +282,22 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [22:22:56] Initializing Cerebro object...
-#> [22:22:56] Adding expression data (embedded)...
-#> [22:22:56] Collecting available meta data...
-#> [22:22:56] Extracting all meta data columns...
-#> [22:22:56] Extracting dimensional reductions...
-#> [22:22:56] Will export the following dimensional reductions: umap
-#> [22:22:56] Extracting marker genes table...
-#> [22:22:56] No trajectories to extract...
-#> [22:22:56] Checking for spatial data...
-#> [22:22:56] Overview of Cerebro object:
+#> [22:37:56] Initializing Cerebro object...
+#> [22:37:56] Adding expression data (embedded)...
+#> [22:37:56] Collecting available meta data...
+#> [22:37:56] Extracting all meta data columns...
+#> [22:37:56] Extracting dimensional reductions...
+#> [22:37:56] Will export the following dimensional reductions: umap
+#> [22:37:56] Extracting marker genes table...
+#> [22:37:56] No trajectories to extract...
+#> [22:37:56] Checking for spatial data...
+#> [22:37:56] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 7.2.0
+#> exporter package version: 8.0.0
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-11-08
+#> date of export: 2026-11-09
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -311,6 +313,7 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [22:22:56] Saving Cerebro object to: /tmp/nix-shell-4293-3677607936/RtmpyU1DNe/pbmc_Seurat.crb
-#> [22:22:56] Done!
+#> [22:37:56] Saving Cerebro object to: /tmp/nix-shell-4268-1019160327/RtmpwOOvRz/pbmc_Seurat.crb
+#> [22:37:56] Done!
+# }
 ```

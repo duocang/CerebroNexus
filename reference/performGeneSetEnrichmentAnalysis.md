@@ -37,7 +37,7 @@ performGeneSetEnrichmentAnalysis(
 
   Path to GMT file containing the gene sets to be tested. The Broad
   Institute provides many gene sets which can be downloaded:
-  http://software.broadinstitute.org/gsea/msigdb/index.jsp
+  https://www.gsea-msigdb.org/gsea/msigdb/index.jsp
 
 - groups:
 
@@ -81,10 +81,10 @@ pbmc <- performGeneSetEnrichmentAnalysis(
   thresh_p_val = 0.05,
   thresh_q_val = 0.1
 )
-#> [22:23:08] Loading gene sets...
-#> [22:23:08] Loaded 2 gene sets from GMT file.
-#> [22:23:08] Extracting transcript counts from `data` slot of `RNA` assay...
-#> [22:23:08] Performing analysis for 2 subgroups of group `seurat_clusters`...
+#> [22:38:08] Loading gene sets...
+#> [22:38:08] Loaded 2 gene sets from GMT file.
+#> [22:38:08] Extracting transcript counts from `data` slot of `RNA` assay...
+#> [22:38:08] Performing analysis for 2 subgroups of group `seurat_clusters`...
 #> ℹ GSVA version 2.6.12
 #> ℹ Searching for rows with constant values
 #> ℹ Calculating GSVA ranks
@@ -96,6 +96,6 @@ pbmc <- performGeneSetEnrichmentAnalysis(
 #> ℹ GSVA dense (classical) algorithm
 #> ℹ Calculating GSVA scores for 2 gene sets
 #> ✔ Calculations finished
-#> [22:23:09] 0 gene sets passed the thresholds across all subgroups of group `seurat_clusters`.
+#> [22:38:09] 0 gene sets passed the thresholds across all subgroups of group `seurat_clusters`.
 # }
 ```

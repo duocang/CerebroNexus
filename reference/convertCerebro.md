@@ -41,3 +41,20 @@ convertCerebro(input, output = input, codec = c("qs2", "rds"))
 ## Value
 
 The output path, invisibly.
+
+## Examples
+
+``` r
+dir <- tempfile("cerebro-")
+dir.create(dir)
+file.copy(system.file("extdata/examples/example.crb", package = "CerebroNexus"), dir)
+#> [1] TRUE
+convertCerebro(
+  file.path(dir, "example.crb"),
+  file.path(dir, "example_rds.crb"),
+  codec = "rds"
+)
+list.files(dir)
+#> [1] "example.crb"     "example_rds.crb"
+unlink(dir, recursive = TRUE)
+```

@@ -29,14 +29,43 @@ CerebroNexus spatial data view
 
 ## 1. Installation
 
+From CRAN:
+
 ``` r
-remotes::install_github('mihem/CerebroNexus')
+install.packages("CerebroNexus")
+```
+
+The development version from GitHub:
+
+``` r
+remotes::install_github("mihem/CerebroNexus")
 ```
 
 The Builder (below) also needs a few suggested packages:
 
 ``` r
 install.packages(c("Seurat", "callr", "processx", "ps"))
+```
+
+### Optional packages
+
+Some features use packages that are not installed with CerebroNexus:
+SingleCellExperiment, AnnData and HDF5 input, the immune repertoire and
+HLA pages, gene set enrichment and marker annotation. A feature that
+needs a missing package says which one and how to install it. To install
+all of them at once:
+
+``` r
+install.packages(c(
+  "Seurat", "callr", "processx", "ps", "digest", "readxl", "arrow",
+  "ggplot2", "ggdendro", "patchwork", "igraph", "stringdist", "msigdbr",
+  "httr", "future.apply", "pbapply", "png", "jpeg"
+))
+install.packages("BiocManager")
+BiocManager::install(c(
+  "SingleCellExperiment", "HDF5Array", "rhdf5", "anndataR",
+  "scRepertoire", "GSVA", "qvalue", "biomaRt"
+))
 ```
 
 ## 2. Build an app for your own data

@@ -12,7 +12,7 @@ example of how scRNA-seq data can be processed using the
 [Seurat](https://satijalab.org/seurat/) toolkit and then exported for
 visualization in Cerebro.
 
-Ket features that can be accessed through Cerebro:
+Key features that can be accessed through Cerebro:
 
 - Interactive 2D and 3D dimensional reductions.
 - Overview panels for all grouping variables, e.g. samples and clusters.
@@ -337,11 +337,11 @@ seurat <- getMarkerGenes(
 ### Perform pathway enrichment on marker genes
 
 Using the previously identified marker genes, we can perform a pathway
-enrichmeny analysis using the
+enrichment analysis using the
 [`getEnrichedPathways()`](https://www.mheming.com/CerebroNexus/reference/getEnrichedPathways.md)
 function. The function will internally use the
-[Enrichr](https://amp.pharm.mssm.edu/Enrichr/) API and store the results
-in the Seurat object under the `misc` slot. All we have to do is provide
+[Enrichr](https://maayanlab.cloud/Enrichr/) API and store the results in
+the Seurat object under the `misc` slot. All we have to do is provide
 the name that we specified in
 [`getMarkerGenes()`](https://www.mheming.com/CerebroNexus/reference/getMarkerGenes.md).
 
@@ -357,7 +357,7 @@ seurat <- getEnrichedPathways(
 ### Gene set enrichment
 
 On top of querying the databases of the
-[Enrichr](https://amp.pharm.mssm.edu/Enrichr/) service, one can also
+[Enrichr](https://maayanlab.cloud/Enrichr/) service, one can also
 perform gene set enrichment analysis on gene sets provided as a `.gmt`
 file, e.g. from the
 [MSigDB](https://www.gsea-msigdb.org/gsea/msigdb/index.jsp). The

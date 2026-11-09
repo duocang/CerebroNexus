@@ -69,3 +69,27 @@ use an `.h5ad` file.
 
 [`convertSpatialDataToCerebro`](https://www.mheming.com/CerebroNexus/reference/convertSpatialDataToCerebro.md),
 [`readH5adAsSCE`](https://www.mheming.com/CerebroNexus/reference/readH5adAsSCE.md)
+
+## Examples
+
+``` r
+# \donttest{
+## A small SpatialData store (50 spots), zipped
+sce <- readSpatialDataAsSCE(
+  system.file("extdata/examples/small_spatialdata.zip", package = "CerebroNexus")
+)
+sce
+#> class: SingleCellExperiment 
+#> dim: 30 50 
+#> metadata(0):
+#> assays(1): X
+#> rownames(30): GENE00 GENE01 ... GENE28 GENE29
+#> rowData names(1): var_index
+#> colnames(50): spot000 spot001 ... spot048 spot049
+#> colData names(5): cell_type region spot_id n_genes_by_counts
+#>   total_counts
+#> reducedDimNames(2): UMAP spatial
+#> mainExpName: NULL
+#> altExpNames(0):
+# }
+```

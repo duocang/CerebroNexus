@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CerebroNexus</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">7.2.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">8.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -74,9 +74,23 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.svg" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/cran/prep/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/mihem/CerebroNexus/blob/ci/cran-prep/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="8.0.0" id="cerebronexus-800">CerebroNexus 8.0.0<a class="anchor" aria-label="anchor" href="#cerebronexus-800"></a></h2>
+<ul><li>The package is prepared for a CRAN submission. <code>R CMD check --as-cran</code> on the built tarball reports only the “New submission” NOTE.</li>
+<li>The tarball shrinks from 28.4 MB to 5.66 MB. Three vignettes (Seurat workflow, SCE/AnnData, Cerebro class) stay in the package; the other guides move to <code>vignettes/articles/</code> and remain on the website under the same URLs. The large demo <code>.crb</code> files, the <code>.zarr</code>/<code>.h5ad</code> test fixtures and the Builder’s Trekker and Visium examples are no longer shipped in the tarball; they stay in git.</li>
+<li>New <code><a href="../reference/downloadDemoData.html">downloadDemoData()</a></code> downloads the Visium, Slide-seq, MERFISH, Xenium and HLA &amp; TCR demo data from the release tag into <code><a href="https://rdrr.io/r/tools/userdir.html" class="external-link">tools::R_user_dir()</a></code> and checks size and MD5. The demo App lists them once downloaded. The Builder’s Trekker (synthetic) and Visium examples download on first use; offline, the Builder says so and the other examples still work.</li>
+<li>Imports drop from 39 to 20 non-default packages. GSVA, qvalue, biomaRt, scRepertoire, msigdbr, igraph, stringdist, colourpicker, ggplot2, scales, shinycssloaders, htmlwidgets, httr, future.apply, pbapply and digest move to Suggests. A missing package gives an install hint, a reduced but working path, or a message on the Viewer page instead of an error. <code>stringr</code>, <code>tibble</code> and <code>tidyselect</code> are no longer used.</li>
+<li>
+<code><a href="../reference/createShinyApp.html">createShinyApp()</a></code> now explains how to name an unnamed data set. The Spatial point-size observer no longer stops the session when the data set has no spatial data.</li>
+<li>
+<code><a href="../reference/launchCerebro.html">launchCerebro()</a></code> no longer assigns <code>Cerebro.options</code> in the global environment.</li>
+<li>Examples are runnable, with slow parts in <code>\donttest{}</code>; the <code><a href="../reference/getMarkerGenes.html">getMarkerGenes()</a></code> example no longer queries Ensembl.</li>
+<li>Tests run in about 4 minutes under CRAN settings (was about 10): slow Builder integration, browser, Node/Chrome, server and subprocess tests are skipped on CRAN, at most two processes run, plots go to a null device, and nothing is written outside <code><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir()</a></code>. GitHub CI still runs everything.</li>
+<li>DESCRIPTION title and description follow CRAN style, <code>qs</code> is dropped from Enhances, and <code>CITATION</code> is a <code><a href="https://rdrr.io/r/utils/bibentry.html" class="external-link">bibentry()</a></code> with volume, issue and pages.</li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="7.2.0" id="cerebronexus-720">CerebroNexus 7.2.0<a class="anchor" aria-label="anchor" href="#cerebronexus-720"></a></h2>
 <ul><li>The Immune repertoire SizeDist tab draws in an App whose folder is read-only, such as one run by Shiny Server in a container. Building its dendrogram (<code><a href="https://andrie.github.io/ggdendro/reference/dendro_data.html" class="external-link">ggdendro::dendro_data()</a></code>) opened R’s default graphics device, which writes <code>Rplots.pdf</code> into the working directory: the tab showed “Could not render this plot: cannot open file ‘Rplots.pdf’”, and where the folder is writable a stray <code>Rplots.pdf</code> was left behind. The Immune repertoire plotly renderers now open a null graphics device for the whole render, plot building included, and close only that device.</li>
@@ -1031,7 +1045,7 @@
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Michael Heming, Roman Hillje, Xuesong Wang.</p>
+  <p>Developed by Michael Heming, Xuesong Wang.</p>
 </div>
 
 <div class="pkgdown-footer-right">

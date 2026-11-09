@@ -64,3 +64,20 @@ section in `@misc$cerebro_source_images` (not in
 `cerebro_spatial_images`, which the export would embed in the `.crb`).
 The Builder takes them from there and attaches them to their sections as
 separate image files, placed at the extent their scale factor gives.
+
+## Examples
+
+``` r
+# \donttest{
+sce <- readRDS(
+  system.file("extdata/examples/pbmc_SCE.rds", package = "CerebroNexus")
+)
+seurat <- convertSCEToSeurat(sce)
+seurat
+#> An object of class Seurat 
+#> 230 features across 80 samples within 1 assay 
+#> Active assay: RNA (230 features, 0 variable features)
+#>  2 layers present: counts, data
+#>  2 dimensional reductions calculated: PCA, UMAP
+# }
+```
