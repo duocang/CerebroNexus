@@ -13,7 +13,7 @@
 ## Citation
 
 Source:
-[`inst/CITATION`](https://github.com/mihem/CerebroNexus/blob/ci/cran-prep/inst/CITATION)
+[`inst/CITATION`](https://github.com/mihem/CerebroNexus/blob/master/inst/CITATION)
 
 Hillje, R., Pelicci, P.G. & Luzi, L. Cerebro: Interactive visualization
 of scRNA-seq data. Bioinformatics 36(7), 2311-2313 (2020).
