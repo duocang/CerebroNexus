@@ -14,4 +14,5 @@ local({
   }
 })
 
-test_check("CerebroNexus")
+## ci/rhub only: list warnings with their tests.
+test_check("CerebroNexus", reporter = testthat::ProgressReporter$new(show_praise = FALSE))
