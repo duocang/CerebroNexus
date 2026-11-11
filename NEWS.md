@@ -1,3 +1,20 @@
+# CerebroNexus 8.0.1
+
+- **Faster Builder import.** The Builder no longer sorts every value of a
+  metadata column to count its levels. A column with more than 100 distinct
+  values (continuous values, cell identifiers, clone names) cannot be a group;
+  its most frequent values are now counted by hashing. Inspecting a data set of
+  1 M cells with 60 metadata columns took 324 s and takes 23 s.
+- **Faster H5 export.** `expression_matrix_mode = "h5"` writes a `dgCMatrix`
+  straight into the TENx datasets instead of block by block through
+  `HDF5Array::writeTENxMatrix()`. The file is laid out as before. Writing
+  100,000 cells (198 M values) took 68 s and takes 12 s.
+- **A CRB is not read back to build its Viewer Pack.** The export functions and
+  `saveCerebro()` hand over the object they have just written, and
+  `buildViewerPack()` reads the CRB once instead of twice. An export no longer
+  hashes its H5 sidecar a second time. A Builder build of a 100,000-cell CRB
+  with an embedded matrix read the CRB four times and reads it once.
+
 # CerebroNexus 8.0.0
 
 - The package is prepared for a CRAN submission. `R CMD check --as-cran` on the
