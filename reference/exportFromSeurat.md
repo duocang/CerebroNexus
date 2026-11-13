@@ -117,14 +117,14 @@ exportFromSeurat(
 
   - `"embedded"` stores the matrix inside the `.crb` file.
 
-  - `"h5"` writes the matrix via
+  - `"h5"` writes the matrix, laid out as
     [`HDF5Array::writeTENxMatrix()`](https://rdrr.io/pkg/HDF5Array/man/writeTENxMatrix.html)
-    to a TENx-format sparse HDF5 file next to the `.crb` (sibling
-    `<stem>.h5`) and tags the backend with that file name. The file
-    holds a single `/expression` group with `data`, `indices`, `indptr`,
-    `shape`, `genes`, and `barcodes` datasets. The matrix is stored
-    cells x genes (TENx column-favoured, optimised for per-gene reads);
-    the Viewer reads it back as a lazy
+    writes it, to a TENx-format sparse HDF5 file next to the `.crb`
+    (sibling `<stem>.h5`) and tags the backend with that file name. The
+    file holds a single `/expression` group with `data`, `indices`,
+    `indptr`, `shape`, `genes`, and `barcodes` datasets. The matrix is
+    stored cells x genes (TENx column-favoured, optimised for per-gene
+    reads); the Viewer reads it back as a lazy
     [`HDF5Array::TENxMatrix`](https://rdrr.io/pkg/HDF5Array/man/TENxMatrix-class.html)
     seed and transposes it lazily to Cerebro's internal genes x cells
     layout via `DelayedArray::t()` (free). The in-memory `dgCMatrix` is
@@ -282,18 +282,18 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [18:20:18] Initializing Cerebro object...
-#> [18:20:18] Adding expression data (embedded)...
-#> [18:20:18] Collecting available meta data...
-#> [18:20:18] Extracting all meta data columns...
-#> [18:20:18] Extracting dimensional reductions...
-#> [18:20:18] Will export the following dimensional reductions: umap
-#> [18:20:18] Extracting marker genes table...
-#> [18:20:18] No trajectories to extract...
-#> [18:20:18] Checking for spatial data...
-#> [18:20:18] Overview of Cerebro object:
+#> [20:55:10] Initializing Cerebro object...
+#> [20:55:10] Adding expression data (embedded)...
+#> [20:55:10] Collecting available meta data...
+#> [20:55:10] Extracting all meta data columns...
+#> [20:55:10] Extracting dimensional reductions...
+#> [20:55:10] Will export the following dimensional reductions: umap
+#> [20:55:10] Extracting marker genes table...
+#> [20:55:10] No trajectories to extract...
+#> [20:55:10] Checking for spatial data...
+#> [20:55:10] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 8.1.0
+#> exporter package version: 8.1.1
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
@@ -313,7 +313,7 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [18:20:18] Saving Cerebro object to: /tmp/nix-shell-4775-3761793973/Rtmp8fexOR/pbmc_Seurat.crb
-#> [18:20:18] Done!
+#> [20:55:10] Saving Cerebro object to: /tmp/nix-shell-4498-2209726858/RtmprdMCz7/pbmc_Seurat.crb
+#> [20:55:10] Done!
 # }
 ```
