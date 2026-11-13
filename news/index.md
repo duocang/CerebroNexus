@@ -1,5 +1,36 @@
 # Changelog
 
+## CerebroNexus 8.1.0
+
+- **Page links.** `?page=<id>` opens the Viewer on a page (the
+  `initial_page` IDs, e.g. `?dataset=TCR&page=immune_repertoire`). The
+  address bar now follows the page and the data set being read, so a
+  copied URL reopens them. A `/<data set id>` link also works when the
+  App is started with
+  [`launchCerebro()`](https://www.mheming.com/CerebroNexus/reference/launchCerebro.md)
+  or [`shiny::runApp()`](https://rdrr.io/pkg/shiny/man/runApp.html), not
+  only under Shiny Server.
+- Opening the Viewer on a page that needs the data set no longer flashes
+  the “Loading dataset” card as the startup cover fades; the card waits
+  until the cover is gone.
+
+## CerebroNexus 8.0.2
+
+- CerebroNexus has a logo. It heads the README, replaces the wordmark
+  logo on the pkgdown site and appears in the Viewer’s About tab, where
+  each heading and link now carries an icon.
+- Tested with Seurat 6.0.0 (SeuratObject 5.4.0); no change is needed.
+  Seurat 6 keeps the v5 object and assay classes, and the Seurat,
+  spatial and Builder tests give the same results on Seurat 6.0.0 as on
+  5.5.1. The Spatial analysis article shows how to export a 10x Atera
+  object read with Seurat 6’s `LoadAtera()`, the same way as a Xenium
+  object, and which `LoadAtera()` arguments bring the cell outlines and
+  molecules along. Checked with 10x’s tiny Atera dataset: centroids,
+  cell outlines and molecules reach the `.crb`. A test exports an
+  in-memory object of the same shape and checks the cells, counts,
+  expression and spatial data that come back, and that the Builder picks
+  `nCount_Atera`/`nFeature_Atera`.
+
 ## CerebroNexus 8.0.1
 
 - `R CMD check --as-cran` no longer stops in the
@@ -14,9 +45,6 @@
   requests. The tarball must stay under 8 MB.
 - A test no longer compares two saves of a Cerebro object byte by byte;
   their source references differ between saves.
-- CerebroNexus has a logo. It heads the README, replaces the wordmark
-  logo on the pkgdown site and appears in the Viewer’s About tab, where
-  each heading and link now carries an icon.
 
 ## CerebroNexus 8.0.0
 
