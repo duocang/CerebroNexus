@@ -1,5 +1,104 @@
 # Changelog
 
+## CerebroNexus 8.3.5
+
+- **Builder from the package sources.** When the Builder runs next to
+  the package sources (`CEREBRO_PACKAGE_SOURCE`, or a source folder at
+  `..` or `../..`), it reads CRBs with `R/cerebro_io.R` alone. Two of
+  those readers called `.isString()`, defined in another file, so making
+  an App stopped with “The staged App inputs differ from the frozen
+  plan”. The helper now lives in `R/cerebro_io.R`, and that message
+  names its cause. Installed use was not affected.
+
+## CerebroNexus 8.3.4
+
+- **Sparse expression after
+  [`readCerebro()`](https://www.mheming.com/CerebroNexus/reference/readCerebro.md).**
+  In a fresh session, `nrow(crb$expression)` of a CRB with an embedded
+  sparse matrix returned `NULL`, because R loads Matrix only during that
+  first call.
+  [`readCerebro()`](https://www.mheming.com/CerebroNexus/reference/readCerebro.md)
+  now loads Matrix when the file holds such a matrix. 8.3.2 did this for
+  the package’s own getters only. H5-backed matrices stay unread until
+  first use, and the App start is not slowed: it reads data sets with
+  its own reader.
+
+## CerebroNexus 8.3.3
+
+- **No empty projection after switching data sets.** Shiny keeps the
+  last value of a group filter after its control is gone, so right after
+  a switch the server still read the filters of the previous data set.
+  Their levels do not exist in the new one, and the first frame of the
+  Overview, Gene expression, Spatial or Trajectory projection had no
+  cells until the filters were drawn again. A filter that names a level
+  the group does not have now filters nothing.
+
+## CerebroNexus 8.3.2
+
+- **Sparse expression in a fresh session.** The first call on a sparse
+  expression matrix read from a `.crb` returned `NULL` or failed,
+  because R loads Matrix only during that call: `getGeneNames()`,
+  `getCellNames()` and the other expression getters now load Matrix
+  first, as `getSpatialData()` does since 8.3.1. In the Viewer the first
+  data set showed no gene count in its overview. The App start is as
+  fast as before: Matrix is loaded at the same moment.
+
+## CerebroNexus 8.3.1
+
+- **Weekly update of the Nix environment.** `create_env.R` gives rix the
+  list of nixpkgs snapshots from GitHub. rix 0.18.5 checks the date
+  against a copy of that list bundled at its release, which ends on
+  2026-08-24, and so rejected the date of the newest snapshot in the
+  osmzhlab cache.
+- **Spatial expression in a fresh session.** `getSpatialData()` loads
+  Matrix when the expression it returns is a sparse matrix. Before,
+  [`nrow()`](https://rdrr.io/r/base/nrow.html) and
+  [`dim()`](https://rdrr.io/r/base/dim.html) of it returned `NULL` until
+  something else had loaded Matrix.
+
+## CerebroNexus 8.3.0
+
+- **Start of an App behind Shiny Server.** An App that Shiny runs from
+  an `app.R` (the demo App of the package under Shiny Server, or
+  [`shiny::runApp()`](https://rdrr.io/pkg/shiny/man/runApp.html) on its
+  directory) is usually started by its first visitor, because Shiny
+  Server stops an App nobody uses. That visitor now has the plot 3.6 s
+  instead of 7.1 s after the page is requested, and 4.5 s instead of 8.0
+  s with 1.46 million cells; the preview of the first view after 1.6 s
+  instead of 4.6 s (3.0 s instead of 5.2 s); the first byte of the page
+  after 1.1 s instead of 3.6 s; and the page takes 17 requests instead
+  of 67 (one Shiny Server in Docker, medians of 6 cold starts). `app.R`
+  makes the page and starts; plotly, DT, dplyr and the server code are
+  loaded once the page is sent, while the browser fetches its files, and
+  the server function is compiled to byte code after the first session
+  has its page. From its second start on such an App serves the page as
+  a file with its scripts and styles joined, as
+  [`launchCerebro()`](https://www.mheming.com/CerebroNexus/reference/launchCerebro.md)
+  does; under Shiny Server that was never kept, because the process
+  refused the request for its own page. The first start after an
+  installation, or after a change of Shiny Server’s configuration, sends
+  the page as before. A visit to a process that already runs is
+  unchanged. Apps exported with
+  [`createShinyApp()`](https://www.mheming.com/CerebroNexus/reference/createShinyApp.md)
+  start as before.
+
+## CerebroNexus 8.2.2
+
+- **New logo.** The hexagon logo is redrawn: the brain sits in the
+  middle with its two halves in the colours of the clusters, linked to a
+  UMAP, a spatial section and antibodies, over the name. It heads the
+  README and the pkgdown site and appears in the Viewer’s About tab.
+
+## CerebroNexus 8.2.1
+
+- **Faster edits in the Builder’s Configure page.** A change (a Group
+  ticked, a default chosen, an analysis switched on) took 0.8 to 0.9 s
+  whatever the size of the data set, because the whole data set entry
+  was validated again, several times over. The Viewer page catalog is
+  built once, the dataset state of an accepted edit is derived once, and
+  the search for references skips what the stored entry already has.
+  With 63 metadata columns an edit takes 0.27 to 0.43 s in the browser.
+
 ## CerebroNexus 8.2.0
 
 - **First view.** A `?page=projection` link shows its plot before the
