@@ -228,7 +228,10 @@ createShinyApp(
   only when it is available for the first loaded dataset. Initial
   routing is attempted only once, so switching datasets later never
   triggers a delayed redirect. Shared links take precedence after
-  restoration.
+  restoration. `NULL` (the default) opens `"data_info"`, and the
+  Projection is prepared while it is read: a click on Projection shows
+  the plot at once, or a preview of it while the data set is still being
+  read.
 
 - initial_projections:
 
@@ -349,7 +352,7 @@ app_dir <- createShinyApp(
 #> ========================================
 #> Shiny app successfully created!
 #> ========================================
-#> App directory: /tmp/nix-shell-4479-2733411152/Rtmp5UnTpM/my_app
+#> App directory: /tmp/nix-shell-4769-2104843398/RtmpIL1fu6/my_app
 #> Data file(s):
 #>   - PBMC example : example.crb
 #> Port: 8080
@@ -357,7 +360,7 @@ app_dir <- createShinyApp(
 #> Launch browser: TRUE
 #> 
 #> To launch the app, run:
-#>   shiny::runApp('/tmp/nix-shell-4479-2733411152/Rtmp5UnTpM/my_app')
+#>   shiny::runApp('/tmp/nix-shell-4769-2104843398/RtmpIL1fu6/my_app')
 #> ========================================
 # Run with shiny::runApp(app_dir) or deploy the directory to Shiny Server.
 # }
