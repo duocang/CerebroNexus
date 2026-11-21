@@ -19,8 +19,8 @@ exportFromSeurat(
   nGene = "nGene",
   add_all_meta_data = TRUE,
   use_delayed_array = FALSE,
-  expression_matrix_mode = c("embedded", "h5"),
-  h5_compression_level = 0L,
+  expression_matrix_mode = c("auto", "embedded", "h5"),
+  h5_compression_level = 1L,
   codec = c("qs2", "rds"),
   viewer_binary = c("auto", "always", "never"),
   viewer_binary_threshold = 100000L,
@@ -112,8 +112,15 @@ exportFromSeurat(
 
 - expression_matrix_mode:
 
-  How to persist the expression matrix. One of `"embedded"` (default) or
-  `"h5"`.
+  How to persist the expression matrix. One of `"auto"` (default),
+  `"embedded"` or `"h5"`.
+
+  - `"auto"` is `"h5"` for more than 200,000 cells and `"embedded"`
+    otherwise (the option `cerebro.h5_cell_threshold` sets the number).
+    A large matrix inside the `.crb` is read whole into memory at every
+    start of the Viewer; from the H5 file it reads only the genes it
+    shows. The `"h5"` mode needs `file` to end in `.crb` and the
+    HDF5Array package.
 
   - `"embedded"` stores the matrix inside the `.crb` file.
 
@@ -131,8 +138,8 @@ exportFromSeurat(
     never materialised on attach, so RAM stays close to the `.crb`
     metadata size. The `.crb` is thin: the cell names are kept once, in
     the H5 file, and the `.crb` records their order and a checksum. The
-    gzip level is set by `h5_compression_level`; the default (no
-    compression) is several times larger than a compressed file but
+    gzip level is set by `h5_compression_level`; the default (1) gives a
+    file several times smaller than level 0 (no compression), which
     builds and reads faster. Requires the HDF5Array package.
 
   The CRB and any sidecar are built and validated in a private sibling
@@ -152,11 +159,14 @@ exportFromSeurat(
 
   Gzip compression level, from 0 to 9, of the H5 file written when
   `expression_matrix_mode = "h5"`; ignored by the other modes. The
-  default 0 writes the data without compression: the file is about 7
-  times larger than at HDF5Array's default level 6 (about 69 GiB instead
-  of 10 GiB for 1.5 million human prefrontal cortex cells), but it
-  builds about three times faster and single-gene reads are about a
-  third faster. Set 6 when disk space matters more than speed.
+  default 1 gives a file within 3 (3.95 and 4.06 GiB for 500,000 mouse
+  brain cells) and writes it about 40 faster (222 s instead of 361 s);
+  the file is about 3 times smaller than one written without compression
+  (level 0: 11.4 GiB), which is also what the Viewer's checksum of the
+  file, copying it and keeping it in the operating system's file cache
+  cost. Level 0 writes the data without compression: it builds faster
+  and reads a single gene about a third faster, for a larger file.
+  Before 8.4.6 the default was 0.
 
 - codec:
 
@@ -282,22 +292,23 @@ exportFromSeurat(
   use_delayed_array = FALSE,
   verbose = TRUE
 )
-#> [21:05:28] Initializing Cerebro object...
-#> [21:05:28] Adding expression data (embedded)...
-#> [21:05:28] Collecting available meta data...
-#> [21:05:28] Extracting all meta data columns...
-#> [21:05:28] Extracting dimensional reductions...
-#> [21:05:28] Will export the following dimensional reductions: umap
-#> [21:05:28] Extracting marker genes table...
-#> [21:05:28] No trajectories to extract...
-#> [21:05:28] Checking for spatial data...
-#> [21:05:28] Overview of Cerebro object:
+#> [16:14:55] expression_matrix_mode = "auto": 80 cells, so "embedded".
+#> [16:14:55] Initializing Cerebro object...
+#> [16:14:55] Adding expression data (embedded)...
+#> [16:14:55] Collecting available meta data...
+#> [16:14:55] Extracting all meta data columns...
+#> [16:14:55] Extracting dimensional reductions...
+#> [16:14:55] Will export the following dimensional reductions: umap
+#> [16:14:55] Extracting marker genes table...
+#> [16:14:55] No trajectories to extract...
+#> [16:14:55] Checking for spatial data...
+#> [16:14:55] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 8.4.3
+#> exporter package version: 8.4.7
 #> experiment name: PBMC
 #> organism: hg
 #> date of analysis: 
-#> date of export: 2026-11-20
+#> date of export: 2026-11-21
 #> number of cells: 80
 #> number of genes: 230
 #> grouping variables (2): sample, seurat_clusters
@@ -313,7 +324,7 @@ exportFromSeurat(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [21:05:28] Saving Cerebro object to: /tmp/nix-shell-4492-3255300625/RtmpytKzef/pbmc_Seurat.crb
-#> [21:05:28] Done!
+#> [16:14:55] Saving Cerebro object to: /tmp/nix-shell-4388-3378333782/RtmpeYMYvD/pbmc_Seurat.crb
+#> [16:14:55] Done!
 # }
 ```

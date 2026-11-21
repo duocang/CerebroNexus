@@ -19,7 +19,8 @@ readH5adAsSCE(
   spatial_images = "auto",
   extra_modalities = NULL,
   verbose = FALSE,
-  .root = NULL
+  .root = NULL,
+  .stream_x = FALSE
 )
 ```
 
@@ -88,6 +89,12 @@ readH5adAsSCE(
 
   Internal: HDF5 group that holds the data set (used for the modalities
   inside a MuData file). Leave `NULL`.
+
+- .stream_x:
+
+  Internal: do not read an X with more than 2^31 - 1 non-zero values,
+  describe it for streaming (see
+  [`convertH5adToCerebro`](https://www.mheming.com/CerebroNexus/reference/convertH5adToCerebro.md)).
 
 ## Value
 
@@ -180,26 +187,27 @@ convertSCEToCerebro(
   assay = "X",
   groups = "sample"
 )
-#> [21:05:43] Calculating most expressed genes and mean expression for each group...
-#> [21:05:43] Processing group: sample
-#> [21:05:43] Most expressed genes and mean expression calculation completed.
-#> [21:05:43] Initializing Cerebro object...
-#> [21:05:43] Adding expression data (embedded)...
-#> [21:05:43] Collecting available meta data...
-#> [21:05:43] Extracting all meta data columns...
-#> [21:05:43] Extracting dimensional reductions...
-#> [21:05:43] Will export the following dimensional reductions: UMAP
-#> [21:05:43] Extracting tables of most expressed genes...
-#> [21:05:43] Extracting tables of mean expression...
-#> [21:05:43] Extracting marker genes table...
-#> [21:05:43] No trajectories to extract...
-#> [21:05:43] Overview of Cerebro object:
+#> [16:15:07] Calculating most expressed genes and mean expression for each group...
+#> [16:15:07] Processing group: sample
+#> [16:15:07] Most expressed genes and mean expression calculation completed.
+#> [16:15:07] expression_matrix_mode = "auto": 1,000 cells, so "embedded".
+#> [16:15:07] Initializing Cerebro object...
+#> [16:15:07] Adding expression data (embedded)...
+#> [16:15:07] Collecting available meta data...
+#> [16:15:07] Extracting all meta data columns...
+#> [16:15:07] Extracting dimensional reductions...
+#> [16:15:07] Will export the following dimensional reductions: UMAP
+#> [16:15:07] Extracting tables of most expressed genes...
+#> [16:15:07] Extracting tables of mean expression...
+#> [16:15:07] Extracting marker genes table...
+#> [16:15:07] No trajectories to extract...
+#> [16:15:07] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 8.4.3
+#> exporter package version: 8.4.7
 #> experiment name: SingleCellExperiment
 #> organism: Human
 #> date of analysis: 
-#> date of export: 2026-11-20
+#> date of export: 2026-11-21
 #> number of cells: 1,000
 #> number of genes: 100
 #> grouping variables (1): sample
@@ -215,8 +223,8 @@ convertSCEToCerebro(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:
-#> [21:05:43] Saving Cerebro object to: /tmp/nix-shell-4492-3255300625/RtmpytKzef/output/cerebro_SingleCellExperiment.crb
-#> [21:05:43] Done!
+#> [16:15:07] Saving Cerebro object to: /tmp/nix-shell-4388-3378333782/RtmpeYMYvD/output/cerebro_SingleCellExperiment.crb
+#> [16:15:07] Done!
 #> Successfully exported: cerebro_SingleCellExperiment.crb
 # }
 ```
