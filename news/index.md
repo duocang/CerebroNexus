@@ -1,5 +1,46 @@
 # Changelog
 
+## CerebroNexus 8.4.10
+
+- The source-checkout demo launcher accepts `--data=xenium-prime`: the
+  optional 10x Xenium Prime 5K fresh-frozen mouse brain, with all panel
+  genes, published clusters and UMAP, and a four-stain composite
+  microscopy PNG. Expression uses an H5 sidecar; the composite is
+  embedded in the CRB with source-derived bounds, so it is aligned
+  without manual offsets. Data stay in the user cache
+  (`CEREBRO_LARGE_CACHE`), outside the package/CRAN tarball. The
+  microscopy is read with Bio-Formats (`RBioFormats`), which only
+  building the demo needs. This uses the existing image renderer;
+  interactive channels and tiled microscopy are not added.
+- **Split by on the Spatial page draws its cells again for a data set
+  with a Viewer Pack.** Once the Pack’s cell-name file was ready, a
+  split frame sent neither cell names nor the rows that stand for them,
+  so every panel was empty (0 of 63,173 cells for the Xenium Prime 5K
+  demo; the smaller Xenium demo has no Pack and was not affected). The
+  frame now carries the canonical rows and the file, and the browser
+  resolves a range of rows.
+
+## CerebroNexus 8.4.9
+
+- **Numbered groups in natural order
+  ([\#284](https://github.com/mihem/CerebroNexus/issues/284)).** Group
+  levels such as “Cluster 1”, “Cluster 2”, …, “Cluster 10” are listed in
+  natural order: numbers compare as numbers, decimals included
+  (“res_0.25” before “res_0.5”), so legends, colours, filters and
+  choices no longer read “Cluster 1, Cluster 10, Cluster 11, …, Cluster
+  2”. Export writes character groups in this order. CRBs written before
+  store plain sorted levels; the Viewer puts those in natural order once
+  when it reads the file (about 10 ms for two reordered groups on 1.3
+  million cells), so they need not be rebuilt. A factor whose levels
+  were chosen in another order, and an ordered factor, keep their order;
+  a trailing “N/A” stays last. Since colours follow the level order, a
+  reordered group of such a CRB gets different colours from “Cluster 2”
+  on (for example, “Cluster 10” no longer takes the second colour).
+- **Split-by panels in level order.** Spatial “Split by” panels follow
+  the column’s levels (natural order for text), with missing values
+  last, instead of the order in which their first cells occur. A saved
+  ROI order still comes first.
+
 ## CerebroNexus 8.4.8
 
 - **A short wait shows no progress card.** A progress notification of
@@ -765,13 +806,15 @@ standard (`measure_session.R`).
   Seurat 6 keeps the v5 object and assay classes, and the Seurat,
   spatial and Builder tests give the same results on Seurat 6.0.0 as on
   5.5.1. The Spatial analysis article shows how to export a 10x Atera
-  object read with Seurat 6’s `LoadAtera()`, the same way as a Xenium
-  object, and which `LoadAtera()` arguments bring the cell outlines and
-  molecules along. Checked with 10x’s tiny Atera dataset: centroids,
-  cell outlines and molecules reach the `.crb`. A test exports an
-  in-memory object of the same shape and checks the cells, counts,
-  expression and spatial data that come back, and that the Builder picks
-  `nCount_Atera`/`nFeature_Atera`.
+  object read with Seurat 6’s
+  [`LoadAtera()`](https://satijalab.org/seurat/reference/ReadAtera.html),
+  the same way as a Xenium object, and which
+  [`LoadAtera()`](https://satijalab.org/seurat/reference/ReadAtera.html)
+  arguments bring the cell outlines and molecules along. Checked with
+  10x’s tiny Atera dataset: centroids, cell outlines and molecules reach
+  the `.crb`. A test exports an in-memory object of the same shape and
+  checks the cells, counts, expression and spatial data that come back,
+  and that the Builder picks `nCount_Atera`/`nFeature_Atera`.
 
 ## CerebroNexus 8.0.1
 
