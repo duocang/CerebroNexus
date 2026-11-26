@@ -25,7 +25,7 @@ createShinyApp(
   crb_pick_smallest_file = TRUE,
   show_upload_ui = FALSE,
   welcome_message = "Welcome to CerebroNexus!",
-  point_size = 5,
+  point_size = 4,
   point_opacity = 1,
   percentage_cells_to_show = 100,
   variable_to_compare = NULL,
@@ -363,7 +363,7 @@ app_dir <- createShinyApp(
 #> ========================================
 #> Shiny app successfully created!
 #> ========================================
-#> App directory: /tmp/nix-shell-4217-3374369694/RtmpeSF49C/my_app
+#> App directory: /tmp/nix-shell-4380-549571511/Rtmp6KO4J8/my_app
 #> Data file(s):
 #>   - PBMC example : example.crb
 #> Port: 8080
@@ -371,7 +371,7 @@ app_dir <- createShinyApp(
 #> Launch browser: TRUE
 #> 
 #> To launch the app, run:
-#>   shiny::runApp('/tmp/nix-shell-4217-3374369694/RtmpeSF49C/my_app')
+#>   shiny::runApp('/tmp/nix-shell-4380-549571511/Rtmp6KO4J8/my_app')
 #> ========================================
 # Run with shiny::runApp(app_dir) or deploy the directory to Shiny Server.
 # }

@@ -66,15 +66,15 @@ convertSpatialDataToCerebro(
   groups = "cell_type",
   verbose = FALSE
 )
-#> [19:24:18] Start collecting data...
-#> [19:24:18] Adding expression data (embedded)...
-#> [19:24:18] Overview of Cerebro object:
+#> [18:31:38] Start collecting data...
+#> [18:31:38] Adding expression data (embedded)...
+#> [18:31:38] Overview of Cerebro object:
 #> class: Cerebro
-#> exporter package version: 8.4.12
+#> exporter package version: 8.5.0
 #> experiment name: small_spatialdata
 #> organism: Human
 #> date of analysis: 
-#> date of export: 2026-11-24
+#> date of export: 2026-11-26
 #> number of cells: 50
 #> number of genes: 30
 #> grouping variables (1): cell_type
@@ -89,8 +89,8 @@ convertSpatialDataToCerebro(
 #> Immune repertoire:
 #> HLA typing: none
 #> Spatial data:spatial
-#> [19:24:18] Saving Cerebro object to: /tmp/nix-shell-4217-3374369694/RtmpeSF49C/cerebro-10b611a1f958/cerebro_small_spatialdata.crb
-#> [19:24:18] Done!
+#> [18:31:38] Saving Cerebro object to: /tmp/nix-shell-4380-549571511/Rtmp6KO4J8/cerebro-11596fb7912b/cerebro_small_spatialdata.crb
+#> [18:31:38] Done!
 #> Successfully exported: cerebro_small_spatialdata.crb
 list.files(dir)
 #> [1] "cerebro_small_spatialdata.crb"
