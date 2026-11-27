@@ -725,9 +725,14 @@
 #'     each with its image as an embedded PNG and its extent in spot-coordinate
 #'     space: spot coordinates (\code{obsm["spatial"]}) are full-resolution
 #'     pixels and an image is the full-resolution picture scaled by its
-#'     \code{tissue_*_scalef}, so it covers \code{[0, width/scale]} by
-#'     \code{[0, height/scale]}. The image keeps its own orientation (row 0 on
-#'     top); flip it for display in the Spatial tab, as for Seurat objects.
+#'     \code{tissue_*_scalef}. Pixel rows count downwards while the Viewer
+#'     draws y upwards, so when the file has Visium scale factors the spot
+#'     coordinates are read as \code{(pxl_col, -pxl_row)} and an image covers
+#'     \code{[0, width/scale]} by \code{[-height/scale, 0]}. Spots and image
+#'     then line up without any flip, the right way up, and
+#'     \code{metadata(sce)$spatial_coordinate_frame} is
+#'     \code{"pixels_y_negated"} (\code{\link{exportToH5ad}} writes the pixel
+#'     rows back).
 #' }
 #' Sparse \code{X} (CSR or CSC) and dense \code{X} are supported. A CSR matrix
 #' is used as it is, because the CSR of cells x genes is the CSC of genes x
@@ -983,6 +988,15 @@ readH5adAsSCE <- function(
 
   row_data <- .h5adAsFrame(list(index = genes, columns = var$columns))
   embeddings <- .h5adReadObsm(ctx, cells, verbose)
+  ## Visium spots are full-resolution pixels with rows counting downwards: put
+  ## them in the Viewer's upright frame, as their pictures are placed. A
+  ## SpatialData table (`.root`) is placed by the store's own transformations.
+  visium_frame <- is.null(.root) &&
+    .h5adHasVisiumScale(ctx) &&
+    is.matrix(embeddings$spatial)
+  if (visium_frame) {
+    embeddings$spatial <- .spatialPixelFlipY(embeddings$spatial)
+  }
   sce <- SingleCellExperiment::SingleCellExperiment(
     assays = assays,
     colData = .h5adAsFrame(obs),
@@ -1032,13 +1046,22 @@ readH5adAsSCE <- function(
       sce@metadata$immune_repertoire <- repertoire
     }
   }
-  trajectories <- .h5adReadTrajectories(ctx, obs, embeddings, verbose)
+  trajectories <- .h5adReadTrajectories(
+    ctx,
+    obs,
+    embeddings,
+    verbose,
+    spatial_frame = if (visium_frame) .spatialPixelFrame()
+  )
   if (length(trajectories)) {
     sce@metadata$trajectories <- trajectories
   }
   colors <- .h5adReadColors(ctx, obs$columns)
   if (length(colors)) {
     sce@metadata$group_colors <- colors
+  }
+  if (visium_frame) {
+    sce@metadata$spatial_coordinate_frame <- .spatialPixelFrame()
   }
   images <- .h5adReadSpatialImages(ctx, spatial_images, verbose)
   if (length(images)) {

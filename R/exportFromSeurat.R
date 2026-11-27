@@ -1314,6 +1314,20 @@ exportFromSeurat <- function(
         setNames(list(spatial_data$coordinates), image_name)
       )
       spatial_data$histology_images <- merged_images[[image_name]]
+      ## Sections converted from a Visium SingleCellExperiment keep their spots
+      ## in the negated pixel frame (convertSCEToSeurat() names them); record
+      ## it so the export to h5ad can write pixel rows again. A coordinate
+      ## transform moves the spots out of that frame.
+      frames <- object@misc$spatial_coordinate_frame
+      if (
+        is.character(frames) &&
+          image_name %in% names(frames) &&
+          .isSpatialPixelFrame(frames[[image_name]]) &&
+          !image_name %in% reduction_names &&
+          is.null(spatial_coordinate_transform_specs[[image_name]])
+      ) {
+        spatial_data$coordinate_frame <- .spatialPixelFrame()
+      }
 
       export$addSpatialData(image_name, spatial_data)
 

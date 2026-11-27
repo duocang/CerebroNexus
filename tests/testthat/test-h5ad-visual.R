@@ -178,16 +178,17 @@ test_that("Visium images are embedded per library with their extent in spot spac
 
   hires <- images$section1$hires
   scale <- 0.051033426 / 4 * 2
+  ## spots are (pxl_col, -pxl_row): the picture hangs below y = 0
   expect_equal(
     hires$histology_image_bounds,
-    c(xmin = 0, xmax = 288 / scale, ymin = 0, ymax = 300 / scale),
+    c(xmin = 0, xmax = 288 / scale, ymin = -300 / scale, ymax = 0),
     tolerance = 1e-6
   )
   ## the extent is that of the full-resolution picture: 11287 x 11757 px
   expect_equal(hires$histology_image_bounds[["xmax"]], 11287, tolerance = 1e-3)
   expect_equal(
-    images$section2$lowres$histology_image_bounds[["ymax"]],
-    11757,
+    images$section2$lowres$histology_image_bounds[["ymin"]],
+    -11757,
     tolerance = 1e-3
   )
   expect_identical(hires$image_label, "hires")

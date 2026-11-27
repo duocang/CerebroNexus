@@ -367,7 +367,9 @@ test_that("tissue pictures that come with the file become Builder images and shi
   images <- builder_source_image_settings(payload, file.path(dir, "images"))
   record <- images$section1$hires
   expect_true(file.exists(record$source_path))
-  expect_true(record$flip_y)
+  ## the spots are already upright (y = -pxl_row): the picture needs no flip
+  expect_false(record$flip_y)
+  expect_false(record$source_registration$flip_y)
   expect_identical(record$section_id, "section1")
   expect_identical(record$image_label, "hires")
   expect_equal(record$base_bounds, payload$section1$hires$bounds)

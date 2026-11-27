@@ -311,7 +311,9 @@
 #' uns["spatial"][<library>], as scanpy and squidpy keep them.
 #'
 #' Sections become libraries (the part of "spatial [name]" in brackets); cells
-#' outside every section get NaN coordinates. An image is written with the
+#' outside every section get NaN coordinates. Sections kept in the negated
+#' pixel frame (`coordinate_frame`, see R/spatial_image_frame.R) are written as
+#' full-resolution pixels again (y = pixel row). An image is written with the
 #' scale factor that maps full-resolution pixels onto it (width divided by the
 #' right edge of its bounds). scanpy also wants the spot diameter; Cerebro does
 #' not record it, so it is estimated as 55/100 of the median distance to the
@@ -339,11 +341,12 @@
     }
     index <- match(rownames(frame), cells)
     keep <- !is.na(index)
-    coordinates[index[keep], ] <- as.matrix(frame[
-      keep,
-      c("x", "y"),
-      drop = FALSE
-    ])
+    xy <- as.matrix(frame[keep, c("x", "y"), drop = FALSE])
+    ## scanpy keeps Visium spots as pixel rows counting downwards
+    if (.isSpatialPixelFrame(section$coordinate_frame)) {
+      xy <- .spatialPixelFlipY(xy)
+    }
+    coordinates[index[keep], ] <- xy
     library <- if (startsWith(name, "spatial [") && endsWith(name, "]")) {
       substr(name, nchar("spatial [") + 1L, nchar(name) - 1L)
     } else {
@@ -614,12 +617,28 @@ exportToH5ad <- function(input, file, overwrite = FALSE, verbose = FALSE) {
 
   ## obsm
   .h5adPutGroup(stage, "obsm", "dict", "0.1.0")
+  ## The spot coordinates kept as a projection share the sections' frame;
+  ## write them as pixel rows too, like obsm["spatial"].
+  pixel_frame <- any(vapply(
+    names(object$spatial),
+    function(name) {
+      .isSpatialPixelFrame(object$spatial[[name]][["coordinate_frame"]])
+    },
+    logical(1)
+  ))
   for (projection in object$availableProjections()) {
     embedding <- object$getProjection(projection)
     if (!is.null(rownames(embedding)) && all(cells %in% rownames(embedding))) {
       embedding <- embedding[cells, , drop = FALSE]
     }
     embedding <- as.matrix(embedding)
+    if (
+      pixel_frame &&
+        tolower(projection) %in% c("spatial", "spatial_xy") &&
+        ncol(embedding) >= 2L
+    ) {
+      embedding <- .spatialPixelFlipY(embedding)
+    }
     if (nrow(embedding) != n_cells || !is.numeric(embedding)) {
       skipped <- c(
         skipped,

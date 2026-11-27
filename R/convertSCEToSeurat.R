@@ -258,6 +258,14 @@ convertSCEToSeurat <- function(
       result[[fov_names[[index]]]] <- fov
       sections[[fov_names[[index]]]] <- spatial$images[[library]]
     }
+    ## the frame of the coordinates, per section, so that a section added to
+    ## the object later is not taken for one of these
+    if (.isSpatialPixelFrame(object@metadata$spatial_coordinate_frame)) {
+      result@misc$spatial_coordinate_frame <- stats::setNames(
+        rep(.spatialPixelFrame(), length(fov_names)),
+        fov_names
+      )
+    }
     sections <- Filter(length, sections)
     if (length(sections)) {
       result@misc$cerebro_source_images <- sections
@@ -267,6 +275,7 @@ convertSCEToSeurat <- function(
   carried <- as.list(object@metadata)
   carried$spatial_images <- NULL
   carried$spatial_sections <- NULL
+  carried$spatial_coordinate_frame <- NULL
   if (is.list(carried$trajectories)) {
     carried$trajectories <- .finiteTrajectories(carried$trajectories)
   }

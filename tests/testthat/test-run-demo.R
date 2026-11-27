@@ -188,6 +188,7 @@ test_that("a Builder-built Visium App is kept as a Viewer data set", {
   )
   skip_if_not(file.exists(helper))
   env <- new.env(parent = globalenv())
+  sys.source(file.path(dirname(helper), "download_helpers.R"), env)
   sys.source(helper, env)
   app <- withr::local_tempdir()
   dir.create(file.path(app, "private-data"))
@@ -244,6 +245,7 @@ test_that("Visium demo sections name complete, sized downloads", {
   )
   skip_if_not(file.exists(helper))
   env <- new.env(parent = globalenv())
+  sys.source(file.path(dirname(helper), "download_helpers.R"), env)
   sys.source(helper, env)
   datasets <- env$.builderVisiumDatasets()
   expect_setequal(
@@ -291,6 +293,7 @@ test_that("demo preparation reuses valid packs and rebuilds missing or stale fir
   )
   skip_if_not(file.exists(helper))
   env <- new.env(parent = globalenv())
+  sys.source(file.path(dirname(helper), "download_helpers.R"), env)
   sys.source(helper, env)
   result <- list(valid = FALSE)
   builds <- 0L
@@ -348,6 +351,7 @@ test_that("a Visium section keeps its spots, picture extent and orientation", {
   )
   skip_if_not(file.exists(helper))
   env <- new.env(parent = globalenv())
+  sys.source(file.path(dirname(helper), "download_helpers.R"), env)
   sys.source(helper, env)
   root <- withr::local_tempdir()
   ## A 10x feature-barcode matrix of 3 genes x 3 barcodes.
@@ -401,13 +405,13 @@ test_that("a Visium section keeps its spots, picture extent and orientation", {
   expect_identical(colnames(section$counts), c("S1_AAA-1", "S1_CCC-1"))
   expect_identical(rownames(section$counts), c("Gfap", "Snap25", "Gfap.1"))
   expect_equal(as.numeric(section$counts[, "S1_AAA-1"]), c(1, 0, 2))
-  ## x is the pixel column, y the pixel row: the picture's orientation,
-  ## which the Builder flips together with its picture.
+  ## x is the pixel column, y the negated pixel row: upright in the Viewer,
+  ## with the picture hanging below y = 0 so it needs no flip.
   expect_equal(unname(section$coordinates[, "x"]), c(40, 80))
-  expect_equal(unname(section$coordinates[, "y"]), c(100, 300))
+  expect_equal(unname(section$coordinates[, "y"]), c(-100, -300))
   expect_equal(
     section$picture$histology_image_bounds,
-    c(xmin = 0, xmax = 160, ymin = 0, ymax = 120)
+    c(xmin = 0, xmax = 160, ymin = -120, ymax = 0)
   )
   expect_match(section$picture$histology_image, "^data:image/png;base64,")
 })

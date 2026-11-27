@@ -129,9 +129,14 @@ The mapping is:
     each with its image as an embedded PNG and its extent in spot-coordinate
     space: spot coordinates (\code{obsm["spatial"]}) are full-resolution
     pixels and an image is the full-resolution picture scaled by its
-    \code{tissue_*_scalef}, so it covers \code{[0, width/scale]} by
-    \code{[0, height/scale]}. The image keeps its own orientation (row 0 on
-    top); flip it for display in the Spatial tab, as for Seurat objects.
+    \code{tissue_*_scalef}. Pixel rows count downwards while the Viewer
+    draws y upwards, so when the file has Visium scale factors the spot
+    coordinates are read as \code{(pxl_col, -pxl_row)} and an image covers
+    \code{[0, width/scale]} by \code{[-height/scale, 0]}. Spots and image
+    then line up without any flip, the right way up, and
+    \code{metadata(sce)$spatial_coordinate_frame} is
+    \code{"pixels_y_negated"} (\code{\link{exportToH5ad}} writes the pixel
+    rows back).
 }
 Sparse \code{X} (CSR or CSC) and dense \code{X} are supported. A CSR matrix
 is used as it is, because the CSR of cells x genes is the CSC of genes x

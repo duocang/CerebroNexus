@@ -1,3 +1,30 @@
+# CerebroNexus 8.5.4
+
+- **Visium tissue pictures line up with their spots without any manual
+  alignment, the right way up.** A picture is the full-resolution image scaled
+  by its `tissue_*_scalef`, so its scale factor alone places it. Pixel rows
+  count downwards while the Spatial tab draws y upwards; until now the spots
+  kept the pixel rows and the picture had to be flipped (by hand for an h5ad,
+  automatically in the Builder), which showed the section as its mirror image.
+  `readH5adAsSCE()` now reads Visium spots as `(pxl_col, -pxl_row)` and places
+  each picture at `[0, width/scale] x [-height/scale, 0]`, so spots and picture
+  share one frame when the file is read: no flip is stored and the Viewer
+  draws them as they are. The frame is recorded
+  (`metadata(sce)$spatial_coordinate_frame`, and on the spatial data in the
+  `.crb`), and `exportToH5ad()` writes the pixel rows back, so scanpy and
+  squidpy still read what they expect, and scVelo's `velocity_spatial` arrows
+  are turned with the spots. The Builder no longer flips a picture that comes
+  with the source file: it opens as it is, and any flip is set on the Spatial
+  page after looking at it. Seurat Visium objects and SpatialData stores are
+  read as before.
+- Compatibility: an h5ad Visium app built with
+  `spatial_image_settings = ... flip_y = TRUE`, as the documentation of
+  `convertH5adToCerebro()` advised, now shows its picture upside down; drop
+  the flip. A SingleCellExperiment saved by an earlier `readH5adAsSCE()` keeps
+  the old rows; read the h5ad again. A Builder project saved with such a
+  picture and reloaded from its source file needs the picture removed and the
+  file imported again.
+
 # CerebroNexus 8.5.3
 
 - **The Builder no longer stops with "nthreads > 1 requires TBB".** A CRB is

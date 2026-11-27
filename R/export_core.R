@@ -663,6 +663,8 @@
 #' reduction. `images` holds tissue images per library (see
 #' .h5adReadSpatialImages): the single library's images go to an unsplit entry,
 #' and with `split` each section takes the images of the library of that name.
+#' `coordinate_frame` (`metadata(sce)$spatial_coordinate_frame`) is recorded on
+#' the entries of the "spatial" embedding, the one it describes.
 #' @keywords internal
 #' @noRd
 .exportAddSpatialFromEmbeddings <- function(
@@ -673,6 +675,7 @@
   layer,
   split = NULL,
   images = NULL,
+  coordinate_frame = NULL,
   verbose = FALSE
 ) {
   add_entry <- function(
@@ -717,6 +720,12 @@
     }
     if (length(entry_images)) {
       spatial_data$histology_images <- entry_images
+    }
+    if (
+      .isSpatialPixelFrame(coordinate_frame) &&
+        identical(tolower(source_name), "spatial")
+    ) {
+      spatial_data$coordinate_frame <- coordinate_frame
     }
     export$addSpatialData(entry_name, spatial_data)
     if (verbose) {

@@ -270,7 +270,13 @@
 #'   empty when there is nothing to show.
 #' @keywords internal
 #' @noRd
-.h5adReadTrajectories <- function(ctx, obs, embeddings, verbose = FALSE) {
+.h5adReadTrajectories <- function(
+  ctx,
+  obs,
+  embeddings,
+  verbose = FALSE,
+  spatial_frame = NULL
+) {
   columns <- obs$columns
   cells <- obs$index
   pseudotimes <- .h5adPseudotimeColumns(columns)
@@ -353,6 +359,11 @@
           )
         }
         next
+      }
+      ## spots read with negated rows (.spatialPixelFlipY()) need their
+      ## velocities turned the same way
+      if (identical(basis, "spatial") && .isSpatialPixelFrame(spatial_frame)) {
+        raw <- .spatialPixelFlipY(raw)
       }
       arrows <- .h5adVelocityArrows(
         embedding[, 1:2, drop = FALSE],

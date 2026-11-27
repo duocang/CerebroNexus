@@ -79,7 +79,11 @@
 #' spatial coordinates: the single library's images go to the single spatial
 #' entry, and with \code{spatial_split_by} each section takes the images of the
 #' library named like its level. Both are filled in by
-#' \code{\link{readH5adAsSCE}} from scanpy's \code{uns}.
+#' \code{\link{readH5adAsSCE}} from scanpy's \code{uns}, which also sets
+#' \code{metadata(object)$spatial_coordinate_frame} to
+#' \code{"pixels_y_negated"} when the spots are Visium pixels read as
+#' \code{(pxl_col, -pxl_row)}; the frame is recorded with the spatial data so
+#' \code{\link{exportToH5ad}} can write the pixel rows back.
 #'
 #' @return
 #' No data returned.
@@ -326,6 +330,7 @@ exportFromSCE <- function(
       assay = assay,
       layer = assay,
       images = object@metadata$spatial_images,
+      coordinate_frame = object@metadata$spatial_coordinate_frame,
       split = if (!is.null(spatial_split_by)) {
         stats::setNames(
           as.character(meta[[spatial_split_by]]),

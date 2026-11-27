@@ -2372,8 +2372,10 @@ builder_adjust_bounds <- function(bounds, dx = 0, dy = 0, scale = 1) {
 #' described, so planning, building and saving a project treat it like any other
 #' image. The picture's extent in coordinate space is known from its scale
 #' factor, so it is placed exactly there instead of being fitted by eye.
-#' Pictures keep their own orientation (row 0 on top) while the Viewer draws y
-#' upward, so they are flipped vertically, as for Seurat Visium data.
+#' Pictures keep their own orientation (row 0 on top) and open unflipped: the
+#' import already put the spots in the picture's frame (Visium spots as
+#' (pxl_col, -pxl_row), R/spatial_image_frame.R). A picture that still needs a
+#' flip is the user's call, made on the Spatial page after looking at it.
 #'
 #' @param payload From builder_source_image_payload().
 #' @param dir A directory the caller owns.
@@ -2403,10 +2405,7 @@ builder_source_image_settings <- function(payload, dir) {
       if (!is.null(image$error)) {
         next
       }
-      parameters <- utils::modifyList(
-        builder_alignment_defaults(),
-        list(flip_y = TRUE)
-      )
+      parameters <- builder_alignment_defaults()
       record <- builder_alignment_record(
         source = list(name = name, type = image$mime, size = image$bytes),
         base_bounds = item$bounds,
@@ -2420,7 +2419,7 @@ builder_source_image_settings <- function(payload, dir) {
       record$source_registration <- list(
         base_bounds = item$bounds,
         flip_x = FALSE,
-        flip_y = TRUE
+        flip_y = FALSE
       )
       record$image_label <- label
       facts <- intersect(

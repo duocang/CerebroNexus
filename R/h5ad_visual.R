@@ -98,15 +98,37 @@
   )
 }
 
+#' TRUE when a library in uns["spatial"] has a Visium scale factor (or a
+#' full-resolution picture, scale 1), so the spots in obsm["spatial"] are
+#' full-resolution picture pixels.
+#' @keywords internal
+#' @noRd
+.h5adHasVisiumScale <- function(ctx) {
+  if (!.h5adHas(ctx, "uns/spatial")) {
+    return(FALSE)
+  }
+  for (library in .h5adChildren(ctx, "uns/spatial")) {
+    base <- paste0("uns/spatial/", library, "/scalefactors/")
+    if (
+      .h5adHas(ctx, paste0(base, "tissue_hires_scalef")) ||
+        .h5adHas(ctx, paste0(base, "tissue_lowres_scalef")) ||
+        .h5adHas(ctx, paste0("uns/spatial/", library, "/images/fullres"))
+    ) {
+      return(TRUE)
+    }
+  }
+  FALSE
+}
+
 #' Visium tissue images from uns["spatial"][<library_id>]["images"], ready to
 #' embed as histology images.
 #'
 #' Spot coordinates in obsm["spatial"] are full-resolution pixels, and an image
-#' is the full-resolution picture scaled by its scale factor. In coordinate
-#' space it therefore covers [0, width / scale] x [0, height / scale], and that
-#' is what is recorded as its bounds. The picture is stored in its own
-#' orientation (row 0 on top); flipping it for display is the Spatial tab's
-#' setting, as for Seurat objects.
+#' is the full-resolution picture scaled by its scale factor. The spots are read
+#' with y negated (`.spatialPixelFlipY()`), so an image covers
+#' [0, width / scale] x [-height / scale, 0] (`.spatialPixelImageBounds()`):
+#' drawn with its first row at the top, as the Viewer draws it, it lines up
+#' with the spots without a flip.
 #'
 #' @param which "auto" (hires when present, otherwise lowres), a character
 #'   vector of image labels (hires, lowres, fullres), or FALSE for none.
@@ -177,12 +199,7 @@
       width <- dim(array)[[2L]]
       result[[library]][[label]] <- list(
         histology_image = .h5adImageDataUri(array),
-        histology_image_bounds = c(
-          xmin = 0,
-          xmax = width / scale,
-          ymin = 0,
-          ymax = height / scale
-        ),
+        histology_image_bounds = .spatialPixelImageBounds(width, height, scale),
         image_label = label
       )
     }

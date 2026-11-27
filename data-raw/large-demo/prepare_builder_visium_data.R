@@ -14,7 +14,12 @@
 ## Each data set is downloaded once (spot counts, positions, scale factors and
 ## the high-resolution picture of every section), log-normalised, and given a
 ## PCA, UMAP and clusters, so it opens with an embedding and groups.
-.builderVisiumVersion <- 1L
+##
+## As the other large demos keep theirs (download_helpers.R), the files live in
+## folders without a version: `builder/` holds the Builder input and
+## `viewer/` what the Viewer opens. Each has a stamp of the package version
+## and a hash of the functions that made it, so a changed script or release
+## rebuilds it without anyone bumping a number.
 
 .builderVisium10xBase <- "https://cf.10xgenomics.com/samples/spatial-exp"
 .builderVisiumDlpfcMatrix <- "https://spatial-dlpfc.s3.us-east-2.amazonaws.com"
@@ -263,7 +268,7 @@
     )
   }
   root <- file.path(.demoLargeCacheDir(cache_dir), paste0("visium-", id))
-  prepared <- file.path(root, paste0("builder-v", .builderVisiumVersion))
+  prepared <- file.path(root, "builder")
   list(
     root = root,
     source_dir = file.path(root, "source"),
@@ -425,10 +430,10 @@
 }
 
 ## One section: its counts, spots and picture. The picture is the
-## full-resolution image scaled by `tissue_hires_scalef`, so in pixel
-## coordinates it spans [0, width / scale] x [0, height / scale]. Spots keep
-## the picture's orientation (y is the pixel row), as Visium data read from an
-## h5ad or a Seurat object do; the Builder flips the picture to match.
+## full-resolution image scaled by `tissue_hires_scalef`. Spots are taken as
+## (pxl_col, -pxl_row), as readH5adAsSCE() reads Visium data, so the picture
+## spans [0, width / scale] x [-height / scale, 0] and lines up without a flip
+## (R/spatial_image_frame.R).
 .builderVisiumSection <- function(files, section) {
   counts <- .builderVisiumReadMatrix(files$matrix)
   positions <- .builderVisiumReadPositions(files$positions)
@@ -443,12 +448,12 @@
   bounds <- c(
     xmin = 0,
     xmax = dimensions[[2L]] / scale,
-    ymin = 0,
-    ymax = dimensions[[1L]] / scale
+    ymin = -dimensions[[1L]] / scale,
+    ymax = 0
   )
   coordinates <- cbind(
     x = positions$pxl_col_in_fullres,
-    y = positions$pxl_row_in_fullres
+    y = -positions$pxl_row_in_fullres
   )
   colnames(counts) <- paste0(section, "_", positions$barcode)
   rownames(coordinates) <- colnames(counts)
@@ -604,12 +609,12 @@
   S4Vectors::metadata(sce)$spatial_images <- lapply(loaded, function(x) {
     list(hires = x$picture)
   })
+  S4Vectors::metadata(sce)$spatial_coordinate_frame <- "pixels_y_negated"
   S4Vectors::metadata(sce)$cerebro_demo <- list(
     id = id,
     label = spec$label,
     species = spec$species,
-    groups = spec$groups,
-    version = .builderVisiumVersion
+    groups = spec$groups
   )
   sce
 }
@@ -641,11 +646,7 @@ prepareBuilderVisiumDemoData <- function(id, cache_dir = NULL) {
   paths <- .builderVisiumPaths(id, cache_dir)
   if (
     file.exists(paths$rds) &&
-      file.exists(paths$stamp) &&
-      identical(
-        readLines(paths$stamp, warn = FALSE),
-        as.character(.builderVisiumVersion)
-      )
+      .demoStampCurrent(paths$stamp, .builderVisiumRecipe)
   ) {
     return(paths$rds)
   }
@@ -657,25 +658,16 @@ prepareBuilderVisiumDemoData <- function(id, cache_dir = NULL) {
   dir.create(stage)
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
   saveRDS(sce, file.path(stage, basename(paths$rds)))
-  writeLines(
-    as.character(.builderVisiumVersion),
-    file.path(stage, "demo-version")
-  )
+  .demoStampWrite(file.path(stage, "demo-version"), .builderVisiumRecipe)
   .demoPublishStage(stage, dirname(paths$rds), paths$root, paste("Visium", id))
   paths$rds
 }
 
 ## ---- The Viewer data set, built by the Builder ------------------------------
 
-## The Builder's build of a data set: bumped when what it writes changes.
-.viewerVisiumVersion <- 1L
-
 .viewerVisiumPaths <- function(id, cache_dir = NULL) {
   root <- .builderVisiumPaths(id, cache_dir)$root
-  built <- file.path(
-    root,
-    paste0("viewer-v", .builderVisiumVersion, ".", .viewerVisiumVersion)
-  )
+  built <- .demoViewerDir(root)
   list(
     root = root,
     built = built,
@@ -822,17 +814,17 @@ prepareBuilderVisiumDemoData <- function(id, cache_dir = NULL) {
 prepareViewerVisiumDemoData <- function(id, repo_root, cache_dir = NULL) {
   rds <- prepareBuilderVisiumDemoData(id, cache_dir)
   paths <- .viewerVisiumPaths(id, cache_dir)
-  version <- paste(.builderVisiumVersion, .viewerVisiumVersion, sep = ".")
   if (
     file.exists(paths$demo) &&
-      file.exists(paths$stamp) &&
-      identical(readLines(paths$stamp, warn = FALSE), version)
+      .demoStampCurrent(paths$stamp, .viewerVisiumRecipe)
   ) {
     return(paths$demo)
   }
   spec <- .builderVisiumDatasets()[[id]]
   message("Building ", spec$label, " (", id, ") with the Builder")
-  work <- tempfile("builder-", paths$root)
+  ## The Builder keeps its snapshot private (mode 0700), which a cache on an
+  ## exFAT or FAT disk cannot do: it works in the session's temporary folder.
+  work <- tempfile("builder-")
   stage <- tempfile("viewer-visium-", paths$root)
   dir.create(work)
   dir.create(stage)
@@ -845,7 +837,20 @@ prepareViewerVisiumDemoData <- function(id, repo_root, cache_dir = NULL) {
     work
   )
   .viewerVisiumKeepApp(app, stage, spec$label)
-  writeLines(version, file.path(stage, "demo-version"))
+  .demoStampWrite(file.path(stage, "demo-version"), .viewerVisiumRecipe)
   .demoPublishStage(stage, paths$built, paths$root, paste("Visium", id))
   paths$demo
 }
+
+## What made each folder, taken when this script is sourced: the Builder input
+## from the `.builderVisium*` functions, the Viewer data set from those and the
+## `.viewerVisium*` ones.
+.builderVisiumRecipe <- .demoRecipe(
+  environment(),
+  "Visium",
+  prefixes = c("[.]builder", "prepareBuilder")
+)
+.viewerVisiumRecipe <- rlang::hash(c(
+  .builderVisiumRecipe,
+  .demoRecipe(environment(), "Visium")
+))
