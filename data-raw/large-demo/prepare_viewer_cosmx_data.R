@@ -56,7 +56,7 @@
     samples <- .viewerCosMxSamples()$sample
   }
   root <- file.path(.demoLargeCacheDir(cache_dir), "cosmx")
-  prepared <- .demoPreparedDir(root)
+  prepared <- .demoViewerDir(root)
   list(
     root = root,
     source_dir = file.path(root, "source"),

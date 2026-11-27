@@ -19,7 +19,7 @@
 
 .viewerXeniumPrimePaths <- function(cache_dir = NULL) {
   root <- file.path(.demoLargeCacheDir(cache_dir), "xenium-prime")
-  prepared <- .demoPreparedDir(root)
+  prepared <- .demoViewerDir(root)
   list(
     root = root,
     archive = file.path(root, "source", "outs.zip"),

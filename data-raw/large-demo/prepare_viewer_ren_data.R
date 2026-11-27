@@ -2,7 +2,7 @@
 
 .viewerRenPaths <- function(cache_dir = NULL) {
   root <- file.path(.demoLargeCacheDir(cache_dir), "ren")
-  prepared <- .demoPreparedDir(root)
+  prepared <- .demoViewerDir(root)
   list(
     root = root,
     source_dir = file.path(root, "source"),

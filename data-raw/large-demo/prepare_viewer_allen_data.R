@@ -44,7 +44,7 @@
     )
   }
   root <- file.path(.demoLargeCacheDir(cache_dir), "allen")
-  prepared <- .demoPreparedDir(root)
+  prepared <- .demoViewerDir(root)
   source <- file.path(root, "source")
   list(
     root = root,

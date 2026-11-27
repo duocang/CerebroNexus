@@ -1,5 +1,5 @@
 ## Needs download_helpers.R (sourced first): the prepared files live in
-## `1m/prepared`, with a stamp that says what made them (.demoStampKey()).
+## `1m/viewer`, with a stamp that says what made them (.demoStampKey()).
 
 .viewer1mCacheDir <- function(path = NULL) {
   if (is.null(path)) {
@@ -19,7 +19,7 @@
 
 .viewer1mPaths <- function(cache_dir = NULL) {
   root <- file.path(.viewer1mCacheDir(cache_dir), "1m")
-  prepared <- .demoPreparedDir(root)
+  prepared <- .demoViewerDir(root)
   list(
     source = file.path(
       root,

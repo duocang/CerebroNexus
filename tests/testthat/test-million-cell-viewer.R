@@ -684,7 +684,7 @@ test_that("the 1M preparation uses CEREBRO_LARGE_CACHE like the Ren one", {
   withr::local_envvar(CEREBRO_LARGE_CACHE = "/data/large")
   expect_identical(
     env$.viewer1mPaths()$crb,
-    "/data/large/1m/prepared/cerebro_mouse_brain_1m.crb"
+    "/data/large/1m/viewer/cerebro_mouse_brain_1m.crb"
   )
   ## an explicit argument still wins
   expect_identical(

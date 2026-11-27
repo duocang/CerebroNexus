@@ -21,23 +21,27 @@
   file.path(tools::R_user_dir("CerebroNexus", "cache"), "large-examples")
 }
 
-## Where a demo's prepared files live: `<cache>/<name>/prepared`, the same
+## Where the files a demo's Viewer opens live: `<cache>/<name>/viewer`, the same
 ## folder whatever made them. What made them is in its stamp (`demo-version`):
 ## the CerebroNexus version and a hash of the functions of the demo's script.
 ## Files whose stamp differs from what this checkout would write are prepared
 ## again, so a changed script or a new release rebuilds the data set without
 ## anyone bumping a number.
-.demoPreparedDir <- function(root) {
-  file.path(root, "prepared")
+.demoViewerDir <- function(root) {
+  file.path(root, "viewer")
 }
 
 ## A hash of the functions of a demo's script: those of `env` (where the script
-## was sourced) whose names start with `.viewer<name>` or `prepareViewer<name>`,
-## without their source references. A script keeps it as `.viewer<name>Recipe`,
+## was sourced) whose names start with `.viewer<name>` or `prepareViewer<name>`
+## (or other `prefixes`), without their source references. A script keeps it as `.viewer<name>Recipe`,
 ## taken when it is sourced, so that a function replaced afterwards (a test's
 ## stand-in) does not change it.
-.demoRecipe <- function(env, name) {
-  pattern <- paste0("^([.]viewer|prepareViewer)", name)
+.demoRecipe <- function(
+  env,
+  name,
+  prefixes = c("[.]viewer", "prepareViewer")
+) {
+  pattern <- paste0("^(", paste(prefixes, collapse = "|"), ")", name)
   functions <- sort(ls(env, all.names = TRUE, pattern = pattern))
   functions <- functions[vapply(
     functions,
